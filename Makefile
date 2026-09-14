@@ -20,8 +20,18 @@ export DOCKER_BUILDKIT
 COMPOSE := docker-compose
 
 # Workbench reaches a port compose publishes on the engine host through this
-# alias (docs/adr/0011); it is the one place the hostname is written.
-APP_URL ?= http://host.containers.internal:8080
+# alias (docs/adr/0011, 0012 §6); it is the one place the hostname is written.
+PLANE_HOST ?= host.containers.internal
+APP_URL ?= http://$(PLANE_HOST):8080
+export PLANE_HOST APP_URL
+
+# Seconds each adapters/<name>/ready.sh polls before giving up: 4x the 15 s a
+# cold plane took to answer at M2 close (docs/adr/0012 §6, HANDOFF).
+READY_TIMEOUT ?= 60
+export READY_TIMEOUT
+
+# Adapters that run as plane services at this profile, in readiness order.
+PLANE_ADAPTERS := $(CODE_HOST) $(DELIVERY) $(METRICS) $(FLAGS) $(REGISTRY) $(EVENT_BUS) $(STATE_STORE)
 
 # Milestone stubs. A target whose milestone has not arrived fails loudly.
 define not_yet
@@ -33,11 +43,12 @@ help: ## List the targets
 	@printf 'lights-out  (profile: %s)\n\n' "$(PROFILE)"
 	@awk 'BEGIN{FS=":.*## "} /^[a-z][a-z0-9-]*:.*## /{printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
-	@printf '  %-16s %s\n' ci-engine-compat "host-side engine check, ci/engine-compat.sh (joins ci at M2)"
-	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n' shell "interactive shell inside workbench" clean "remove the workbench image"
+	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
+		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
+		shell "interactive shell inside workbench" clean "remove the workbench image"
 
-# Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004) and joins at M2.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles contract
+# Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -49,36 +60,34 @@ ci-%:
 
 .PHONY: demo
 demo: ## The demo, as far as the current milestone takes it (ADR 0003)
-	@printf '[demo] ci (M1): running\n'
+	@printf '[demo] engine-compat: done on the host by ./go before this run\n' >&2
+	@printf '[demo] ci (M2): running\n'
 	@$(MAKE) --no-print-directory ci
-	@printf '[demo] engine-compat: NOT YET (M2)\n' >&2
 	@$(MAKE) --no-print-directory up
-	@printf '[demo] up: app only, plane at M2\n' >&2
-	@curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" >/dev/null \
-		|| { printf 'NO-GO: demo — smoke check failed at %s/healthz\n' "$(APP_URL)"; exit 1; }
-	@printf '[demo] smoke: %s/healthz ok\n' "$(APP_URL)" >&2
+	@printf '[demo] up: L0 plane, %s\n' "$(PLANE_ADAPTERS)" >&2
+	@$(MAKE) --no-print-directory smoke
+	@printf '[demo] smoke: a meetup created through Envoy at %s\n' "$(APP_URL)" >&2
 	@$(MAKE) --no-print-directory verify
 	@printf '[demo] verify: metric shape only, evaluation at M3\n' >&2
 	@printf '[demo] deploy: NOT YET (M3)\n' >&2
 	@printf '[demo] rollback: NOT YET (M3)\n' >&2
 	@printf '[demo] e2e: NOT YET (M6)\n' >&2
-	@printf 'lights-out: app running at %s\n' "$(APP_URL)" >&2
-	@printf 'GO: demo, milestone M1. Green means the repo is coherent and the app answers; canary and rollback are not real yet.\n'
+	@printf 'lights-out: app at %s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_URL)" >&2
+	@printf 'GO: demo, milestone M2. Green means the repo is coherent and the L0 plane answers; canary and rollback are not real yet.\n'
 
 .PHONY: up
-up: ## Start the app in compose (M1: app only, the rest of the plane arrives at M2)
-	@$(COMPOSE) up -d --build postgres migrate geocoder backend
-	@printf 'lights-out: waiting for %s/healthz\n' "$(APP_URL)" >&2
-	@i=0; \
-	while ! curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" >/dev/null 2>&1; do \
-		i=$$((i + 1)); \
-		if [ "$$i" -ge 60 ]; then \
-			printf 'lights-out: backend did not answer /healthz within 60s\n' >&2; \
-			exit 1; \
-		fi; \
-		sleep 1; \
+up: ## Start the L0 plane in compose and wait until every adapter is ready (docs/adr/0012 §6)
+	@$(COMPOSE) up -d --build >&2
+	@for a in $(PLANE_ADAPTERS); do \
+		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
+		printf 'lights-out: waiting for %s\n' "$$a" >&2; \
+		sh "adapters/$$a/ready.sh" || exit 1; \
 	done
-	@printf 'lights-out: app is up at %s\n' "$(APP_URL)" >&2
+	@printf 'lights-out: plane is up, app at %s\n' "$(APP_URL)" >&2
+
+.PHONY: smoke
+smoke: ## Sign up, log in and create a meetup through Envoy (app/smoke.sh)
+	@sh app/smoke.sh
 
 .PHONY: down
 down: ## Stop the app

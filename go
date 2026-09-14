@@ -5,11 +5,14 @@
 # engine, git and this shell. Everything else runs inside the workbench image
 # built from workbench/Containerfile (docs/adr/0004-containerised-toolchain.md).
 #
-#   ./go help      list the make targets
-#   ./go ci        repo self-checks, no engine socket inside
-#   ./go demo      the demo, as far as the current milestone takes it
-#   ./go shell     interactive shell inside workbench
-#   ./go clean     remove the workbench image
+#   ./go help           list the make targets
+#   ./go ci             repo self-checks, no engine socket inside
+#   ./go up             start the L0 plane in compose and wait for it
+#   ./go smoke          create a meetup through Envoy
+#   ./go demo           the demo, as far as the current milestone takes it
+#   ./go engine-compat  host-side engine gate: versions, then up and smoke
+#   ./go shell          interactive shell inside workbench
+#   ./go clean          remove the workbench image
 #
 # Any other argument is passed to make inside workbench.
 set -eu
@@ -44,6 +47,14 @@ if [ "$cmd" = clean ]; then
   "$engine" image rm -f "$image" >/dev/null 2>&1 || true
   printf 'go: removed %s\n' "$image"
   exit 0
+fi
+
+# engine-compat is the one gate that runs on the host, because its subject
+# is the host engine (ADR 0004 point 4, ADR 0012 §5). It calls ./go up and
+# ./go smoke itself. demo runs it first, then continues inside workbench.
+if [ "$cmd" = engine-compat ] || [ "$cmd" = demo ]; then
+  CONTAINER_ENGINE="$engine" sh "$here/ci/engine-compat.sh" || exit 1
+  [ "$cmd" = demo ] || exit 0
 fi
 
 # 2. Build the workbench image once per Containerfile revision.
@@ -86,7 +97,7 @@ esac
 run() {
   exec "$engine" run --rm --init $tty \
     -v "$here:$here$label" -w "$here" \
-    -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" \
+    -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
     $engine_flags $socket_flags \
     "$image" "$@"
 }

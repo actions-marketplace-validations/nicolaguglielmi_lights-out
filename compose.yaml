@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# One root compose file for the whole plane (docs/adr/0010). At M1 it is
-# just the app; M2 adds the rest of the L0 services here, not in a second
-# file.
+# One root compose file for the whole L0 plane (docs/adr/0010, 0012): the
+# app (postgres, migrate, geocoder, backend) and, from M2, the plane around
+# it. Vendor config lives in adapters/<name>/ and is copied into images at
+# build; the only bind mount is app/flags/ into flagd. Run through ./go:
+# WORKBENCH_IMAGE is set there and the runner image is built from it.
 name: lights-out
 
 services:
@@ -37,19 +39,20 @@ services:
       context: ./app
       dockerfile: backend/Containerfile
       target: runtime
-    ports:
-      - "8080:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
       geocoder:
         condition: service_started
+      flagd:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups
       GEOCODER_URL: http://geocoder:8001
-      FLAGD_RESOLVER: file
-      FLAGD_OFFLINE_FLAG_SOURCE_PATH: /app/flags/flags.json
-      APP_VERSION: 0.1.0-m1
+      FLAGD_RESOLVER: in-process
+      FLAGD_HOST: flagd
+      FLAGD_SYNC_PORT: "8015"
+      APP_VERSION: 0.1.0-m2
 
   backend-test:
     build:
@@ -62,6 +65,94 @@ services:
     environment:
       POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
       TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
+
+  # --- the plane (M2) ---
+
+  # The edge: the only way into the app. stable=100, canary=0 at M2.
+  # user: the image entrypoint, as root, chowns /dev/stdout to `envoy` and
+  # dies with set -e when rootless podman refuses; started as envoy it
+  # just execs.
+  envoy:
+    build:
+      context: ./adapters/envoy-canary
+      dockerfile: Containerfile
+    user: envoy
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+
+  prometheus:
+    build:
+      context: ./adapters/prometheus
+      dockerfile: Containerfile
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  # The flag file is the one bind mount in the plane; flagd polls it, so a
+  # host-side edit is live within seconds (M3's kill switch). label=disable
+  # keeps SELinux hosts working without :z, which fails on podman machine.
+  flagd:
+    image: ghcr.io/open-feature/flagd:v0.16.3@sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3
+    command: ["start", "--uri", "file:/flags/flags.json"]
+    volumes:
+      - ./app/flags:/flags:ro
+    security_opt:
+      - label=disable
+    ports:
+      - "8016:8016"
+
+  # The image ships /etc/zot/config.json (port 5000, /var/lib/registry).
+  # Published on 5050: 5000 is macOS AirPlay Receiver.
+  zot:
+    image: ghcr.io/project-zot/zot:v2.1.21@sha256:6b69512c00dceaad05b1144e6079aac6aa7309d7fd200f9947ecb1de09cf48c8
+    ports:
+      - "5050:5000"
+
+  # Gitea, rootless image, sqlite, installer skipped. The runner token is
+  # fixed and public: at L0 Gitea has no users and no data worth protecting;
+  # the README names the LAN risk.
+  gitea:
+    image: docker.gitea.com/gitea:1.27.3-rootless@sha256:1c17ecaead42eb3b5391553d8708103a4beb0e86edf5b9ebc1eb269c318845f2
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__actions__ENABLED: "true"
+      GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
+    ports:
+      - "3000:3000"
+
+  # Host-mode runner built from the workbench image (docs/adr/0012 §3).
+  # Registers against gitea with the fixed token; restarts while gitea boots.
+  runner:
+    build:
+      context: ./adapters/gitea/runner
+      dockerfile: Containerfile
+      args:
+        WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
+    restart: on-failure
+    depends_on:
+      - gitea
+    environment:
+      GITEA_INSTANCE_URL: http://gitea:3000
+      GITEA_RUNNER_NAME: lights-out-l0
+      GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
+
+  # Both emulators come from the one official image (447 MB amd64, 356 MB
+  # arm64 compressed, measured 2026-09-14): one pull, two containers.
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:584.0.0-emulators@sha256:45a15cc163d2df13137478856b4b9bb90426100fa8aec542269460c10110b727
+    command: ["gcloud", "beta", "emulators", "pubsub", "start", "--host-port=0.0.0.0:8085", "--project=lights-out"]
+    ports:
+      - "8085:8085"
+
+  firestore-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:584.0.0-emulators@sha256:45a15cc163d2df13137478856b4b9bb90426100fa8aec542269460c10110b727
+    command: ["gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8086", "--project=lights-out"]
+    ports:
+      - "8086:8086"
 
 volumes:
   postgres-data:

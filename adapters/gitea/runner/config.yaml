@@ -1,0 +1,10 @@
+# Host mode: the job runs inside this container, which is the workbench
+# image plus the runner binary (docs/adr/0012 §3).
+log:
+  level: info
+runner:
+  file: /data/.runner
+  labels:
+    - "ubuntu-latest:host"
+host:
+  workdir_parent: /data/work
