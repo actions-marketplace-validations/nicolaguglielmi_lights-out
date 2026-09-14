@@ -5,7 +5,9 @@
 # stderr discarded, and fails unless each one honours the output contract in
 # ci/lib.sh: exactly one stdout line, "GO: <name>" with exit 0 or
 # "NO-GO: <name> — <reason>" with exit 1, no ANSI escape sequences. The gate's
-# own verdict does not matter here, only its shape.
+# own verdict does not matter here, only its shape. Scans ci/, gates/ and
+# verify/ (docs/adr/0011 §4), skipping directories that do not exist yet;
+# gate basenames must be unique across the three.
 set -eu
 name=contract
 . ci/lib.sh
@@ -13,8 +15,26 @@ name=contract
 esc=$(printf '\033')
 bad=""
 
-for f in ci/*.sh; do
-  case "$f" in ci/lib.sh|ci/contract.sh) continue ;; esac
+files=""
+seen=""
+dupes=""
+for dir in ci gates verify; do
+  [ -d "$dir" ] || continue
+  for f in "$dir"/*.sh; do
+    [ -e "$f" ] || continue
+    case "$f" in ci/lib.sh|ci/contract.sh) continue ;; esac
+    gate=$(basename "$f" .sh)
+    case " $seen " in
+      *" $gate "*) dupes="$dupes $gate" ;;
+      *) seen="$seen $gate" ;;
+    esac
+    files="$files $f"
+  done
+done
+
+[ -z "$dupes" ] || nogo "duplicate gate basename(s) across ci/gates/verify:$dupes"
+
+for f in $files; do
   gate=$(basename "$f" .sh)
 
   # stdout only, exit code preserved; `|| true` keeps set -e out of the way.
