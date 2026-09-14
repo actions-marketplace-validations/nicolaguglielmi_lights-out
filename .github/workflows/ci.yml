@@ -15,3 +15,16 @@ jobs:
         with:
           fetch-depth: 0
       - run: ./go ci
+
+  # Host-side gate (docs/adr/0004 point 4, docs/adr/0012 §5): needs a real
+  # engine on the runner, which Gitea Actions' job containers do not have.
+  engine-compat:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./go engine-compat
+        env:
+          CONTAINER_ENGINE: docker
