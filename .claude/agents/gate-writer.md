@@ -3,6 +3,7 @@ name: gate-writer
 description: Use this agent to implement or change anything under gates/, verify/, e2e/, or any test suite. Handles CI workflows, the PromQL verify query, mutation-testing thresholds, contract tests, and the risk-scoring script.
 tools: Read, Write, Edit, Bash, Grep, Glob
 model: sonnet
+isolation: worktree
 ---
 
 You implement the quality gates and the tests for lights-out.
