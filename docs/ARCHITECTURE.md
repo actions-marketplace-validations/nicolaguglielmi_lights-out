@@ -57,9 +57,9 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 | ci | M0 | Repo self-checks |
 | up | M2 | Start the L0 plane in compose, per-adapter readiness |
 | smoke | M2 | Create a meetup through Envoy |
-| verify | M1 | Check metric shape only; evaluation at M3 |
-| deploy | M3 | Release to canary stage |
-| rollback | M3 | Automatic rollback on NO-GO |
+| verify | M1 | Check metric shape at M1; canary vs stable evaluation at M3 |
+| deploy | M3 | Staging → 5% → 25%, held for human gate |
+| rollback | M3 | Automatic on verify NO-GO, or manual trigger |
 | e2e | M6 | Full path: ticket → PR → CI → canary → rollback |
 
 See [ADR 0003](adr/0003-make-demo-before-m3.md).
@@ -70,18 +70,23 @@ Eight services in `compose.yaml`:
 
 | Service | Host port | What |
 |---|---|---|
-| Envoy | 8080 | The app's only entrance; stable 100%, canary 0% with no upstream until M3 |
+| Envoy | 8080 | The app's only entrance; shifts traffic between stable and canary via weighted clusters and admin API |
+| Envoy admin | 9901 | Runtime config: `GET /runtime` reads weights, `POST /runtime_modify` shifts traffic |
+| backend | implicit | Stable revision at port 8000 inside compose |
+| backend-canary | implicit | Canary revision (started on-demand by deploy); at port 8000 inside compose |
 | Gitea | 3000 | Rootless, sqlite; the Actions runner registers on start in host mode |
-| Prometheus | 9090 | Scrapes the backend every 5 s |
-| Zot | 5050 | OCI registry, empty until M3; 5000 is macOS AirPlay |
+| Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by `service_version` label via `target_info` join |
+| Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves app/flags/flags.json, the one bind mount |
 | Pub/Sub emulator | 8085 | Unused until M6 |
 | Firestore emulator | 8086 | Unused until M6 |
 
 Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (`app/flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
 
-See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md).
+The canary revision is the same image as stable, with `waitlist` targeted at the version string `0.2.0-waitlist`. The controller `core/launchpad.sh` shifts traffic through Envoy's admin API and evaluates `verify/slo.sh` at each stage. Automatic rollback on verify NO-GO.
+
+See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](adr/0013-launchpad-canary-verify-rollback-at-l0.md), [ADR 0014](adr/0014-prove-the-go-branch-with-demo-hold.md).
 
 ## Status
 
-M2 — app + L0 plane in compose; no `core/`, no control plane, no agents yet.
+M3 — release controller in `core/` (staging, 5%, 25%, automatic rollback on verify NO-GO); still no control plane, no agents yet.
