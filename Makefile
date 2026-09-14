@@ -56,6 +56,19 @@ export STAGE_SECONDS
 # §7). 0 disables the verdict; the elapsed time is still printed.
 DEMO_BUDGET_SECONDS ?= 900
 
+# The PR gates (docs/adr/0015 §2), cheap and stable ones first, the ones
+# needing a fresh image build or a live network last; `gates` stops at the
+# first NO-GO. `secrets` reuses the existing repo-wide ci/secrets.sh (it
+# already covers history plus the working tree for any range); every other
+# name is gates/<name>.sh.
+GATES := risk secrets deps sast test mutation
+
+# Where a gate run's data beyond its one-line verdict lands: risk.json,
+# mutation.json, and gates' own verdict.env (docs/adr/0015 §2). Gitignored;
+# a fresh gates run wipes and recreates it.
+GATES_OUT ?= .gates-out
+export GATES_OUT
+
 # Milestone stubs. A target whose milestone has not arrived fails loudly.
 define not_yet
 	@printf 'NO-GO: %s arrives with %s. Nothing runs yet.\n' "$(1)" "$(2)" >&2; exit 1
@@ -71,7 +84,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -128,6 +141,101 @@ test: ## Run the backend test suite against compose Postgres (docs/adr/0010)
 .PHONY: verify
 verify: ## Check verify/slo.promql against the live app (M1: metric shape only, evaluated at M3)
 	@APP_URL="$(APP_URL)" sh verify/metric-shape.sh
+
+# Each gate's own stdout line is the verdict; a gate's stderr (compose
+# builds, pytest, bandit, cosmic-ray) streams straight through, live, never
+# captured here. `gates` writes $(GATES_OUT)/verdict.env in the exact shape
+# gates/fixtures/*/expect uses, so demo-gates can diff the two instead of
+# re-parsing anything (docs/adr/0015 §2, §6).
+.PHONY: gates
+gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test, mutation (docs/adr/0015, 0016)
+	@rm -rf "$(GATES_OUT)" && mkdir -p "$(GATES_OUT)"
+	@failed=""; failreason=""; \
+	for g in $(GATES); do \
+		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
+		out=$$(BASE="$(BASE)" HEAD="$(HEAD)" sh "$$script"); \
+		case "$$out" in \
+			"GO: $$g") ;; \
+			*) failed=$$g; failreason=$$out; break ;; \
+		esac; \
+	done; \
+	level=unknown; decision=unknown; \
+	if [ -f "$(GATES_OUT)/risk.json" ]; then \
+		level=$$(jq -r .level "$(GATES_OUT)/risk.json"); \
+		decision=$$(jq -r .decision "$(GATES_OUT)/risk.json"); \
+	fi; \
+	if [ -n "$$failed" ]; then \
+		{ printf 'GATES=NO-GO\n'; printf 'FAILED=%s\n' "$$failed"; \
+		  printf 'RISK_LEVEL=%s\n' "$$level"; printf 'RISK_DECISION=%s\n' "$$decision"; \
+		} > "$(GATES_OUT)/verdict.env"; \
+		printf 'NO-GO: gates — %s: %s\n' "$$failed" "$$failreason"; \
+		exit 1; \
+	fi; \
+	mutation_total=unknown; \
+	[ -f "$(GATES_OUT)/mutation.json" ] && mutation_total=$$(jq -r 'if .total == 0 then "zero" else "some" end' "$(GATES_OUT)/mutation.json"); \
+	{ printf 'GATES=GO\n'; printf 'RISK_LEVEL=%s\n' "$$level"; printf 'RISK_DECISION=%s\n' "$$decision"; \
+	  printf 'MUTATION_TOTAL=%s\n' "$$mutation_total"; \
+	} > "$(GATES_OUT)/verdict.env"; \
+	printf 'GO: gates — risk %s, %s\n' "$$level" "$$decision"
+
+# Proves every gate can both GO and NO-GO, on committed fixtures, not just
+# once in a build log (docs/adr/0015 §6; the demo-hold lesson, docs/adr/0014:
+# a verify wired to always pass -- or fail -- would pass its own demo too).
+# Each fixture is a real commit applied by `git am` in its own throwaway
+# worktree off HEAD, judged as the range HEAD..<applied>, then discarded.
+.PHONY: demo-gates
+demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/adr/0015 §6)
+	@git worktree prune
+	@main_sha=$$(git rev-parse HEAD); \
+	tmp1=$$(mktemp); tmp2=$$(mktemp); \
+	trap 'rm -f "$$tmp1" "$$tmp2"' EXIT; \
+	for f in gates/fixtures/*/; do \
+		name=$$(basename "$$f"); \
+		wt=$$(mktemp -d)/wt; \
+		err=$$(git worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
+			printf 'NO-GO: demo-gates — %s: git worktree add failed: %s\n' "$$name" "$$err"; exit 1; \
+		}; \
+		if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
+				am "$$f"*.patch >/dev/null 2>&1; then \
+			git -C "$$wt" am --abort >/dev/null 2>&1 || true; \
+			git worktree remove --force "$$wt"; \
+			printf 'NO-GO: demo-gates — %s does not apply; regenerate\n' "$$name"; \
+			exit 1; \
+		fi; \
+		head_sha=$$(git -C "$$wt" rev-parse HEAD); \
+		out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
+		printf '[demo-gates] %s: %s\n' "$$name" "$$out" >&2; \
+		sort "$$wt/$(GATES_OUT)/verdict.env" > "$$tmp1" 2>/dev/null || : > "$$tmp1"; \
+		sort "$$f/expect" > "$$tmp2"; \
+		if ! diff -q "$$tmp1" "$$tmp2" >/dev/null 2>&1; then \
+			printf '[demo-gates] %s: verdict mismatch\n  got:  %s\n  want: %s\n' "$$name" \
+				"$$(tr '\n' ' ' < "$$wt/$(GATES_OUT)/verdict.env" 2>/dev/null || echo '(no verdict.env)')" \
+				"$$(tr '\n' ' ' < "$$f/expect")" >&2; \
+			git worktree remove --force "$$wt"; \
+			printf 'NO-GO: demo-gates — %s does not match expect\n' "$$name"; \
+			exit 1; \
+		fi; \
+		git worktree remove --force "$$wt"; \
+	done; \
+	printf 'GO: demo-gates\n'
+
+# Not a gate: a measurement. MUTATION_LINES=all tells tests/mutation/run.sh
+# to skip the line filter and mutate the whole package, so this is the
+# number policy/merge.env's MUTATION_BASELINE cites, with its provenance
+# comment (commit, date, tool version, mutant count, wall time) written by
+# hand after reading this target's output (docs/adr/0015 §3).
+.PHONY: mutation-baseline
+mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's provenance (docs/adr/0015 §3)
+	@printf 'COMPOSE_PROJECT_NAME=lo-mutation-baseline\n' > .env
+	@$(COMPOSE) --profile test build backend-test >&2
+	@start=$$(date +%s); \
+	result=$$($(COMPOSE) --profile test run --rm -T -e MUTATION_LINES=all backend-test sh tests/mutation/run.sh); \
+	end=$$(date +%s); \
+	printf '%s\n' "$$result"; \
+	total=$$(printf '%s' "$$result" | jq -r .total); \
+	killed=$$(printf '%s' "$$result" | jq -r .killed); \
+	score=$$(printf '%s' "$$result" | jq -r .score); \
+	printf 'mutation-baseline: %s/%s killed, score=%s, %ss wall time\n' "$$killed" "$$total" "$$score" "$$((end - start))" >&2
 
 .PHONY: release
 release: ## Deploy CANARY_VERSION and run the controller through staging, 5%, 25% (docs/adr/0013 §4)

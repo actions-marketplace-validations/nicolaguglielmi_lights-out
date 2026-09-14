@@ -5,7 +5,9 @@
 # entrypoint, the workbench fetch helper, the self-check scripts themselves,
 # the readiness pollers and the rest of the per-adapter scripts under
 # adapters/*/, the app smoke test and load generator, the release controller
-# under core/, and any script under gates/, verify/ or e2e/ once those exist.
+# under core/, the mutation-gate runner under app/backend/tests/mutation/
+# (docs/adr/0015 §3), and any script under gates/, verify/ or e2e/ once
+# those exist.
 set -eu
 name=shell
 . ci/lib.sh
@@ -14,7 +16,7 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
 {
-  printf '%s\n' go workbench/fetch.sh app/smoke.sh app/load.sh
+  printf '%s\n' go workbench/fetch.sh app/smoke.sh app/load.sh app/backend/tests/mutation/run.sh
   find ci -maxdepth 1 -type f -name '*.sh'
   find adapters -type f -name '*.sh'
   find core -type f -name '*.sh'
