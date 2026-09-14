@@ -2,7 +2,7 @@
 
 ## Acceptance
 
-Fresh clone, workbench and base images removed, rootless podman 5.7.1 on macOS (podman machine, arm64):
+App base images removed first (python, postgres, node — workbench image itself already built from M0), rootless podman 5.7.1 on macOS (podman machine, arm64):
 
 ```
 $ git clone <repo> && cd lights-out && ./go demo
@@ -25,16 +25,15 @@ GO: ci
 [demo] e2e: NOT YET (M6)
 lights-out: app running at http://host.containers.internal:8080
 GO: demo, milestone M1. Green means the repo is coherent and the app answers; canary and rollback are not real yet.
-./go demo  1:06.00 total   (cold build with no layer cache)
+./go demo: 66s total (base images removed first: python, postgres, node repulled; workbench image itself was warm)
 ```
 
 Tests and verify with a warm compose:
 
 ```
 $ ./go test
-[backend-test] running...
-============================= test session starts ==============================
-25 passed in 2.80s
+.........................                                                [100%]
+25 passed, 2 warnings in 8.99s
 ```
 
 ```
