@@ -1,0 +1,5 @@
+GATES=NO-GO
+FAILED=mutation
+RISK_LEVEL=low
+RISK_DECISION=auto-merge
+MUTATION_TOTAL=some
