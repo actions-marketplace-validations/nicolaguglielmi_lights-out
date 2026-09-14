@@ -191,7 +191,9 @@ Compose con Gitea + act runner, registry Zot, Envoy con due cluster pesati, Prom
 
 ### M3 — Delivery, canary, rollback, kill switch
 Il controller di rilascio con le fasi (staging, 5%, 25%, 100%), il verify runner che esegue `verify/slo.promql` e confronta canary contro stabile, il rollback automatico, il freeze globale e il kill switch via flag.
-**Fatto quando:** `./go demo-rollback` a L0, senza nessuna chiamata a un modello, rilascia una versione che fallisce il verify e torna indietro da sola, e il log mostra la decisione con i numeri che l'hanno prodotta.
+**Fatto quando:** `./go demo-rollback` a L0, senza nessuna chiamata a un modello, rilascia una versione che fallisce il verify e torna indietro da sola, e il log mostra la decisione con i numeri che l'hanno prodotta. `./go demo-hold` prova il ramo opposto sulla stessa release: flag spento, verify in GO ad ogni fase, canary tenuto al 25% invece di essere ritirato in silenzio.
+
+*Nota 2026-09-14 (M3, ADR 0014):* `demo-hold` non era nel testo originale di questa milestone. Aggiunto perché un verify runner cablato per bocciare sempre passerebbe comunque `demo-rollback`, e quel gate sarebbe rotto senza che nessuno se ne accorga: serve la prova di entrambe le direzioni, non solo del rollback. Resta un comando manuale, fuori dalla lista fissa di `./go demo` (ADR 0003) — il criterio del golden rule riguarda il rollback, non la promozione.
 
 ### M4 — Gate in CI
 Unit, integration con testcontainers, contract test, mutation testing con soglia, SAST, scan dipendenze, secret scan. Lo script di risk scoring che classifica la PR (auth, pagamenti, migrazioni, dimensione del diff) e decide auto-merge o seconda review.
