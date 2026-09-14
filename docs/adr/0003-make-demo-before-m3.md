@@ -1,6 +1,6 @@
 # ADR 0003 — `make demo` is a fixed stage list; missing stages are declared, not faked
 
-- Status: accepted. Amended by ADR 0004: the entrypoint is `./go demo`, the stage list gains `engine-compat (M2)`, and the M0 timing estimate is replaced.
+- Status: accepted. Amended by ADR 0004: the entrypoint is `./go demo`, the stage list gains `engine-compat (M2)`, and the M0 timing estimate is replaced. Amended by ADR 0012 §5: `engine-compat` runs on the host before workbench starts, so the stage order is engine-compat, ci, up, smoke, verify, deploy, rollback, e2e.
 - Date: 2026-09-14
 - Milestone: M0
 

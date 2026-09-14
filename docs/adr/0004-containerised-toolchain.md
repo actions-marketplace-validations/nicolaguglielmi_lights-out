@@ -1,6 +1,6 @@
 # ADR 0004 — The toolchain lives in a `workbench` container; `./go` is the only host entrypoint
 
-- Status: accepted (amends ADR 0002 and ADR 0003)
+- Status: accepted (amends ADR 0002 and ADR 0003). Amended by ADR 0012: §2 the runner is host mode on an image built from workbench, not docker mode; §4 engine-compat runs from `./go` on the selected engine and never joins `make ci`; §5 `:z` leaves the seed list, replaced by `security_opt: label=disable` on the one bind-mounted service.
 - Date: 2026-09-14
 - Milestone: M0
 
@@ -53,9 +53,7 @@ docker, else exit 1 with a message naming both. Acceptance criteria read
    tool containers from the host side: puts logic back into `./go`, which
    must stay a launcher. Correction to the premise: act_runner's default
    `docker_host: ""` *does* mount the socket into job containers; `"-"`
-   withholds it (docs.gitea.com/runner/configuration). M2 sets `"-"` and
-   maps `ubuntu-latest` to the workbench image; then `./go ci` collapses to
-   `make ci` on both act_runner and GitHub.
+   withholds it (docs.gitea.com/runner/configuration). Superseded by ADR 0012 §3: M2 runs the runner in host mode (`ubuntu-latest:host`) inside an image built `FROM` the workbench image with the runner binary copied from the pinned upstream image, so no socket reaches the runner and `./go ci` still collapses to `make ci` there and on GitHub.
    Targets that need the engine (`up`, `demo`, `e2e`, `shell`, from M2) get
    the socket mounted at the path reported by
    `podman info --format '{{.Host.RemoteSocket.Path}}'` (engine-side path,
@@ -78,20 +76,16 @@ docker, else exit 1 with a message naming both. Acceptance criteria read
    subject is the host engine. It prints `podman --version` and
    `docker --version` separately, and treats docker as a shim (not tested,
    said so) when the output does not start with `Docker version` or the
-   binary resolves to podman. From M2, per real engine: `./go up`, one HTTP
-   request through Envoy from inside workbench via
-   `host.containers.internal` (added to docker with `--add-host`),
-   `./go down`. GO only if at least one real engine ran and all ran green;
-   CI gets both via two jobs, one per engine. At M0 the script exists,
+   binary resolves to podman. At M0 the script exists,
    prints the versions and exits 1: `NO-GO: nothing to check before M2`.
-   Wired into `make ci` at M2, and a `NOT YET (M2)` stage in the demo list.
+   Superseded by ADR 0012 §5: from M2 `./go engine-compat` runs the script on the host against the engine `./go` selected, printing every engine version found and marking a docker shim untested (NO-GO if the shim is the selected engine); it does `./go up` and `./go smoke` and leaves the plane running. It is the first stage of `./go demo`, never part of `make ci` (which has no engine), and CI runs it as one docker job on GitHub, skipped on Gitea by a job-level `if`.
 5. **The repo targets Compose v2 (`docker-compose` binary in workbench)
    over the podman socket, never `podman-compose`.** Podman docs make
    `podman compose` a wrapper that prefers `docker-compose` when present;
    we remove the choice by shipping the binary, so the host needs no compose
    provider at all. Subset rule: a compose feature is allowed only if
    `ci-engine-compat` proves it on both engines; seed list from the owner:
-   ports above 1024, `:z` on bind mounts, network aliases instead of
+   ports above 1024, `security_opt: label=disable` on the one bind-mounted service (`:z` rejected by ADR 0012 §2: podman #26465/#21269 show it failing on podman machine's virtiofs), network aliases instead of
    `host.docker.internal`, no `privileged`. Rejected: `podman-compose`
    (Python reimplementation, its own gaps, and docker users would run a
    different program than podman users).
