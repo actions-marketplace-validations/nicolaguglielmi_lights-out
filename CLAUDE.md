@@ -18,6 +18,7 @@ Questa regola vince su qualunque altra considerazione tecnica. Se una scelta la 
 - **ADR per ogni scelta strutturale**, in `docs/adr/`, corti, con le alternative scartate e il motivo.
 - **I test si scrivono dalla spec, mai dall'implementazione.** Vale anche per i test di questo repo.
 - **Verifica prima di scrivere.** Antigravity, Stitch, Gemini CLI, ADK e Cloud Deploy si muovono in fretta. Se un'API non esiste più come descritta nel piano, fermati e segnalalo invece di adattare il piano in silenzio.
+- **Una soglia numerica in un ADR dichiara sempre da dove viene**: una misura, un vincolo esterno, o una decisione mia. Se non ha provenienza, non è una soglia — non entra nell'ADR.
 - **Toolchain nel container.** Sull'host solo podman, git e una shell POSIX; make non è un prerequisito. L'entrypoint è ./go, mai make diretto nei criteri di accettazione.
 - **Header SPDX** solo nei file di ingresso di ogni componente (entrypoint, Makefile, Containerfile, main del componente), non in ogni file.
 

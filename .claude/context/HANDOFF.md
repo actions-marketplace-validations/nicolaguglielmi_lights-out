@@ -58,32 +58,15 @@ GO: metric-shape
 
 3. **Testcontainers / Ryuk in rootless podman:** still unresolved and deferred to M4 by deliberate choice. M1 deliberately chose the stdlib fake-geocoder-in-a-thread approach (ADR 0006) specifically to avoid Testcontainers at this milestone. The remaining rootless podman integration testing infrastructure will arrive with M4's gates, not discovered mid-milestone.
 
-## First thing M2 should look at: the pull+build budget — open decision, not resolved here
+## First thing M2 should look at: the pull+build budget — decided (Option A), 2026-09-14
 
-Two numbers were being conflated in an earlier draft of this section. Separate them first:
+Two numbers were being conflated in an earlier draft of this section. Separate them:
 
-- **15 min** is the golden rule (plan §2, plan §3's "Tempo al primo rollback" row, CLAUDE.md "Regola d'oro"): `./go demo` reaching an automatic canary rollback at L0, no API key. All three sources tie this figure to the *same* command, once it exists — M3+. **No gate checks it today.** Nothing currently times `./go demo`/`./go up` or fails past a threshold.
-- **5 min** is not from the plan or CLAUDE.md. ADR 0010 §Consequences invented it as a self-imposed sub-budget for "the plane" (pull+build only, no deploy/rollback), assuming a 20 Mbit/s connection. Where that split comes from is not documented anywhere else — it is ADR 0010's own assumption, not a decision anyone made.
+- **15 min (900 s)** is the golden rule (plan §2, plan §3's "Tempo al primo rollback" row, CLAUDE.md "Regola d'oro"): `./go demo` reaching an automatic canary rollback at L0, no API key. All three sources tie this figure to the *same* command, once it exists — M3+.
+- **5 min** was not from the plan or CLAUDE.md. ADR 0010 §Consequences had invented it as a self-imposed sub-budget for "the plane" (pull+build only, no deploy/rollback), assuming a 20 Mbit/s connection, with no documented source. **Cancelled** (ADR 0010, corrected 2026-09-14): not traceable to a measurement, an external constraint, or a decision anyone made.
 
-Real M1 number, just measured: `./go demo` cold (python/postgres/node images removed, workbench already built) = **66s** on this machine's connection, roughly 3x faster than ADR 0010's 20 Mbit/s estimate (~3.5 min for the same pull+build). Measured against the actual 15-minute (900s) golden-rule ceiling — not ADR 0010's invented 5-minute one — M1 alone leaves **~834s (~13.9 min) of headroom** on a fast connection, or **~690s (~11.5 min)** under ADR 0010's pessimistic assumption, before M2 adds anything and before M3's real release-cycle-to-rollback time lands on top. That is a very different picture from "1.5 min left." The ADR 0010 budget crisis may not be real, or may be much smaller than stated — needs re-measuring with real M2 image sizes, not re-deriving from the old estimate.
+**Decision (A): the 900 s ceiling stays exactly as written, and it measures `./go demo` through to rollback — not today's `./go up`/`./go demo`.** No new sub-budget replaces the cancelled one. The timing gate that enforces 900 s is built at **M3**, on `demo-rollback` (wall-clock timing, `NO-GO` past 900 s), once rollback exists to time. M2 gets no new gate and no budget arithmetic from this decision; its plan §7 acceptance criterion is unchanged, M2 stays intact as planned.
 
-M2 (plan §7) adds **eight** services, not six as an earlier draft of this note said: Gitea, act runner, registry Zot, Envoy (two weighted clusters), Prometheus, flagd, Pub/Sub emulator, Firestore emulator. None of their image sizes are verified against a pinned tag yet — that has to happen at M2 start, the same "verify before writing" pass ADR 0005-0010 did for M1, before either option below can be costed for real.
+**Baseline, recorded so M2/M3 show drift instead of guessing it:** `./go demo` cold (python/postgres/node images removed, workbench already built) = **66 s**, measured at M1 close on this machine's connection (see Acceptance above). Compare each future milestone's `./go demo` time against this 66 s, not against ADR 0010's retired 3.5 min estimate.
 
-### Option A — raise the ceiling: 15 min covers first rollback, not today's `./go demo`
-
-M2's `./go up`/`./go demo` (no deploy/canary/rollback exists until M3) isn't the thing the golden rule measures yet — plan §2/§3 and CLAUDE.md tie the 15 minutes to the command *once it reaches rollback*.
-
-- No numeric change to the 15-minute figure itself; it stays as written in plan §2/§3 and CLAUDE.md's Regola d'oro.
-- What changes: `./go demo`/`./go up` at M1/M2 gets no artificial ceiling of its own — only the full path once M3 lands (clone → up → deploy → verify → rollback) has to fit in 15 min.
-- Cost: a gate to check the *real* ceiling doesn't exist yet and would need to — wall-clock timing wired into `demo-rollback` at M3, printing elapsed time and NO-GO past 15 min. That's M3 work, not M2's; M2 gets no new gate under this option.
-- Risk: doesn't remove the constraint, only moves the measurement point from "now" to "M3." If the real release cycle (5%→25%→100%, verify, rollback) adds more than a minute or two, that comes out of whatever M1+M2 already spent.
-
-### Option B — split M2: canary plane vs. full L0 plane
-
-- `./go demo` (and plain `./go up`) raises only the minimal canary path: Envoy, Prometheus, flagd — the request-path-plus-canary story the golden rule is actually about.
-- Gitea, act runner and Zot move to a second group, raised only by an explicit `./go up --full` (or a second compose profile) — needed for the PR/CI half of the golden path (plan §8), not for canary/rollback.
-- Cost: changes M2's own acceptance criterion as written in plan §7 ("`./go up` alza tutto, apri Gitea su localhost…" assumes one `up` that raises everything) — needs its own ADR at M2 start to redefine what "M2 done" means, plus two Makefile targets or compose profiles, plus README/PLAN wording updates.
-- Benefit: `./go demo` only ever pays the minimal-group cost, not Gitea+act-runner+Zot's. The full L0 experience (open Gitea, watch a PR go through CI) still costs the same total time when `--full` is invoked — this reorders when the cost is paid, it does not remove it.
-- Unmeasured: Envoy/Prometheus/flagd image sizes aren't verified against any pinned tag yet, so the minimal-group budget can't be given a real number today.
-
-Decide at M2 start. A keeps one `./go demo`/`./go up` for the whole L0 plane and defers the real constraint to M3's rollback gate (not yet built). B keeps `./go demo` fast now but changes M2's plan §7 acceptance criterion and needs real Envoy/Prometheus/flagd image-size numbers before it can be evaluated.
+M2 (plan §7) adds **eight** services: Gitea, act runner, registry Zot, Envoy (two weighted clusters), Prometheus, flagd, Pub/Sub emulator, Firestore emulator. None of their image sizes are verified against a pinned tag yet — that verification happens at M2 start, the same "verify before writing" pass ADR 0005-0010 did for M1. M2's own acceptance criterion (one `./go up` raises everything) is unchanged by this decision; if M2's real measured time threatens the 900 s rollback ceiling, that surfaces at M3 when the timing gate is built, not as a guess now.
