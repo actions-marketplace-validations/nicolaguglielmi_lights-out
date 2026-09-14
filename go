@@ -69,7 +69,7 @@ fi
 # control of the engine; the README says so.
 socket_flags=""
 case "$cmd" in
-  up|down|demo|demo-rollback|e2e|shell)
+  up|down|test|demo|demo-rollback|e2e|shell)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
