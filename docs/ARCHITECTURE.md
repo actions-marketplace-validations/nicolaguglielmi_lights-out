@@ -36,8 +36,10 @@ Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`
 1. Picks an engine (`CONTAINER_ENGINE`, else podman, else docker)
 2. Builds or reuses the `workbench` image from `workbench/Containerfile`
 3. Runs `make <cmd>` inside it with the repo mounted at the same absolute path
-4. Passes the socket for targets that need it (`up`, `down`, `demo`, `e2e`, `shell`)
-5. Runs without the socket for targets that do not (`ci`)
+4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `demo-rollback`, `e2e`, `shell`)
+5. Runs without the socket for targets that do not (`ci`, `engine-compat`)
+
+For `engine-compat` and `demo`, `./go` runs `ci/engine-compat.sh` on the host first.
 
 See [ADR 0004](adr/0004-containerised-toolchain.md).
 
@@ -51,18 +53,35 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 
 | Stage | Milestone | What |
 |---|---|---|
+| engine-compat | M2 | Host-side, the selected engine: versions, `up`, `smoke` |
 | ci | M0 | Repo self-checks |
-| engine-compat | M2 | Verify container engines (podman / docker) |
-| up | M2 | Start the local plane in compose |
+| up | M2 | Start the L0 plane in compose, per-adapter readiness |
+| smoke | M2 | Create a meetup through Envoy |
+| verify | M1 | Check metric shape only; evaluation at M3 |
 | deploy | M3 | Release to canary stage |
-| verify | M3 | Run `verify/slo.promql` against canary and stable |
 | rollback | M3 | Automatic rollback on NO-GO |
 | e2e | M6 | Full path: ticket → PR → CI → canary → rollback |
 
 See [ADR 0003](adr/0003-make-demo-before-m3.md).
 
-## Milestone M0
+## L0 plane
 
-At M0 only the skeleton exists: `go`, `Makefile`, profiles, `workbench/Containerfile`, and the repo self-checks in `ci/`. No `core/`, no `adapters/`, no application.
+Eight services in `compose.yaml`:
 
-`./go demo` runs `make ci` and declares every other stage NOT YET.
+| Service | Host port | What |
+|---|---|---|
+| Envoy | 8080 | The app's only entrance; stable 100%, canary 0% with no upstream until M3 |
+| Gitea | 3000 | Rootless, sqlite; the Actions runner registers on start in host mode |
+| Prometheus | 9090 | Scrapes the backend every 5 s |
+| Zot | 5050 | OCI registry, empty until M3; 5000 is macOS AirPlay |
+| flagd | 8016 | OFREP; serves app/flags/flags.json, the one bind mount |
+| Pub/Sub emulator | 8085 | Unused until M6 |
+| Firestore emulator | 8086 | Unused until M6 |
+
+Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (`app/flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
+
+See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md).
+
+## Status
+
+M2 — app + L0 plane in compose; no `core/`, no control plane, no agents yet.
