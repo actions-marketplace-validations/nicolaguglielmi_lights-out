@@ -1,0 +1,43 @@
+From 1f8f20107d4dba37486e2f699d9c2c8434e28e8a Mon Sep 17 00:00:00 2001
+From: Nicola <nicola.guglielmi@gmail.com>
+Date: Tue, 15 Sep 2026 00:10:17 +0200
+Subject: [PATCH] =?UTF-8?q?[M4]=20fixture:=20vulnerable-dep=20=E2=80=94=20?=
+ =?UTF-8?q?a=20known-vulnerable=20package-lock.json=20entry?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds node_modules/lodash@4.17.20 to app/frontend/package-lock.json (not
+wired into package.json, osv-scanner reads the lockfile, not the import
+graph). Verified live against api.osv.dev: 3 known advisories
+(GHSA-29mw-wpgm-hmr9 CVSS 5.3, GHSA-35jh-r3h4-6jhm CVSS 8.1,
+GHSA-f23m-r3pf-42rh CVSS 6.9, plus GHSA-r5fr-rjxr-66jc and
+GHSA-xxjr-mmjv-4gpg), all fixed by 4.17.21 or 4.18.0. Feeds
+gates/fixtures/vulnerable-dep in a later commit.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SyvjibsMaMMeqKhNxadYFz
+---
+ app/frontend/package-lock.json | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/app/frontend/package-lock.json b/app/frontend/package-lock.json
+index 06ca8ef..39cfb51 100644
+--- a/app/frontend/package-lock.json
++++ b/app/frontend/package-lock.json
+@@ -19,6 +19,12 @@
+         "vite": "8.3.0"
+       }
+     },
++    "node_modules/lodash": {
++      "version": "4.17.20",
++      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz",
++      "integrity": "sha512-PlhdFcillOINfeV7Ni6oF1TAEayyZBoZ8bcshTHqOYJYlrqzRK5hagpagky5o4HfCzzd1TRkXPMFq6cKk9rGmA==",
++      "license": "MIT"
++    },
+     "node_modules/@oxc-project/types": {
+       "version": "0.149.0",
+       "resolved": "https://registry.npmjs.org/@oxc-project/types/-/types-0.149.0.tgz",
+-- 
+2.50.1 (Apple Git-155)
+
