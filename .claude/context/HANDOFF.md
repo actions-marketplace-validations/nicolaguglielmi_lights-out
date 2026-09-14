@@ -1,12 +1,13 @@
-# Handoff: M1 closed on 2026-09-14
+# Handoff: M2 closed on 2026-09-14
 
 ## Acceptance
 
-App base images removed first (python, postgres, node — workbench image itself already built from M0), rootless podman 5.7.1 on macOS (podman machine, arm64):
+Cold run: plane images, app images and app base images (postgres, python, node) removed first; workbench image already built (same convention as M1); rootless podman 5.7.1 on macOS (podman machine, arm64):
 
 ```
-$ git clone <repo> && cd lights-out && ./go demo
-[demo] ci (M1): running
+$ ./go demo
+GO: engine-compat
+[demo] ci (M2): running
 GO: secrets
 GO: lint
 GO: shell
@@ -14,59 +15,63 @@ GO: help
 GO: readme
 GO: gitea-compat
 GO: profiles
+GO: compose
 GO: contract
 GO: ci
-[demo] engine-compat: NOT YET (M2)
-[demo] up: app only, plane at M2
-[demo] smoke: http://host.containers.internal:8080/healthz ok
-[demo] verify: metric shape only, evaluation at M3
-[demo] deploy: NOT YET (M3)
-[demo] rollback: NOT YET (M3)
-[demo] e2e: NOT YET (M6)
-lights-out: app running at http://host.containers.internal:8080
-GO: demo, milestone M1. Green means the repo is coherent and the app answers; canary and rollback are not real yet.
-./go demo: 66s total (base images removed first: python, postgres, node repulled; workbench image itself was warm)
-```
-
-Tests and verify with a warm compose:
-
-```
-$ ./go test
-.........................                                                [100%]
-25 passed, 2 warnings in 8.99s
-```
-
-```
-$ ./go verify
 GO: metric-shape
-[stderr] checking query/app agreement against one live /metrics scrape
-[stderr] rate() and histogram_quantile() need a real TSDB — Prometheus at M2, canary vs stable comparison at M3
+GO: demo, milestone M2. Green means the repo is coherent and the L0 plane answers; canary and rollback are not real yet.
+./go demo: 258 s total, cold (M1 baseline was 66 s with only the app)
 ```
+
+Stderr timeline of that run (seconds from start): flagd pulled 28, gitea 40, zot 42, emulators image 102, postgres 125; runner image built 137, app images built 170, envoy 191, prometheus 194; readiness: gitea 212→217 (API up and runner registered), envoy 217→221, prometheus 221→226, flagd/zot/pubsub/firestore instant, plane up at 227; smoke at 228 (meetup created through Envoy, venue_lat=45.4641); the second `up` inside `make demo` (cache check of six builds) 228→251; verify 258. Readiness total: 15 s. `READY_TIMEOUT` default set to 60 s from that (4× measured, = M1's backend wait).
+
+Warm `./go demo`: 24 s.
+
+Acceptance checks run by hand after `./go up`, all from the host:
+```
+$ ./go smoke
+smoke: meetup 1 created through Envoy at http://host.containers.internal:8080 (venue_lat=45.4641)
+$ curl -fsS localhost:3000/api/v1/version
+{"version":"1.27.3"}
+$ curl -fsS -G localhost:9090/api/v1/query --data-urlencode 'query=up{job="backend"}'
+{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","instance":"backend:8000","job":"backend"},"value":[1789403687.202,"1"]}]}}
+$ curl -fsS localhost:8080/healthz
+{"status":"ok","version":"0.1.0-m2"}
+$ curl -fsS -X POST -H 'Content-Type: application/json' -d '{"context":{}}' localhost:8016/ofrep/v1/evaluate/flags/waitlist
+{"value":false,"key":"waitlist","reason":"STATIC","variant":"off","metadata":{}}
+$ curl -fsS localhost:5050/v2/ -o /dev/null -w 'zot %{http_code}\n'
+zot 200
+$ curl -fsS localhost:8085/; curl -fsS localhost:8086/
+Ok
+Ok
+$ podman logs lights-out-runner-1 | grep -i registered
+level=info msg="Runner registered successfully."
+level=info msg="runner: lights-out-l0, with version: v3.4.2, with labels: [ubuntu-latest], declare successfully"
+```
+`./go test`: 25 passed. `./go verify`: GO: metric-shape (through Envoy). `./go ci`: all ten gates GO (new: compose).
 
 ## What changed
 
-- `app/` now holds the backend (FastAPI + psycopg + stdlib auth), the frontend (React + Vite + TypeScript), the fake geocoder (http.server), and the contract and flag files.
-- Makefile gains `test` (backend pytest on compose Postgres) and `verify` (metric-shape gate on the live app).
-- Compose has five services: postgres, migrate (forward-only SQL runner), geocoder fake, backend, backend-test (profiles: ["test"]).
-- `verify/metric-shape.sh` gate checks that `slo.promql` queries reference metrics the app actually emits.
+- compose.yaml: eight plane services beside the app (Envoy takes :8080, backend no longer published; flagd in-process sync; one bind mount app/flags → flagd).
+- adapters/<name>/: Envoy, Prometheus and runner Containerfiles + configs (validated at build), seven ready.sh pollers; app/smoke.sh creates a meetup through Envoy.
+- Makefile/go: `up` waits per adapter, new `smoke`, `./go engine-compat` host-side gate is the first stage of `./go demo`, WORKBENCH_IMAGE exported; ci gains `compose`.
+- ADR 0012 (layout, COPY-into-image, host-mode runner, Envoy 100/0, readiness, ports, 5 s scrape, fixed token); ADR 0003/0004 amended.
+- README/ARCHITECTURE: L0 plane table, ports, trusted-network line, rootless notes (no :z), tree.
 
 ## Found while building, contradicting or missing from docs/PLAN.md
 
-1. **ADR 0007 correction (already noted in the file, 2026-09-14):** the flagd file watcher's poll interval is `FLAGD_DEADLINE_MS` (default 500 ms), not a fixed 5 s as first assumed. Verified in `openfeature-provider-flagd` 0.5.2 source.
+1. Plan §6 puts Envoy under `delivery/envoy/` while §4 and profiles/l0.env name adapters as directories under `adapters/`. ADR 0012 §1 follows §4: everything under `adapters/<name>/`, `delivery/` not created. §6 should be corrected.
+2. ADR 0004 §2 (docker-mode runner with `docker_host: "-"`) and §4 (engine-compat "wired into make ci") were both unimplementable as written: `make ci` runs in workbench without an engine. Amended by ADR 0012 §3/§5 (host-mode runner built FROM the workbench image; engine-compat runs from ./go).
+3. The Gitea runner image was renamed: `docker.gitea.com/runner` (binary `gitea-runner`), `act_runner` tags are mirrors of the same index. Plan and README wording "act runner" now means this image.
+4. `:z` on bind mounts (ADR 0004 §5 seed list, README rootless notes) does not work on podman machine's virtiofs (podman #26465/#21269); replaced by `security_opt: label=disable` on the one bind-mounted service.
+5. The Envoy image's entrypoint chowns /dev/stdout as root and dies under rootless podman; the service runs with `user: envoy` (compose.yaml comment).
+6. The emulators image (`google-cloud-cli:584.0.0-emulators`, 447 MB amd64 / 356 MB arm64) is more than half of the plane's pulls and took 60 s of the 258 s cold run on this connection. It is the lever if M3's 900 s ceiling is threatened (ADR 0012 golden-rule check).
+7. App: a venue not in the geocoder contract makes the fake return 404 and the backend answer 500 (not the 502 ADR 0006 documents for 5xx/timeouts). Not fixed at M2; the smoke uses `Milano, Duomo`. M4's contract test should decide whether 404 → `null` coordinates or 502.
+8. `make demo` runs `up` twice (once inside engine-compat on the host, once inside workbench): the second costs ~25 s of build-cache checks. Accepted by ADR 0012; if M3's timing gate is tight, `demo` can skip the second `up`.
 
-2. **Backend flags initialization:** `app/backend/meetups/flags.py` was corrected from `api.set_provider(FlagdProvider())` to `api.set_provider_and_wait(FlagdProvider())`, because `openfeature-sdk` 0.10.0 initializes the flagd resolver on a background thread. Any flag evaluation before that thread finishes silently returns the SDK's built-in default rather than the file's value. Was invisible at M1 only because the flag's own default is `off` (matching the file), but this is a correctness fix for all future flags.
+## First thing M3 should look at
 
-3. **Testcontainers / Ryuk in rootless podman:** still unresolved and deferred to M4 by deliberate choice. M1 deliberately chose the stdlib fake-geocoder-in-a-thread approach (ADR 0006) specifically to avoid Testcontainers at this milestone. The remaining rootless podman integration testing infrastructure will arrive with M4's gates, not discovered mid-milestone.
-
-## First thing M2 should look at: the pull+build budget — decided (Option A), 2026-09-14
-
-Two numbers were being conflated in an earlier draft of this section. Separate them:
-
-- **15 min (900 s)** is the golden rule (plan §2, plan §3's "Tempo al primo rollback" row, CLAUDE.md "Regola d'oro"): `./go demo` reaching an automatic canary rollback at L0, no API key. All three sources tie this figure to the *same* command, once it exists — M3+.
-- **5 min** was not from the plan or CLAUDE.md. ADR 0010 §Consequences had invented it as a self-imposed sub-budget for "the plane" (pull+build only, no deploy/rollback), assuming a 20 Mbit/s connection, with no documented source. **Cancelled** (ADR 0010, corrected 2026-09-14): not traceable to a measurement, an external constraint, or a decision anyone made.
-
-**Decision (A): the 900 s ceiling stays exactly as written, and it measures `./go demo` through to rollback — not today's `./go up`/`./go demo`.** No new sub-budget replaces the cancelled one. The timing gate that enforces 900 s is built at **M3**, on `demo-rollback` (wall-clock timing, `NO-GO` past 900 s), once rollback exists to time. M2 gets no new gate and no budget arithmetic from this decision; its plan §7 acceptance criterion is unchanged, M2 stays intact as planned.
-
-**Baseline, recorded so M2/M3 show drift instead of guessing it:** `./go demo` cold (python/postgres/node images removed, workbench already built) = **66 s**, measured at M1 close on this machine's connection (see Acceptance above). Compare each future milestone's `./go demo` time against this 66 s, not against ADR 0010's retired 3.5 min estimate.
-
-M2 (plan §7) adds **eight** services: Gitea, act runner, registry Zot, Envoy (two weighted clusters), Prometheus, flagd, Pub/Sub emulator, Firestore emulator. None of their image sizes are verified against a pinned tag yet — that verification happens at M2 start, the same "verify before writing" pass ADR 0005-0010 did for M1. M2's own acceptance criterion (one `./go up` raises everything) is unchanged by this decision; if M2's real measured time threatens the 900 s rollback ceiling, that surfaces at M3 when the timing gate is built, not as a guess now.
+- Envoy weights: `weighted_clusters` with `runtime_key_prefix` + an admin runtime layer lets the delivery adapter shift 5%/25%/100% via the admin API without restart; file-based xDS is a trap (no inotify on virtiofs). The admin port is not published yet — M3 publishes it or shells through `docker-compose exec`.
+- The canary cluster is STATIC with no endpoints; M3 gives it a second backend revision (a second compose service or a compose profile) and Prometheus a second scrape job so `verify/slo.promql` can be evaluated per `job`/`version` (ADR 0011 consequences).
+- flagd file edits are live (fileinfo poller): the kill switch is an edit of `app/flags/flags.json` from workbench.
+- The M3 timing gate measures `./go demo` to rollback against 900 s; today's cold baseline is 258 s.
