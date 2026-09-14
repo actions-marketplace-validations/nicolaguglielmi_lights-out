@@ -1,0 +1,36 @@
+From 9e62245bc2d6153067a92472a906711e733b769f Mon Sep 17 00:00:00 2001
+From: Nicola <nicola.guglielmi@gmail.com>
+Date: Tue, 15 Sep 2026 00:01:38 +0200
+Subject: [PATCH] =?UTF-8?q?[M4]=20fixture:=20failing-test=20=E2=80=94=20on?=
+ =?UTF-8?q?e=20deliberately=20failing=20assertion?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+docs/adr/0015 §6: a gate that has never been seen failing is not a
+gate. One test, one wrong assertion, no database/app/fixture touched,
+so it fails cleanly and immediately — proof material for
+gates/test.sh, not a real regression.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SyvjibsMaMMeqKhNxadYFz
+---
+ app/backend/tests/test_fixture_failing.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
+ create mode 100644 app/backend/tests/test_fixture_failing.py
+
+diff --git a/app/backend/tests/test_fixture_failing.py b/app/backend/tests/test_fixture_failing.py
+new file mode 100644
+index 0000000..e8a2d0e
+--- /dev/null
++++ b/app/backend/tests/test_fixture_failing.py
+@@ -0,0 +1,6 @@
++# docs/adr/0015 §6 fixture ("failing-test"): a deliberately, minimally wrong
++# assertion, nothing else — no database, no app, no fixture argument — so it
++# fails cleanly and immediately, not flakily or by environment. It proves
++# gates/test.sh actually rejects a bad input; it is never meant to pass.
++def test_fixture_deliberately_fails() -> None:
++    assert 1 == 2
+-- 
+2.50.1 (Apple Git-155)
+
