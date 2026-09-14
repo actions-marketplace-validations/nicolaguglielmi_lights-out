@@ -85,7 +85,7 @@ case "$cmd" in
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
     else
-      sock=${DOCKER_HOST#unix://}
+      sock=${DOCKER_HOST:-}; sock=${sock#unix://}
       [ -n "$sock" ] || sock=/var/run/docker.sock
     fi
     # label=disable: the engine's SELinux (podman machine is Fedora CoreOS)
