@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build context is ./app (docs/adr/0010). Classic syntax only: no
+# RUN --mount, no heredocs — DOCKER_BUILDKIT=0 builds this (docs/adr/0010).
+# Stages: frontend (build-only) -> runtime (ships) -> test (adds dev deps
+# and the test tree, docs/adr/0005, docs/adr/0006, docs/adr/0009).
+
+FROM docker.io/library/node:24-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS frontend
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+FROM docker.io/library/python:3.13-slim-trixie@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 AS runtime
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    PATH=/opt/venv/bin:$PATH \
+    OTEL_SEMCONV_STABILITY_OPT_IN=http
+RUN pip install --no-cache-dir uv==0.12.13
+WORKDIR /app
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --frozen --no-dev
+COPY backend/meetups ./meetups
+COPY backend/migrations ./migrations
+COPY flags/flags.json ./flags/flags.json
+COPY --from=frontend /app/dist /srv/frontend
+EXPOSE 8000
+CMD ["uvicorn", "meetups.app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM runtime AS test
+ENV PYTHONPATH=/app
+RUN uv sync --frozen
+COPY fakes ./fakes
+COPY contracts ./contracts
+COPY backend/tests ./tests
+CMD ["python", "-m", "pytest", "tests", "-q"]
