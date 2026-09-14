@@ -6,11 +6,26 @@ from pathlib import Path
 from meetups.flags import waitlist_enabled
 
 FLAG_FILE = Path(os.environ["FLAGD_OFFLINE_FLAG_SOURCE_PATH"])
+# Captured once, at collection time, before any test mutates FLAG_FILE: the
+# exact bytes M3 committed for `waitlist` (docs/adr/0013 §1) — `targeting`
+# present, `defaultVariant` "off". "off" below restores this verbatim, so a
+# run that fails partway through still leaves FLAG_FILE exactly as M3
+# committed it, never a targeting-less approximation of it.
+_COMMITTED_FLAGS_TEXT = FLAG_FILE.read_text()
 
 
 def _set_default_variant(variant: str) -> None:
-    data = json.loads(FLAG_FILE.read_text())
-    data["flags"]["waitlist"]["defaultVariant"] = variant
+    if variant == "off":
+        FLAG_FILE.write_text(_COMMITTED_FLAGS_TEXT)
+        return
+    # M3's targeting rule (docs/adr/0013 §1) resolves to a variant name for
+    # every context, so flagd never falls through to defaultVariant while
+    # it is present. Drop it so defaultVariant governs again — the same jq
+    # transform `make kill-switch` applies in the Makefile, forcing "on"
+    # instead of "off".
+    data = json.loads(_COMMITTED_FLAGS_TEXT)
+    data["flags"]["waitlist"].pop("targeting", None)
+    data["flags"]["waitlist"]["defaultVariant"] = "on"
     FLAG_FILE.write_text(json.dumps(data))
 
 
