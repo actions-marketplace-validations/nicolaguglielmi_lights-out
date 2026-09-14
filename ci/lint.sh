@@ -6,6 +6,7 @@
 # ADR 0002 makes the workflow a deliverable, so no workflow is a NO-GO.
 set -eu
 name=lint
+. ci/lib.sh
 
 workflows=""
 for f in .github/workflows/*.yml; do
@@ -13,15 +14,9 @@ for f in .github/workflows/*.yml; do
   workflows="$workflows $f"
 done
 
-if [ -z "$workflows" ]; then
-  printf 'NO-GO: %s: no workflow under .github/workflows (ADR 0002 says the workflow is a deliverable)\n' "$name" >&2
-  exit 1
-fi
+[ -n "$workflows" ] || nogo "no workflow under .github/workflows (ADR 0002 says the workflow is a deliverable)"
 
 # shellcheck disable=SC2086 # word-splitting is deliberate: a list of paths, no spaces in filenames
-if ! actionlint $workflows; then
-  printf 'NO-GO: %s: actionlint reported problems\n' "$name" >&2
-  exit 1
-fi
+actionlint -no-color $workflows >&2 || nogo "actionlint reported problems"
 
-printf 'GO: %s\n' "$name"
+go

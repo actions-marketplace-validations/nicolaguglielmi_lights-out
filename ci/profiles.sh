@@ -6,12 +6,10 @@
 # or `$`; all profiles define the same key set as profiles/l0.env.
 set -eu
 name=profiles
+. ci/lib.sh
 
 ref=profiles/l0.env
-if [ ! -f "$ref" ]; then
-  printf 'NO-GO: %s: %s not found\n' "$name" "$ref" >&2
-  exit 1
-fi
+[ -f "$ref" ] || nogo "$ref not found"
 
 bad=""
 for f in profiles/*.env; do
@@ -27,10 +25,7 @@ for f in profiles/*.env; do
   done < "$f"
 done
 
-if [ -n "$bad" ]; then
-  printf 'NO-GO: %s: malformed line(s):%s\n' "$name" "$bad" >&2
-  exit 1
-fi
+[ -z "$bad" ] || nogo "malformed line(s):$bad"
 
 keys_of() {
   grep -E '^[A-Z][A-Z0-9_]*=' "$1" | cut -d= -f1 | sort -u
@@ -42,10 +37,7 @@ for f in profiles/*.env; do
   [ -e "$f" ] || continue
   [ "$f" = "$ref" ] && continue
   f_keys=$(keys_of "$f")
-  if [ "$f_keys" != "$ref_keys" ]; then
-    printf 'NO-GO: %s: %s defines a different key set than %s\n' "$name" "$f" "$ref" >&2
-    exit 1
-  fi
+  [ "$f_keys" = "$ref_keys" ] || nogo "$f defines a different key set than $ref"
 done
 
-printf 'GO: %s\n' "$name"
+go

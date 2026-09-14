@@ -12,6 +12,7 @@
 # So a bare `runs-on:` with nothing after the colon is the marker by itself.
 set -eu
 name=gitea-compat
+. ci/lib.sh
 
 workflows=""
 for f in .github/workflows/*.yml; do
@@ -19,10 +20,8 @@ for f in .github/workflows/*.yml; do
   workflows="$workflows $f"
 done
 
-if [ -z "$workflows" ]; then
-  printf 'GO: %s: no workflow to check\n' "$name"
-  exit 0
-fi
+# No workflow is ci-lint's NO-GO, not this gate's.
+[ -n "$workflows" ] || go
 
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
@@ -41,9 +40,8 @@ for f in $workflows; do
 done
 
 if [ -s "$tmp" ]; then
-  printf 'NO-GO: %s: constructs Gitea Actions does not support\n' "$name" >&2
   sort -t: -k1,1 -k2,2n "$tmp" >&2
-  exit 1
+  nogo "constructs Gitea Actions does not support (see stderr)"
 fi
 
-printf 'GO: %s\n' "$name"
+go

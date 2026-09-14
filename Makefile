@@ -25,7 +25,7 @@ help: ## List the targets
 	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n' shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004) and joins at M2.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI

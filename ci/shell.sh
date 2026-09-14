@@ -6,6 +6,7 @@
 # and any script under gates/, verify/ or e2e/ once those exist.
 set -eu
 name=shell
+. ci/lib.sh
 
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
@@ -19,9 +20,6 @@ trap 'rm -f "$tmp"' EXIT
   true
 } > "$tmp"
 
-if ! xargs shellcheck -s sh < "$tmp"; then
-  printf 'NO-GO: %s: shellcheck reported problems\n' "$name" >&2
-  exit 1
-fi
+xargs shellcheck -s sh --color=never < "$tmp" >&2 || nogo "shellcheck reported problems"
 
-printf 'GO: %s\n' "$name"
+go
