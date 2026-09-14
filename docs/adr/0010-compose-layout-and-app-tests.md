@@ -83,9 +83,18 @@ adds a dozen services to the same `up`. Testcontainers is M4.
   number goes in HANDOFF.
 - Pull + build estimate for `./go up`: python 46 MB, postgres 117 MB, node
   81 MB, ~30 MB of wheels, ~100 MB of npm, about 375 MB and ~3.5 min at
-  20 Mbit/s. That leaves M2 ~1.5 min for Gitea, Envoy, Prometheus, flagd,
-  Zot and two emulators, which will not fit: publishing the app image is
-  the planned fix (ADR 0009), and M2 must re-budget.
+  20 Mbit/s.
+  **Correction (2026-09-14, HANDOFF M1 close):** the sentence that followed
+  this estimate — a self-imposed 5-minute sub-budget for "the plane," with
+  the remainder implied left for M2 — is cancelled. It had no traceable
+  source: not the plan, not CLAUDE.md's Regola d'oro (which ties 15 minutes
+  to `./go demo` reaching rollback, not to today's `up`), not a measurement.
+  It was this ADR inventing a number and then treating it as a constraint.
+  The real M1 measurement is 66 s (HANDOFF), recorded as the baseline
+  against which M2 and M3 measure drift; no numeric ceiling applies before
+  M3 builds a wall-clock gate on `demo-rollback` against the actual 900 s
+  golden-rule figure. M2's pull+build budget is decided at M2 start, not
+  re-derived from this estimate.
 - `DOCKER_BUILDKIT=0` is a global switch for every compose build in the
   repo; if a future Containerfile needs BuildKit, this ADR is revisited,
   not overridden per service.
@@ -96,5 +105,8 @@ adds a dozen services to the same `up`. Testcontainers is M4.
 ## Golden-rule check
 
 `./go up` from a clean clone: socket, three pulls, two builds, no key, no
-account. ~3.5 min on a slow line, inside the 5-minute plane budget at M1,
-with the budget breach at M2 named above. Passes, with that caveat.
+account. ~3.5 min estimated, 66 s measured (HANDOFF, M1 close). The golden
+rule itself (CLAUDE.md, Regola d'oro) measures `./go demo` to an automatic
+canary rollback within 900 s; that command does not exist before M3, so
+M1 has nothing to time it against yet beyond recording today's baseline.
+Passes.
