@@ -6,17 +6,22 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M0 of 10. What runs today:
+Milestone M1 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
 | ci | M0 | ✓ |
 | engine-compat | M2 | NOT YET |
-| up | M2 | NOT YET |
+| up | M1 | ✓ app only, plane at M2 |
+| smoke | M1 | ✓ healthz ok |
+| verify | M1 | ✓ metric shape only, evaluation at M3 |
 | deploy | M3 | NOT YET |
-| verify | M3 | NOT YET |
 | rollback | M3 | NOT YET |
 | e2e | M6 | NOT YET |
+
+| | |
+|---|---|
+| **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
 Until M3, a green `./go demo` means the repo is coherent, not that the platform works.
 
@@ -65,6 +70,14 @@ The first run builds the workbench image (about 1 GB on disk, 350–400 MB downl
 *Note: since June 18, 2026 Gemini CLI no longer serves Google AI Pro/Ultra, Gemini Code Assist for individuals, or the free login with Google. The documented path is a Gemini API key (free tier: about 250 requests per day, Flash models only) or Gemini Enterprise Agent Platform. Whether a free-tier key still works with Gemini CLI is verified at M5.*
 
 Only L0 exists today. Levels L1–L3 describe the plan.
+
+## The app
+
+A meetup RSVP platform: FastAPI backend (`app/backend/`), Postgres database, React frontend (`app/frontend/`). After `./go up` it answers at `http://localhost:8080` on the host or `http://host.containers.internal:8080` from inside workbench. Three auth-free endpoints list meetups, two auth routes signup and login, one create route, one RSVP route. Geocodes venues through a fake `GEOCODER_URL`. Feature-flagged partial waitlist (evaluates but returns 501 at M1).
+
+Test and verify commands:
+- `./go test` — Run the backend test suite against compose Postgres (pytest, 25 tests at M1).
+- `./go verify` — Check `verify/slo.promql` against the live app (metric shape only; evaluation arrives with Prometheus at M2).
 
 ## How it runs
 
