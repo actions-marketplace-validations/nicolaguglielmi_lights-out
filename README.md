@@ -87,7 +87,7 @@ Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env`
 
 ### Engine socket
 
-Targets `up`, `down`, `demo`, `demo-rollback`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images.
+Targets `up`, `down`, `test`, `demo`, `demo-rollback`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images.
 
 The `ci` target never gets the socket.
 
@@ -120,7 +120,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, down, demo-rollback, e2e
+  Makefile                  # targets: help, ci, ci-*, demo, up, down, test, verify, demo-rollback, e2e
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -155,16 +155,34 @@ lights-out/
       0002-self-ci-is-make-ci.md
       0003-make-demo-before-m3.md
       0004-containerised-toolchain.md
+      0005-backend-stack-and-auth.md
+      0006-external-service-geocoder-fake-and-contract.md
+      0007-metrics-and-feature-flags.md
+      0008-sql-migrations-expand-contract.md
+      0009-frontend-built-into-backend-image.md
+      0010-compose-layout-and-app-tests.md
+      0011-slo-queries-and-metric-shape-gate-at-m1.md
+
+  verify/                   # SLO verification; shape-checked at M1, evaluated at M3
+    slo.promql               # error_rate and latency_p95, the production queries
+    metric-shape.sh           # checks them against one live /metrics scrape
+
+  app/                      # the target application (docs/adr/0005-0010)
+    backend/                 # FastAPI + psycopg, meetups/, migrations/, tests/
+    frontend/                # React + Vite + TypeScript, built into the backend image
+    fakes/geocoder/          # the external-service dependency, stdlib only
+    contracts/geocoder/      # the fake's committed example-pair contract
+    flags/                   # flagd file-resolver flag definitions
+
+  compose.yaml               # the local plane; app services at M1, rest arrives at M2
 
   core/                     # from M3: vendor-free core
   adapters/                 # from M3: one directory per adapter
   roles/                    # from M5: agent role definitions
   policy/                   # from M4: policy-as-code
   gates/                    # from M4: PR gates, identical at every level
-  verify/                   # from M3: SLO verification
   delivery/                 # from M3: deployment orchestration
   design/                   # from M10: Stitch artifacts
-  app/                      # from M1: the target application
   infra/                    # from M8: Terraform for GCP
   fixtures/                 # from M5: recorded agent responses
   e2e/                      # from M6: golden path test
@@ -175,6 +193,7 @@ lights-out/
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — the port/adapter pattern, how levels compose
 - [docs/adr/](docs/adr/) — architecture decision records
 - [PLAN.md](docs/PLAN.md) — the working plan (Italian)
+- [app/README.md](app/README.md) — the target application: routes, auth, migrations, metrics, flags
 
 ## License
 
