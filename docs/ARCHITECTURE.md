@@ -64,6 +64,16 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 
 See [ADR 0003](adr/0003-make-demo-before-m3.md).
 
+## PR gates
+
+Six gates run on a git range in order from cheap to expensive: `risk` (rules-not-points classifier), `secrets` (gitleaks), `deps` (osv-scanner), `sast` (bandit), `test` (pytest), `mutation` (cosmic-ray on changed lines against a measured baseline). Each gate exits with a single line: `GO: <name>` or `NO-GO: <name> — <reason>`.
+
+The `risk` gate is unique: it always GO when it classifies (the verdict is the classification itself — `low` = auto-merge, `medium` or `high` = review). A NO-GO from `risk` means "could not classify" (bad input, missing policy file), not "found something bad". The classifier reads five signals from the diff: migrations, auth, payments, platform (gates/ci/verify/policy/core and the toolchain), and diff size. Policy is data, not code: `policy/merge.env` holds globs, thresholds, and the auto-merge decision, readable by both sh and Python without a parser.
+
+Six committed fixture PRs prove both verdicts on real gate failures: `honest-fix` and `fake-test` resolve the same bug (ticket 0001) with adequate and inadequate tests; `migration`, `sast-finding`, `vulnerable-dep`, and `failing-test` each trigger a different gate. Fixtures are git-format-patch patches applied in detached worktrees, with expected JSON outcomes recorded in `expect` files; `./go demo-gates` runs them all and asserts success.
+
+See [ADR 0015](adr/0015-pr-gates-at-m4.md) and [ADR 0016](adr/0016-risk-model-and-merge-policy.md).
+
 ## L0 plane
 
 Eight services in `compose.yaml`:
@@ -89,4 +99,4 @@ See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](a
 
 ## Status
 
-M3 — release controller in `core/` (staging, 5%, 25%, automatic rollback on verify NO-GO); still no control plane, no agents yet.
+M4 — PR gates in `gates/` with policy in `policy/merge.env` (risk scoring, dependency scan, SAST, test, mutation with threshold); six fixtures prove both verdicts; still no agents yet.

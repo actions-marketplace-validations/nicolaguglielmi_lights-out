@@ -1,6 +1,6 @@
 # ADR 0004 — The toolchain lives in a `workbench` container; `./go` is the only host entrypoint
 
-- Status: accepted (amends ADR 0002 and ADR 0003). Amended by ADR 0012: §2 the runner is host mode on an image built from workbench, not docker mode; §4 engine-compat runs from `./go` on the selected engine and never joins `make ci`; §5 `:z` leaves the seed list, replaced by `security_opt: label=disable` on the one bind-mounted service.
+- Status: accepted (amends ADR 0002 and ADR 0003). Amended by ADR 0012: §2 the runner is host mode on an image built from workbench, not docker mode; §4 engine-compat runs from `./go` on the selected engine and never joins `make ci`; §5 `:z` leaves the seed list, replaced by `security_opt: label=disable` on the one bind-mounted service. Amended by ADR 0015: Testcontainers rootless facts are void as of M4 (integration tests remain on compose Postgres per ADR 0010).
 - Date: 2026-09-14
 - Milestone: M0
 

@@ -6,7 +6,7 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M3 of 10. What runs today:
+Milestone M4 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -17,6 +17,7 @@ Milestone M3 of 10. What runs today:
 | verify | M1 | ✓ metric shape at M1, canary vs stable at M3 |
 | deploy | M3 | ✓ staging → 5% → 25%, held for human gate |
 | rollback | M3 | ✓ automatic on verify NO-GO, triggered by `./go demo-rollback` |
+| PR gates | M4 | ✓ six fixture PRs prove risk, SAST, deps, test, mutation, secrets |
 | e2e | M6 | NOT YET |
 
 | | |
@@ -24,6 +25,8 @@ Milestone M3 of 10. What runs today:
 | **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
 A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero. Promotion to 100% is the M6 human gate. No ticket→PR pipeline yet (M5).
+
+The PR gates (`./go demo-gates`) run on six committed fixture patches and prove both verdicts: risk scoring, dependency scanning, SAST, test failure, mutation inadequacy, and secrets. A "PR" at M4 is a git range, not a Gitea or GitHub PR yet; that comes at M5.
 
 ## Quick start
 
@@ -40,20 +43,22 @@ cd lights-out
 Then explore:
 
 ```sh
-./go up             # start the L0 plane and wait for it
-./go smoke          # create a meetup through Envoy
-./go engine-compat  # host-side engine gate: versions, then up and smoke
-./go down           # stop the plane
-./go test           # run backend tests
-./go verify         # check the metric shape
-./go demo-rollback  # release the failing version and prove automatic rollback
-./go demo-hold      # release the same version with kill switch on and prove it holds at 25%
-./go kill-switch    # turn off waitlist for all versions (manual flag edit)
-./go freeze         # stop launchpad from deploying or shifting (manual flag edit)
-./go unfreeze       # re-enable launchpad after freeze
-./go help           # list all targets
-./go shell          # interactive shell inside workbench
-./go clean          # remove the workbench image
+./go up              # start the L0 plane and wait for it
+./go smoke           # create a meetup through Envoy
+./go engine-compat   # host-side engine gate: versions, then up and smoke
+./go down            # stop the plane
+./go test            # run backend tests
+./go verify          # check the metric shape
+./go demo-rollback   # release the failing version and prove automatic rollback
+./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
+./go demo-gates      # run all six PR gate fixtures and prove both verdicts
+./go mutation-baseline # measure baseline mutation score on the whole package
+./go kill-switch     # turn off waitlist for all versions (manual flag edit)
+./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
+./go unfreeze        # re-enable launchpad after freeze
+./go help            # list all targets
+./go shell           # interactive shell inside workbench
+./go clean           # remove the workbench image
 ```
 
 The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulls about 840 MB (amd64) / 720 MB (arm64) of images on the first run, the emulators image being more than half (measured 2026-09-14, ADR 0012). The image includes gcloud and terraform, although nothing uses them before M8.
@@ -88,6 +93,18 @@ A meetup RSVP platform: FastAPI backend (`app/backend/`), Postgres database, Rea
 Test and verify commands:
 - `./go test` — Run the backend test suite against compose Postgres (pytest, 25 tests).
 - `./go verify` — Check `verify/slo.promql` against the live app (metric shape only; evaluation at M3).
+
+## PR gates
+
+Six gates run in order on a git range (two commits or more, measured by `git merge-base`), with both verdicts proven by committed fixture patches. Run with `./go demo-gates` on the six fixtures, or `./go gates BASE=<ref> HEAD=<ref>` on your own range.
+
+**Order:** risk (rules-based classification from path and size), secrets (gitleaks history and working tree), deps (osv-scanner on both lockfiles, a time bomb by design), SAST (bandit on `app/backend/meetups/` only), test (pytest, one failing assertion proves it works), mutation (cosmic-ray on changed lines, scored against a measured baseline).
+
+**Risk levels:** `low` → `auto-merge`; `medium` or `high` → review. The risk classifier reads five signals: auth, payments, migrations, platform (gates/ci/verify/policy/core and the toolchain), and diff size. Policy lives in `policy/merge.env`, readable by sh and Python.
+
+**Six fixtures:** `honest-fix` (ticket 0001 resolved, every gate GO, risk low); `fake-test` (same fix, inadequate test, mutation NO-GO); `migration` (adds a schema column, every gate GO, risk high); `sast-finding` (one bandit issue); `vulnerable-dep` (a known advisory); `failing-test` (one assertion fails). Each fixture is a git-format-patch `.patch` file applied in a worktree, with expected verdicts and JSON data recorded in `expect`.
+
+**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M5 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
 
 ## The L0 plane
 
@@ -153,7 +170,7 @@ systemctl --user enable --now podman.socket
 
 (On macOS, `podman machine` enables it automatically.)
 
-This is the same socket path for the Gitea runner and Testcontainers.
+This is the same socket path for the Gitea runner.
 
 Rootless podman usage:
 
@@ -161,7 +178,6 @@ Rootless podman usage:
 - Bind mounts get no `:z` (relabelling fails on podman machine's virtiofs, podman #26465/#21269); the one bind-mounted service (flagd) uses `security_opt: label=disable`.
 - Use `host.containers.internal` instead of `host.docker.internal`.
 - Prefer compose network aliases over any `host.*.internal` name.
-- Testcontainers rootless needs `TESTCONTAINERS_RYUK_DISABLED=true` (verify at M4).
 
 Only the docker-compose features proven by `./go engine-compat` are allowed; proven at M2 on podman: `build` with `args`, `depends_on` long syntax, `profiles`, `ports`, `user`, `restart`, `security_opt`, a read-only bind mount.
 
@@ -183,6 +199,18 @@ lights-out/
 
   core/
     launchpad.sh            # release controller: stages, verify gates, automatic rollback
+    risk.py                 # risk classifier: rules-based PR scoring
+    tests/                  # unit tests for risk.py
+
+  policy/
+    merge.env               # policy-as-code: risk levels, mutation baseline and margin
+
+  gates/                    # PR gates: risk, secrets, deps, sast, test, mutation
+    *.sh                    # individual gate scripts
+    fixtures/               # six committed example PRs with expected verdicts
+      <name>/
+        *.patch             # git-format-patch applied in worktrees
+        expect              # expected gate outcomes and JSON data
 
   profiles/
     l0.env                  # L0: podman, no key, no account

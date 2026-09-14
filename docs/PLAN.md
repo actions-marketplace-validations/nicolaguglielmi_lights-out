@@ -199,6 +199,8 @@ Il controller di rilascio con le fasi (staging, 5%, 25%, 100%), il verify runner
 Unit, integration con testcontainers, contract test, mutation testing con soglia, SAST, scan dipendenze, secret scan. Lo script di risk scoring che classifica la PR (auth, pagamenti, migrazioni, dimensione del diff) e decide auto-merge o seconda review.
 **Fatto quando:** una PR con un test finto viene bocciata dal mutation score; una PR che tocca una migrazione viene marcata ad alto rischio e non si auto-mergia.
 
+*Nota 2026-09-15 (M4, ADR 0015):* i test di integrazione restano su Postgres da compose (ADR 0010), non testcontainers, per decisione esplicita; "una PR" a L0 è un git range (due o più commit con `git merge-base`), non una vera PR Gitea/GitHub (quella arriva a M5). Il comando di accettazione è `./go demo-gates` sulle sei fixture committate; ogni fixture è una patch git-format-patch applicata in un worktree usa e getta, con i verdetti attesi registrati in `expect`.
+
 ### M5 — Runtime degli agenti (L1)
 La porta `AgentHarness` con adapter `replay` e `gemini-cli`. Le definizioni dei sei ruoli. Gli hook che bloccano push su main, comandi distruttivi e accesso a segreti. Il worker in container con budget di token, timeout e massimo di iterazioni, che termina aprendo una PR.
 **Fatto quando:** a L1, con una Gemini API key, assegni un ticket e nasce una PR che passa la CI di M4. A L0 lo stesso ticket produce la stessa PR dalle fixture.
