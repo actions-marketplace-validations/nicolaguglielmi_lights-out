@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lights-out workbench: every tool the repo needs, so the host needs none.
+# See docs/adr/0004-containerised-toolchain.md. Every tool is a versioned
+# release archive verified against its published sha256, per architecture.
+# Bump a version and both hashes in one dedicated commit.
+
+FROM docker.io/library/debian:trixie-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
+
+ARG TARGETARCH
+
+ARG NODE_VERSION=24.21.0
+ARG NODE_SHA256_AMD64=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+ARG NODE_SHA256_ARM64=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
+
+ARG UV_VERSION=0.12.13
+ARG UV_SHA256_AMD64=745765a3b6e360ad76743599ae5c42e9278c7edf8bbff9fc76d05bf2623a04dd
+ARG UV_SHA256_ARM64=2eaa5d94f5db7b3a1a092156b9420459e42ab0217d917fe74a876309cef9b5e9
+
+ARG COMPOSE_VERSION=5.5.1
+ARG COMPOSE_SHA256_AMD64=db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576
+ARG COMPOSE_SHA256_ARM64=732e3a84c1a0f67256ce80bc2598a24546b10ca05f9faa97efceb1171ece2ef7
+
+ARG TERRAFORM_VERSION=1.16.2
+ARG TERRAFORM_SHA256_AMD64=0d17011f0c4664539b164b044903d04e296c86c13cb9f28040076c65cfb3985a
+ARG TERRAFORM_SHA256_ARM64=c040bd1e3122b4290f70f74288d8c5a54ddd4254a3e52a29e7cc666653f50a0a
+
+ARG GCLOUD_VERSION=584.0.0
+ARG GCLOUD_SHA256_AMD64=02f0a54a1c5f9e582c568cd8da8258e22275b8ab033532fa03fd46bd9f7a3398
+ARG GCLOUD_SHA256_ARM64=c89ede7464617f27c37ccb7ec792c6f7cafdbb6d4729ab723c42e1ec66828592
+
+ARG GITLEAKS_VERSION=8.30.1
+ARG GITLEAKS_SHA256_AMD64=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+ARG GITLEAKS_SHA256_ARM64=e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080
+
+ARG ACTIONLINT_VERSION=1.7.12
+ARG ACTIONLINT_SHA256_AMD64=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+ARG ACTIONLINT_SHA256_ARM64=325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6
+
+ARG SHELLCHECK_VERSION=0.11.0
+ARG SHELLCHECK_SHA256_AMD64=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+ARG SHELLCHECK_SHA256_ARM64=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates curl git jq make python3 unzip xz-utils \
+ && rm -rf /var/lib/apt/lists/*
+
+# fetch URL SHA256 DEST: download and verify, or fail the build.
+COPY fetch.sh /usr/local/bin/fetch
+RUN chmod 0755 /usr/local/bin/fetch
+
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      amd64) node_arch=x64;   uv_arch=x86_64;  compose_arch=x86_64;  tf_arch=amd64; gcloud_arch=x86_64; gl_arch=x64;   al_arch=amd64; sc_arch=x86_64; \
+             NODE_SHA=$NODE_SHA256_AMD64; UV_SHA=$UV_SHA256_AMD64; COMPOSE_SHA=$COMPOSE_SHA256_AMD64; TF_SHA=$TERRAFORM_SHA256_AMD64; \
+             GCLOUD_SHA=$GCLOUD_SHA256_AMD64; GL_SHA=$GITLEAKS_SHA256_AMD64; AL_SHA=$ACTIONLINT_SHA256_AMD64; SC_SHA=$SHELLCHECK_SHA256_AMD64 ;; \
+      arm64) node_arch=arm64; uv_arch=aarch64; compose_arch=aarch64; tf_arch=arm64; gcloud_arch=arm;    gl_arch=arm64; al_arch=arm64; sc_arch=aarch64; \
+             NODE_SHA=$NODE_SHA256_ARM64; UV_SHA=$UV_SHA256_ARM64; COMPOSE_SHA=$COMPOSE_SHA256_ARM64; TF_SHA=$TERRAFORM_SHA256_ARM64; \
+             GCLOUD_SHA=$GCLOUD_SHA256_ARM64; GL_SHA=$GITLEAKS_SHA256_ARM64; AL_SHA=$ACTIONLINT_SHA256_ARM64; SC_SHA=$SHELLCHECK_SHA256_ARM64 ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    cd /tmp; \
+    fetch "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" "$NODE_SHA" node.tar.xz; \
+    tar -xJf node.tar.xz -C /usr/local --strip-components=1 --exclude='*/CHANGELOG.md' --exclude='*/README.md' --exclude='*/LICENSE'; \
+    fetch "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${uv_arch}-unknown-linux-gnu.tar.gz" "$UV_SHA" uv.tar.gz; \
+    tar -xzf uv.tar.gz --strip-components=1 -C /usr/local/bin; \
+    fetch "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-${compose_arch}" "$COMPOSE_SHA" /usr/local/bin/docker-compose; \
+    chmod 0755 /usr/local/bin/docker-compose; \
+    fetch "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${tf_arch}.zip" "$TF_SHA" terraform.zip; \
+    unzip -q terraform.zip terraform -d /usr/local/bin; \
+    fetch "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-${GCLOUD_VERSION}-linux-${gcloud_arch}.tar.gz" "$GCLOUD_SHA" gcloud.tar.gz; \
+    tar -xzf gcloud.tar.gz -C /opt; \
+    fetch "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${gl_arch}.tar.gz" "$GL_SHA" gitleaks.tar.gz; \
+    tar -xzf gitleaks.tar.gz -C /usr/local/bin gitleaks; \
+    fetch "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${al_arch}.tar.gz" "$AL_SHA" actionlint.tar.gz; \
+    tar -xzf actionlint.tar.gz -C /usr/local/bin actionlint; \
+    fetch "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.${sc_arch}.tar.xz" "$SC_SHA" shellcheck.tar.xz; \
+    tar -xJf shellcheck.tar.xz --strip-components=1 -C /usr/local/bin "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"; \
+    rm -rf /tmp/*
+
+ENV PATH=/opt/google-cloud-sdk/bin:$PATH \
+    CLOUDSDK_PYTHON=/usr/bin/python3 \
+    CLOUDSDK_CORE_DISABLE_USAGE_REPORTING=true \
+    UV_LINK_MODE=copy \
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=* \
+    LIGHTS_OUT_WORKBENCH=1
+
+RUN node --version && uv --version && docker-compose version && terraform version \
+ && gcloud version && gitleaks version && actionlint -version && shellcheck --version
+
+CMD ["make", "help"]
