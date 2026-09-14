@@ -1,6 +1,6 @@
 # ADR 0010 — One root `compose.yaml`; `./go test` runs pytest in the app image against the compose Postgres; `demo` gains the app at M1; `ci` unchanged
 
-- Status: accepted (amends ADR 0003 stage `up`)
+- Status: accepted (amends ADR 0003 stage `up`). Amended by ADR 0015: §6 `uv lock --check` is replaced by `uv sync --locked` in the Containerfile stages; `npm audit` is subsumed by `gates/deps.sh`; ruff is not a merge gate at M4.
 - Date: 2026-09-14
 - Milestone: M1
 
