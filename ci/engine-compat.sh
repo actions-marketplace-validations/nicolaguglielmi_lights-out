@@ -7,18 +7,18 @@
 # from day one. Wired into `make ci` at M2.
 set -eu
 name=engine-compat
+. ci/lib.sh
 
 if command -v podman >/dev/null 2>&1; then
-  podman --version
+  podman --version >&2
 fi
 
 if command -v docker >/dev/null 2>&1; then
   docker_version=$(docker --version)
   case "$docker_version" in
-    'Docker version'*) printf '%s\n' "$docker_version" ;;
-    *) printf 'docker: shim of podman, not a real docker (not tested)\n' ;;
+    'Docker version'*) printf '%s\n' "$docker_version" >&2 ;;
+    *) printf 'docker: shim of podman, not a real docker (not tested)\n' >&2 ;;
   esac
 fi
 
-printf 'NO-GO: %s: nothing to check before M2\n' "$name" >&2
-exit 1
+nogo "nothing to check before M2"

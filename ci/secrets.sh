@@ -6,19 +6,14 @@
 # No allowlist file at M0 (docs/adr/0002-self-ci-is-make-ci.md).
 set -eu
 name=secrets
+. ci/lib.sh
 
 if git rev-parse HEAD >/dev/null 2>&1; then
-  if ! gitleaks git --no-banner --redact .; then
-    printf 'NO-GO: %s: gitleaks found a secret in git history\n' "$name" >&2
-    exit 1
-  fi
+  gitleaks git --no-banner --no-color --redact . >&2 || nogo "gitleaks found a secret in git history"
 else
-  printf '%s: empty repository, no commits yet; scanning the working tree only\n' "$name"
+  printf '%s: empty repository, no commits yet; scanning the working tree only\n' "$name" >&2
 fi
 
-if ! gitleaks dir --no-banner --redact .; then
-  printf 'NO-GO: %s: gitleaks found a secret in the working tree\n' "$name" >&2
-  exit 1
-fi
+gitleaks dir --no-banner --no-color --redact . >&2 || nogo "gitleaks found a secret in the working tree"
 
-printf 'GO: %s\n' "$name"
+go

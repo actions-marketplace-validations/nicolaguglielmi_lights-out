@@ -21,6 +21,15 @@ Questa regola vince su qualunque altra considerazione tecnica. Se una scelta la 
 - **Toolchain nel container.** Sull'host solo podman, git e una shell POSIX; make non è un prerequisito. L'entrypoint è ./go, mai make diretto nei criteri di accettazione.
 - **Header SPDX** solo nei file di ingresso di ogni componente (entrypoint, Makefile, Containerfile, main del componente), non in ogni file.
 
+## Contratto di output dei gate
+
+Vale per ogni gate, presente e futuro, in `ci/`, `gates/`, `verify/`:
+
+- Ogni gate stampa su stdout **esattamente una riga**: `GO: <nome>` oppure `NO-GO: <nome> — <motivo>`. `GO` esce 0, `NO-GO` esce 1.
+- Nessun colore quando stdout non è un TTY: `NO_COLOR=1` e il flag del singolo tool (`--no-color`, `-no-color`, `--color=never`).
+- Il rumore dei tool e i dettagli di un `NO-GO` vanno su stderr o in un file di log, mai su stdout.
+- Si implementa con `. ci/lib.sh` e le funzioni `go` / `nogo`. Il meta-gate `ci/contract.sh` esegue ogni gate con stdout catturato e fallisce se trova più di una riga, una sequenza ANSI o un exit code incoerente.
+
 ## Contro la sovra-ingegnerizzazione
 
 - La cosa più piccola che fa passare il criterio di accettazione. Nient'altro.

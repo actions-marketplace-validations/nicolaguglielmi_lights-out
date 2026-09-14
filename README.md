@@ -122,7 +122,9 @@ lights-out/
     l2.env                  # L2: + GCP project
     l3.env                  # L3: + Agent Engine quota
 
-  ci/                       # repo self-checks
+  ci/                       # repo self-checks; each prints one line, GO or NO-GO
+    lib.sh                  # go / nogo helpers, the output contract
+    contract.sh             # meta-gate: every gate honours the contract
     secrets.sh              # gitleaks, history and working tree
     lint.sh                 # actionlint on the workflow
     shell.sh                # shellcheck on every sh script

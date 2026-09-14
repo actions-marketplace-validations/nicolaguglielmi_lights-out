@@ -7,16 +7,11 @@
 # and `clean` entries, which are valid `./go` commands).
 set -eu
 name=readme
+. ci/lib.sh
 
-if [ ! -f README.md ]; then
-  printf 'NO-GO: %s: README.md not found\n' "$name" >&2
-  exit 1
-fi
+[ -f README.md ] || nogo "README.md not found"
 
-if ! out=$(make --no-print-directory help); then
-  printf 'NO-GO: %s: make --no-print-directory help exited nonzero\n' "$name" >&2
-  exit 1
-fi
+out=$(make --no-print-directory help 2>&1) || nogo "make --no-print-directory help exited nonzero" "$out"
 
 targets=$(printf '%s\n' "$out" | awk '/^  [a-z]/{print $1}')
 words=$(grep -Eo '(\./go|make) [a-z][a-z0-9-]*' README.md | awk '{print $2}' | sort -u)
@@ -30,9 +25,6 @@ for w in $words; do
   [ "$found" = yes ] || bad="$bad $w"
 done
 
-if [ -n "$bad" ]; then
-  printf 'NO-GO: %s: README.md names target(s) make help does not list:%s\n' "$name" "$bad" >&2
-  exit 1
-fi
+[ -z "$bad" ] || nogo "README.md names target(s) make help does not list:$bad"
 
-printf 'GO: %s\n' "$name"
+go
