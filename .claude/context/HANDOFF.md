@@ -1,73 +1,52 @@
-# Handoff: M3 closed on 2026-09-14
+# Handoff: M4 closed on 2026-09-15
 
 ## Acceptance
 
-`./go demo-rollback` (both directions the user asked to have proven; this one is the NO-GO/rollback branch, warm plane, podman 5.7.1 rootless on macOS):
+`./go demo-gates` (warm, podman rootless on macOS) — six committed fixture PRs, each applied by `git am` in its own throwaway `git worktree` off `HEAD` and judged as that one-commit range:
 
 ```
-[demo-rollback] stable is 0.1.0-m2; releasing 0.2.0-waitlist (waitlist targeted on)
-[launchpad] staging: deploying 0.2.0-waitlist (stable is 0.1.0-m2)
-slo: traffic canary(0.2.0-waitlist)=0.255 stable(0.1.0-m2)=3.964
-slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data
-slo: latency_p95 canary(0.2.0-waitlist)=0.041 stable(0.1.0-m2)=0.024
+[demo-gates] failing-test: NO-GO: gates — test: NO-GO: test — pytest failed, see stderr
+[demo-gates] fake-test: NO-GO: gates — mutation: NO-GO: mutation — 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr
+[demo-gates] honest-fix: GO: gates — risk low, auto-merge
+[demo-gates] migration: GO: gates — risk high, review
+[demo-gates] sast-finding: NO-GO: gates — sast: NO-GO: sast — 1 bandit finding(s) in meetups/
+[demo-gates] vulnerable-dep: NO-GO: gates — deps: NO-GO: deps — osv-scanner found a vulnerability; findings on stderr
+GO: demo-gates
+```
+3m55s wall time. This is the plan §7 M4 criterion directly: `fake-test` (a PR with a fake test) is rejected by the mutation score; `migration` (a PR touching a migration) is marked high risk and its decision is `review`, never `auto-merge`.
+
+`./go ci`: all ten checks GO, including the two new ones — `core-tests` (9/9 unit tests on `core/risk.py`) and `contract` cold-running all six `gates/*.sh` plus `ci/core-tests.sh` with no range and no plane, instantly.
+
+`./go demo` (the whole-repo proof, M3's stage list, unchanged by M4):
+```
 NO-GO: launchpad — 5%: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010 → rolled back
 GO: demo-rollback
+GO: demo, milestone M3, 104s to rollback (budget 900s, plan §2)
 ```
-
-`./go demo-hold` (the GO/hold branch, same release, kill switch thrown first — added this milestone specifically so a verify runner wired to always NO-GO could not pass `demo-rollback` for the wrong reason; both branches are now proven, not just one):
-
-```
-GO: kill-switch
-[demo-hold] stable is 0.1.0-m2; releasing 0.2.0-waitlist with waitlist off
-slo: traffic canary(0.2.0-waitlist)=0.202 stable(0.1.0-m2)=4.055
-slo: error_rate canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=no data
-[launchpad] 5%: GO
-slo: traffic canary(0.2.0-waitlist)=0.873 stable(0.1.0-m2)=3.382
-slo: error_rate canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=no data
-[launchpad] 25%: GO
-[launchpad] 25%: GO — canary holds 25% of traffic, waiting for go-for-launch
-[launchpad] 100%: NOT YET (M6, go-for-launch)
-GO: launchpad
-GO: demo-hold
-[demo-hold] cleanup: rollback to 100/0 (not a verdict — the controller held at 25%, this is hygiene for the next run)
-```
-2:03 total, warm. `git status` after this run shows `app/flags/flags.json` at exactly its M3-committed diff — the kill switch and its restore both round-trip cleanly.
-
-`./go demo` (the whole-repo proof; `demo-rollback` is now its own last stage, ADR 0013 §7's timed verdict is the final line):
-
-```
-GO: engine-compat
-[demo] ci (M2): running
-GO: secrets … GO: contract … GO: ci
-lights-out: plane is up, app at http://host.containers.internal:8080
-smoke: meetup 22 created through Envoy at http://host.containers.internal:8080 (venue_lat=45.4641)
-GO: metric-shape
-[demo-rollback] stable is 0.1.0-m2; releasing 0.2.0-waitlist (waitlist targeted on)
-NO-GO: launchpad — 5%: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010 → rolled back
-GO: demo-rollback
-GO: demo, milestone M3, 85s to rollback (budget 900s, plan §2)
-```
-85 s total, **warm** (images already pulled/built; this host was not put through a from-scratch cold pull this session — see finding 1). `./go test`: 25 passed (was 24 passed / 1 failed before a real fix, see finding 3). `./go ci`: all ten gates GO.
+`./go test`: 25 passed (unchanged — ticket 0001's bug is not fixed on `main`; the fix lives only in the `honest-fix`/`fake-test` fixture patches).
 
 ## What changed
 
-- `core/launchpad.sh`: the release controller — rollback to a known state, read the stable version, check `release-freeze`, `staging` → `5%` → `25%`, each shift gated by the new `verify/slo.sh`; NO-GO rolls back and exits 1, a full pass holds the canary at 25% and exits 0 (ADR 0014 amending ADR 0013 §4).
-- L0 canary: `backend-canary` is a second compose service sharing the `backend` image (`profiles: [canary]`, not started by `./go up`); Envoy gets an admin API (port 9901) and moves `weighted_clusters` weights via `runtime_key_prefix` + `POST /runtime_modify`, no restart; the canary cluster is `STRICT_DNS` against it. Prometheus scrapes both under one job; `verify/slo.promql` (now `traffic`, `error_rate`, `latency_p95`) tells them apart by `service_version` through a `target_info` join, window `[1m]`.
-- `app/flags/flags.json`: `waitlist` targeting turns on for exactly `0.2.0-waitlist` (the L0 "failing version" — same image, no real code diff yet); new `release-freeze` flag. New Makefile targets `release`, `demo-rollback` (real now), `demo-hold`, `kill-switch`, `freeze`, `unfreeze`; `./go demo`'s final line times itself against the 900 s budget from plan §2.
-- ADR 0013 (the whole M3 design) and ADR 0014 (amendment: a passing release holds at 25% instead of being retracted, so the GO branch is observably different from a rollback; `demo-hold` proves it).
-- README.md / docs/ARCHITECTURE.md updated: M3 status, the new commands, a "Release controller" section, corrected L0 plane table (Zot still empty — M3 never touches the registry).
+- Six PR gates, one per file, built as five independent parallel `gate-writer` jobs in isolated worktrees (`isolation: worktree`, now the agent's default) with disjoint file lists, then cherry-picked onto `main`: `gates/risk.sh` + `core/risk.py` + `ci/core-tests.sh` (rules-based classifier, five signals — migrations/auth/payments/platform → high, size ≥ 200 lines → medium, else low; `risk`'s own NO-GO means "could not classify," never "found something bad" — a genuinely different contract from every other gate), `gates/deps.sh` (osv-scanner over both lockfiles against the live OSV database), `gates/sast.sh` (bandit over `app/backend/meetups/` only), `gates/test.sh` (the existing `./go test` command, unchanged, as a gate), `gates/mutation.sh` + `app/backend/tests/mutation/{cosmic-ray.toml,run.sh,score.py}` (cosmic-ray scored on the PR's changed lines only, via `git diff -U0`, against a measured threshold).
+- Six fixture PRs prove every gate in both directions: `honest-fix` and `fake-test` both resolve ticket 0001's geocoder 404→500 bug (404 now means "no result," mirroring Nominatim's `200 []`) — the first with a real test (all GO, low risk, auto-merge), the second with the same fix but a test that structurally cannot reach the new lines (mutation NO-GO, 4/8 killed); `migration` adds an additive column (every gate GO, risk high, decision review, "nothing to mutate" under the line-scoped filter); `sast-finding`, `vulnerable-dep`, `failing-test` each trip exactly one gate. Fixtures are `git format-patch` files under `gates/fixtures/<name>/`, applied by `make demo-gates` in `mktemp -d` worktrees under a fixed `lights-out-fixtures` identity, never merged.
+- `Makefile`: `GATES`/`GATES_OUT`, `gates BASE= HEAD=` (cheap-to-expensive, stops at the first NO-GO, writes `$(GATES_OUT)/verdict.env` in the exact shape `expect` files use), `demo-gates` (the acceptance command), `mutation-baseline` (a measurement, not a gate). `go`: the three new targets join the engine-socket list. `.github/workflows/ci.yml`: a `gates` job, GitHub-only, same shape as `engine-compat`.
+- `policy/merge.env`: the risk signals, size threshold, auto-merge levels, and the measured mutation baseline (`./go mutation-baseline`, commit `a05bc82`, cosmic-ray 8.7.0: 205 mutants, 157 killed, 48 survived, **score 0.7658536585365854**, 792s wall time), each with a provenance comment per CLAUDE.md's rule that a threshold must say where it comes from. Threshold = baseline − 0.10 margin = **0.6658536585365854**, well clear of the 0.80 contingency line, and it cleanly separates the two fixtures' real scores (honest-fix 0.875, fake-test 0.500).
+- `app/backend/pyproject.toml`/`uv.lock`: `cosmic-ray==8.7.0`, `bandit==1.9.4` join the dev group (resolved with workbench's pinned `uv`); `workbench/Containerfile`: `osv-scanner v2.6.0`, pinned by per-arch sha256 verified against the release's own `SHA256SUMS` before pinning. `app/backend/Containerfile`: `uv sync --frozen` → `uv sync --locked` in both stages (a stale lock now fails the build; replaces the `uv lock --check` gate ADR 0010 §6 once planned). `ci/lib.sh`: `require_range`, the shared `BASE`/`HEAD` guard every gate calls first. `ci/shell.sh`: shellchecks `app/backend/tests/mutation/run.sh`, which no existing glob covered.
+- ADR 0015 (the whole M4 design — tools, the six gates, the fixture mechanism, why gates stay out of `./go demo`, the Gitea-runner-socket decision for M5) and ADR 0016 (the risk model, rules not points, `policy/merge.env`'s shape).
 
 ## Found while building, contradicting or missing from docs/PLAN.md
 
-1. **A real, live bug, not a plan issue but worth more than most of the code this milestone**: editing `app/flags/flags.json` through the ordinary write-temp-file-then-`mv` pattern (same directory or not) intermittently left flagd serving a stale evaluation — sometimes for minutes, with no error anywhere — after the file was demonstrably correct on disk. Reproduced and root-caused: the file is bind-mounted separately into two containers (workbench, which writes it, and flagd, which reads it); a `mv`/`rename(2)` gives the path a new inode, and flagd's fileinfo poller, seen through the *other* container's mount of the same host directory, doesn't reliably notice. An in-place truncate+write (capture the new content in a shell variable, then a plain `>` redirect onto the same path, same inode throughout) reproduced correctly every time in the same setup and is what `kill-switch`/`freeze`/`unfreeze`/`demo-hold`'s restore all do now (see the comment above the `kill-switch` target in `Makefile` for the full writeup). This is a real platform gotcha for any bind-mounted file two containers both touch, not specific to flagd's JSON format — worth remembering the day Firestore's or Pub/Sub's local state needs the same kind of live edit.
-2. **Decision, not a debt: the authoritative cold-to-900s number comes from M9's nightly, not from a developer's laptop.** This session's host carries roughly fifty images from unrelated projects sharing the same podman daemon, and a blanket `podman rmi` of postgres/python/node/etc. to reproduce M2's cold-measurement convention was correctly refused by the harness's own irreversible-deletion guard — a shared dev machine is never going to be a trustworthy clean-room anyway, since what it measures next week depends on who else used it meanwhile. Plan §7 M9 already schedules a nightly that runs the golden path on a disposable, use-once project; that run, once it exists, is where the 900 s budget gets checked for real, every night, on infrastructure nobody else's work can contaminate. Until M9: `./go demo` measured **85 s warm** today; M2's recorded cold baseline was **258 s**; **≈340 s** is the standing estimate against the 900 s budget — arithmetic on two measurements, stated as such, not a substitute for the nightly's eventual real number.
-3. **A real test regression, fixed, not a plan issue**: `app/backend/tests/test_flags.py`'s `test_full_meetup_registration_is_501_when_flag_forced_on` forced the flag by flipping `defaultVariant` alone, which M2-and-earlier's flags.json made sufficient. M3's `targeting` block always resolves to a variant name, so it permanently shadows `defaultVariant` for `waitlist` the moment it's present, and the test's app runs with no `APP_VERSION` (defaults to `"dev"`, which the targeting rule never matches) — the flag could no longer be forced on. Fixed by having the test add/remove the same `targeting` block it now needs to work around (mirroring `make kill-switch`'s own transform), restoring from a snapshot of the file taken at collection time so a failed run never leaves anything behind. `./go test` never touches the host's `app/flags/flags.json` at all (the test fixture works from a build-time copy inside the image), so this had zero interaction with finding 1.
-4. **`docs/PLAN.md` §7 M3's "fatto quando" named only the rollback branch** (`./go demo-rollback` … fails … rolls back). `demo-hold` — proving the opposite branch, that a passing release is *not* silently rolled back — was added this session at the user's explicit request during plan review, not because the plan text asked for it: "a verify that always fails would still pass demo-rollback, and that gate would be broken." Corrected in place: plan §7 M3 now names both commands, with a dated note pointing at ADR 0014, on the same standing instruction as every other correction in this file (the plan must describe what the repo does).
-5. Zot's status line, corrected again: M2 said "empty until M3," M3 doesn't touch it either — nothing is built or pushed anywhere in the release flow, `backend-canary` reuses `backend`'s already-built image tag. Now "empty until a merged PR is built into an image (M5 at the earliest)."
+1. **Plan §7 M4 said "integration con testcontainers"; ADR 0015 keeps compose Postgres (ADR 0010) instead, by explicit owner decision during framing**, not a silent substitution: ADR 0010 already runs every test against a real `backend-test`/Postgres compose service, identically in a laptop and CI, and testcontainers-python would add a dependency plus an engine socket inside the test container for the exact same database. `docs/PLAN.md` §7 M4 now carries a dated note; ADR 0004's Testcontainers-rootless facts are marked void.
+2. **A real, load-bearing test-design bug in my own fixture instructions, found and fixed by the `mutation` job, not by me**: the first draft of the `honest-fix`/`fake-test` contract example used a 404 body of `[]` (empty), which made the buggy and the fixed code produce the *same* observable result for the new test, so the mutation the fixture was supposed to catch survived as a false equivalent regardless of test quality. Fixed by giving the 404 example a body with fake, wrong coordinates, so a removed or weakened 404 check now observably returns the wrong numbers. Worth remembering for M5: a contract example with an empty/degenerate body is a weak fixture for testing whether client code actually reads the response.
+3. **A real cosmic-ray 8.7.0 API detail not in its own advertised quickstart**: `cr-filter-operators` must be invoked explicitly — `cosmic-ray init` generates work items for every registered operator regardless of the `[cosmic-ray.filters.operators-filter]` config section; the exclusion (dropping the `Is`/`IsNot` comparison-operator family) only takes effect once `cr-filter-operators` actually runs against the session file and marks the matching items `SKIPPED`. Confirmed by reading `cosmic_ray/commands/init.py` in the installed 8.7.0 source, not guessed. `tests/mutation/run.sh`'s comment carries the citation.
+4. **A real environment limitation of this session's own build methodology, found independently by three of the five parallel jobs, not a defect in the shipped repo**: a Claude-Code agent-isolation worktree's `.git` is a *file* pointing at the primary checkout's `.git/worktrees/<id>/`, outside the single directory `./go`'s `-v $here:$here` mounts into the container — so any gate that calls git from inside such a worktree (`require_range`'s `git merge-base`, `ci/secrets.sh`'s history scan) fails with `fatal: not a git repository`, and `ci/secrets.sh`'s existing "empty repository, no commits yet" fallback silently degrades to a working-tree-only scan instead of surfacing the real cause. This is invisible to every real user: a normal clone is a full checkout, not a linked worktree, and `demo-gates`'s own nested `git worktree add` (created *inside* one single container invocation, entirely within the one mounted directory) does not hit it — confirmed directly, `./go demo-gates` ran clean from this primary checkout. Not fixed, because there is nothing in the shipped repo to fix; noted here because the next milestone's own development will likely reuse `isolation: worktree` and will want to know the shape of the false alarm in advance.
+5. **A real shellcheck finding, caught and fixed by the `test` job**: `name=test` in `gates/test.sh` trips SC2209 ("test" is also a POSIX command name); fixed with a one-line `# shellcheck disable=SC2209`, matching the pattern already used in `ci/lib.sh` for a different warning. The gate that can fail, per the milestone's own rule, includes the tooling that lints the gate.
+6. **The dependency scan is a deliberate time bomb, not a bug when it fires**: `gates/deps.sh` queries the live `api.osv.dev` database; the same commit's lockfiles can go from GO to NO-GO overnight with no code change, when a new advisory is published. The fix, when that happens for real, is a version bump or a narrow `osv-scanner.toml` `[[IgnoredVulns]]` entry with an `id` and a `reason` — no such file exists yet because `main`'s two lockfiles are clean today (verified: `osv-scanner scan source` on both returns "No issues found").
+7. **The `migration` fixture leaves a persistent side effect in the shared `postgres-data` named volume**: `registrations.waitlisted` (the additive column) stays there after `demo-gates` runs, across every subsequent `./go test`/`./go up`/`./go demo-gates` on the same machine, because that volume is not scoped to any one git worktree. Harmless to every current test (explicit column lists, never `SELECT *`) and to the golden rule (a fresh clone starts a fresh volume); named in the README and here so nobody mistakes it for a leak.
 
-## First thing M4 should look at
+## First thing M5 should look at
 
-- `tickets/0001.md` is explicitly labelled for M4 (the geocoder 404→500 contract test) — the natural first item, small and self-contained, and a real candidate for exercising the mutation-testing/risk-scoring gates M4 builds on itself.
-- `verify/slo.sh`'s thresholds (`ERROR_RATE_MAX_DELTA=0.01`, `LATENCY_P95_MAX_DELTA=0.25`) are declared decisions, deliberately loose, explicitly **not** SLOs — M4's risk-scoring model should not read them as calibrated numbers, and must not quietly start depending on their exact values (M8 replaces both from L2 measurements).
-- `release-freeze` (a flag, evaluated by `launchpad` before every deploy and shift) is the first policy-shaped gate in the repo. M4's policy-as-code layer will want to know it already exists before inventing a second freeze mechanism.
-- Envoy's admin port (9901) is now open and unauthenticated, same as everything else at L0 — if M4's SAST/dependency scan starts looking at the compose surface area, this is a port that appeared this milestone.
+- **The Gitea runner's engine socket is decided, not deferred**: ADR 0015 §7 names the exact conditions under which it should be mounted the day the first real job needs to run there (the runner is the only service that gets it; jobs run only on refs the workbench user pushed, no fork PRs; the README's trusted-network line gains one sentence). M5's `CodeHost` adapter work should read that section before reinventing the decision.
+- **`gates/fixtures/honest-fix/`'s patch is a ready-made resolution of `tickets/0001.md`**: real fix, real test, every gate GO. M5's first worker task (already the ticket's own suggestion) can apply it directly or use it as a reference, rather than re-deriving the same 404-handling decision from scratch.
+- **`RISK_HIGH_PLATFORM` in `policy/merge.env` marks every one of M5's own future commits to `roles/`, `.claude/agents/`, or the harness itself as high-risk *only if* those paths get added to the glob list later** — they are not covered today (the list is `gates/ ci/ verify/ core/ policy/ .github/ go Makefile workbench/ adapters/`), which M5 should decide on purpose, not by accident, once `roles/` exists.
+- **`app/backend/tests/mutation/cosmic-ray.toml`'s `timeout` (85s) was measured against the M4 suite's clean-run time (8.45s × 10)**: if M5's worker adds enough tests to change that meaningfully, the timeout is a one-line, provenance-stated edit, not a silent drift.
