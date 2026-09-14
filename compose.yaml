@@ -5,6 +5,9 @@
 # it. Vendor config lives in adapters/<name>/ and is copied into images at
 # build; the only bind mount is app/flags/ into flagd. Run through ./go:
 # WORKBENCH_IMAGE is set there and the runner image is built from it.
+# From M3 (docs/adr/0013): backend-canary is the same image as backend,
+# a second revision the release controller starts on demand (profile
+# "canary", not part of `./go up`).
 name: lights-out
 
 services:
@@ -34,7 +37,11 @@ services:
       context: ./app
       dockerfile: fakes/geocoder/Containerfile
 
+  # image: tags the build so backend-canary (M3) can start a container from
+  # exactly this image with no second build (docs/adr/0013 §1: "same image
+  # and build as backend").
   backend:
+    image: lights-out-backend
     build:
       context: ./app
       dockerfile: backend/Containerfile
@@ -54,6 +61,31 @@ services:
       FLAGD_SYNC_PORT: "8015"
       APP_VERSION: 0.1.0-m2
 
+  # The canary revision (docs/adr/0013 §1): same image as backend, started
+  # only by adapters/envoy-canary/deploy.sh, never by `./go up`. No `build:`
+  # section: it reuses the `backend` image tag above, so a deploy never
+  # races a build. The `:-` default (not `:?`) keeps `docker-compose config
+  # -q` (ci-compose) clean with CANARY_VERSION unset; a drift between what
+  # the caller asked for and this default is caught by deploy.sh's own
+  # healthz check, not by compose failing to start.
+  backend-canary:
+    image: lights-out-backend
+    profiles: ["canary"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      geocoder:
+        condition: service_started
+      flagd:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups
+      GEOCODER_URL: http://geocoder:8001
+      FLAGD_RESOLVER: in-process
+      FLAGD_HOST: flagd
+      FLAGD_SYNC_PORT: "8015"
+      APP_VERSION: ${CANARY_VERSION:-0.2.0-waitlist}
+
   backend-test:
     build:
       context: ./app
@@ -68,10 +100,12 @@ services:
 
   # --- the plane (M2) ---
 
-  # The edge: the only way into the app. stable=100, canary=0 at M2.
-  # user: the image entrypoint, as root, chowns /dev/stdout to `envoy` and
-  # dies with set -e when rootless podman refuses; started as envoy it
-  # just execs.
+  # The edge: the only way into the app. stable=100, canary=0 by default,
+  # moved through the admin API by adapters/envoy-canary/shift.sh (M3,
+  # docs/adr/0013 §3). user: the image entrypoint, as root, chowns
+  # /dev/stdout to `envoy` and dies with set -e when rootless podman
+  # refuses; started as envoy it just execs. 9901 (admin) is unauthenticated
+  # like every other L0 port; the trusted-network line in the README covers it.
   envoy:
     build:
       context: ./adapters/envoy-canary
@@ -79,6 +113,7 @@ services:
     user: envoy
     ports:
       - "8080:8080"
+      - "9901:9901"
     depends_on:
       - backend
 

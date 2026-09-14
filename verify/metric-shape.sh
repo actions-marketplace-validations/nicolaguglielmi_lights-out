@@ -56,16 +56,18 @@ try:
             fail(f"query {qname} has no query line")
         queries[qname] = qtext
 
-    expected_names = {"error_rate", "latency_p95"}
+    expected_names = {"traffic", "error_rate", "latency_p95"}
     if set(queries) != expected_names:
         fail(
             f"{promql_path} must define exactly {sorted(expected_names)}, "
             f"found {sorted(queries)}"
         )
 
+    TARGET_INFO = "target_info"
     metric_re = re.compile(r"\b([a-zA-Z_:][a-zA-Z0-9_:]*)\s*(?=[{\[])")
     label_re = re.compile(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*=~?")
     by_re = re.compile(r"by\s*\(([^)]*)\)")
+    target_info_re = re.compile(r"\btarget_info\b")
 
     with open(metrics_path) as f:
         metrics_text = f.read()
@@ -76,13 +78,42 @@ try:
         return [ln for ln in metrics_lines if pat.match(ln)]
 
     for qname, qtext in queries.items():
+        # target_info never sits next to "{" or "[" in these queries (it is
+        # joined bare, via `group_left (...) target_info`), so metric_re
+        # cannot see it; the bare word itself is the reference (docs/adr/0013
+        # §2). on (...) and group_left (...) arguments (job, instance,
+        # service_version) are never extracted as labels: label_re needs a
+        # trailing "=" and by_re needs a leading "by", and neither pattern
+        # matches inside on (...) or group_left (...).
         q_metrics = set(metric_re.findall(qtext))
         if not any(m.startswith("http_") for m in q_metrics):
             fail(f"query {qname} references no http_-prefixed metric")
 
+        references_target_info = bool(target_info_re.search(qtext))
+
         q_labels = set(label_re.findall(qtext))
         for group in by_re.findall(qtext):
             q_labels |= {g.strip() for g in group.split(",") if g.strip()}
+
+        # service_version is stamped by the target_info join (docs/adr/0013
+        # §2): the http_ families carry no version label, so this one label
+        # resolves against target_info, never against the http_ family the
+        # same query also references.
+        if "service_version" in q_labels:
+            q_labels = q_labels - {"service_version"}
+            if not references_target_info:
+                fail(f"query {qname} asserts service_version without referencing target_info")
+            flines = family_lines(TARGET_INFO)
+            if not flines:
+                fail(f"metric {TARGET_INFO} (from query {qname}) not found in /metrics scrape")
+            if not any('service_version="' in ln for ln in flines):
+                fail(
+                    f"label service_version not found on metric {TARGET_INFO} "
+                    f"(from query {qname}) in /metrics scrape"
+                )
+        elif references_target_info:
+            if not family_lines(TARGET_INFO):
+                fail(f"metric {TARGET_INFO} (from query {qname}) not found in /metrics scrape")
 
         for metric in q_metrics:
             flines = family_lines(metric)

@@ -7,6 +7,17 @@
         "on": true,
         "off": false
       },
+      "defaultVariant": "off",
+      "targeting": {
+        "if": [{ "==": [{ "var": "version" }, "0.2.0-waitlist"] }, "on", "off"]
+      }
+    },
+    "release-freeze": {
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
       "defaultVariant": "off"
     }
   }

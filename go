@@ -10,6 +10,8 @@
 #   ./go up             start the L0 plane in compose and wait for it
 #   ./go smoke          create a meetup through Envoy
 #   ./go demo           the demo, as far as the current milestone takes it
+#   ./go demo-rollback  release a failing canary, prove it rolls back on its own
+#   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
@@ -28,6 +30,10 @@ containerfile="$here/workbench/Containerfile"
 image="localhost/lights-out-workbench:$(cksum "$containerfile" | cut -d' ' -f1)"
 cmd="${1:-help}"
 [ $# -gt 0 ] && shift
+
+# Captured here, before engine-compat, where demo's cold pulls happen, so
+# the elapsed-time verdict on demo (docs/adr/0013 §7) covers them.
+LIGHTS_OUT_T0=$(date +%s)
 
 die() { printf 'go: %s\n' "$*" >&2; exit 1; }
 
@@ -80,7 +86,7 @@ fi
 # control of the engine; the README says so.
 socket_flags=""
 case "$cmd" in
-  up|down|test|demo|demo-rollback|e2e|shell)
+  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
@@ -104,6 +110,7 @@ run() {
   exec "$engine" run --rm --init $tty \
     -v "$here:$here$label" -w "$here" \
     -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
+    -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" \
     $engine_flags $socket_flags \
     "$image" "$@"
 }
