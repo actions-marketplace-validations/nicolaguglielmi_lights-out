@@ -18,6 +18,9 @@ jobs:
 
   # Host-side gate (docs/adr/0004 point 4, docs/adr/0012 §5): needs a real
   # engine on the runner, which Gitea Actions' job containers do not have.
+  # docs/adr/0013 §7: runs the whole M3 path (./go demo, engine-compat then
+  # the cold-to-rollback demo), so the canonical stranger — a fresh runner —
+  # measures it on every push.
   engine-compat:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
@@ -25,6 +28,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: ./go engine-compat
+      - run: ./go demo
         env:
           CONTAINER_ENGINE: docker

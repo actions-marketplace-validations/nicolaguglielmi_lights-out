@@ -1,9 +1,16 @@
 # 5s scrapes so a rate() window of a few tens of seconds holds several
 # samples inside the demo's verify window (docs/adr/0012 §8: a decision).
+# One job, two targets from M3 (docs/adr/0013 §1): stable and canary are
+# the same service at two revisions, which is what Managed Prometheus sees
+# on Cloud Run; verify/slo.promql tells them apart by `service_version`
+# through the `target_info` join, not by `job`. backend-canary answers only
+# once the release controller starts it (compose profile "canary"); until
+# then this target is simply down, which adapters/prometheus/ready.sh
+# already tolerates (it matches on any target reporting `up == 1`).
 global:
   scrape_interval: 5s
 
 scrape_configs:
   - job_name: backend
     static_configs:
-      - targets: ["backend:8000"]
+      - targets: ["backend:8000", "backend-canary:8000"]

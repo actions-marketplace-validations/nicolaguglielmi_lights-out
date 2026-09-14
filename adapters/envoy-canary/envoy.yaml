@@ -1,7 +1,19 @@
-# The L0 canary edge (docs/adr/0012 §4). One listener, one route, two
-# weighted clusters. At M2 `stable` takes 100% and `canary` is a static
-# cluster with no endpoints: nothing is faked and nothing resolves. M3
-# rewrites the weights and gives `canary` its upstream.
+# The L0 canary edge (docs/adr/0012 §4, amended by docs/adr/0013 §3). One
+# listener, one route, two weighted clusters. Weights read from the admin
+# runtime layer first (runtime_key_prefix "weights"), the values below only
+# as the default when no admin override exists yet — so a fresh plane still
+# starts 100/0. adapters/envoy-canary/{shift,rollback}.sh move traffic
+# through POST /runtime_modify; file-based xDS is rejected (no inotify on
+# podman machine's virtiofs, docs/adr/0012 context).
+admin:
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }
+layered_runtime:
+  layers:
+    - name: static_layer
+      static_layer: {}
+    - name: admin_layer
+      admin_layer: {}
 static_resources:
   listeners:
     - name: edge
@@ -26,6 +38,7 @@ static_resources:
                         - match: { prefix: "/" }
                           route:
                             weighted_clusters:
+                              runtime_key_prefix: weights
                               clusters:
                                 - name: stable
                                   weight: 100
@@ -42,9 +55,18 @@ static_resources:
               - endpoint:
                   address:
                     socket_address: { address: backend, port_value: 8000 }
+    # STRICT_DNS against a service that only exists in compose profile
+    # "canary" (docs/adr/0013 §1): between `./go up` and the first deploy,
+    # and after every rollback, DNS resolution fails every ~5s and Envoy
+    # logs it; the cluster has no endpoints until backend-canary resolves,
+    # which is correct — weight and endpoints are independent knobs here.
     - name: canary
-      type: STATIC
+      type: STRICT_DNS
       connect_timeout: 1s
       load_assignment:
         cluster_name: canary
-        endpoints: []
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: backend-canary, port_value: 8000 }
