@@ -22,7 +22,7 @@ Signup creates a `users(id, email unique, password_hash)` row. Passwords are has
 
 ## External dependency: geocoder
 
-The `POST /api/meetups` route geocodes the venue name through `GET {GEOCODER_URL}/search?q=<venue>&format=jsonv2&limit=1` and stores `venue_lat`/`venue_lon`. Empty result yields both `null`, timeout or 5xx yields 502 with `{"detail":"geocoder unavailable"}`. The shape is Nominatim-compatible.
+The `POST /api/meetups` route geocodes the venue name through `GET {GEOCODER_URL}/search?q=<venue>&format=jsonv2&limit=1` and stores `venue_lat`/`venue_lon`. Empty result yields both `null`, timeout or 5xx yields 502 with `{"detail":"geocoder unavailable"}`. The shape is Nominatim-compatible. When a venue is not in the contract, the fake geocoder returns 404 and the backend answers 500, not 502.
 
 At L0, the fake geocoder is a Python stdlib `http.server` in compose, no dependencies. The contract is `app/contracts/geocoder/examples.json`: a list of `{request: {q}, response: {status, body}}` pairs, the executable spec for what the app can call. Both the fake and the client (backend) are tested against it.
 
@@ -41,7 +41,7 @@ Metrics are OTel on Prometheus text format, exported by `GET /metrics`. The imag
 
 The flag `waitlist` (boolean, default off): when a meetup is full and the flag is on, `POST /registrations` answers `501 {"detail":"waitlist is not implemented; see the golden path ticket"}`. This is a declared missing feature (not a mock) that will become real at M3. When the flag is off, full meetups return 409 as usual.
 
-Flags come from OpenFeature and flagd; at M1 the resolver reads from a file (`app/flags/flags.json` in flagd format). At M2 it switches to in-process.
+Flags come from OpenFeature and flagd. At M2 the backend evaluates flags in-process (`FLAGD_RESOLVER=in-process`), synced from the flagd container, which serves `app/flags/flags.json` bind-mounted from the repo. Tests use file mode.
 
 ## Testing
 

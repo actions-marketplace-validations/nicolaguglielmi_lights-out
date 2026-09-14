@@ -6,14 +6,14 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M1 of 10. What runs today:
+Milestone M2 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
 | ci | M0 | ✓ |
-| engine-compat | M2 | NOT YET |
-| up | M1 | ✓ app only, plane at M2 |
-| smoke | M1 | ✓ healthz ok |
+| engine-compat | M2 | ✓ host-side, selected engine |
+| up | M2 | ✓ L0 plane, 8 services beside the app |
+| smoke | M2 | ✓ a meetup created through Envoy |
 | verify | M1 | ✓ metric shape only, evaluation at M3 |
 | deploy | M3 | NOT YET |
 | rollback | M3 | NOT YET |
@@ -23,7 +23,7 @@ Milestone M1 of 10. What runs today:
 |---|---|
 | **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
-Until M3, a green `./go demo` means the repo is coherent, not that the platform works.
+Until M3, a green `./go demo` means the repo is coherent and the L0 plane answers; canary and rollback are not real yet.
 
 ## Quick start
 
@@ -40,13 +40,18 @@ cd lights-out
 Then explore:
 
 ```sh
-./go help           # list the targets
-./go ci             # run repo self-checks
+./go up             # start the L0 plane and wait for it
+./go smoke          # create a meetup through Envoy
+./go engine-compat  # host-side engine gate: versions, then up and smoke
+./go down           # stop the plane
+./go test           # run backend tests
+./go verify         # check the metric shape
+./go help           # list all targets
 ./go shell          # interactive shell inside workbench
 ./go clean          # remove the workbench image
 ```
 
-The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The image includes gcloud and terraform, although nothing uses them before M8.
+The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulls about 840 MB (amd64) / 720 MB (arm64) of images on the first run, the emulators image being more than half (measured 2026-09-14, ADR 0012). The image includes gcloud and terraform, although nothing uses them before M8.
 
 ## Levels
 
@@ -73,11 +78,31 @@ Only L0 exists today. Levels L1–L3 describe the plan.
 
 ## The app
 
-A meetup RSVP platform: FastAPI backend (`app/backend/`), Postgres database, React frontend (`app/frontend/`). After `./go up` it answers at `http://localhost:8080` on the host or `http://host.containers.internal:8080` from inside workbench. Three auth-free endpoints list meetups, two auth routes signup and login, one create route, one RSVP route. Geocodes venues through a fake `GEOCODER_URL`. Feature-flagged partial waitlist (evaluates but returns 501 at M1).
+A meetup RSVP platform: FastAPI backend (`app/backend/`), Postgres database, React frontend (`app/frontend/`). After `./go up` it answers behind Envoy at `http://localhost:8080` on the host or `http://host.containers.internal:8080` from inside workbench. Three auth-free endpoints list meetups, two auth routes signup and login, one create route, one RSVP route. Geocodes venues through a fake `GEOCODER_URL`. Feature-flagged partial waitlist (evaluates but returns 501 at M1).
 
 Test and verify commands:
-- `./go test` — Run the backend test suite against compose Postgres (pytest, 25 tests at M1).
-- `./go verify` — Check `verify/slo.promql` against the live app (metric shape only; evaluation arrives with Prometheus at M2).
+- `./go test` — Run the backend test suite against compose Postgres (pytest, 25 tests).
+- `./go verify` — Check `verify/slo.promql` against the live app (metric shape only; evaluation at M3).
+
+## The L0 plane
+
+Eight services run beside the app in `compose.yaml`. `./go up` returns only after each adapter's `adapters/<name>/ready.sh` answered.
+
+| Service | Host port | What |
+|---|---|---|
+| Envoy | 8080 | The app's only entrance; `stable` 100% → backend, `canary` 0% with no upstream until M3 |
+| Gitea | 3000 | Rootless, sqlite, no users yet; the Actions runner registers on start in host mode |
+| Prometheus | 9090 | Scrapes the backend every 5 s |
+| Zot | 5050 | OCI registry, empty until M3; 5000 is macOS AirPlay |
+| flagd | 8016 | OFREP; serves `app/flags/flags.json`, the one bind mount; edit the file and the flag flips within seconds |
+| Pub/Sub emulator | 8085 | Unused until M6 |
+| Firestore emulator | 8086 | Unused until M6 |
+
+`./go smoke` signs up, logs in and creates a meetup through Envoy.
+
+**L0 assumes a trusted network**: every port is unauthenticated on every interface, the runner registration token in compose.yaml is public by design, and anyone on the LAN can register a runner or push to Zot.
+
+At M2 the canary cluster has no members and Envoy sends 100% to stable: nothing is faked. The runner is registered but nothing is pushed to Gitea and no workflow runs until M5.
 
 ## How it runs
 
@@ -89,7 +114,7 @@ Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env`
 
 Targets `up`, `down`, `test`, `demo`, `demo-rollback`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images.
 
-The `ci` target never gets the socket.
+The `ci` target never gets the socket. `engine-compat` is the one gate that runs on the host itself, before workbench starts: `./go engine-compat` and `./go demo` both begin with `ci/engine-compat.sh`.
 
 ### Rootless notes
 
@@ -106,12 +131,12 @@ This is the same socket path for the Gitea runner and Testcontainers.
 Rootless podman usage:
 
 - All published ports must be above 1024.
-- Bind-mount volumes get `:z` when SELinux is present (check `/sys/fs/selinux`). `./go` adds it automatically.
+- Bind mounts get no `:z` (relabelling fails on podman machine's virtiofs, podman #26465/#21269); the one bind-mounted service (flagd) uses `security_opt: label=disable`.
 - Use `host.containers.internal` instead of `host.docker.internal`.
 - Prefer compose network aliases over any `host.*.internal` name.
 - Testcontainers rootless needs `TESTCONTAINERS_RYUK_DISABLED=true` (verify at M4).
 
-Only the docker-compose features proven by `ci-engine-compat` on both podman and docker are allowed.
+Only the docker-compose features proven by `./go engine-compat` are allowed; proven at M2 on podman: `build` with `args`, `depends_on` long syntax, `profiles`, `ports`, `user`, `restart`, `security_opt`, a read-only bind mount.
 
 ## Repository
 
@@ -120,7 +145,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, down, test, verify, demo-rollback, e2e
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, e2e
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -145,7 +170,8 @@ lights-out/
     readme.sh               # every ./go X in README exists
     gitea-compat.sh         # workflow uses only what Gitea Actions supports
     profiles.sh             # profiles are plain KEY=value, same keys
-    engine-compat.sh        # host side, podman and docker separately (joins ci at M2)
+    compose.sh              # docker-compose config -q
+    engine-compat.sh        # host side, runs first in ./go (ADR 0012)
 
   docs/
     ARCHITECTURE.md         # ports and adapters
@@ -162,6 +188,7 @@ lights-out/
       0009-frontend-built-into-backend-image.md
       0010-compose-layout-and-app-tests.md
       0011-slo-queries-and-metric-shape-gate-at-m1.md
+      0012-l0-plane-layout-runner-envoy-readiness.md
 
   verify/                   # SLO verification; shape-checked at M1, evaluated at M3
     slo.promql               # error_rate and latency_p95, the production queries
@@ -173,15 +200,23 @@ lights-out/
     fakes/geocoder/          # the external-service dependency, stdlib only
     contracts/geocoder/      # the fake's committed example-pair contract
     flags/                   # flagd file-resolver flag definitions
+    smoke.sh                 # signup, login, meetup through Envoy
 
-  compose.yaml               # the local plane; app services at M1, rest arrives at M2
+  compose.yaml               # the L0 plane: app + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
+
+  adapters/                 # one directory per adapter named in profiles/*.env
+    envoy-canary/           # Containerfile, envoy.yaml, ready.sh
+    prometheus/             # Containerfile, prometheus.yml, ready.sh
+    gitea/                  # ready.sh, runner/Containerfile, runner/config.yaml
+    flagd/                  # ready.sh
+    zot/                    # ready.sh
+    pubsub-emulator/        # ready.sh
+    firestore-emulator/     # ready.sh
 
   core/                     # from M3: vendor-free core
-  adapters/                 # from M3: one directory per adapter
   roles/                    # from M5: agent role definitions
   policy/                   # from M4: policy-as-code
   gates/                    # from M4: PR gates, identical at every level
-  delivery/                 # from M3: deployment orchestration
   design/                   # from M10: Stitch artifacts
   infra/                    # from M8: Terraform for GCP
   fixtures/                 # from M5: recorded agent responses
