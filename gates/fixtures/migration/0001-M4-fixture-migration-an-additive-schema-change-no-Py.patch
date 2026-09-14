@@ -1,0 +1,32 @@
+From e0ccaeb107651f97ef3a9a6170c7cf11d7f98d90 Mon Sep 17 00:00:00 2001
+From: Nicola <nicola.guglielmi@gmail.com>
+Date: Tue, 15 Sep 2026 00:11:05 +0200
+Subject: [PATCH] =?UTF-8?q?[M4]=20fixture:=20migration=20=E2=80=94=20an=20?=
+ =?UTF-8?q?additive=20schema=20change,=20no=20Python?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+app/backend/migrations/0004_fixture_registrations_waitlisted.sql adds
+registrations.waitlisted, additive and backward-compatible (docs/adr/0008):
+no existing test does SELECT * on registrations, so ./go test is
+unaffected. Source for gates/fixtures/migration (docs/adr/0015 §6): a
+migration-only PR must classify high risk and not auto-merge.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SyvjibsMaMMeqKhNxadYFz
+---
+ app/backend/migrations/0004_fixture_registrations_waitlisted.sql | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 app/backend/migrations/0004_fixture_registrations_waitlisted.sql
+
+diff --git a/app/backend/migrations/0004_fixture_registrations_waitlisted.sql b/app/backend/migrations/0004_fixture_registrations_waitlisted.sql
+new file mode 100644
+index 0000000..209d500
+--- /dev/null
++++ b/app/backend/migrations/0004_fixture_registrations_waitlisted.sql
+@@ -0,0 +1 @@
++ALTER TABLE registrations ADD COLUMN waitlisted boolean NOT NULL DEFAULT false;
+-- 
+2.50.1 (Apple Git-155)
+
