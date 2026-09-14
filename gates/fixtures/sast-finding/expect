@@ -1,0 +1,4 @@
+GATES=NO-GO
+FAILED=sast
+RISK_LEVEL=low
+RISK_DECISION=auto-merge

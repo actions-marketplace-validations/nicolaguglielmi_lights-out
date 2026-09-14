@@ -1,0 +1,36 @@
+From 4d53827b352c3c8e5252350d7b04960a53d32a80 Mon Sep 17 00:00:00 2001
+From: Nicola <nicola.guglielmi@gmail.com>
+Date: Tue, 15 Sep 2026 00:05:00 +0200
+Subject: [PATCH] =?UTF-8?q?[M4]=20fixture:=20sast-finding=20=E2=80=94=20on?=
+ =?UTF-8?q?e=20bandit=20finding,=20never=20invoked?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+An unused module-level helper calling eval() on a string argument
+(bandit B307). Never called, so it changes no behaviour and breaks no
+test; exists only so gates/sast.sh has a real finding to reject. No
+# nosec: the point is that bandit must catch it.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SyvjibsMaMMeqKhNxadYFz
+---
+ app/backend/meetups/app.py | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/app/backend/meetups/app.py b/app/backend/meetups/app.py
+index 0dd05bc..a883487 100644
+--- a/app/backend/meetups/app.py
++++ b/app/backend/meetups/app.py
+@@ -193,3 +193,8 @@ def metrics_endpoint():
+ 
+ if os.path.isdir(FRONTEND_DIST):
+     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
++
++
++def _fixture_eval_probe(expression: str) -> object:
++    """Unused: exists only to give gates/sast.sh one bandit finding (B307)."""
++    return eval(expression)
+-- 
+2.50.1 (Apple Git-155)
+
