@@ -90,7 +90,13 @@ case "$cmd" in
     fi
     # label=disable: the engine's SELinux (podman machine is Fedora CoreOS)
     # would otherwise deny the container access to the socket.
-    socket_flags="-v $sock:/var/run/docker.sock -e DOCKER_HOST=unix:///var/run/docker.sock --security-opt label=disable" ;;
+    socket_flags="-v $sock:/var/run/docker.sock -e DOCKER_HOST=unix:///var/run/docker.sock --security-opt label=disable"
+    # Under docker the container runs as the host user (see engine_flags),
+    # who reaches the socket through its group; carry that group in.
+    if [ "$engine" = docker ] && [ -S "$sock" ]; then
+      sock_gid=$(stat -c %g "$sock" 2>/dev/null || stat -f %g "$sock")
+      socket_flags="$socket_flags --group-add $sock_gid"
+    fi ;;
 esac
 
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
