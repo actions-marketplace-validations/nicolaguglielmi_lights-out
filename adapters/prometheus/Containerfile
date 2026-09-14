@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Prometheus with its scrape config baked in and checked at build time
+# (docs/adr/0012 §2).
+FROM quay.io/prometheus/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
+COPY prometheus.yml /etc/prometheus/prometheus.yml
+RUN promtool check config /etc/prometheus/prometheus.yml

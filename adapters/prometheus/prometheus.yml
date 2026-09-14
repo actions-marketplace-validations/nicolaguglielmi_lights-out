@@ -1,0 +1,9 @@
+# 5s scrapes so a rate() window of a few tens of seconds holds several
+# samples inside the demo's verify window (docs/adr/0012 §8: a decision).
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: backend
+    static_configs:
+      - targets: ["backend:8000"]

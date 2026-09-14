@@ -1,0 +1,50 @@
+# The L0 canary edge (docs/adr/0012 §4). One listener, one route, two
+# weighted clusters. At M2 `stable` takes 100% and `canary` is a static
+# cluster with no endpoints: nothing is faked and nothing resolves. M3
+# rewrites the weights and gives `canary` its upstream.
+static_resources:
+  listeners:
+    - name: edge
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 8080 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: edge
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: app
+                  virtual_hosts:
+                    - name: app
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/" }
+                          route:
+                            weighted_clusters:
+                              clusters:
+                                - name: stable
+                                  weight: 100
+                                - name: canary
+                                  weight: 0
+  clusters:
+    - name: stable
+      type: STRICT_DNS
+      connect_timeout: 1s
+      load_assignment:
+        cluster_name: stable
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: { address: backend, port_value: 8000 }
+    - name: canary
+      type: STATIC
+      connect_timeout: 1s
+      load_assignment:
+        cluster_name: canary
+        endpoints: []
