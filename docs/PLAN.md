@@ -152,13 +152,13 @@ lights-out/
   workbench/                # Containerfile della toolchain
   ci/                       # self-check del repo
   core/                     # nucleo senza fornitori: modello artefatti, macchina a stati, risk scoring
-  adapters/                 # una cartella per adapter della tabella §4
+  adapters/                 # una cartella per adapter della tabella §4: codice e config del vendor (anche envoy-canary e cloud-deploy)
   roles/                    # un ruolo = una cartella: GEMINI.md, prompt, tool ammessi, skill, hook
     product/ architect/ dev-worker/ test-reviewer/ release/ ops-triage/
   policy/                   # policy-as-code condivisa: cosa serve per mergiare, promuovere, chi tocca cosa
   gates/                    # script dei gate, containerizzati, identici a L0 e L3
   verify/                   # slo.promql e il verify runner
-  delivery/                 # envoy/ e clouddeploy/
+  tickets/                  # i ticket del progetto, uno per file, la sorgente del lavoro a L0 (Tracker=file)
   design/                   # artefatti Stitch committati: tokens, screens, CONTRACT.md
   app/                      # l'applicazione bersaglio
   infra/                    # terraform per L2 e L3
@@ -166,6 +166,8 @@ lights-out/
   e2e/                      # il golden path
   docs/                     # architettura, ADR, guida al talk
 ```
+
+*Correzione 2026-09-14 (M2, ADR 0012):* la prima versione di questo layout aveva anche `delivery/ # envoy/ e clouddeploy/`, che duplicava gli adapter `envoy-canary` e `cloud-deploy` della tabella §4. Vince §4: la config di Envoy sta in `adapters/envoy-canary/`, quella di Cloud Deploy starà in `adapters/cloud-deploy/`, e `delivery/` non esiste. Aggiunta `tickets/`, che il layout non prevedeva.
 
 ---
 

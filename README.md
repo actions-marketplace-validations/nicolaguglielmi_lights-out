@@ -216,6 +216,7 @@ lights-out/
   core/                     # from M3: vendor-free core
   roles/                    # from M5: agent role definitions
   policy/                   # from M4: policy-as-code
+  tickets/                  # project tickets, one per file; 0001 is the first bug found
   gates/                    # from M4: PR gates, identical at every level
   design/                   # from M10: Stitch artifacts
   infra/                    # from M8: Terraform for GCP
