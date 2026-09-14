@@ -48,7 +48,11 @@ sources on 2026-09-14.
    Code does `api.set_provider(FlagdProvider())` and nothing else; the
    resolver comes from the environment. Verified in the provider's
    `config.py`: `FLAGD_RESOLVER` accepts `rpc`, `in-process`, `file`, and
-   `FLAGD_OFFLINE_FLAG_SOURCE_PATH` selects the file (polled every 5 s).
+   `FLAGD_OFFLINE_FLAG_SOURCE_PATH` selects the file. **Correction, M1
+   implementation (2026-09-14):** the file watcher's poll interval is
+   `FLAGD_DEADLINE_MS` (default 500 ms), not a fixed 5 s as first assumed
+   here; verified by reading `openfeature-provider-flagd` 0.5.2's
+   `FileWatcher` source.
    M1 compose sets `FLAGD_RESOLVER=file` and points at
    `app/flags/flags.json` (flagd's own JSON format, `$schema
    https://flagd.dev/schema/v0/flags.json`) copied into the image. M2
