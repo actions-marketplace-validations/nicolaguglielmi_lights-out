@@ -41,6 +41,11 @@ ARG SHELLCHECK_VERSION=0.11.0
 ARG SHELLCHECK_SHA256_AMD64=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
 ARG SHELLCHECK_SHA256_ARM64=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588
 
+# docs/adr/0015 §1: dependency scan for uv.lock and package-lock.json (M4).
+ARG OSV_SCANNER_VERSION=2.6.0
+ARG OSV_SCANNER_SHA256_AMD64=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+ARG OSV_SCANNER_SHA256_ARM64=2c71403eb443d05891c4f268c3ad771cf4f16e5443463fd7851ef8f454d3c7e4
+
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -53,12 +58,12 @@ RUN chmod 0755 /usr/local/bin/fetch
 
 RUN set -eu; \
     case "$TARGETARCH" in \
-      amd64) node_arch=x64;   uv_arch=x86_64;  compose_arch=x86_64;  tf_arch=amd64; gcloud_arch=x86_64; gl_arch=x64;   al_arch=amd64; sc_arch=x86_64; \
+      amd64) node_arch=x64;   uv_arch=x86_64;  compose_arch=x86_64;  tf_arch=amd64; gcloud_arch=x86_64; gl_arch=x64;   al_arch=amd64; sc_arch=x86_64; osv_arch=amd64; \
              NODE_SHA=$NODE_SHA256_AMD64; UV_SHA=$UV_SHA256_AMD64; COMPOSE_SHA=$COMPOSE_SHA256_AMD64; TF_SHA=$TERRAFORM_SHA256_AMD64; \
-             GCLOUD_SHA=$GCLOUD_SHA256_AMD64; GL_SHA=$GITLEAKS_SHA256_AMD64; AL_SHA=$ACTIONLINT_SHA256_AMD64; SC_SHA=$SHELLCHECK_SHA256_AMD64 ;; \
-      arm64) node_arch=arm64; uv_arch=aarch64; compose_arch=aarch64; tf_arch=arm64; gcloud_arch=arm;    gl_arch=arm64; al_arch=arm64; sc_arch=aarch64; \
+             GCLOUD_SHA=$GCLOUD_SHA256_AMD64; GL_SHA=$GITLEAKS_SHA256_AMD64; AL_SHA=$ACTIONLINT_SHA256_AMD64; SC_SHA=$SHELLCHECK_SHA256_AMD64; OSV_SHA=$OSV_SCANNER_SHA256_AMD64 ;; \
+      arm64) node_arch=arm64; uv_arch=aarch64; compose_arch=aarch64; tf_arch=arm64; gcloud_arch=arm;    gl_arch=arm64; al_arch=arm64; sc_arch=aarch64; osv_arch=arm64; \
              NODE_SHA=$NODE_SHA256_ARM64; UV_SHA=$UV_SHA256_ARM64; COMPOSE_SHA=$COMPOSE_SHA256_ARM64; TF_SHA=$TERRAFORM_SHA256_ARM64; \
-             GCLOUD_SHA=$GCLOUD_SHA256_ARM64; GL_SHA=$GITLEAKS_SHA256_ARM64; AL_SHA=$ACTIONLINT_SHA256_ARM64; SC_SHA=$SHELLCHECK_SHA256_ARM64 ;; \
+             GCLOUD_SHA=$GCLOUD_SHA256_ARM64; GL_SHA=$GITLEAKS_SHA256_ARM64; AL_SHA=$ACTIONLINT_SHA256_ARM64; SC_SHA=$SHELLCHECK_SHA256_ARM64; OSV_SHA=$OSV_SCANNER_SHA256_ARM64 ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     cd /tmp; \
@@ -78,6 +83,8 @@ RUN set -eu; \
     tar -xzf actionlint.tar.gz -C /usr/local/bin actionlint; \
     fetch "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.${sc_arch}.tar.xz" "$SC_SHA" shellcheck.tar.xz; \
     tar -xJf shellcheck.tar.xz --strip-components=1 -C /usr/local/bin "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"; \
+    fetch "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_${osv_arch}" "$OSV_SHA" /usr/local/bin/osv-scanner; \
+    chmod 0755 /usr/local/bin/osv-scanner; \
     rm -rf /tmp/*
 
 ENV PATH=/opt/google-cloud-sdk/bin:$PATH \
@@ -88,6 +95,7 @@ ENV PATH=/opt/google-cloud-sdk/bin:$PATH \
     LIGHTS_OUT_WORKBENCH=1
 
 RUN node --version && uv --version && docker-compose version && terraform version \
- && gcloud version && gitleaks version && actionlint -version && shellcheck --version
+ && gcloud version && gitleaks version && actionlint -version && shellcheck --version \
+ && osv-scanner --version
 
 CMD ["make", "help"]
