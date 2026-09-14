@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The geocoder fake: stdlib only, same base image as the backend
+# (docs/adr/0006). Build context is ./app.
+
+FROM docker.io/library/python:3.13-slim-trixie@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285
+WORKDIR /app
+COPY fakes ./fakes
+COPY contracts ./contracts
+ENV GEOCODER_PORT=8001
+EXPOSE 8001
+CMD ["python", "-m", "fakes.geocoder.server"]

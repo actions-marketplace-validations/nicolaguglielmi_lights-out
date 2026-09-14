@@ -1,0 +1,35 @@
+[
+  {
+    "request": { "q": "Milano, Duomo" },
+    "response": {
+      "status": 200,
+      "body": [
+        {
+          "lat": "45.4641",
+          "lon": "9.1919",
+          "display_name": "Duomo di Milano, Milano, Italy"
+        }
+      ]
+    }
+  },
+  {
+    "request": { "q": "Roma, Colosseo" },
+    "response": {
+      "status": 200,
+      "body": [
+        {
+          "lat": "41.8902",
+          "lon": "12.4922",
+          "display_name": "Colosseo, Roma, Italy"
+        }
+      ]
+    }
+  },
+  {
+    "request": { "q": "Nowhere, Atlantis" },
+    "response": {
+      "status": 200,
+      "body": []
+    }
+  }
+]
