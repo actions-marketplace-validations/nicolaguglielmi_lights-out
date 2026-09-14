@@ -20,7 +20,7 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 RUN pip install --no-cache-dir uv==0.12.13
 WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --locked --no-dev
 COPY backend/meetups ./meetups
 COPY backend/migrations ./migrations
 COPY flags/flags.json ./flags/flags.json
@@ -30,7 +30,7 @@ CMD ["uvicorn", "meetups.app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM runtime AS test
 ENV PYTHONPATH=/app
-RUN uv sync --frozen
+RUN uv sync --locked
 COPY fakes ./fakes
 COPY contracts ./contracts
 COPY backend/tests ./tests

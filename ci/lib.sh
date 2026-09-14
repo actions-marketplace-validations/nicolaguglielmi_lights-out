@@ -27,3 +27,22 @@ nogo() {
   done
   exit 1
 }
+
+# require_range: for the M4 PR gates (docs/adr/0015 §2), which judge a git
+# range rather than the working tree. NO-GO in one line, no git call first,
+# if BASE or HEAD is unset — what a cold ci/contract.sh run sees, and what
+# keeps every gates/*.sh instant with no range and no plane. Otherwise sets
+# $base to the merge-base of BASE and HEAD (the PR's own changes, as a code
+# host would show them) and $head to HEAD, for the caller to diff against.
+# Not called by sourcing ci/lib.sh: only gates that need a range call it.
+require_range() {
+  base_ref=${BASE:-}
+  head_ref=${HEAD:-}
+  if [ -z "$base_ref" ] || [ -z "$head_ref" ]; then
+    nogo "BASE and HEAD must both be set"
+  fi
+  base=$(git merge-base "$base_ref" "$head_ref" 2>&1) \
+    || nogo "git merge-base $base_ref $head_ref failed" "$base"
+  # shellcheck disable=SC2034 # head is consumed by the sourcing gate
+  head=$head_ref
+}

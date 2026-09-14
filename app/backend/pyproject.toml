@@ -17,6 +17,8 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest==9.1.1",
+  "cosmic-ray==8.7.0",
+  "bandit==1.9.4",
 ]
 
 [build-system]
