@@ -6,7 +6,7 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M2 of 10. What runs today:
+Milestone M3 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -14,16 +14,16 @@ Milestone M2 of 10. What runs today:
 | engine-compat | M2 | ✓ host-side, selected engine |
 | up | M2 | ✓ L0 plane, 8 services beside the app |
 | smoke | M2 | ✓ a meetup created through Envoy |
-| verify | M1 | ✓ metric shape only, evaluation at M3 |
-| deploy | M3 | NOT YET |
-| rollback | M3 | NOT YET |
+| verify | M1 | ✓ metric shape at M1, canary vs stable at M3 |
+| deploy | M3 | ✓ staging → 5% → 25%, held for human gate |
+| rollback | M3 | ✓ automatic on verify NO-GO, triggered by `./go demo-rollback` |
 | e2e | M6 | NOT YET |
 
 | | |
 |---|---|
 | **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
-Until M3, a green `./go demo` means the repo is coherent and the L0 plane answers; canary and rollback are not real yet.
+A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero. Promotion to 100% is the M6 human gate. No ticket→PR pipeline yet (M5).
 
 ## Quick start
 
@@ -46,6 +46,11 @@ Then explore:
 ./go down           # stop the plane
 ./go test           # run backend tests
 ./go verify         # check the metric shape
+./go demo-rollback  # release the failing version and prove automatic rollback
+./go demo-hold      # release the same version with kill switch on and prove it holds at 25%
+./go kill-switch    # turn off waitlist for all versions (manual flag edit)
+./go freeze         # stop launchpad from deploying or shifting (manual flag edit)
+./go unfreeze       # re-enable launchpad after freeze
 ./go help           # list all targets
 ./go shell          # interactive shell inside workbench
 ./go clean          # remove the workbench image
@@ -90,10 +95,13 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 
 | Service | Host port | What |
 |---|---|---|
-| Envoy | 8080 | The app's only entrance; `stable` 100% → backend, `canary` 0% with no upstream until M3 |
+| Envoy | 8080 | The app's only entrance; shifts traffic between `stable` and `canary` via weighted clusters, admin API on 9901 |
+| Envoy admin | 9901 | Runtime config: `GET /runtime` reads weights, `POST /runtime_modify` shifts traffic between stable and canary |
+| backend | implicit | Stable revision, answering at port 8000 inside compose |
+| backend-canary | implicit | Canary revision (started on-demand by deploy, same image as backend); answering at port 8000 inside compose |
 | Gitea | 3000 | Rootless, sqlite, no users yet; the Actions runner registers on start in host mode |
-| Prometheus | 9090 | Scrapes the backend every 5 s |
-| Zot | 5050 | OCI registry, empty until M3; 5000 is macOS AirPlay |
+| Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by the `service_version` label reached via `target_info` join |
+| Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves `app/flags/flags.json`, the one bind mount; edit the file and the flag flips within seconds |
 | Pub/Sub emulator | 8085 | Unused until M6 |
 | Firestore emulator | 8086 | Unused until M6 |
@@ -102,7 +110,26 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 
 **L0 assumes a trusted network**: every port is unauthenticated on every interface, the runner registration token in compose.yaml is public by design, and anyone on the LAN can register a runner or push to Zot.
 
-At M2 the canary cluster has no members and Envoy sends 100% to stable: nothing is faked. The runner is registered but nothing is pushed to Gitea and no workflow runs until M5.
+At L0 the canary revision reuses the same image as stable, with the `waitlist` feature flag targeted at the version string `0.2.0-waitlist`: the failing version is the same code, different flag targeting. The first real code diff arrives with the M5 worker.
+
+## Release controller
+
+`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M6 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable.
+
+The controller itself generates no load; the Makefile starts `app/load.sh` beside it (one user looping through registration POSTs), stopping when the controller exits.
+
+At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERSION`). Two proof commands demonstrate the two branches:
+
+- `./go demo-rollback` releases the failing version (waitlist on), expects NO-GO at 5%, and asserts the rollback (weights.canary=0, traffic on stable). This is now `./go demo`'s last stage.
+- `./go demo-hold` releases the same failing version with the kill switch thrown first (waitlist off), expects GO all the way, and asserts the canary is held at 25% (not silently rolled back), then rolls back itself for clean state. A reader can step through the stages or let it run end-to-end (~140 s warm).
+
+Both are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path.
+
+**Kill switch and freeze** are feature-flag edits in the committed `app/flags/flags.json`, live within seconds through flagd's file poller, no deploy:
+- `./go kill-switch` turns `waitlist` off for every version: the canary stops producing 501s.
+- `./go freeze` / `./go unfreeze` toggle the `release-freeze` flag: `on` stops launchpad from deploying or shifting.
+
+**Timing budget**: plan §2 requires `./go demo` to reach automatic rollback in under 900 s on a fresh container (cold pulls included). M3 measured this at 92 s warm (images already present); with the baseline 258 s cold from M2, a reasoned estimate is roughly 350 s total, well under budget. (Caveat: the 350 s figure is an estimate, not a fresh cold measurement this session, because forcing a safe cold re-pull of ~50 host images was not performed here.)
 
 ## How it runs
 
@@ -145,7 +172,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, e2e
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-hold, kill-switch, freeze, unfreeze, e2e
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -153,6 +180,9 @@ lights-out/
   workbench/
     Containerfile           # the toolchain: make, gcloud, terraform, tools
     fetch.sh                # script for verifying downloads
+
+  core/
+    launchpad.sh            # release controller: stages, verify gates, automatic rollback
 
   profiles/
     l0.env                  # L0: podman, no key, no account
@@ -189,10 +219,13 @@ lights-out/
       0010-compose-layout-and-app-tests.md
       0011-slo-queries-and-metric-shape-gate-at-m1.md
       0012-l0-plane-layout-runner-envoy-readiness.md
+      0013-launchpad-canary-verify-rollback-at-l0.md
+      0014-prove-the-go-branch-with-demo-hold.md
 
   verify/                   # SLO verification; shape-checked at M1, evaluated at M3
-    slo.promql               # error_rate and latency_p95, the production queries
-    metric-shape.sh           # checks them against one live /metrics scrape
+    slo.promql               # traffic, error_rate and latency_p95, canary vs stable via target_info join
+    metric-shape.sh         # checks them against one live /metrics scrape
+    slo.sh                  # verifies canary metrics against stable, the release gate
 
   app/                      # the target application (docs/adr/0005-0010)
     backend/                 # FastAPI + psycopg, meetups/, migrations/, tests/
@@ -200,20 +233,20 @@ lights-out/
     fakes/geocoder/          # the external-service dependency, stdlib only
     contracts/geocoder/      # the fake's committed example-pair contract
     flags/                   # flagd file-resolver flag definitions
+    load.sh                  # load generator: loops registration POSTs through Envoy
     smoke.sh                 # signup, login, meetup through Envoy
 
   compose.yaml               # the L0 plane: app + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
 
   adapters/                 # one directory per adapter named in profiles/*.env
-    envoy-canary/           # Containerfile, envoy.yaml, ready.sh
-    prometheus/             # Containerfile, prometheus.yml, ready.sh
+    envoy-canary/           # Containerfile, envoy.yaml, ready.sh, deploy.sh, shift.sh, rollback.sh
+    prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh
     gitea/                  # ready.sh, runner/Containerfile, runner/config.yaml
     flagd/                  # ready.sh
     zot/                    # ready.sh
     pubsub-emulator/        # ready.sh
     firestore-emulator/     # ready.sh
 
-  core/                     # from M3: vendor-free core
   roles/                    # from M5: agent role definitions
   policy/                   # from M4: policy-as-code
   tickets/                  # project tickets, one per file; 0001 is the first bug found
