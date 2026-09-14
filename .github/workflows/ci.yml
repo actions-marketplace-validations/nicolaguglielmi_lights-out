@@ -31,3 +31,21 @@ jobs:
       - run: ./go demo
         env:
           CONTAINER_ENGINE: docker
+
+  # Same shape as engine-compat: needs a real engine for the backend-test
+  # image, and network for osv-scanner (docs/adr/0015 §7). GitHub-only until
+  # M5 decides whether the Gitea runner's host mode gets the engine socket
+  # (docs/adr/0012 consequences; docs/adr/0015 §7 names the trade-off).
+  # demo-gates, not gates: it is the M4 acceptance command and needs no
+  # BASE/HEAD from the caller, since it judges the six committed fixtures
+  # against HEAD, not the pushed range itself.
+  gates:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./go demo-gates
+        env:
+          CONTAINER_ENGINE: docker

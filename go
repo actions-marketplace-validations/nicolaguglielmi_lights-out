@@ -12,6 +12,7 @@
 #   ./go demo           the demo, as far as the current milestone takes it
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
+#   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
@@ -86,7 +87,7 @@ fi
 # control of the engine; the README says so.
 socket_flags=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell)
+  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell|gates|demo-gates|mutation-baseline)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
