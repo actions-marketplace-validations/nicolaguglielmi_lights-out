@@ -164,17 +164,20 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 		level=$$(jq -r .level "$(GATES_OUT)/risk.json"); \
 		decision=$$(jq -r .decision "$(GATES_OUT)/risk.json"); \
 	fi; \
+	mt=""; \
+	if [ -f "$(GATES_OUT)/mutation.json" ]; then \
+		mt=$$(jq -r 'if .total == 0 then "zero" else "some" end' "$(GATES_OUT)/mutation.json"); \
+	fi; \
 	if [ -n "$$failed" ]; then \
 		{ printf 'GATES=NO-GO\n'; printf 'FAILED=%s\n' "$$failed"; \
 		  printf 'RISK_LEVEL=%s\n' "$$level"; printf 'RISK_DECISION=%s\n' "$$decision"; \
+		  if [ -n "$$mt" ]; then printf 'MUTATION_TOTAL=%s\n' "$$mt"; fi; \
 		} > "$(GATES_OUT)/verdict.env"; \
 		printf 'NO-GO: gates — %s: %s\n' "$$failed" "$$failreason"; \
 		exit 1; \
 	fi; \
-	mutation_total=unknown; \
-	[ -f "$(GATES_OUT)/mutation.json" ] && mutation_total=$$(jq -r 'if .total == 0 then "zero" else "some" end' "$(GATES_OUT)/mutation.json"); \
 	{ printf 'GATES=GO\n'; printf 'RISK_LEVEL=%s\n' "$$level"; printf 'RISK_DECISION=%s\n' "$$decision"; \
-	  printf 'MUTATION_TOTAL=%s\n' "$$mutation_total"; \
+	  if [ -n "$$mt" ]; then printf 'MUTATION_TOTAL=%s\n' "$$mt"; fi; \
 	} > "$(GATES_OUT)/verdict.env"; \
 	printf 'GO: gates — risk %s, %s\n' "$$level" "$$decision"
 
