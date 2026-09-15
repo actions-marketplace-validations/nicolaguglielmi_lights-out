@@ -364,13 +364,33 @@ in HANDOFF, not against a ceiling.
 
 ## Verify at L1 (the build closes each before the milestone closes)
 
-1. `AfterModel`/`BeforeModel` hooks receive `llm_response.usageMetadata`
-   (§8's design vs fallback).
+1. **Confirmed statically, before any real run**: `AfterModel`'s input
+   carries `llm_response.usageMetadata.totalTokenCount` exactly — read
+   from `toHookLLMResponse()` in the installed
+   `@google/gemini-cli@0.59.0` bundle (`bundle/chunk-YSBB75DZ.js`), which
+   builds `usageMetadata: sdkResponse.usageMetadata ? {promptTokenCount,
+   candidatesTokenCount, totalTokenCount} : void 0` verbatim. §8's design
+   (not the post-run fallback) is the live path, pending only that the
+   hook actually fires (item 2).
 2. `BeforeTool` hooks fire under `gemini -p --approval-mode yolo` (the
    recorded `hooks.log` is the proof); `--approval-mode yolo` accepted by
-   0.59.0 without the deprecated `--yolo`.
-3. The `result` event's `stats` field names for turns and tokens; the
-   `tool_input` parameter names are irrelevant by design (§9).
+   0.59.0 without the deprecated `--yolo` — confirmed accepted by
+   `gemini --help` inside the built image; not yet confirmed to actually
+   invoke the hook at runtime.
+3. **Corrected statically, before any real run — this was wrong in the
+   first draft**: under `--output-format stream-json`, the `result`
+   event carries no `response` text at all (only `type`, `timestamp`,
+   `status`, `stats`, and `error` on failure); the model's final answer
+   is a `message` event stream instead (`role:"assistant"`, one `content`
+   delta per event, `delta:true`), reconstructed by
+   `adapters/gemini-cli/run.sh` as their concatenation, in order. `stats`
+   is flat, not nested (`total_tokens`, `input_tokens`, `output_tokens`,
+   `cached`, `input`, `duration_ms`, `tool_calls`, `models`), read from
+   `StreamJsonFormatter.convertToStreamStats()` in
+   `bundle/chunk-SM627E5R.js`. No turn count is reported anywhere in the
+   stream; `run.sh` approximates it by counting `role:"user"` message
+   events, a caveat recorded there, not guessed twice. `tool_input`
+   parameter names are irrelevant by design (§9), unaffected.
 4. Whether a workspace `.gemini/settings.json` can override user-level
    hooks in the same session; if yes, the lever is
    `GEMINI_CLI_SYSTEM_SETTINGS_PATH` pointing at an adapter-written
@@ -378,9 +398,19 @@ in HANDOFF, not against a ceiling.
 5. Sub-directory context discovery actually loads `roles/*/GEMINI.md`
    (the reason for `prompt.md`); if it does not, the name still stands,
    the reason line in this ADR changes.
-6. `docker-compose exec -T gitea gitea admin user create` works in the
-   rootless image; `PATCH /repos/{o}/{r}` accepts `has_actions`.
-7. gitleaks stays green on `adapters/gitea/env.sh` and on the transcript.
+6. **Confirmed live**, on the L0 mechanics run (a temporary fixture built
+   from `gates/fixtures/honest-fix`, never committed): `docker-compose
+   exec -T gitea gitea admin user create` works in the rootless image and
+   is idempotent on "already exists"; `PATCH /repos/{o}/{r}` accepts
+   `has_actions`. One real bug found and fixed in the same run:
+   `bootstrap.sh`'s repo-create `curl -fsS` discarded the body and the
+   HTTP code together on the expected, idempotent 409, misread as a hard
+   failure — `-f` dropped, the code read from `-w` and branched on
+   directly (commit `8c042c1`).
+7. gitleaks stays green on `adapters/gitea/env.sh` (confirmed, `./go
+   ci-secrets`) and on the working tree in general; not yet confirmed on
+   a real recorded transcript, which does not exist until this run.
 8. Free-tier RPM throttling and the CLI's retry behaviour over 60 turns.
-9. Crew image size and `npm ci` time; `uv sync` time cold and warm on the
-   bind mount.
+9. Crew image size and `npm ci` time (confirmed: 5 packages, ~3 min cold,
+   0 vulnerabilities — `npm ci --omit=dev` inside the built image); `uv
+   sync` time cold and warm on the bind mount not yet measured.

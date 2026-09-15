@@ -4,14 +4,20 @@
 # harness-gemini-cli: the `gemini-cli` AgentHarness (docs/adr/0017 §3).
 # Runs one headless turn in the `gemini-cli` compose service (no engine
 # socket, no credential the model can push with), then does everything the
-# entrypoint does not: parses the transcript's `result` event into pr.json,
-# commits whatever is left in the workspace under the crew identity (the
-# adapter commits, not the model, docs/adr/0017 §1), writes the patch and
-# run.json, and refuses to record anything if the API key leaked into the
-# artefacts. Field names for the `result` event and its stats are read
-# defensively (`// empty`, several candidates) because they are exactly
-# what docs/adr/0017's "Verify at L1" list closes against a real
-# transcript; a mismatch here is corrected there, not guessed twice.
+# entrypoint does not: reconstructs the model's final response from the
+# transcript's streamed `message` events, reads the `result` event's flat
+# `stats` object, commits whatever is left in the workspace under the crew
+# identity (the adapter commits, not the model, docs/adr/0017 §1), writes
+# the patch and run.json, and refuses to record anything if the API key
+# leaked into the artefacts. The event and stats shapes below are read
+# from the installed @google/gemini-cli@0.59.0 bundle itself
+# (StreamJsonFormatter.convertToStreamStats and the message/result event
+# emitters in bundle/gemini-CQYKWDIK.js), not guessed: --output-format
+# stream-json has no `response` field on `result` at all, and `stats` is
+# flat (`total_tokens`, not `tokens.total`) — corrections to this file's
+# first draft, made before any real run, and the reason docs/adr/0017
+# still lists "Verify at L1" items for what static reading cannot confirm
+# (throttling, retry behaviour, the exact turn count under `--yolo`).
 # Adapter convention (docs/adr/0012 §6): not a gate, silent on success, one
 # stderr line and exit 1 on failure.
 set -eu
@@ -51,7 +57,10 @@ if [ "$container_rc" -ne 0 ]; then
     124) reason="over TIMEOUT_S ($TIMEOUT_S s)" ;;
     53) reason="over MAX_TURNS ($MAX_TURNS)" ;;
     *)
-      err=$(jq -rs '[.[] | select(.type == "error")] | last | (.error.message // .message // empty)' \
+      # On a fatal error the last `result` event itself carries
+      # status:"error" and an `error` object (no separate "error"-typed
+      # event exists in this build).
+      err=$(jq -rs '[.[] | select(.type == "result" and .status == "error")] | last | (.error.message // empty)' \
         "$OUT/transcript.jsonl" 2>/dev/null || true)
       [ -n "$err" ] && reason="$reason: $err"
       ;;
@@ -60,25 +69,31 @@ if [ "$container_rc" -ne 0 ]; then
   exit 1
 fi
 
-# The last `result` event in the stream carries the final response and the
-# run's stats (docs/adr/0017 §3, "Verify at L1" #3).
-result=$(jq -cs '[.[] | select(.type == "result")] | last // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
-response=$(printf '%s' "$result" | jq -r '.response // .result // .text // empty')
+# stream-json's `result` event carries no response text (verified against
+# the installed bundle) — the model's final answer is reconstructed by
+# concatenating the `content` of every `message` event with role
+# "assistant" (each a streamed delta), in transcript order.
+response=$(jq -rs '[.[] | select(.type == "message" and .role == "assistant") | .content] | join("")' \
+  "$OUT/transcript.jsonl" 2>/dev/null || true)
 if [ -z "$response" ]; then
-  printf 'harness-gemini-cli: no result event with a response in the transcript\n' >&2
+  printf 'harness-gemini-cli: no assistant message content in the transcript\n' >&2
   exit 1
 fi
 
 title=$(printf '%s\n' "$response" | head -n1)
 body=$(printf '%s\n' "$response" | tail -n +2 | sed '/./,$!d')
-printf '%s' "$result" | jq \
-  --arg title "$title" --arg body "$body" \
-  '{title: $title, body: $body}' > "$OUT/pr.json"
+jq -n --arg title "$title" --arg body "$body" '{title: $title, body: $body}' > "$OUT/pr.json"
 
-turns=$(printf '%s' "$result" | jq -r '.stats.turns // .stats.turnCount // .stats.turn_count // null')
-tok_in=$(printf '%s' "$result" | jq -r '.stats.tokens.input // .stats.usage.inputTokens // .stats.usage.input_tokens // null')
-tok_out=$(printf '%s' "$result" | jq -r '.stats.tokens.output // .stats.usage.outputTokens // .stats.usage.output_tokens // null')
-tok_total=$(printf '%s' "$result" | jq -r '.stats.tokens.total // .stats.usage.totalTokens // .stats.usage.total_tokens // null')
+# The last `result` event's `stats` object (flat field names, verified
+# against StreamJsonFormatter.convertToStreamStats in the installed
+# bundle). No turn count is reported there; approximated by the number of
+# "message" events with role "user", each opening one turn (the initial
+# prompt counts as the first) — a caveat recorded here, not guessed twice.
+stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
+turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null || echo null)
+tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
+tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
+tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
 
 # The adapter commits, not the model (docs/adr/0017 §1): whatever the
 # model left uncommitted is staged and committed here, under the crew
