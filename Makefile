@@ -33,6 +33,14 @@ export READY_TIMEOUT
 # Adapters that run as plane services at this profile, in readiness order.
 PLANE_ADAPTERS := $(CODE_HOST) $(DELIVERY) $(METRICS) $(FLAGS) $(REGISTRY) $(EVENT_BUS) $(STATE_STORE)
 
+# The gemini-cli worker's compose service writes into its workspace bind
+# mount as this uid:gid, so workbench (running as the host user under
+# docker, root under rootless podman) can still read and commit what it
+# wrote (docs/adr/0017 §3).
+CREW_UID := $(shell id -u)
+CREW_GID := $(shell id -g)
+export CREW_UID CREW_GID
+
 # M3 release controller (docs/adr/0013, 0014). Workbench reaches the Envoy
 # admin API the same way it reaches every other plane port (PLANE_HOST).
 ENVOY_ADMIN_URL ?= http://$(PLANE_HOST):9901
@@ -221,6 +229,88 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 		git worktree remove --force "$$wt"; \
 	done; \
 	printf 'GO: demo-gates\n'
+
+.PHONY: assign
+assign: ## Turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker] (docs/adr/0017 §4)
+	@TICKET="$(TICKET)" ROLE="$(ROLE)" sh core/crew.sh
+
+# Shared by demo-crew and record (docs/adr/0017 §6): runs assign, fetches
+# the resulting branch from CODE_HOST into a throwaway worktree off the
+# commit assign started from, judges it with the M4 gates (the same
+# mechanism demo-gates uses on a fixture patch), and leaves the verdict at
+# $(GATES_OUT)/verdict.env at the repo root — the caller decides what a
+# GO or a NO-GO means. Always exits 0; a gates NO-GO is data, not a
+# Makefile failure, so the caller can read verdict.env either way.
+.PHONY: crew-run
+crew-run:
+	@main_sha=$$(git rev-parse HEAD); \
+	role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
+	$(MAKE) --no-print-directory assign TICKET="$(TICKET)" ROLE="$$role" >&2 || { \
+		printf 'NO-GO: crew-run — assign did not produce a PR\n'; exit 1; \
+	}; \
+	branch="ticket/$(TICKET)"; \
+	clone_url=$$(sh "adapters/$(CODE_HOST)/clone-url.sh"); \
+	git fetch -q "$$clone_url" "$$branch" || { \
+		printf 'NO-GO: crew-run — could not fetch %s from %s\n' "$$branch" "$(CODE_HOST)"; exit 1; \
+	}; \
+	head_sha=$$(git rev-parse FETCH_HEAD); \
+	wt=$$(mktemp -d)/wt; \
+	git worktree add --detach "$$wt" FETCH_HEAD >/dev/null 2>&1 || { \
+		printf 'NO-GO: crew-run — git worktree add failed\n'; exit 1; \
+	}; \
+	out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
+	printf '[crew-run] gates: %s\n' "$$out" >&2; \
+	mkdir -p "$(GATES_OUT)"; \
+	cp "$$wt/$(GATES_OUT)/verdict.env" "$(GATES_OUT)/verdict.env" 2>/dev/null || : > "$(GATES_OUT)/verdict.env"; \
+	git worktree remove --force "$$wt"
+
+.PHONY: demo-crew
+demo-crew: ## Prove ticket 0001 becomes a PR that passes the M4 gates (docs/adr/0017; the M5 acceptance command)
+	@$(MAKE) --no-print-directory up
+	@$(MAKE) --no-print-directory crew-run TICKET=0001 ROLE=dev-worker
+	@expect=fixtures/0001/dev-worker/expect; \
+	if [ ! -f "$$expect" ]; then \
+		printf 'NO-GO: demo-crew — no %s; run ./go record TICKET=0001 PROFILE=l1 first\n' "$$expect"; exit 1; \
+	fi; \
+	tmp1=$$(mktemp); tmp2=$$(mktemp); \
+	sort "$(GATES_OUT)/verdict.env" > "$$tmp1" 2>/dev/null || : > "$$tmp1"; \
+	sort "$$expect" > "$$tmp2"; \
+	if ! diff -q "$$tmp1" "$$tmp2" >/dev/null 2>&1; then \
+		printf '[demo-crew] verdict mismatch\n  got:  %s\n  want: %s\n' \
+			"$$(tr '\n' ' ' < "$(GATES_OUT)/verdict.env" 2>/dev/null || echo '(no verdict.env)')" \
+			"$$(tr '\n' ' ' < "$$expect")" >&2; \
+		rm -f "$$tmp1" "$$tmp2"; \
+		printf 'NO-GO: demo-crew — verdict does not match fixtures/0001/dev-worker/expect\n'; exit 1; \
+	fi; \
+	rm -f "$$tmp1" "$$tmp2"; \
+	printf 'GO: demo-crew\n'
+
+# Records the one real L1 run this ADR calls for (docs/adr/0017 §6): the
+# fixture L0 replays forever after. Refuses at L0 ("recording a replay is
+# circular" — AGENT_HARNESS=replay would replay the fixture it is trying to
+# create) and refuses a run that does not pass the gates (kept under
+# .crew/<ticket> for study; the attempt is not silently retried here, and
+# HANDOFF records how many attempts the recorded run took).
+.PHONY: record
+record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker] (docs/adr/0017 §6)
+	@if [ "$(AGENT_HARNESS)" != "gemini-cli" ]; then \
+		printf 'NO-GO: record — recording a replay is circular; PROFILE=l1\n'; exit 1; \
+	fi
+	@$(MAKE) --no-print-directory up
+	@role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
+	$(MAKE) --no-print-directory crew-run TICKET="$(TICKET)" ROLE="$$role"; \
+	gates_verdict=$$(grep '^GATES=' "$(GATES_OUT)/verdict.env" 2>/dev/null | cut -d= -f2); \
+	if [ "$$gates_verdict" != "GO" ]; then \
+		printf 'NO-GO: record — ticket %s did not pass the gates (GATES=%s); kept under .crew/%s for study\n' \
+			"$(TICKET)" "$${gates_verdict:-unknown}" "$(TICKET)"; \
+		exit 1; \
+	fi; \
+	dest="fixtures/$(TICKET)/$$role"; \
+	mkdir -p "$$dest"; \
+	cp .crew/$(TICKET)/out/* "$$dest/" 2>/dev/null || true; \
+	cp "$(GATES_OUT)/verdict.env" "$$dest/expect"; \
+	printf 'lights-out: fixture written to %s\n' "$$dest" >&2; \
+	printf 'GO: record\n'
 
 # Not a gate: a measurement. MUTATION_LINES=all tells tests/mutation/run.sh
 # to skip the line filter and mutate the whole package, so this is the
