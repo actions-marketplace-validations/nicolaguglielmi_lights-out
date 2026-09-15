@@ -4,8 +4,14 @@
 # {"session_id":..., "cwd":..., "hook_event_name":"BeforeTool",
 # "tool_name":"...", "tool_input": {...}}. Deny: exit 2, reason on stderr.
 # Allow: exit 0, nothing on stdout. Does not care about tool_input's
-# specific key names -- every string value anywhere in the JSON is joined
-# (jq '[.. | strings] | join("\n")') and tested against the deny-list below.
+# specific key names -- every string value anywhere in tool_input is joined
+# (jq '[.tool_input | .. | strings] | join("\n")') and tested against the
+# deny-list below. Scoped to tool_input, not the whole input object: found
+# live (docs/adr/0017 M5 record, attempts 2-3) that createBaseInput() puts
+# a transcript_path on every single hook call pointing into the CLI's own
+# ~/.gemini/tmp/... recording file, so an unscoped `[.. | strings]` made
+# the .gemini/ rule match every call unconditionally -- every tool denied,
+# always for the same wrong reason, real quota burned finding out.
 #
 # Vendor format, so it lives in the adapter, not in roles/. Every call,
 # allowed or denied, appends one line to $CREW_OUT/hooks.log (default ".",
@@ -29,7 +35,7 @@ record() {
   printf '%s %s %s\n' "$1" "$tool_name" "$2" >> "$log" 2>/dev/null || true
 }
 
-joined=$(printf '%s' "$input" | jq -r '[.. | strings] | join("\n")' 2>/dev/null) || joined=""
+joined=$(printf '%s' "$input" | jq -r '[.tool_input | .. | strings] | join("\n")' 2>/dev/null) || joined=""
 
 if [ -z "$input" ] || ! printf '%s' "$input" | jq -e . >/dev/null 2>&1; then
   reason="malformed or empty JSON on stdin"

@@ -1,0 +1,1 @@
+{"session_id":"abc","transcript_path":"/tmp/crew-home/.gemini/tmp/sess/chat.json","cwd":"/crew/0001/workspace","hook_event_name":"BeforeTool","timestamp":"2026-09-15T00:00:00Z","tool_name":"run_shell_command","tool_input":{"command":"ls app/backend"}}
