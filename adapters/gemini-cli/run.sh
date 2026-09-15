@@ -56,6 +56,7 @@ if [ "$container_rc" -ne 0 ]; then
   case "$container_rc" in
     124) reason="over TIMEOUT_S ($TIMEOUT_S s)" ;;
     53) reason="over MAX_TURNS ($MAX_TURNS)" ;;
+    55) reason="workspace not trusted (found live: entrypoint.sh's --skip-trust should prevent this; if it recurs, that flag or GEMINI_CLI_TRUST_WORKSPACE stopped working)" ;;
     *)
       # On a fatal error the last `result` event itself carries
       # status:"error" and an `error` object (no separate "error"-typed

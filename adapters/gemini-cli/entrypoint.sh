@@ -10,6 +10,15 @@
 # gemini-cli/run.sh, docs/adr/0017 §1 — the adapter commits, not the
 # model), because CREW_OUT is a bind mount and stays readable there once
 # this container exits.
+#
+# --skip-trust: found live, not in any doc read before the first real run
+# (docs/adr/0017 "Verify at L1"). The Trusted Folders page says the
+# feature is "disabled by default", true for the interactive dialog, but
+# headless mode enforces it unconditionally on a workspace it has never
+# seen and refuses with exit 55 ("not running in a trusted directory")
+# before making any model call — the fresh clone under WORKSPACE is
+# exactly that, every run. --skip-trust is the documented headless
+# escape hatch cited in the error message's own URL.
 set -eu
 : "${ROLE:?ROLE not set}"
 : "${TICKET:?TICKET not set}"
@@ -60,6 +69,7 @@ rc=0
 timeout "$TIMEOUT_S" gemini \
   -p "$(cat "$CREW_OUT/prompt.md")" \
   --approval-mode yolo \
+  --skip-trust \
   --output-format stream-json \
   -m gemini-3.8-flash \
   > "$CREW_OUT/transcript.jsonl" 2> "$CREW_OUT/stderr.log" || rc=$?

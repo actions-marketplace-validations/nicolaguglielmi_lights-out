@@ -243,6 +243,7 @@ assign: ## Turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker] (docs/adr/0017
 # Makefile failure, so the caller can read verdict.env either way.
 .PHONY: crew-run
 crew-run:
+	@rm -f "$(GATES_OUT)/verdict.env"
 	@main_sha=$$(git rev-parse HEAD); \
 	role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
 	$(MAKE) --no-print-directory assign TICKET="$(TICKET)" ROLE="$$role" >&2 || { \
@@ -298,7 +299,10 @@ record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=d
 	fi
 	@$(MAKE) --no-print-directory up
 	@role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
-	$(MAKE) --no-print-directory crew-run TICKET="$(TICKET)" ROLE="$$role"; \
+	$(MAKE) --no-print-directory crew-run TICKET="$(TICKET)" ROLE="$$role" || { \
+		printf 'NO-GO: record — ticket %s did not reach the gates; see the crew-run output above\n' "$(TICKET)"; \
+		exit 1; \
+	}; \
 	gates_verdict=$$(grep '^GATES=' "$(GATES_OUT)/verdict.env" 2>/dev/null | cut -d= -f2); \
 	if [ "$$gates_verdict" != "GO" ]; then \
 		printf 'NO-GO: record — ticket %s did not pass the gates (GATES=%s); kept under .crew/%s for study\n' \
