@@ -205,6 +205,8 @@ Unit, integration con testcontainers, contract test, mutation testing con soglia
 La porta `AgentHarness` con adapter `replay` e `gemini-cli`. Le definizioni dei sei ruoli. Gli hook che bloccano push su main, comandi distruttivi e accesso a segreti. Il worker in container con budget di token, timeout e massimo di iterazioni, che termina aprendo una PR.
 **Fatto quando:** a L1, con una Gemini API key, assegni un ticket e nasce una PR che passa la CI di M4. A L0 lo stesso ticket produce la stessa PR dalle fixture.
 
+*Nota 2026-09-15 (M5, ADR 0017):* la definizione del ruolo vive in `roles/<role>/prompt.md`, non in `roles/<role>/GEMINI.md`, perché Gemini CLI scopre i file di contesto nelle sottodirectory e caricherebbe tutte e sei le definizioni in memoria del worker; il prompt finisce in `~/.gemini/GEMINI.md` globale (decisione di plan §6). Gemini CLI v0.59.0 serve silenziosamente `gemini-3.5-flash` invece di `gemini-3.8-flash` senza alcun avviso; la fixture di ticket 0001 è registrata contro quello che veramente gira (ADR 0017 per i dettagli). Solo `dev-worker` ha prompt e budget reali a M5; gli altri cinque ruoli hanno solo `ROLE.md` che nomina quale milestone li eseguirà.
+
 ### M6 — Control plane
 Dispatcher, macchina a stati del ticket, modello degli artefatti, idempotenza, audit log che ricostruisce la catena deploy → PR → task → spec.
 **Fatto quando:** `./go e2e` percorre ticket → PR → CI → canary → verify fallito → rollback, senza intervento umano, e l'audit mostra la catena completa.

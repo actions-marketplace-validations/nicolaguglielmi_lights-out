@@ -1,6 +1,6 @@
 # ADR 0016 — Risk model: rules, not scores; three levels from five declared path-and-size signals; the merge decision is separate from the gate verdict; policy is `policy/merge.env`, readable by sh and python3
 
-- Status: accepted
+- Status: accepted (amended by ADR 0017 §2 [`platform` risk class gains roles/*, fixtures/*, .gemini/*])
 - Date: 2026-09-14
 - Milestone: M4
 

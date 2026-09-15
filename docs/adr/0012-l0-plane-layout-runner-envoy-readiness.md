@@ -222,8 +222,8 @@ records its measurement. No git remote exists: no workflow has ever run.
 - The runner image rebuilds whenever the workbench Containerfile changes,
   `FROM` by cksum tag; `./go up` sees the change and rebuilds. Running
   `make` outside `./go` now fails at `docker-compose config`, by design.
-- `actions/checkout` at M5 needs Gitea's actions mirror reachable from the
-  runner.
+- `actions/checkout` at M6 needs Gitea's actions mirror reachable from the
+  runner (amended by ADR 0017 §7: no Gitea job runs at M5, socket lands at M6).
 - Every published port is unauthenticated on every interface. On a
   conference Wi-Fi that is an exposure; the README carries one line.
 - engine-compat leaves the plane running and `demo` repeats `up`; the second

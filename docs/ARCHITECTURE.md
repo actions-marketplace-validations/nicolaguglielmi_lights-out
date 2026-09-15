@@ -6,9 +6,9 @@ The core knows no vendor. Every integration sits behind a port with at least two
 
 | Port | Adapter | Note |
 |---|---|---|
-| `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | Executes a role on a workspace, returns artifacts |
-| `CodeHost` | `gitea`, `github` | Branch, PR, comments, merge |
-| `Tracker` | `file`, `github-issues`, `linear` | The ticket is the work source |
+| `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events |
+| `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr; `github`: branch, PR, comments, merge |
+| `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md`; others read from external service |
 | `EventBus` | `pubsub-emulator`, `pubsub` | Same code, different endpoint |
 | `StateStore` | `firestore-emulator`, `firestore` | Workflow state, idempotence |
 | `Orchestrator` | `inproc`, `cloud-workflows` | Ticket lifecycle state machine |
@@ -36,7 +36,7 @@ Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`
 1. Picks an engine (`CONTAINER_ENGINE`, else podman, else docker)
 2. Builds or reuses the `workbench` image from `workbench/Containerfile`
 3. Runs `make <cmd>` inside it with the repo mounted at the same absolute path
-4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `demo-rollback`, `e2e`, `shell`)
+4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `release`, `demo-rollback`, `demo-hold`, `e2e`, `shell`, `gates`, `demo-gates`, `mutation-baseline`, `assign`, `demo-crew`, `record`)
 5. Runs without the socket for targets that do not (`ci`, `engine-compat`)
 
 For `engine-compat` and `demo`, `./go` runs `ci/engine-compat.sh` on the host first.
@@ -74,6 +74,10 @@ Six committed fixture PRs prove both verdicts on real gate failures: `honest-fix
 
 See [ADR 0015](adr/0015-pr-gates-at-m4.md) and [ADR 0016](adr/0016-risk-model-and-merge-policy.md).
 
+## Crew flow
+
+The ticket→PR pipeline at M5: `core/crew.sh` clones the repo, sources the role's budgets, runs the `AgentHarness` adapter on the ticket, commits the result with the crew identity, pushes to `CodeHost`, and opens a PR. The harness returns a patch, PR title and body, transcript, and metadata (model, tokens, duration). At L0, `replay` copies the fixture into the output directory and applies the committed patch; at L1, `gemini-cli` runs the role live and records the session. Both produce identical artifacts (except the harness name and model field). The PR branch passes through the same gate pipeline as a hand-written PR: `make gates BASE=<initial> HEAD=<harness-commit>`. `demo-crew` proves the flow on ticket 0001 and asserts both the PR and the gates are GO.
+
 ## L0 plane
 
 Eight services in `compose.yaml`:
@@ -99,4 +103,4 @@ See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](a
 
 ## Status
 
-M4 — PR gates in `gates/` with policy in `policy/merge.env` (risk scoring, dependency scan, SAST, test, mutation with threshold); six fixtures prove both verdicts; still no agents yet.
+M5 — Agent runtime: crew driver in `core/crew.sh`, six roles in `roles/`, two harnesses (`replay` and `gemini-cli`), one real L1 run of ticket 0001 recorded into `fixtures/` and replayed at L0, `demo-crew` proves the full ticket→PR→gates path.
