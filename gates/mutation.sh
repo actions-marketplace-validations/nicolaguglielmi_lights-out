@@ -79,7 +79,10 @@ fi
 # postgres never collide with another job's or a running plane's, and the
 # user's own .env (where an L1 GEMINI_API_KEY lives) is never touched.
 log=$(mktemp)
-trap 'rm -f "$log"' EXIT
+# `run --rm` only removes the backend-test container; the postgres it
+# depends on keeps running under -p lo-mutation on every exit path (go,
+# or any nogo below) unless this trap tears it down too.
+trap 'docker-compose -p lo-mutation --profile test down -v >&2; rm -f "$log"' EXIT
 
 # Built separately from run, below: `run --build`'s own image-build log
 # goes to *its* stdout (confirmed empirically -- not stderr, contrary to
