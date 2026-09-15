@@ -92,7 +92,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -319,10 +319,9 @@ record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=d
 # hand after reading this target's output (docs/adr/0015 §3).
 .PHONY: mutation-baseline
 mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's provenance (docs/adr/0015 §3)
-	@printf 'COMPOSE_PROJECT_NAME=lo-mutation-baseline\n' > .env
-	@$(COMPOSE) --profile test build backend-test >&2
+	@$(COMPOSE) -p lo-mutation-baseline --profile test build backend-test >&2
 	@start=$$(date +%s); \
-	result=$$($(COMPOSE) --profile test run --rm -T -e MUTATION_LINES=all backend-test sh tests/mutation/run.sh); \
+	result=$$($(COMPOSE) -p lo-mutation-baseline --profile test run --rm -T -e MUTATION_LINES=all backend-test sh tests/mutation/run.sh); \
 	end=$$(date +%s); \
 	printf '%s\n' "$$result"; \
 	total=$$(printf '%s' "$$result" | jq -r .total); \

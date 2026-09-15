@@ -1,0 +1,1 @@
+{"tool_name":"run_shell_command","tool_input":{"command":"cd app/backend && uv sync --locked && python -m pytest tests -q -p no:cacheprovider"}}

@@ -74,11 +74,10 @@ fi
 # shellcheck disable=SC1091
 . policy/merge.env
 
-# A project name of our own (docs/adr/0015 §2 shared interface): this
-# worktree's backend-test/postgres never collide with another job's or a
-# running plane's. Gitignored, never committed.
-printf 'COMPOSE_PROJECT_NAME=lo-mutation\n' > .env
-
+# A project name of our own (docs/adr/0015 §2 shared interface, docs/adr/0017
+# §11), via -p rather than a written .env: this worktree's backend-test/
+# postgres never collide with another job's or a running plane's, and the
+# user's own .env (where an L1 GEMINI_API_KEY lives) is never touched.
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 
@@ -86,11 +85,11 @@ trap 'rm -f "$log"' EXIT
 # goes to *its* stdout (confirmed empirically -- not stderr, contrary to
 # what the classic, non-Buildkit builder's docs might suggest), which would
 # otherwise land inside $result and break the one-JSON-line contract.
-docker-compose --profile test build backend-test >&2 \
+docker-compose -p lo-mutation --profile test build backend-test >&2 \
   || nogo "backend-test image build failed; see stderr"
 
 set +e
-result=$(docker-compose --profile test run --rm -T \
+result=$(docker-compose -p lo-mutation --profile test run --rm -T \
   -e MUTATION_LINES="$mutation_lines" \
   backend-test sh tests/mutation/run.sh 2>"$log" </dev/null)
 rc=$?
