@@ -8,6 +8,7 @@
 set -eu
 branch=${1:?usage: open-pr.sh <branch> <pr.json>}
 pr_json=${2:?usage: open-pr.sh <branch> <pr.json>}
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck source=adapters/gitea/env.sh
 . "$here/adapters/gitea/env.sh"

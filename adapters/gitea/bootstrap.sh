@@ -11,6 +11,7 @@
 # 0012 §6): not a gate, silent on success, one stderr line and exit 1 on
 # failure.
 set -eu
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck source=adapters/gitea/env.sh
 . "$here/adapters/gitea/env.sh"

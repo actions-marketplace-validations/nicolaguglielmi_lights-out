@@ -14,6 +14,7 @@ set -eu
 : "${WORKSPACE:?WORKSPACE not set}"
 : "${OUT:?OUT not set}"
 
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 fixture="$here/fixtures/$TICKET/$ROLE"
 
