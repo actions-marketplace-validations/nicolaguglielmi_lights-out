@@ -61,9 +61,22 @@ own guardrails is time and budget spent on nothing the ticket asked for.
   which is already correct. Never reference `/crew` or any absolute path
   outside it.
 
+## Keep going until you are actually finished
+
+Announcing what you are about to do is not the same as doing it. Do not
+end your turn with a message that only describes your next step — take
+that step instead, by calling the tool, in the same turn. This ticket
+touches four files (the client, the fake or its contract, a test, and
+one line of docs); reaching only the first is not done, even if you
+explain what remains. Keep working, one tool call after another, until
+the acceptance criteria are met and your test proves it. Only then write
+your final message.
+
 ## When you are done
 
 Stop as soon as the acceptance criteria are met and the tests you wrote
 prove it. Your final message must be exactly the pull request text: the
 first line is the PR title, a blank line, then the PR body describing
-what you changed and why. Nothing else follows it.
+what you changed and why. Nothing else follows it. Do not narrate your
+plan as your final message — if you have not made every change and
+proven it with a passing test, you are not done yet.

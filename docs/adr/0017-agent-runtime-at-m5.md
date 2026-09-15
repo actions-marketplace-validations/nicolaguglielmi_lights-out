@@ -362,6 +362,34 @@ M4). The gemini-cli image is built only by an L1 run. Passes; the L0
 `demo-crew` time and the L1 record time are measured at M5 close and go
 in HANDOFF, not against a ceiling.
 
+## Contradicts the plan, found at the first L1 run — flagged, not silently
+## routed around (CLAUDE.md: "verifica prima di scrivere... se un'API
+## non esiste più come descritta, fermati e segnalalo")
+
+Plan §5 commits to `gemini-3.8-flash` for every role. `models/gemini-3.8-
+flash` is real and reachable with this key (confirmed directly against
+`GET https://generativelanguage.googleapis.com/v1beta/models`), but
+**Gemini CLI v0.59.0 silently serves `gemini-3.5-flash` regardless**: `-m
+gemini-3.8-flash`, `-m models/gemini-3.8-flash`, and the settings.json
+`model.name` all produce a `result` event whose `stats.models` key is
+`gemini-3.5-flash`, with no warning on stderr or anywhere else. Read
+against the installed bundle's model-resolution code, not guessed twice:
+0.59.0 (published 2026-09-08) most likely predates this CLI's own
+support for the model ID, one week before `gemini-3.8-flash`'s GA date
+this plan cites, and falls back to its own default rather than erroring
+on an ID it does not recognize. This is the runtime model substitution,
+not a construction-time one (docs/PLAN.md §5's "Con cosa lo costruisci
+tu" distinction): it changes what every role actually runs on, at every
+level, until the CLI pin moves. Not fixed here: a version bump is its
+own dedicated commit under CLAUDE.md's pinning rule, and the newest
+tag at record time was a nightly (`v0.61.0-nightly.20260915`), not a
+stable release worth pinning to under that same rule. `gemini-3.5-flash`
+is a real, capable model, not a mock — M5 records against what actually
+runs, states plainly that it is not what the plan asked for, and leaves
+the pin decision to the owner. `roles/dev-worker/role.env`'s `THINKING`
+values and this ADR's §8 budgets are unaffected: thinking level and
+token accounting are orthogonal to which Flash generation answers.
+
 ## Verify at L1 (the build closes each before the milestone closes)
 
 1. **Confirmed statically, before any real run**: `AfterModel`'s input

@@ -71,13 +71,27 @@ if [ "$container_rc" -ne 0 ]; then
 fi
 
 # stream-json's `result` event carries no response text (verified against
-# the installed bundle) — the model's final answer is reconstructed by
-# concatenating the `content` of every `message` event with role
-# "assistant" (each a streamed delta), in transcript order.
-response=$(jq -rs '[.[] | select(.type == "message" and .role == "assistant") | .content] | join("")' \
-  "$OUT/transcript.jsonl" 2>/dev/null || true)
+# the installed bundle) — the model's final answer is reconstructed from
+# `message` events with role "assistant" (each a streamed delta). Found
+# live (record attempt 4): the model narrates continuously between tool
+# calls (a "message" burst before nearly every tool_use), so joining every
+# assistant message across the whole session produces a soup of "I will…
+# I have…" planning narration, not a PR title. Only the assistant message
+# content strictly *after* the last tool_use/tool_result event is the
+# model's actual trailing response; everything before it is commentary on
+# an action already superseded by the next tool call.
+response=$(jq -rs '
+    . as $arr
+  | ([$arr[] | select(.type == "tool_use" or .type == "tool_result")] | length) as $n
+  | if $n == 0 then
+      [$arr[] | select(.type == "message" and .role == "assistant") | .content] | join("")
+    else
+      ($arr | to_entries | map(select(.value.type == "tool_use" or .value.type == "tool_result")) | last | .key) as $lastToolIdx
+      | [$arr[($lastToolIdx + 1):][] | select(.type == "message" and .role == "assistant") | .content] | join("")
+    end
+  ' "$OUT/transcript.jsonl" 2>/dev/null || true)
 if [ -z "$response" ]; then
-  printf 'harness-gemini-cli: no assistant message content in the transcript\n' >&2
+  printf 'harness-gemini-cli: no trailing assistant message after the last tool call\n' >&2
   exit 1
 fi
 
