@@ -1,0 +1,8 @@
+{
+  "name": "lights-out-crew-gemini-cli",
+  "private": true,
+  "description": "Pins the Gemini CLI version the gemini-cli AgentHarness adapter runs (docs/adr/0017 §3). Never published.",
+  "dependencies": {
+    "@google/gemini-cli": "0.59.0"
+  }
+}

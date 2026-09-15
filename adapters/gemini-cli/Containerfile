@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The gemini-cli AgentHarness worker: the workbench image plus
+# @google/gemini-cli, pinned by package-lock.json (docs/adr/0017 §3). The
+# runner precedent (adapters/gitea/runner/Containerfile): workbench already
+# has node 24, python3, uv, git, jq and `timeout`, so this is one npm
+# install, not a second base image. WORKBENCH_IMAGE is the cksum-tagged
+# image ./go built; compose passes it as a build arg.
+ARG WORKBENCH_IMAGE
+FROM ${WORKBENCH_IMAGE}
+
+WORKDIR /opt/gemini-cli
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+ && ln -s /opt/gemini-cli/node_modules/.bin/gemini /usr/local/bin/gemini \
+ && gemini --version
+
+# The BeforeTool guard (docs/adr/0017 §9) and the token-budget hooks
+# (docs/adr/0017 §8): baked into the image, not bind-mounted — /crew and
+# /roles are the only two mounts this service gets.
+COPY hooks/ /opt/gemini-cli-hooks/
+RUN chmod 0755 /opt/gemini-cli-hooks/*.sh
+
+COPY entrypoint.sh /usr/local/bin/crew-entrypoint
+RUN chmod 0755 /usr/local/bin/crew-entrypoint
+
+ENTRYPOINT ["/usr/local/bin/crew-entrypoint"]

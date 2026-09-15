@@ -57,6 +57,31 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(result["decision"], "review")
         self.assertEqual(result["signals"], [{"name": "platform", "paths": [path]}])
 
+    def test_roles_path_is_high(self):
+        # docs/adr/0017 §7: a role's prompt and hooks are the platform.
+        path = "roles/dev-worker/prompt.md"
+        result = classify([f"4\t0\t{path}"], self.policy)
+        self.assertEqual(result["level"], "high")
+        self.assertEqual(result["decision"], "review")
+        self.assertEqual(result["signals"], [{"name": "platform", "paths": [path]}])
+
+    def test_fixtures_path_is_high(self):
+        # docs/adr/0017 §7: a fixture change changes what L0 replays.
+        path = "fixtures/0001/dev-worker/patch"
+        result = classify([f"20\t0\t{path}"], self.policy)
+        self.assertEqual(result["level"], "high")
+        self.assertEqual(result["decision"], "review")
+        self.assertEqual(result["signals"], [{"name": "platform", "paths": [path]}])
+
+    def test_dot_gemini_path_is_high(self):
+        # docs/adr/0017 §7: a project-level .gemini/settings.json in the
+        # repo would reconfigure the worker.
+        path = ".gemini/settings.json"
+        result = classify([f"6\t0\t{path}"], self.policy)
+        self.assertEqual(result["level"], "high")
+        self.assertEqual(result["decision"], "review")
+        self.assertEqual(result["signals"], [{"name": "platform", "paths": [path]}])
+
     def test_docs_only_change_is_medium(self):
         # Comfortably over RISK_SIZE_MEDIUM_LINES, on a path with no signal.
         lines_changed = self.threshold + 50
