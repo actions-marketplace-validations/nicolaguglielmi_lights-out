@@ -39,8 +39,8 @@ jq -n \
     tools: {exclude: ["web_fetch", "google_web_search"]},
     hooks: {
       BeforeTool: [{matcher: "run_shell_command|write_file|replace|read_file", hooks: [{name: "guard", type: "command", command: "/opt/gemini-cli-hooks/guard.sh"}]}],
-      BeforeModel: [{matcher: ".*", hooks: [{name: "budget-before", type: "command", command: "/opt/gemini-cli-hooks/budget-before.sh"}]}],
-      AfterModel: [{matcher: ".*", hooks: [{name: "budget-after", type: "command", command: "/opt/gemini-cli-hooks/budget-after.sh"}]}]
+      BeforeModel: [{matcher: "*", hooks: [{name: "budget-before", type: "command", command: "/opt/gemini-cli-hooks/budget-before.sh"}]}],
+      AfterModel: [{matcher: "*", hooks: [{name: "budget-after", type: "command", command: "/opt/gemini-cli-hooks/budget-after.sh"}]}]
     }
   }' > "$HOME/.gemini/settings.json"
 
