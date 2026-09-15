@@ -6,7 +6,7 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M4 of 10. What runs today:
+Milestone M5 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -18,15 +18,16 @@ Milestone M4 of 10. What runs today:
 | deploy | M3 | ✓ staging → 5% → 25%, held for human gate |
 | rollback | M3 | ✓ automatic on verify NO-GO, triggered by `./go demo-rollback` |
 | PR gates | M4 | ✓ six fixture PRs prove risk, SAST, deps, test, mutation, secrets |
+| ticket → PR | M5 | ✓ crew driver, six roles, one real run recorded, replay at L0 |
 | e2e | M6 | NOT YET |
 
 | | |
 |---|---|
 | **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
-A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero. Promotion to 100% is the M6 human gate. No ticket→PR pipeline yet (M5).
+A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero. Promotion to 100% is the M6 human gate.
 
-The PR gates (`./go demo-gates`) run on six committed fixture patches and prove both verdicts: risk scoring, dependency scanning, SAST, test failure, mutation inadequacy, and secrets. A "PR" at M4 is a git range, not a Gitea or GitHub PR yet; that comes at M5.
+The PR gates (`./go demo-gates`) run on six committed fixture patches and prove both verdicts: risk scoring, dependency scanning, SAST, test failure, mutation inadequacy, and secrets. `./go demo-crew` proves the ticket→PR pipeline: the crew container runs the dev-worker role on ticket 0001, opening a PR that passes `make gates`. At L0 the fixture is replayed; at L1 a real run against the Gemini API is recorded.
 
 ## Quick start
 
@@ -52,6 +53,9 @@ Then explore:
 ./go demo-rollback   # release the failing version and prove automatic rollback
 ./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
+./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
+./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
+./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]
 ./go mutation-baseline # measure baseline mutation score on the whole package
 ./go kill-switch     # turn off waitlist for all versions (manual flag edit)
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
@@ -68,8 +72,8 @@ The first run builds the workbench image (about 1 GB on disk, 350–400 MB downl
 | | L0 · Replay | L1 · Local | L2 · Cloud | L3 · Platform |
 |---|---|---|---|---|
 | **Needs** | podman rootless (podman machine on macOS) | + Gemini API key | + GCP project with billing | + Agent Engine quota |
-| **Models** | Recorded responses (fixtures) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform, `gemini-3.8-flash` | idem + thinking level per role |
-| **Harness worker** | Replay | Gemini CLI headless in container | Gemini CLI on Cloud Run Job | + adapter Antigravity SDK |
+| **Models** | Recorded responses (fixtures) | Gemini API, `gemini-3.5-flash` (Gemini CLI v0.59.0 serves 3.5 not 3.8) | Gemini Enterprise Agent Platform, `gemini-3.8-flash` | idem + thinking level per role |
+| **Harness worker** | Replay from `fixtures/` | Gemini CLI headless in compose | Gemini CLI on Cloud Run Job | + adapter Antigravity SDK |
 | **Git and PR** | Gitea in compose | Gitea | GitHub real | GitHub real |
 | **CI** | Gitea Actions (act runner) | Gitea Actions | GitHub Actions or Cloud Build | idem |
 | **Registry** | Zot local | Zot | Artifact Registry + Binary Authorization | idem |
@@ -104,7 +108,9 @@ Six gates run in order on a git range (two commits or more, measured by `git mer
 
 **Six fixtures:** `honest-fix` (ticket 0001 resolved, every gate GO, risk low); `fake-test` (same fix, inadequate test, mutation NO-GO); `migration` (adds a schema column, every gate GO, risk high); `sast-finding` (one bandit issue); `vulnerable-dep` (a known advisory); `failing-test` (one assertion fails). Each fixture is a git-format-patch `.patch` file applied in a worktree, with expected verdicts and JSON data recorded in `expect`.
 
-**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M5 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
+**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M6 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
+
+**Model reality check:** Plan §5 commits to `gemini-3.8-flash` for every role. The model exists and is reachable, but Gemini CLI v0.59.0 silently serves `gemini-3.5-flash` instead, with no warning or error. The fixture at `fixtures/0001/dev-worker/` is recorded against what actually runs (`gemini-3.5-flash`), not what was requested. See ADR 0017 for details and the consequences when the CLI version changes.
 
 ## The L0 plane
 
@@ -116,7 +122,7 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 | Envoy admin | 9901 | Runtime config: `GET /runtime` reads weights, `POST /runtime_modify` shifts traffic between stable and canary |
 | backend | implicit | Stable revision, answering at port 8000 inside compose |
 | backend-canary | implicit | Canary revision (started on-demand by deploy, same image as backend); answering at port 8000 inside compose |
-| Gitea | 3000 | Rootless, sqlite, no users yet; the Actions runner registers on start in host mode |
+| Gitea | 3000 | Rootless, sqlite; bootstrap creates a fixed admin user (`lights-out` / `lights-out-local-not-a-secret`) and a public `lights-out/lights-out` repo with Actions disabled; the runner registers on start in host mode |
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by the `service_version` label reached via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves `app/flags/flags.json`, the one bind mount; edit the file and the flag flips within seconds |
@@ -275,13 +281,14 @@ lights-out/
     pubsub-emulator/        # ready.sh
     firestore-emulator/     # ready.sh
 
-  roles/                    # from M5: agent role definitions
+  roles/                    # M5: agent role definitions (dev-worker with prompt and budgets)
   policy/                   # from M4: policy-as-code
   tickets/                  # project tickets, one per file; 0001 is the first bug found
   gates/                    # from M4: PR gates, identical at every level
+  fixtures/                 # M5: recorded agent responses at L1, replayed at L0
+  .crew/                    # M5: per-ticket workspace and output directory (gitignored)
   design/                   # from M10: Stitch artifacts
   infra/                    # from M8: Terraform for GCP
-  fixtures/                 # from M5: recorded agent responses
   e2e/                      # from M6: golden path test
 ```
 
