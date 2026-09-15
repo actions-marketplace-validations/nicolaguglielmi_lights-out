@@ -27,9 +27,11 @@ if ! out=$(docker-compose exec -T gitea gitea admin user create \
   esac
 fi
 
-# 2. Repo, public, no template. 201 created, 409 already exists.
+# 2. Repo, public, no template. 201 created, 409 already exists. No -f:
+# curl's own failure-on-HTTP-error would discard the body and the code
+# together on the expected, idempotent 409, which is not a failure here.
 tmp=$(mktemp)
-code=$(curl -fsS -o "$tmp" -w '%{http_code}' \
+code=$(curl -sS -o "$tmp" -w '%{http_code}' \
   -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
   -d "{\"name\":\"$GITEA_REPO\",\"private\":false,\"auto_init\":false}" \
   "$GITEA_API/user/repos") || code=000
