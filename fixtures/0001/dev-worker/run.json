@@ -1,0 +1,13 @@
+{
+  "harness": "gemini-cli",
+  "model": "gemini-3.5-flash",
+  "thinking": "high",
+  "turns": 1,
+  "tokens": {
+    "input": 892202,
+    "output": 3651,
+    "total": 915022
+  },
+  "duration_s": 303,
+  "exit_code": 0
+}
