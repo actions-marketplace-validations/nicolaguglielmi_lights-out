@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2034 # every var here is for the sourcing script
 # SPDX-License-Identifier: Apache-2.0
 #
 # gitea-env: identity and endpoints for the bootstrapped L0 repo (docs/adr/

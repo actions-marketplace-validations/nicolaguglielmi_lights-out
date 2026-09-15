@@ -9,6 +9,7 @@
 set -eu
 workspace=${1:?usage: push.sh <workspace> <branch>}
 branch=${2:?usage: push.sh <workspace> <branch>}
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 # shellcheck source=adapters/gitea/env.sh
 . "$here/adapters/gitea/env.sh"

@@ -47,8 +47,8 @@ jq -n \
 {
   cat "$TICKET_FILE"
   printf '\n---\n\n'
-  printf 'Work only inside this repository checkout. Do not run `git push` or\n'
-  printf '`git commit` yourself — committing and pushing are not your job, the\n'
+  printf 'Work only inside this repository checkout. Do not run git push or\n'
+  printf 'git commit yourself: committing and pushing are not your job, the\n'
   printf 'platform does that after you finish. When you are done, or when you\n'
   printf 'believe the ticket is resolved, your final message must be exactly\n'
   printf 'the pull request text: the first line is the PR title, a blank line,\n'

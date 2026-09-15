@@ -27,7 +27,7 @@ if [ ! -f "roles/$ROLE/prompt.md" ]; then
   reason=$(head -n1 "roles/$ROLE/ROLE.md" 2>/dev/null || printf 'no roles/%s/prompt.md and no ROLE.md' "$ROLE")
   nogo "role $ROLE has no prompt yet" "$reason"
 fi
-# shellcheck disable=SC1091 # role.env's path is built from $ROLE
+# shellcheck disable=SC1090,SC1091 # role.env's path is built from $ROLE
 . "roles/$ROLE/role.env"
 
 here=$(pwd)
