@@ -1,0 +1,143 @@
+From 234b6d254f9bffa4f9f24c2d86561ec248d508f1 Mon Sep 17 00:00:00 2001
+From: lights-out-crew <crew@lights-out.invalid>
+Date: Tue, 15 Sep 2026 08:49:31 +0000
+Subject: [PATCH] Fix geocoder client handling of 404 responses for unknown
+ venues
+
+This PR resolves the issue where posting an unknown venue to `POST /api/meetups` resulted in an unhandled 500 Internal Server Error instead of the documented 502 Bad Gateway response.
+
+### Cause of the bug
+The fake geocoder returns `404` with an empty body when a venue name is not found in the examples. The geocoder client (`meetups/geocoder_client.py`) only checked for status codes `>= 500` to raise `GeocoderUnavailable`. Consequently, a 404 status code bypassed this check and triggered `response.json()`. Since the response body was empty, parsing failed with a JSON decoding error, resulting in an unhandled 500 error in the API.
+
+### Changes made
+1. **Contract Update:** Added an example for `"Unknown Venue, Nowhere"` with status `404` and an empty body `{}` to `app/contracts/geocoder/examples.json`.
+2. **Client Update:** Modified `app/backend/meetups/geocoder_client.py` to check for any status code other than `200` (such as 404) and raise `GeocoderUnavailable` accordingly.
+3. **Tests Robustness:** Updated the file and example path resolution logic in `app/backend/tests/conftest.py` and `app/backend/tests/test_geocoder_contract.py` to safely find paths in both local host checkouts and Docker environments.
+4. **Test Coverage:** Added new tests in `app/backend/tests/test_geocoder_client.py` to verify that an unknown venue raises `GeocoderUnavailable` in the client and returns a 502 status code on the API level.
+5. **Documentation:** Updated the description of the geocoder dependency in `app/README.md` to accurately reflect that 404 response codes from the geocoder yield 502 responses.
+---
+ app/README.md                               |  2 +-
+ app/backend/meetups/geocoder_client.py      |  2 +-
+ app/backend/tests/conftest.py               |  2 ++
+ app/backend/tests/test_geocoder_client.py   | 25 +++++++++++++++++++++
+ app/backend/tests/test_geocoder_contract.py |  4 ++++
+ app/contracts/geocoder/examples.json        |  7 ++++++
+ 6 files changed, 40 insertions(+), 2 deletions(-)
+
+diff --git a/app/README.md b/app/README.md
+index da68ecc..0582eea 100644
+--- a/app/README.md
++++ b/app/README.md
+@@ -22,7 +22,7 @@ Signup creates a `users(id, email unique, password_hash)` row. Passwords are has
+ 
+ ## External dependency: geocoder
+ 
+-The `POST /api/meetups` route geocodes the venue name through `GET {GEOCODER_URL}/search?q=<venue>&format=jsonv2&limit=1` and stores `venue_lat`/`venue_lon`. Empty result yields both `null`, timeout or 5xx yields 502 with `{"detail":"geocoder unavailable"}`. The shape is Nominatim-compatible. When a venue is not in the contract, the fake geocoder returns 404 and the backend answers 500, not 502.
++The `POST /api/meetups` route geocodes the venue name through `GET {GEOCODER_URL}/search?q=<venue>&format=jsonv2&limit=1` and stores `venue_lat`/`venue_lon`. Empty result yields both `null`, timeout, 5xx, or 404 yields 502 with `{"detail":"geocoder unavailable"}`. The shape is Nominatim-compatible. When a venue is not in the contract, the fake geocoder returns 404 and the backend answers 502.
+ 
+ At L0, the fake geocoder is a Python stdlib `http.server` in compose, no dependencies. The contract is `app/contracts/geocoder/examples.json`: a list of `{request: {q}, response: {status, body}}` pairs, the executable spec for what the app can call. Both the fake and the client (backend) are tested against it.
+ 
+diff --git a/app/backend/meetups/geocoder_client.py b/app/backend/meetups/geocoder_client.py
+index e9256e9..ad65d35 100644
+--- a/app/backend/meetups/geocoder_client.py
++++ b/app/backend/meetups/geocoder_client.py
+@@ -21,7 +21,7 @@ def geocode(venue: str) -> tuple[float | None, float | None]:
+         )
+     except httpx.HTTPError as exc:
+         raise GeocoderUnavailable(str(exc)) from exc
+-    if response.status_code >= 500:
++    if response.status_code != 200:
+         raise GeocoderUnavailable(f"status {response.status_code}")
+     results = response.json()
+     if not results:
+diff --git a/app/backend/tests/conftest.py b/app/backend/tests/conftest.py
+index b7268cf..4e1ea47 100644
+--- a/app/backend/tests/conftest.py
++++ b/app/backend/tests/conftest.py
+@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
+ # module imports `meetups.app` — conftest.py is always imported first. The
+ # copy is writable so test_flags.py can flip it without touching the repo.
+ _REAL_FLAGS_FILE = Path(__file__).resolve().parent.parent / "flags" / "flags.json"
++if not _REAL_FLAGS_FILE.exists():
++    _REAL_FLAGS_FILE = Path(__file__).resolve().parent.parent.parent / "flags" / "flags.json"
+ _flag_tmp_dir = tempfile.mkdtemp(prefix="waitlist-flag-")
+ WAITLIST_FLAG_FILE = Path(_flag_tmp_dir) / "flags.json"
+ shutil.copy(_REAL_FLAGS_FILE, WAITLIST_FLAG_FILE)
+diff --git a/app/backend/tests/test_geocoder_client.py b/app/backend/tests/test_geocoder_client.py
+index 86ada64..e00380d 100644
+--- a/app/backend/tests/test_geocoder_client.py
++++ b/app/backend/tests/test_geocoder_client.py
+@@ -27,6 +27,11 @@ def test_geocode_no_match_returns_none_none(fake_server):
+     assert geocode("Nowhere, Atlantis") == (None, None)
+ 
+ 
++def test_geocode_unknown_venue_raises_geocoder_unavailable(fake_server):
++    with pytest.raises(GeocoderUnavailable):
++        geocode("Unknown Venue, Nowhere")
++
++
+ def test_geocode_raises_when_geocoder_unreachable(fake_server):
+     fake_server.shutdown()
+     fake_server.server_close()
+@@ -34,6 +39,26 @@ def test_geocode_raises_when_geocoder_unreachable(fake_server):
+         geocode("Milano, Duomo")
+ 
+ 
++def test_create_meetup_returns_502_with_unknown_venue(client, fake_server):
++    client.post("/api/signup", json={"email": "geo@example.com", "password": "hunter2"})
++    token = client.post(
++        "/api/login", json={"email": "geo@example.com", "password": "hunter2"}
++    ).json()["token"]
++
++    resp = client.post(
++        "/api/meetups",
++        json={
++            "title": "t",
++            "starts_at": "2026-01-01T10:00:00Z",
++            "venue": "Unknown Venue, Nowhere",
++            "capacity": 1,
++        },
++        headers={"Authorization": f"Bearer {token}"},
++    )
++    assert resp.status_code == 502
++    assert resp.json() == {"detail": "geocoder unavailable"}
++
++
+ def test_create_meetup_returns_502_when_geocoder_unreachable(client, fake_server):
+     fake_server.shutdown()
+     fake_server.server_close()
+diff --git a/app/backend/tests/test_geocoder_contract.py b/app/backend/tests/test_geocoder_contract.py
+index dbca6f7..9b93b85 100644
+--- a/app/backend/tests/test_geocoder_contract.py
++++ b/app/backend/tests/test_geocoder_contract.py
+@@ -10,6 +10,10 @@ from fakes.geocoder.server import create_server
+ EXAMPLES_PATH = (
+     Path(__file__).resolve().parent.parent / "contracts" / "geocoder" / "examples.json"
+ )
++if not EXAMPLES_PATH.exists():
++    EXAMPLES_PATH = (
++        Path(__file__).resolve().parent.parent.parent / "contracts" / "geocoder" / "examples.json"
++    )
+ 
+ 
+ @pytest.fixture
+diff --git a/app/contracts/geocoder/examples.json b/app/contracts/geocoder/examples.json
+index 78944dd..a7c8670 100644
+--- a/app/contracts/geocoder/examples.json
++++ b/app/contracts/geocoder/examples.json
+@@ -31,5 +31,12 @@
+       "status": 200,
+       "body": []
+     }
++  },
++  {
++    "request": { "q": "Unknown Venue, Nowhere" },
++    "response": {
++      "status": 404,
++      "body": {}
++    }
+   }
+ ]
+-- 
+2.47.3
+
