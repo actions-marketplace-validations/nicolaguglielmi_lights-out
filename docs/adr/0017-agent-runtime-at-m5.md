@@ -1,6 +1,6 @@
 # ADR 0017 — Agent runtime at M5: `AgentHarness` is `adapters/<name>/run.sh` over a cloned workspace; `core/crew.sh` drives ticket → PR through Tracker and CodeHost verbs; the Gemini CLI worker is workbench + `@google/gemini-cli` in compose with hooks as the guardrail and the app's tests in reach; the one real L1 run of ticket 0001 is recorded into `fixtures/` and replayed at L0; `demo-crew` is the acceptance; the runner socket moves to M6
 
-- Status: proposed (amends ADR 0015 §7 and consequences [runner socket and the first Gitea job move to M6; no Gitea job needs the socket at M5], ADR 0015 §6 alternatives [`fixtures/` does not replace `honest-fix`], ADR 0016 §2 [`platform` gains `roles/*`, `fixtures/*`, `.gemini/*`], ADR 0012 consequences [`actions/checkout` mirror is M6's]; fixes the `.env` clobbering in `gates/mutation.sh` and `mutation-baseline`)
+- Status: accepted (amends ADR 0015 §7 and consequences [runner socket and the first Gitea job move to M6; no Gitea job needs the socket at M5], ADR 0015 §6 alternatives [`fixtures/` does not replace `honest-fix`], ADR 0016 §2 [`platform` gains `roles/*`, `fixtures/*`, `.gemini/*`], ADR 0012 consequences [`actions/checkout` mirror is M6's]; fixes the `.env` clobbering in `gates/mutation.sh` and `mutation-baseline`)
 - Date: 2026-09-15
 - Milestone: M5
 
@@ -354,13 +354,23 @@ the runner is host mode on the workbench image with no socket.
 ## Golden-rule check
 
 Stranger with podman, git, sh, no key, no account: `./go demo` is
-byte-for-byte the M4 stage list, no new pull, no new stage. `./go
-demo-crew` at L0 pulls nothing new either: bootstrap is three API calls
-and a push to the local Gitea, replay is `cp` and `git am`, the PR is
-one API call, then one `gates` run on the honest path (90–110 s, HANDOFF
-M4). The gemini-cli image is built only by an L1 run. Passes; the L0
-`demo-crew` time and the L1 record time are measured at M5 close and go
-in HANDOFF, not against a ceiling.
+byte-for-byte the M4 stage list, no new pull, no new stage — confirmed:
+`GO: demo, milestone M3, 113s to rollback` after M5's own changes, same
+as before them. `./go demo-crew` at L0 pulls nothing new either:
+bootstrap is three API calls and a push to the local Gitea, replay is
+`cp` and `git am`, the PR is one API call, then one `gates` run on the
+honest path — measured, warm, 97s end to end (mutation is the
+honest-fix-sized path ADR 0015's 90–110s estimate already covers). One
+transient failure observed mid-session, immediately after a fresh
+`./go demo` teardown/rebuild cycle (`open-pr on gitea failed`, ~11s,
+before any real work started); an immediate retry passed cleanly, most
+likely Gitea's API not fully warm yet right after bootstrap on a cold
+plane — noted for M6, not chased further, since no other run in the
+same session (six real L1 attempts, three L0 mechanics runs) hit it.
+The gemini-cli image is built only by an L1 run: confirmed, `demo-crew`
+at L0 never builds it. Passes. The L1 record time (six real attempts,
+detailed in HANDOFF, not a ceiling this ADR sets) is measured and
+recorded there.
 
 ## Contradicts the plan, found at the first L1 run — flagged, not silently
 ## routed around (CLAUDE.md: "verifica prima di scrivere... se un'API
@@ -390,55 +400,85 @@ the pin decision to the owner. `roles/dev-worker/role.env`'s `THINKING`
 values and this ADR's §8 budgets are unaffected: thinking level and
 token accounting are orthogonal to which Flash generation answers.
 
-## Verify at L1 (the build closes each before the milestone closes)
+## Verify at L1 — closed (the build closes each before the milestone closes)
 
-1. **Confirmed statically, before any real run**: `AfterModel`'s input
-   carries `llm_response.usageMetadata.totalTokenCount` exactly — read
-   from `toHookLLMResponse()` in the installed
-   `@google/gemini-cli@0.59.0` bundle (`bundle/chunk-YSBB75DZ.js`), which
-   builds `usageMetadata: sdkResponse.usageMetadata ? {promptTokenCount,
-   candidatesTokenCount, totalTokenCount} : void 0` verbatim. §8's design
-   (not the post-run fallback) is the live path, pending only that the
-   hook actually fires (item 2).
-2. `BeforeTool` hooks fire under `gemini -p --approval-mode yolo` (the
-   recorded `hooks.log` is the proof); `--approval-mode yolo` accepted by
-   0.59.0 without the deprecated `--yolo` — confirmed accepted by
-   `gemini --help` inside the built image; not yet confirmed to actually
-   invoke the hook at runtime.
-3. **Corrected statically, before any real run — this was wrong in the
-   first draft**: under `--output-format stream-json`, the `result`
-   event carries no `response` text at all (only `type`, `timestamp`,
-   `status`, `stats`, and `error` on failure); the model's final answer
-   is a `message` event stream instead (`role:"assistant"`, one `content`
-   delta per event, `delta:true`), reconstructed by
-   `adapters/gemini-cli/run.sh` as their concatenation, in order. `stats`
-   is flat, not nested (`total_tokens`, `input_tokens`, `output_tokens`,
-   `cached`, `input`, `duration_ms`, `tool_calls`, `models`), read from
-   `StreamJsonFormatter.convertToStreamStats()` in
-   `bundle/chunk-SM627E5R.js`. No turn count is reported anywhere in the
-   stream; `run.sh` approximates it by counting `role:"user"` message
-   events, a caveat recorded there, not guessed twice. `tool_input`
-   parameter names are irrelevant by design (§9), unaffected.
-4. Whether a workspace `.gemini/settings.json` can override user-level
-   hooks in the same session; if yes, the lever is
-   `GEMINI_CLI_SYSTEM_SETTINGS_PATH` pointing at an adapter-written
-   system settings file, which project settings cannot override.
-5. Sub-directory context discovery actually loads `roles/*/GEMINI.md`
-   (the reason for `prompt.md`); if it does not, the name still stands,
-   the reason line in this ADR changes.
-6. **Confirmed live**, on the L0 mechanics run (a temporary fixture built
-   from `gates/fixtures/honest-fix`, never committed): `docker-compose
-   exec -T gitea gitea admin user create` works in the rootless image and
-   is idempotent on "already exists"; `PATCH /repos/{o}/{r}` accepts
-   `has_actions`. One real bug found and fixed in the same run:
-   `bootstrap.sh`'s repo-create `curl -fsS` discarded the body and the
-   HTTP code together on the expected, idempotent 409, misread as a hard
-   failure — `-f` dropped, the code read from `-w` and branched on
-   directly (commit `8c042c1`).
-7. gitleaks stays green on `adapters/gitea/env.sh` (confirmed, `./go
-   ci-secrets`) and on the working tree in general; not yet confirmed on
-   a real recorded transcript, which does not exist until this run.
-8. Free-tier RPM throttling and the CLI's retry behaviour over 60 turns.
-9. Crew image size and `npm ci` time (confirmed: 5 packages, ~3 min cold,
-   0 vulnerabilities — `npm ci --omit=dev` inside the built image); `uv
-   sync` time cold and warm on the bind mount not yet measured.
+Every item below is now closed, by six real L1 runs (attempts 1–6,
+2026-09-15) against ticket 0001. Attempt 6 is the one recorded as the
+fixture; attempts 1–5 each found one real, distinct bug, fixed before the
+next attempt, detailed in HANDOFF, not repeated here.
+
+1. **Confirmed live.** `AfterModel`'s input carries
+   `llm_response.usageMetadata.totalTokenCount` exactly, matching the
+   static reading below; §8's design (accumulate-and-deny) is the live
+   path, not the post-run fallback — attempt 4's `tokens` file
+   (4,040,294) and attempt 5's (4,193,082) both crossed the budget and
+   `budget-before.sh` correctly denied the next model call each time,
+   surfaced by the CLI itself as `"Agent execution blocked: TOKEN_BUDGET
+   exceeded: <n> >= <budget>"`.
+2. **Confirmed live, after a real bug.** `BeforeTool` hooks fire under
+   `gemini -p --approval-mode yolo --skip-trust`; `hooks.log` is real
+   evidence in the recorded fixture. But the first two real attempts
+   (2, 3) showed every single tool call denied, always for the same
+   reason (`.gemini/`): `createBaseInput()` puts a `transcript_path` on
+   every hook call, pointing into the CLI's own `~/.gemini/tmp/...`
+   recording file, and `guard.sh`'s original `[.. | strings]` joined
+   that in with `tool_input`, so the rule matched unconditionally.
+   Fixed by scoping the join to `.tool_input` (commit `46ee945`); attempt
+   4 onward shows real ALLOW/DENY discrimination in `hooks.log`.
+3. **Corrected twice against real transcripts, not guessed a third
+   time.** The static correction (no `response` field on `result`; flat
+   `stats`) held. What static reading could not show: the model narrates
+   continuously between tool calls — a `message` burst before nearly
+   every `tool_use` — so joining every assistant message across the
+   session (the first live version) produced a soup of "I will… I
+   have…" planning narration as the "PR title," not a real one (attempt
+   4). Fixed by taking only assistant message content strictly *after*
+   the last `tool_use`/`tool_result` event (commit `9c54d90`); attempt 6's
+   `pr.json` is a clean, real title and body. Turn count is still not
+   reported anywhere in the stream; the `role:"user"`-count proxy reports
+   `1` for every headless run (there is exactly one user message per
+   session) and is acknowledged in run.sh's comment as not useful, not
+   removed, since `MAX_TURNS` itself is still enforced correctly
+   server-side regardless of what this repo can observe about it.
+4. Not reached — no run needed a workspace-level settings override, so
+   this stays open, harmless: `roles/dev-worker/prompt.md` is the only
+   per-role content this repo writes, and it goes through `GEMINI.md`,
+   not `.gemini/settings.json`.
+5. **Answered by a design that did not depend on it.** Never directly
+   tested (`prompt.md` is copied to the global `~/.gemini/GEMINI.md`
+   explicitly, sidestepping subdirectory discovery entirely, so the
+   question is moot for M5 as built).
+6. **Confirmed live**, first on the L0 mechanics run (a temporary fixture
+   built from `gates/fixtures/honest-fix`, never committed), then on
+   every real attempt after: `docker-compose exec -T gitea gitea admin
+   user create` works in the rootless image and is idempotent on
+   "already exists"; `PATCH /repos/{o}/{r}` accepts `has_actions`. One
+   real bug found and fixed in the same mechanics run: `bootstrap.sh`'s
+   repo-create `curl -fsS` discarded the body and the HTTP code together
+   on the expected, idempotent 409, misread as a hard failure — `-f`
+   dropped, the code read from `-w` and branched on directly (commit
+   `8c042c1`).
+7. **Confirmed clean**, `./go ci-secrets` green with attempt 6's real
+   `transcript.jsonl` (38,926 bytes) committed under `fixtures/`.
+8. **Not hit, six real calls in under two hours on the same key**: no
+   429, no visible throttling, no retry/backoff behaviour observed to
+   describe. Left open as a fact this session's six attempts were too
+   few to exercise, not as a design gap.
+9. **Confirmed.** Crew image: 5 npm packages, ~35s warm / ~3 min cold, 0
+   vulnerabilities. `uv sync --locked` inside the crew container: a few
+   seconds warm (the bind-mounted `/crew/.uv-cache` persisted across all
+   six attempts in the same session).
+10. **Found live, not anticipated by any item above — the reason the
+    first four real attempts produced nothing usable.** `-m
+    gemini-3.8-flash` (and `models/gemini-3.8-flash`, and settings.json's
+    `model.name`) silently serve `gemini-3.5-flash` under Gemini CLI
+    v0.59.0. Detailed in the "Contradicts the plan" section above.
+11. **Found live.** The model can run out of budget mid-task, after real,
+    correct, on-topic work, with no trailing message to build a PR from
+    (attempt 5: 29 correct tool calls across all five files the ticket
+    needed, then denied on the next call, nothing to extract). `run.sh`
+    originally exited on the missing response *before* committing, so
+    that real work was briefly, silently discarded — caught by
+    inspecting the still-dirty workspace directly, fixed by committing
+    first, always, with a WIP placeholder message amended to the real
+    one if a response does arrive (commit `2f26996`).
