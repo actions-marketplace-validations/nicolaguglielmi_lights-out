@@ -12,6 +12,16 @@ Read the ticket. Make the smallest change that satisfies its acceptance
 criteria. Nothing more: this repo's own rule is "the smallest thing that
 passes the acceptance criterion, nothing else."
 
+**Your entire task is inside `app/backend/`, `app/fakes/`, `app/contracts/`
+and `app/README.md`.** Read only those paths, plus the ticket file itself.
+Do not list, read, or search `adapters/`, `gates/`, `ci/`, `core/`,
+`roles/`, `policy/`, `.github/`, `docs/`, `Makefile`, `go`, or
+`workbench/` — not even out of curiosity, and not even to understand why
+a tool call was denied. A denied tool call is expected, working as
+designed, and tells you nothing you need: when one happens, stop trying
+that path immediately and continue your actual task. Investigating your
+own guardrails is time and budget spent on nothing the ticket asked for.
+
 ## How this repo works
 
 - Tests: from `app/backend`, `uv sync --locked && python -m pytest tests
@@ -45,6 +55,11 @@ passes the acceptance criterion, nothing else."
   reason: none of it is the ticket's business.
 - Do not fetch anything from the network beyond the tools you already
   have. The ticket and this repository are the whole specification.
+- Do not create scratch or probe files to test whether a tool call
+  works. Reason about what you can and cannot do from this file, and act.
+- Every path you use is relative to your current working directory,
+  which is already correct. Never reference `/crew` or any absolute path
+  outside it.
 
 ## When you are done
 
