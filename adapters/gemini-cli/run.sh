@@ -90,6 +90,41 @@ response=$(jq -rs '
       | [$arr[($lastToolIdx + 1):][] | select(.type == "message" and .role == "assistant") | .content] | join("")
     end
   ' "$OUT/transcript.jsonl" 2>/dev/null || true)
+
+# The last `result` event's `stats` object (flat field names, verified
+# against StreamJsonFormatter.convertToStreamStats in the installed
+# bundle). No turn count is reported there; approximated by the number of
+# "message" events with role "user", each opening one turn (the initial
+# prompt counts as the first) — a caveat recorded here, not guessed twice.
+# `stats.models`' own key names the model that actually answered — recorded
+# here rather than the model requested on the command line, because they
+# have already, once, been observed to differ (docs/adr/0017, "Contradicts
+# the plan" section).
+stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
+turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null || echo null)
+tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
+tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
+tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
+model_served=$(printf '%s' "$stats" | jq -r '.models | keys | first // "unknown"')
+
+# The adapter commits, not the model (docs/adr/0017 §1): whatever the
+# model left uncommitted is staged and committed here, under the crew
+# identity, before the response-extraction check below, so a run that
+# ran out of budget mid-task (found live: record attempt 5, TOKEN_BUDGET
+# exceeded right after the last successful tool call, no trailing message
+# to extract) still leaves its real work in the workspace for study,
+# instead of that work being silently discarded by an early exit.
+committed=0
+if [ -n "$(git -C "$WORKSPACE" status --porcelain)" ]; then
+  git -C "$WORKSPACE" add -A
+  git -C "$WORKSPACE" -c user.name=lights-out-crew -c user.email=crew@lights-out.invalid \
+    commit -q -m "WIP: incomplete run, no final message (docs/adr/0017 §1)" \
+    -m "$(printf '%s tokens spent, %s tool calls, %s ms. See %s/transcript.jsonl.' \
+      "$tok_total" "$(printf '%s' "$stats" | jq -r '.tool_calls // "?"')" \
+      "$(printf '%s' "$stats" | jq -r '.duration_ms // "?"')" "$OUT")"
+  committed=1
+fi
+
 if [ -z "$response" ]; then
   printf 'harness-gemini-cli: no trailing assistant message after the last tool call\n' >&2
   exit 1
@@ -99,30 +134,18 @@ title=$(printf '%s\n' "$response" | head -n1)
 body=$(printf '%s\n' "$response" | tail -n +2 | sed '/./,$!d')
 jq -n --arg title "$title" --arg body "$body" '{title: $title, body: $body}' > "$OUT/pr.json"
 
-# The last `result` event's `stats` object (flat field names, verified
-# against StreamJsonFormatter.convertToStreamStats in the installed
-# bundle). No turn count is reported there; approximated by the number of
-# "message" events with role "user", each opening one turn (the initial
-# prompt counts as the first) — a caveat recorded here, not guessed twice.
-stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
-turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null || echo null)
-tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
-tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
-tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
-
-# The adapter commits, not the model (docs/adr/0017 §1): whatever the
-# model left uncommitted is staged and committed here, under the crew
-# identity, with the same title and body as the PR.
-if [ -n "$(git -C "$WORKSPACE" status --porcelain)" ]; then
-  git -C "$WORKSPACE" add -A
+# A real final message arrived after all: the WIP commit above is amended
+# with the actual title and body, so the one commit over BASE carries the
+# real PR text, not the placeholder.
+if [ "$committed" -eq 1 ]; then
   git -C "$WORKSPACE" -c user.name=lights-out-crew -c user.email=crew@lights-out.invalid \
-    commit -q -m "$title" -m "$body"
+    commit -q --amend -m "$title" -m "$body"
 fi
 
 git -C "$WORKSPACE" format-patch --stdout "$BASE"..HEAD > "$OUT/patch" 2>/dev/null || : > "$OUT/patch"
 
 jq -n \
-  --arg harness gemini-cli --arg model gemini-3.8-flash --arg thinking "$THINKING" \
+  --arg harness gemini-cli --arg model "$model_served" --arg thinking "$THINKING" \
   --argjson turns "$turns" \
   --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
   --argjson duration "$duration" --argjson exitCode "$container_rc" \
