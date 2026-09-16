@@ -7,9 +7,12 @@
 # or Prometheus word appears below. Stages: rollback to a known state, read
 # the stable version, check the freeze flag, staging, then 5% and 25%, each
 # gated by verify/slo.sh. A NO-GO at any stage rolls back and exits 1. A
-# full pass holds the canary at 25%, waiting for the M7 human gate, and
-# exits 0. Generates no traffic itself: production has real traffic, the
-# Makefile `release` target starts app/load.sh beside this at L0.
+# full pass holds the canary at 25%, waiting for go-for-launch (core/
+# promote.sh, docs/adr/0020 §4), and exits 0. Either way the decision and
+# the numbers that produced it are written to RELEASE_RECORD, the file
+# promote reads. Generates no traffic itself: production has real
+# traffic, the Makefile `release` target starts app/load.sh beside this
+# at L0.
 #
 # Not scanned by ci/contract.sh (core/, not ci/ gates/ verify/), but reuses
 # ci/lib.sh's go/nogo for the same GO:/NO-GO: line shape.
@@ -24,6 +27,8 @@ name=launchpad
 : "${DELIVERY:?DELIVERY not set; run this via ./go, not directly}"
 : "${METRICS:?METRICS not set; run this via ./go, not directly}"
 
+: "${RELEASE_RECORD:=.crew/release.json}"
+
 delivery="adapters/$DELIVERY"
 metrics_query="adapters/$METRICS/query.sh"
 export METRICS_QUERY="$metrics_query"
@@ -32,9 +37,24 @@ rollback() {
   sh "$delivery/rollback.sh"
 }
 
+# The release record (docs/adr/0020 §4): version, stable, one entry per
+# verified stage with its verdict and the `slo:` lines behind it, and the
+# outcome. Built up as stages pass; written on every exit path below.
+stages='[]'
+record() {
+  # record VERDICT [HELD_AT]
+  mkdir -p "$(dirname "$RELEASE_RECORD")"
+  jq -n --arg v "$CANARY_VERSION" --arg s "${STABLE_VERSION:-}" --argjson stages "$stages" \
+    --arg verdict "$1" --arg held "${2:-}" \
+    '{version: $v, stable: $s, stages: $stages, verdict: $verdict,
+      held_at: (if $held == "" then null else ($held | tonumber) end),
+      image: "stable image, not built from merge.sha (M8)"}' > "$RELEASE_RECORD"
+}
+
 fail_stage() {
-  # fail_stage STAGE REASON: rolls back, then NO-GOs with both in one line.
+  # fail_stage STAGE REASON: rolls back, records, then NO-GOs with both in one line.
   rollback >&2
+  record rolled-back
   nogo "$1: $2 → rolled back"
 }
 
@@ -71,7 +91,14 @@ for pct in 5 25; do
 
   sleep "$STAGE_SECONDS"
 
-  slo_out=$(sh verify/slo.sh) && slo_rc=0 || slo_rc=$?
+  # verify's stderr (the slo: lines) is kept for the record and passed on.
+  slo_err=$(mktemp)
+  slo_out=$(sh verify/slo.sh 2>"$slo_err") && slo_rc=0 || slo_rc=$?
+  cat "$slo_err" >&2
+  numbers=$(grep '^slo: ' "$slo_err" | jq -R . | jq -cs .)
+  rm -f "$slo_err"
+  stages=$(printf '%s' "$stages" | jq -c --argjson pct "$pct" --arg verdict "$slo_out" --argjson numbers "$numbers" \
+    '. + [{pct: $pct, verdict: $verdict, numbers: $numbers}]')
   if [ "$slo_rc" -eq 0 ]; then
     printf '[launchpad] %s%%: GO\n' "$pct" >&2
   else
@@ -80,6 +107,6 @@ for pct in 5 25; do
   fi
 done
 
-printf '[launchpad] 25%%: GO — canary holds 25%% of traffic, waiting for go-for-launch\n' >&2
-printf '[launchpad] 100%%: NOT YET (M7, go-for-launch)\n' >&2
+record held 25
+printf '[launchpad] 25%%: GO — held; ./go promote runs go-for-launch (record at %s)\n' "$RELEASE_RECORD" >&2
 go
