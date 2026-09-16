@@ -7,11 +7,11 @@ The core knows no vendor. Every integration sits behind a port with at least two
 | Port | Adapter | Note |
 |---|---|---|
 | `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events |
-| `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr; `github`: branch, PR, comments, merge |
+| `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr, status, merge, pr; `github`: branch, PR, comments, merge |
 | `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md`; others read from external service |
-| `EventBus` | `pubsub-emulator`, `pubsub` | Same code, different endpoint |
-| `StateStore` | `firestore-emulator`, `firestore` | Workflow state, idempotence |
-| `Orchestrator` | `inproc`, `cloud-workflows` | Ticket lifecycle state machine |
+| `EventBus` | `pubsub-emulator`, `pubsub` | Verbs: `publish`, `pull`, `ack` |
+| `StateStore` | `firestore-emulator`, `firestore` | Verbs: `get`, `put`, `delete` |
+| `Orchestrator` | `inproc`, `cloud-workflows` | Verbs: `inproc/run.sh` |
 | `Delivery` | `envoy-canary`, `cloud-deploy` | Stages, promote, rollback |
 | `Metrics` | `prometheus`, `managed-prometheus` | Same PromQL query |
 | `Flags` | `flagd`, `unleash` | OpenFeature SDK unchanged |
@@ -60,7 +60,7 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 | verify | M1 | Check metric shape at M1; canary vs stable evaluation at M3 |
 | deploy | M3 | Staging → 5% → 25%, held for human gate |
 | rollback | M3 | Automatic on verify NO-GO, or manual trigger |
-| e2e | M6 | Full path: ticket → PR → CI → canary → rollback |
+| e2e | M6 | Full path through the tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
 
 See [ADR 0003](adr/0003-make-demo-before-m3.md).
 
@@ -78,6 +78,10 @@ See [ADR 0015](adr/0015-pr-gates-at-m4.md) and [ADR 0016](adr/0016-risk-model-an
 
 The ticket→PR pipeline at M5: `core/crew.sh` clones the repo, sources the role's budgets, runs the `AgentHarness` adapter on the ticket, commits the result with the crew identity, pushes to `CodeHost`, and opens a PR. The harness returns a patch, PR title and body, transcript, and metadata (model, tokens, duration). At L0, `replay` copies the fixture into the output directory and applies the committed patch; at L1, `gemini-cli` runs the role live and records the session. Both produce identical artifacts (except the harness name and model field). The PR branch passes through the same gate pipeline as a hand-written PR: `make gates BASE=<initial> HEAD=<harness-commit>`. `demo-crew` proves the flow on ticket 0001 and asserts both the PR and the gates are GO.
 
+## Control plane
+
+At M6, the tower is a state machine over a JSON document per ticket in the state store, driven by step events on the event bus. States are `opened` → `pr-opened` → `ci-passed` | `ci-failed` | `review` → `merged` → `rolled-back` | `held`. Step events carry `{"ticket","step"}`. Idempotency: an event whose precondition does not match the current state is dropped and acked; effects are re-runnable. The merge seam is the CodeHost adapter; at L0, `ci` is the gates run by the tower and posted as a commit status, not a runner job. The artefact document holds `pr`, `task`, `spec`, `ci`, `merge`, `release`, and `history` fields. `./go audit` rebuilds the chain and compares the state store against the code host (two NO-GO kinds: missing link or divergence).
+
 ## L0 plane
 
 Eight services in `compose.yaml`:
@@ -92,8 +96,8 @@ Eight services in `compose.yaml`:
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by `service_version` label via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves app/flags/flags.json, the one bind mount |
-| Pub/Sub emulator | 8085 | Unused until M6 |
-| Firestore emulator | 8086 | Unused until M6 |
+| Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
+| Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
 
 Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (`app/flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
 
@@ -103,4 +107,4 @@ See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](a
 
 ## Status
 
-M5 — Agent runtime: crew driver in `core/crew.sh`, six roles in `roles/`, two harnesses (`replay` and `gemini-cli`), one real L1 run of ticket 0001 recorded into `fixtures/` and replayed at L0, `demo-crew` proves the full ticket→PR→gates path.
+M6 — Control plane: tower state machine in `core/tower.sh` with four step scripts in `core/steps/`, event bus (Pub/Sub emulator) and state store (Firestore emulator) adapters, `inproc` orchestrator, audit log that rebuilds deploy→PR→ticket→spec and cross-checks the code host, `./go e2e` runs the full path ticket→PR→CI→merge→canary→verify NO-GO→rollback with automated gates posted as commit status.

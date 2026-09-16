@@ -1,6 +1,6 @@
 # ADR 0012 — L0 plane at M2: vendor config lives in `adapters/<name>/` and is copied into images; the runner is host mode on the workbench image; Envoy is 100/0; `./go up` waits on per-adapter readiness; engine-compat runs from `./go`, not `make ci`
 
-- Status: accepted (amends ADR 0004 §2, §4, §5; reorders the ADR 0003 stage list; ADR 0011 hostname note). Amended by ADR 0015: the M4 security decision about the Gitea runner's engine socket is decided and lands at M5 under three named conditions (see ADR 0015 §7).
+- Status: accepted (amends ADR 0004 §2, §4, §5; reorders the ADR 0003 stage list; ADR 0011 hostname note). Amended by ADR 0015: the M4 security decision about the Gitea runner's engine socket is decided and lands at M5 under three named conditions (see ADR 0015 §7). Amended by ADR 0019 §4: `actions/checkout` mirror is M8's (re-dated to M8 by ADR 0019 §4).
 - Date: 2026-09-14
 - Milestone: M2
 

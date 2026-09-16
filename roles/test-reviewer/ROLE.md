@@ -1,11 +1,10 @@
-# test-reviewer
+# test-reviewer — M7
 
 Runs the AgentHarness port defined in docs/adr/0017 — the same port
-dev-worker uses — but has no prompt yet: nobody has run it. M6's control
-plane decides when the test-reviewer role runs; its prompt is written
-against that first real run, not guessed here (docs/adr/0017 §7: an
-unexercised prompt is a hypothesis, and the harness would rewrite it
-against a real run anyway).
+dev-worker uses — but has no prompt yet: nobody has run it. M7 owns the
+first real run of the test-reviewer role; its prompt is written against that
+first real run, not guessed here. At M6 the tower runs but the test-reviewer
+role does not (review is terminal, ADR 0019 §8).
 
 `role.env` sets this role's thinking level today (plan §5's table):
 `high`, "deve trovare quello che l'autore non ha visto" — it has to find
