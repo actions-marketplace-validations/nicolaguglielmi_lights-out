@@ -51,3 +51,19 @@ curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
 # mirror of the local clone, not a place to keep hand-made history.
 git -C "$here" push --force "$GITEA_PUSH_URL" HEAD:refs/heads/main >&2 \
   || { printf 'bootstrap-gitea: push to main failed\n' >&2; exit 1; }
+
+# 5. Wait until Gitea has processed that push. The repo is created empty
+# and stays `empty: true` until the post-receive hook has run, which is
+# asynchronous to `git push` returning; an empty repo has no pulls unit,
+# so open-pr.sh right after this got 404 from mustAllowPulls (docs/adr/
+# 0019, seen on a cold plane 2026-09-16; the transient HANDOFF M5 noted).
+: "${READY_TIMEOUT:=60}"
+i=0
+while [ "$i" -lt "$READY_TIMEOUT" ]; do
+  empty=$(curl -fsS --connect-timeout 1 --max-time 3 -u "$GITEA_USER:$GITEA_PASSWORD" \
+    "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO" | jq -r .empty 2>/dev/null) || empty=""
+  [ "$empty" = false ] && exit 0
+  i=$((i + 1)); sleep 1
+done
+printf 'bootstrap-gitea: repo still reports empty=%s %ss after the push\n' "${empty:-no answer}" "$READY_TIMEOUT" >&2
+exit 1
