@@ -41,6 +41,10 @@ own guardrails is time and budget spent on nothing the ticket asked for.
   code but never actually observes the behaviour it is supposed to check
   passes the suite but fails the mutation gate; write a test that would
   fail if your fix were wrong, not one that merely reaches the new lines.
+  Do not run the mutation suite yourself (`tests/mutation/run.sh` or
+  anything under `tests/mutation/`): the gate runs it after you finish,
+  one run costs minutes of your budget, and its result changes nothing
+  you should do before then. Run `pytest`, not mutation testing.
 - Do not touch `gates/`, `ci/`, `policy/`, `roles/`, `.gemini/`,
   `Makefile`, `go`, `workbench/` or `.github/` unless the ticket
   explicitly asks you to: these are the platform, not the application,
