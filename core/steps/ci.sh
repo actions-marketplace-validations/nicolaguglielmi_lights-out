@@ -50,7 +50,7 @@ case "$verdict/$decision" in
 esac
 sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
   || { printf 'step-ci: could not post the status\n' >&2; exit 1; }
-[ "$state" != review ] || printf '[ci] risk %s: review requested, and nobody reviews until M7 — terminal\n' "$level" >&2
+[ "$state" != review ] || printf '[ci] risk %s: review requested, and nobody reviews until M8 (docs/adr/0020 §9) — terminal\n' "$level" >&2
 
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
