@@ -13,6 +13,8 @@
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
+#   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
+#   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
 #   ./go assign         turn a ticket into a PR: TICKET=<id>
 #   ./go demo-crew      prove ticket 0001 becomes a PR that passes the M4 gates
 #   ./go record         run a ticket for real at L1 and save the fixture: TICKET=<id>

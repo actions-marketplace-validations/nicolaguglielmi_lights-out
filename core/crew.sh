@@ -80,9 +80,13 @@ pr_line=$(sh "adapters/$CODE_HOST/open-pr.sh" "ticket/$TICKET" "$crew_dir/out/pr
 pr_number=${pr_line%% *}
 pr_url=${pr_line#* }
 
+# BASE_SHA and HEAD_SHA: the range the gates judge and the tower records
+# (docs/adr/0019 §1); HEAD_SHA is what the code host now holds on the branch.
 {
   printf 'PR_NUMBER=%s\n' "$pr_number"
   printf 'PR_URL=%s\n' "$pr_url"
+  printf 'BASE_SHA=%s\n' "$base"
+  printf 'HEAD_SHA=%s\n' "$(git -C "$crew_dir/workspace" rev-parse HEAD)"
 } > "$crew_dir/pr-opened.env"
 
 printf '[crew] ticket %s: PR #%s %s\n' "$TICKET" "$pr_number" "$pr_url" >&2
