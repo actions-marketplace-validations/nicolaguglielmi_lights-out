@@ -1,130 +1,75 @@
-# Handoff: M5 closed on 2026-09-15
+# Handoff: M6 closed on 2026-09-16
 
 ## Acceptance
 
-`./go demo-crew` (warm, podman rootless on macOS, no key, no account) — bootstraps a fresh Gitea, replays `fixtures/0001/dev-worker/`'s recorded patch as `ticket/0001`, pushes, opens the PR, fetches it back into a throwaway worktree, judges it with `make gates`, diffs the verdict against `fixtures/0001/dev-worker/expect`:
+`./go e2e` at L0 (podman rootless on macOS, no key, no account; the plane already up):
 
 ```
-SURVIVOR meetups/geocoder_client.py:24 core/ReplaceComparisonOperator_NotEq_Gt
-score: 203 mutant(s) excluded from the population (skipped, no-test, or incompetent)
-[crew-run] gates: GO: gates — risk low, auto-merge
-GO: demo-crew
+[tower] 0001: opened, assign requested
+[tower] 0001: assign → pr-opened
+[ci] gates: GO: gates — risk low, auto-merge
+[tower] 0001: ci → ci-passed
+[merge] PR #2 merged as 54348c3d166c793f75e3f4d86107b35eb873c984 (head e838d44d0a9b6b928a588c383c991afea7b0867c)
+[tower] 0001: merge → merged
+[tower] 0001: release → rolled-back
+[tower] 0001: rolled-back is terminal, nothing requested
+[inproc] queue empty after 4 event(s), 0 failed
+deploy   0.2.0-waitlist rolled-back — NO-GO: launchpad — 5%: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010 → rolled back
+         slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018
+         slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data
+         slo: latency_p95 canary(0.2.0-waitlist)=0.043 stable(0.1.0-m2)=0.024
+         image: stable image, not built from merge.sha (M8)
+  ← merge  54348c3d166c793f75e3f4d86107b35eb873c984 (code host agrees)
+  ← PR     #2 http://host.containers.internal:3000/lights-out/lights-out/pulls/2 (gates GO, risk low, auto-merge; head e838d44d0a9b6b928a588c383c991afea7b0867c)
+  ← ticket 0001 (dev-worker, harness replay, model gemini-3.5-flash)
+  ← spec   sha256:bcfec17ec… "0001 — Unknown venue makes `POST /api/meetups` answer 500 instead of the documented 502"
+GO: e2e
 ```
 
-97s wall time (`time ./go demo-crew`). This is plan §7 M5's criterion directly: at L0, with no key, the same ticket produces the same PR from the recorded fixture. `./go ci`: all twelve checks GO, including the two new ones — `hooks` (31 cases, `adapters/gemini-cli/hooks/guard.sh`'s BeforeTool deny-list, proven to fail on a bad case, not just pass) and `harness` (`core/harness-check.sh`'s harness-independent "exit 0 is not success" invariant, proven on four stub scenarios).
+148 s wall time warm (`time ./go e2e`). Plan §7 M6's criterion: ticket → PR → CI → canary → verify failed → rollback with no human, and the audit shows the whole chain — the chain above is read back from the Firestore emulator and cross-checked against Gitea, not from the shell that ran it.
 
-`./go record TICKET=0001 PROFILE=l1` (the L1 half of the criterion — a real Gemini API key, run once this session): six real attempts, five real bugs found and fixed between them (below), attempt 6 recorded. `fixtures/0001/dev-worker/run.json`:
+`./go ci`: thirteen checks GO, the new one `tower` (ci/tower.sh: transition table, duplicate event, out-of-order event, the crash case, a failing step, six audit verdicts; proven to fail on a broken precondition and on a self-confirming audit, then restored). `./go demo-crew`: GO, 79 s, on the refactored `crew-run`.
 
-```json
-{"harness":"gemini-cli","model":"gemini-3.5-flash","thinking":"high","turns":1,
- "tokens":{"input":892202,"output":3651,"total":915022},"duration_s":303,"exit_code":0}
-```
-
-`./go demo` (the whole-repo proof, M3's stage list, unchanged by M5):
+`./go demo`, from a stopped plane with warm images, three runs: the first NO-GO (below, fixed), then `GO: demo, milestone M6, -4204s to rollback` (below, the VM clock), then with the clock synced:
 
 ```
-GO: demo, milestone M3, 113s to rollback (budget 900s, plan §2)
+GO: demo-rollback
+GO: e2e
+GO: demo, milestone M6, 360s to rollback (budget 900s, plan §2)
 ```
+
+360 s warm against ADR 0019 §7's estimate of ≈ 295 s; the difference is e2e's own `up` and a second plane readiness pass. Cold (image pulls, workbench build) is not measured this session; the GitHub `engine-compat` job measures it on push.
 
 ## What changed
 
-- `AgentHarness` port (`adapters/$AGENT_HARNESS/run.sh`, env contract: `ROLE TICKET TICKET_FILE WORKSPACE BASE OUT` + budgets; success = a commit over `BASE` plus `OUT/{patch,pr.json,run.json}`). `replay`: copies a recorded fixture, `git am`s it, never claims tokens it did not spend. `gemini-cli`: a compose service, no engine socket, `FROM ${WORKBENCH_IMAGE}` + `npm ci` of a pinned `@google/gemini-cli@0.59.0`; the adapter — not the model — commits, builds the patch, and refuses to record anything if the API key leaks into the artefacts.
-- `core/crew.sh` drives ticket → PR (bootstrap → clone → harness → push → open-pr), the model never holding a credential; `core/harness-check.sh` enforces "exit 0 is not success" independent of which harness ran. `Makefile`: `assign`, `demo-crew`, `record`, internal `crew-run`.
-- `adapters/gitea/{env,bootstrap,clone-url,push,open-pr}.sh`: a fixed low-entropy admin user and a public `lights-out/lights-out` repo, Actions off (a job nobody consults before M6 is noise). `adapters/file/get.sh`: the Tracker=file port.
-- `roles/`: six directories. `dev-worker` has a real prompt and budgets (the only role with a run at M5); the other five have `role.env` (THINKING from plan §5) and a `ROLE.md` naming which milestone gives them a run — a prompt nobody has run is a hypothesis, not written here. `adapters/gemini-cli/hooks/`: `guard.sh` (BeforeTool deny-list) and two budget hooks (BeforeModel/AfterModel, live token accounting).
-- `fixtures/0001/dev-worker/`: the one real recording, replayed at L0 forever after.
-- `policy/merge.env`: `RISK_HIGH_PLATFORM` gains `roles/*:fixtures/*:.gemini/*`. `gates/mutation.sh` + `mutation-baseline`: `.env` clobbering fixed (`-p lo-mutation(-baseline)`, no more `printf > .env`).
+- `core/tower.sh`: the state machine (`open`, `step`), four steps in `core/steps/` (`assign` → crew.sh; `ci` → the gates in a worktree + a `gates` commit status on the PR; `merge` → the code host; `release` → `make release`, log kept, `slo:` numbers recorded); `adapters/inproc/run.sh` pulls one event, applies it, acks, until the queue is empty. Idempotency: precondition ≠ state → dropped; the merge seam is the adapter (`adapters/gitea/merge.sh` on an already-merged PR performs nothing and prints the same shas).
+- `adapters/firestore-emulator/{get,put,delete}.sh` and `adapters/pubsub-emulator/{publish,pull,ack}.sh`: curl + jq, plain JSON in `core/`, typed encoding inside the adapter; `adapters/gitea/{status,merge,pr}.sh`. `core/audit.sh` and `./go audit TICKET=<id>`: chain from the document, NO-GO on a missing link, an sha mismatch, or a divergence from the code host (owner addition).
+- Makefile: `e2e` real and the last `demo` stage, `audit`, `crew-run` now calls `core/steps/ci.sh` (one CI code path for demo-crew, record and the tower), `TICKET ?= 0001`, `demo` names M6 and says so when the engine clock is behind the host instead of printing a negative number. `core/launchpad.sh`: `100%: NOT YET (M7, go-for-launch)`.
+- `roles/dev-worker/role.env`: `TOKEN_BUDGET` 10M → 12M on ADR 0018 run 3's measurement (10,056,737 at call 43, the PR text unwritten), and `prompt.md` forbids running the mutation suite — the four suite runs were what ate run 3's budget. **Untested against a live run**: no `record` this session.
+- `adapters/gitea/bootstrap.sh` waits for `empty: false` after the main push (the cold-plane 404, below). Docs: README, ARCHITECTURE, PLAN §7 notes (M6, M7, M8), ADR status lines 0003/0012/0013/0014/0015/0017, ADR 0019, roles/{architect,test-reviewer}/ROLE.md → M7, tickets 0001 and 0003.
 
-## Contradicts docs/PLAN.md — the most important line in this file
+## Contradicts docs/PLAN.md
 
-**Plan §5 commits to `gemini-3.8-flash` for every role. It is not the model that runs.** `gemini-3.8-flash` is real and reachable with this project's key — confirmed directly against `GET https://generativelanguage.googleapis.com/v1beta/models`, which lists it. But **Gemini CLI v0.59.0 (the pinned version, npm-published 2026-09-08) silently serves `gemini-3.5-flash` instead**, no matter how the model is requested — `-m gemini-3.8-flash`, the fully-qualified `-m models/gemini-3.8-flash`, and `settings.json`'s `model.name` were all tried, on three separate invocations including two minimal non-agentic probe calls outside the crew harness entirely, and all three produced a `result` event whose `stats.models` key is `gemini-3.5-flash`. No warning anywhere, on any channel. Most likely explanation: 0.59.0 predates this CLI's own support for a model ID that reached GA about a week after that release. Not fixed here: a version bump is its own dedicated commit under CLAUDE.md's pinning rule ("rinnovi solo con un commit dedicato che fa passare gli eval"), and the newest tag at record time was a nightly (`v0.61.0-nightly.20260915`), not a stable release worth pinning to under that same rule. `fixtures/0001/dev-worker/run.json`'s `"model"` field says `"gemini-3.5-flash"`, honestly — the adapter now reads `stats.models`' own key rather than echoing back the requested string, because the two have already been observed to differ once and might again. **M6 (or whoever bumps the CLI pin next) should check the models list first**, the same way this session did, before assuming a version bump alone fixes it.
+- **Plan §3's table says CI at L0 is Gitea Actions. At M6 it is not, and the runner socket is re-dated for the third time (M4 → M5 → M6 → M8).** ADR 0019 §4: the six gates run by the tower on the PR head and posted as the `gates` commit status are the CI leg; the Gitea runner has run no job since M2. Declared in README and PLAN §7. ADR 0003's rule binds M8: if M8 closes with the runner idle, M8 is not closed. Five facts stand unverified for the real job (ADR 0019 §4 lists them); the first is whether github.com is reachable from inside the podman machine for `actions/checkout`.
+- **The canary the tower releases is not built from the merge commit** (ADR 0019 §5, option i). The audit prints `image: stable image, not built from merge.sha (M8)` on every line; plan §8 step 5 ("merge, build, immagine firmata") is M8's.
+- **`go-for-launch` was M6's in every ADR since 0013; it is M7's now** (ADR 0019 §8, PLAN §7 note): the human reads a promotion brief the release agent composes, and that agent is M7's.
+- The first ADR 0019 draft had the audit read only the state store; the owner overruled it the same day ("an audit that reads only its own archive confirms itself"). §6 and the rejected-alternatives list carry the correction.
 
-Full detail, including the exact bundle code read to confirm the `result` event's real shape (no `response` field in `--output-format stream-json`, flat `stats`, a `transcript_path` on every single hook call that made the first hooks implementation deny everything): `docs/adr/0017-agent-runtime-at-m5.md`, "Contradicts the plan" section and the closed "Verify at L1" list, item by item.
+## Found this session, fixed
 
-## The six real attempts — the worker's reliability number, with a caveat that matters
+- **Cold-plane `open-pr on gitea failed` — the M5 HANDOFF transient, root-caused.** Gitea's log: `404 … v1.mustAllowPulls` on both the list and the create call, ~2 s after bootstrap's first push. A freshly created repo stays `empty: true` until the post-receive hook has run, asynchronously to `git push` returning, and an empty repo has no pulls unit. Reproduced on the first `./go demo` from a stopped plane this session (`NO-GO: e2e — a step failed`), never on a warm one. Fixed in `bootstrap.sh` step 5: poll `GET /repos/{o}/{r}` until `.empty == false`, READY_TIMEOUT bound. Two demos from a stopped plane passed after it.
+- **The podman machine's clock was 4,512 s behind the host** (`date +%s` on both sides), so `demo`'s `LIGHTS_OUT_T0` arithmetic printed `-4204s to rollback` and would have passed any budget. Environment, not repo: a VM that slept. The Makefile now says "not timed: the engine clock is Ns behind the host, budget unverified" instead of a negative number; the clock was synced with `podman machine ssh "sudo date -s @$(date +%s)"` for the recorded run. Anyone timing `./go demo` on macOS should compare the two clocks first.
 
-`record`'s own rule: a NO-GO or over-budget run is refused and kept under `.crew/<ticket>` for study, never silently retried. This session ran it six times to reach one recorded fixture — **six stays the reference number**, but it is not a measurement of the model. Five of the six failures below were bugs in *this repo's own harness, hooks, or prompt*, not shortcomings of the model or a case for a different one; only the sixth attempt ran against code that no longer had any of those five bugs in its way, and it succeeded. Owner note (2026-09-15, before M6): this number is not an eval yet, because it was measured while the code under test was still changing between attempts. Re-measure it at M9, on code that has been stable for a while, and only then does six-attempts-or-whatever-it-becomes mean anything as a reliability eval rather than a debugging log.
+## Found, not fixed
 
-1. Exit 55, no model call made (near-zero cost): Gemini CLI refuses a headless run in a workspace it has never seen unless `--skip-trust` is passed — undocumented as "disabled by default" (that page describes the interactive dialog only). Fixed: `entrypoint.sh` adds `--skip-trust`.
-2. Exit 0, empty transcript's worth of real work: the recorded worker's own `.gates-out/verdict.env` from an unrelated earlier mechanics test was read as a false `GATES=GO` by `record`, because `crew-run`'s failure was swallowed by a bare `;` instead of an exit-code check. Caught before a bogus fixture was committed. Fixed: `crew-run` now clears `verdict.env` before it starts (absence, not staleness, is the failure mode of a future oversight), and `record` checks `crew-run`'s exit code explicitly.
-3. Every single tool call denied, always for the same reason (`.gemini/`): `guard.sh`'s original `[.. | strings]` joined the *entire* hook payload, and every `BeforeTool` call carries a `transcript_path` field pointing into the CLI's own `~/.gemini/tmp/...` recording file — so the `.gemini/` deny rule matched unconditionally, on `ls`, on reading `geocoder_client.py`, on everything. The model, quite reasonably, spent its budget trying workarounds (`env -i`, absolute paths, alternate directories) before giving up confused. Fixed: scoped the join to `.tool_input` only.
-4. Clean run, budget correctly enforced (4,040,294 ≥ 4,000,000), no PR: most of the budget went to the model discovering `adapters/gemini-cli/hooks/guard.sh` in its own repo clone and grep-searching it to understand why calls were denied — a real, if unproductive, behaviour once (3) no longer made every call an unexplained mystery. Fixed: `prompt.md` now scopes exploration to `app/` explicitly and says a denial is expected, not a puzzle.
-5. Clean run, 29 correct tool calls across every file the ticket needed, budget denied the model's *next* call right after its last successful edit, with no turn left to write the PR text. `run.sh` exited on the missing response *before* attempting to commit, so that real, correct, on-topic work was silently discarded — found only by inspecting the still-dirty workspace directly. Fixed: commit first, always (a WIP placeholder amended to the real message if one arrives), and `TOKEN_BUDGET` raised from 4,000,000 to 5,000,000 with this measurement as its provenance.
-6. Recorded. The model chose the 502 ("geocoder unavailable") resolution to ticket 0001 — a valid alternative to `honest-fix`'s 201/null-coordinates choice under the ticket's own either/or acceptance criteria. Six files touched correctly, all six gates GO, one surviving mutant (still above threshold), 3,887,754 tokens accumulated (comfortably under the raised budget).
+- **`./go ci` still cannot pass with a real key in `.env`** (M5 HANDOFF's `ci/secrets.sh` contradiction, unchanged): this session parked `.env` outside the tree for every `ci` and `demo` run and restored it at the end. Owner of `ci/` decides between a gitignore-aware `gitleaks` invocation and ADR 0002's no-allowlist rule.
+- `demo` runs two releases back to back (demo-rollback, then e2e's); the 1m PromQL window holds because ≥ 97 s pass between them, and the Makefile comment says the order matters. If e2e's `up` ever gets faster, re-check.
+- The e2e PR number on a warm plane is whatever Gitea has next (#2 in the acceptance run above, #1 on a fresh plane): the document records it, nothing else depends on it.
+- The gate-writer subagent stalled (10 min, no output) on `ci/tower.sh`; the main session wrote it from ADR 0019 §6/§9. Tests-from-the-spec rule respected in letter; the same session wrote the implementation, so the next reader of `ci/tower.sh` should read the ADR first and the test second.
+- `record` at L1 was not run: the 12M budget and the no-mutation-suite prompt line are a decision with run 3 as provenance, not a measurement of their own. The next `record` measures them.
 
-Read together: every one of these is a bug in the harness, hooks, or prompt this session wrote — never a shortcoming that needed a second model or a different approach. A future re-record, on a repo that already has these fixes, should need far fewer attempts; that number, whatever it turns out to be, is worth recording again the next time this fixture is regenerated.
+## First thing M7 should look at
 
-## Other things found, not fixed here
-
-- **Fixed 2026-09-15, see "Maintenance" below**: `gates/mutation.sh` never ran `docker-compose down` for its own `lo-mutation` project, so its Postgres container lingered indefinitely after every mutation gate run — this session found three such lingering containers at the very start, from earlier (M4-era) sessions, still running, and they are the leading suspect for a `./go demo` failure this session hit twice in a row (`ready: envoy-canary not ready after 60s`, root-caused to `openfeature.exception.ProviderNotReadyError` on the backend, itself a flagd-connect race that gets worse under host load). The user flagged this connection directly mid-session: `READY_TIMEOUT=150` (used to get `./go demo` green under a load average of 39–78 on this machine) is **not a value to promote to any default** — it was a one-time accommodation for local resource contention, not evidence the plane's own timing changed. `mutation-baseline`'s own project (`-p lo-mutation-baseline`) and a stray `lo-mutation-measure` project have the identical gap and are **still unfixed** — out of scope for the 2026-09-15 fix, see below.
-- A transient `open-pr on gitea failed` (~11s, before any real work) was observed once, immediately after a fresh `./go demo` teardown/rebuild cycle; an immediate retry passed. Most likely Gitea's API not fully warm right after bootstrap on a cold plane. Not chased further — no other run in the session (six real L1 attempts, three L0 mechanics runs) hit it.
-- `run.sh`'s "turns" field is not a real measurement: the stream-json `result` event reports no turn count anywhere, and the `role:"user"`-message-count proxy always reads `1` for a headless `-p` session (there is exactly one user message per session, regardless of how many internal agent-loop iterations happen). `MAX_TURNS` is still enforced correctly server-side (exit 53); this repo just cannot observe the count it enforced against. Worth a real fix only if a future milestone needs that number for something.
-
-## First thing M6 should look at
-
-- **The Gitea runner socket and the first real Gitea Actions job, per ADR 0015 §7's three conditions, land at M6** — ADR 0017 §5 amends the ADR 0015 consequence that said "M5 is not closed while the runner lacks it": no Gitea job runs at M5, so that consequence is void. `demo-crew`'s own CI leg judges the PR range with `make gates` from workbench directly, the `demo-gates` mechanism, not a Gitea job.
-- **The gemini-3.8-flash / gemini-3.5-flash question has a ticket, and the decision is not made yet.** `tickets/0002.md` records the root cause and three options, with acceptance criteria already in place. A draft `docs/adr/0018-gemini-cli-pin-for-the-model-id-fix.md` exists **uncommitted, unreviewed** on disk, already scoring itself `accepted` and proposing the pin bump — do not treat it as the decision; the owner said explicitly (2026-09-15) that the decision, and the ADR that records it, are for the following session. See "Maintenance, 2026-09-15" below for what was and was not re-verified since.
-- **`roles/architect/ROLE.md` and `roles/test-reviewer/ROLE.md` say this port runs them starting M6** — real prompts for those two roles are M6's first job on `roles/`, written against a real run the same way `dev-worker/prompt.md` now is, not guessed in advance.
-- **The mutation-gate cleanup debt above is fixed** (2026-09-15, see below) for `gates/mutation.sh` itself. `mutation-baseline` and the stray `lo-mutation-measure` project still leak and are M6's to pick up if they keep causing flakiness.
-
-## Maintenance, 2026-09-15 (post-M5, pre-M6, no milestone)
-
-Three unrelated fixes, done in one session between M5's close and M6:
-
-1. **`gates/mutation.sh` no longer leaks its Postgres container.** `docker-compose -p lo-mutation ... run --rm` only ever removed the `backend-test` container, never the `postgres` it depends on, on any exit path (`go`, or any `nogo`) — there was no `down` anywhere in the file. Fixed by merging a `docker-compose -p lo-mutation --profile test down -v` into the existing `trap ... EXIT` (the one that already cleaned up the temp log), so it fires on every exit path, not just success. **Verified live**, not just read: ran `./go gates BASE=<ref> HEAD=<ref>` against a throwaway one-line change (on a throwaway branch, deleted after), through the actual mutation run to a real NO-GO (0/1 mutants killed, the expected outcome of a trivial change) — `docker-compose -p lo-mutation ps -a`, `docker volume ls`, and `docker network ls` afterward show nothing left for the `lo-mutation` project: container, volume, and network are all torn down, confirmed in the run's own compose output ("Stopping/Stopped/Removing/Removed" for all three). `make mutation-baseline` (`-p lo-mutation-baseline`) and the stray `lo-mutation-measure` project have the identical gap and are **not** touched by this fix — out of scope, left for whoever picks them up.
-2. **`tickets/0002.md` needed nothing.** It already carries `Status: open`, the root cause, three ranked options, and a `## Acceptance criteria` section with two Given/When/Then blocks (ADR-recording; `run.json`'s `"model"` field verified, not assumed) — matching `tickets/0001.md`'s own convention. No edit made.
-3. **Verification-only re-check of the CLI model-routing question, no decision.** This session could **not** repeat the original live probe (calling the CLI against the real Gemini API and reading `stats.models`): there is no `.env` and no `GEMINI_API_KEY` in this session, which was deliberately read-only for this question. That live re-verification — whether the model that actually answers is `gemini-3.8-flash` — still has to happen in a session that has the key, **before** tomorrow's ADR is written; do not assume the earlier probe still holds without repeating it. What *was* checked without a key, today: `npm view @google/gemini-cli versions` shows nothing newer than `0.61.0-nightly.20260915.g9c1b0a610` (today's own nightly); `npm view @google/gemini-cli dist-tags` still has `latest: 0.59.0`; the GitHub releases API confirms `v0.59.0` (2026-09-08) is still the only non-prerelease release, everything since (`v0.60.0-preview.0` and every `v0.61.0-nightly.*` through today) is marked `prerelease: true`. In other words: **past stable `0.59.0`, only preview and nightly builds exist** — no newer stable release to fall back on. Pinning a public repo to a nightly (ADR 0018's draft direction) is a real tradeoff to weigh explicitly against the Vertex AI option (ticket 0002's option 3) tomorrow, not a formality — nightlies get less upstream review and the pin would need its own return-to-stable exit condition either way. No pin change, no ADR commit, no ticket edit made here.
-
-## Maintenance, 2026-09-16 (post-M5, pre-M6, no milestone): ADR 0018, the CLI pin
-
-Decision session for ticket 0002, not a milestone. One commit.
-
-### Acceptance
-
-- `./go ci` at L0 (no `.env`): all twelve checks `GO`, then `GO: ci`.
-- `./go demo-crew` at L0, with the new `core/crew.sh` workspace links in place (the fixture's own `conftest.py` hunk applies over them unchanged):
-
-```
-[crew-run] gates: GO: gates — risk low, auto-merge
-GO: demo-crew
-```
-- The eval of the bump (ADR 0018 §3), one real `./go record TICKET=0001 PROFILE=l1` on the new pin — `.crew/0001/out/run.json` after run 3:
-
-```json
-{"harness":"gemini-cli","model":"gemini-3.8-flash","thinking":"high","turns":1,
- "tokens":{"input":2847923,"output":4626,"total":2930036},"duration_s":545,"exit_code":0}
-```
-
-### What was decided, in five lines
-
-- Four live probes, same key, same one-line call, in the workbench: `0.59.0` → 3.5, `0.60.0` (stable since 2026-09-15 20:31Z) → 3.5, `0.61.0-preview.0` → **3.8**, `0.61.0-nightly.20260915` → 3.8. `v0.60.0` is `behind 4` of the fix commit (`ed2ac40d`, #29252); the preview contains it.
-- Pinned `@google/gemini-cli@0.61.0-preview.0` (exact, lockfile). **Return to the stable channel at `0.61.0`**, by a dedicated commit with the same eval. Written in `package.json`'s description, the README and ADR 0018 §4.
-- Vertex was not an option for this ticket: `hasGemini35FlashGAAccess()` in the CLI returns `true` under `USE_VERTEX_AI` too, so the CLI remaps there as well (read in the v0.60.0 source, `packages/core/src/config/config.ts`). "On Vertex we choose the model" holds only for a harness that is not the Gemini CLI.
-- The fixture `fixtures/0001/dev-worker/` **stays recorded on `gemini-3.5-flash`**, declared in the README: run 3 did not reach the gates (below), and ADR 0018 §5 says the fixture follows the eval run's verdict.
-- Ticket 0002 closed; ticket 0003 opened (below).
-
-### Three real attempts on the new pin — the reference number for this pin, same caveat as M5's six
-
-1. Exit 1 in 38 s, no model call: `Could not resolve a model name for alias "gemini-3.8-flash"`. `entrypoint.sh`'s thinking alias was abstract (no `model`) under `modelConfigs.aliases`; the fixed CLI refuses it. Fixed: the documented shape of the built-in `gemini-3.5-flash` alias (`customAliases`, `extends: chat-base-3`, concrete `model`).
-2. 5m44s, `gemini-3.8-flash` served, hooks firing, budget denied at 7,575,131 ≥ 5,000,000 after 38 calls, **zero edits**: every call went to making the backend tests run from the checkout (the suite is written for the test image's layout; `conftest.py` looks for `app/backend/flags/flags.json`, `fakes` is not importable, `OTEL_SEMCONV_STABILITY_OPT_IN` unset). Two `run.sh` bugs found on the way: `stats.models | keys | first` would have recorded the CLI's helper model (`gemini-3-flash-preview`, 7,624 tokens) instead of the one that answered; and `run.json` was not written when the final message was missing, so the eval's own assertion was unreadable. Both fixed.
-3. 9m17s, `gemini-3.8-flash` served, the prompt's test command worked at call 10 first time, **exactly the ticket's four files edited, tests green at call 31**, then the model ran the mutation suite itself four times (calls 34–43, `MUTATION_LINES=... uv run sh tests/mutation/run.sh`, one to two minutes and a large output each) and was denied at 10,056,737 ≥ 10,000,000 before writing the PR text. The work is kept under `.crew/0001` (WIP commit on `ticket/0001` in the workspace).
-
-Fixes with a run as provenance, all in this commit: `core/crew.sh` gives the workspace the test image's layout (three git-excluded links `app/backend/{flags,fakes,contracts} → ../…`), `compose.yaml` sets `OTEL_SEMCONV_STABILITY_OPT_IN=http` on the crew service, `roles/dev-worker/prompt.md` gives the command that actually works (`uv run pytest`, not `python -m pytest`: the venv is not on `PATH`) and says the environment is not the place to look, `roles/dev-worker/role.env` `TOKEN_BUDGET` 5M → 10M (run 2's measurement).
-
-### Two facts that were true at M5 and nobody knew
-
-1. **With 0.59.0 the thinking level per role was never applied.** The remap to 3.5 happened in `resolveModel` before the model-config alias lookup, so the alias `THINKING` rides on was never consulted; plan §5's table was decorative until run 2 of this session. Read from the two code paths, not measured (the transcript does not record the thinking config sent). ADR 0017's "Contradicts the plan" section and plan §5 carry a dated correction. Consequence for M6: every budget in `role.env` measured before 2026-09-16 was measured without thinking; the 3.8 + `high` cost per call is ~200–235k tokens (hook accounting) against ~140k on the 3.5 run.
-2. **The recorded fixture carries a patch outside the ticket.** `fixtures/0001/dev-worker/patch` edits `app/backend/tests/conftest.py` (the flags-file fallback), a file ticket 0001 never names; the 3.5 model did it for the same test-layout reason run 2 hit, and `record` accepted it because nothing checks that a diff stays inside the ticket's perimeter. **`tickets/0003.md`, candidate for M6**, with acceptance criteria. Whether 0001 is re-recorded without the hunk is ADR 0018 §5's call at the next `record`.
-
-### Other things found, not fixed here
-
-- **`./go ci` cannot pass at L1 with `.env` present.** `ci/secrets.sh` runs `gitleaks dir .` on the working tree and gitleaks does not honour `.gitignore`: a real `GEMINI_API_KEY` in `.env` — exactly what the README tells an L1 user to create — is reported as a leak (correctly, as a string; wrongly, as a verdict), and `.crew/.uv-cache/` adds 21 false positives from sqlalchemy's own sources. This session ran `./go ci` in the L0 state (key moved out of the tree, cache deleted) to get it green. Whoever owns `ci/` next decides between excluding gitignored paths from the dir scan and ADR 0002's "no allowlist" rule; it is a real contradiction, not a nuisance.
-- The `record`-and-mutation interaction: the prompt tells the worker a mutation gate will judge it, and 3.8 with `high` takes that as an invitation to run the suite itself, at one to two minutes and a large output per run — the single most expensive thing the worker can call, four times in run 3. M6's prompt work should decide whether the worker may run it at all, and if so, once.
-- Budget accounting: the hook sums `totalTokenCount` per model call (context re-sent every call, cached or not); the CLI's `stats.total_tokens` for the same runs is 3.5–5× lower (run 3: 10,056,737 vs 2,930,036). Both numbers are recorded; the hook's is the one enforced. Not a bug, but the two must never be compared as if they measured the same thing.
-- `run.sh`'s `turns` field still reads `1` (M5 caveat unchanged).
-
-### First thing M6 should look at
-
-- Ticket 0003 before the second fixture is recorded.
-- The `ci/secrets.sh` contradiction above, before the first Gitea Actions job runs `ci` in a workspace that may have an `.env`.
-- `roles/dev-worker/prompt.md` and the mutation suite: one decision, then a fourth `record` of 0001 on 3.8 — run 3 shows the model finishes the ticket in ~31 calls when the environment does not fight it.
+- ADR 0019 §8 hands M7 three things beyond the ADK roles: `go-for-launch` (the stub at `core/launchpad.sh` line ~84; ADR 0003's rule binds), the first real prompts for `architect` and `test-reviewer` (state `review` is terminal today — a medium/high PR stops there visibly), and ticket 0003's perimeter rule before the next `record`.
+- The tower's `review` state is where M7's review agent plugs in: a `review` step with precondition `review` and next states `ci-passed`/`ci-failed` is the whole change to `core/tower.sh`'s tables.
+- Before any `record`: the `.env` vs `ci/secrets.sh` contradiction above, and re-verify the 3.8 routing the way ADR 0018 did.
