@@ -1,82 +1,94 @@
-# Handoff: M6 closed on 2026-09-16
+# Handoff: M7 closed on 2026-09-16
 
 ## Acceptance
 
-`./go e2e` at L0 (podman rootless on macOS, no key, no account; the plane already up):
+Plan §7 M7: `adk eval` passes in CI; a fake alert produces an incident with ordered hypotheses and a rollback proposal, without the agent touching the environment. Plus go-for-launch (ADR 0019 §8, ADR 0003's rule) and ticket 0004's check (owner scope decision, this session).
+
+`./go ci` at L0 (key parked outside the tree), 39 s warm, sixteen checks:
 
 ```
-[tower] 0001: opened, assign requested
-[tower] 0001: assign → pr-opened
-[ci] gates: GO: gates — risk low, auto-merge
-[tower] 0001: ci → ci-passed
-[merge] PR #2 merged as 54348c3d166c793f75e3f4d86107b35eb873c984 (head e838d44d0a9b6b928a588c383c991afea7b0867c)
-[tower] 0001: merge → merged
-[tower] 0001: release → rolled-back
-[tower] 0001: rolled-back is terminal, nothing requested
-[inproc] queue empty after 4 event(s), 0 failed
-deploy   0.2.0-waitlist rolled-back — NO-GO: launchpad — 5%: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010 → rolled back
-         slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018
-         slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data
-         slo: latency_p95 canary(0.2.0-waitlist)=0.043 stable(0.1.0-m2)=0.024
-         image: stable image, not built from merge.sha (M8)
-  ← merge  54348c3d166c793f75e3f4d86107b35eb873c984 (code host agrees)
-  ← PR     #2 http://host.containers.internal:3000/lights-out/lights-out/pulls/2 (gates GO, risk low, auto-merge; head e838d44d0a9b6b928a588c383c991afea7b0867c)
-  ← ticket 0001 (dev-worker, harness replay, model gemini-3.5-flash)
-  ← spec   sha256:bcfec17ec… "0001 — Unknown venue makes `POST /api/meetups` answer 500 instead of the documented 502"
-GO: e2e
+GO: secrets … GO: tower
+GO: prompts
+GO: evals
+GO: promote
+GO: contract
+GO: ci
 ```
 
-148 s wall time warm (`time ./go e2e`). Plan §7 M6's criterion: ticket → PR → CI → canary → verify failed → rollback with no human, and the audit shows the whole chain — the chain above is read back from the Firestore emulator and cross-checked against Gitea, not from the shell that ran it.
+`evals` = the toolset assertion, nine replay unit tests, then `adk eval` on the three roles (7 cases, `tool_trajectory_avg_score` 1.0 EXACT `ignore_args`) on the replay model; `Tests failed: 0` for each, parsed from the CLI's summary because `adk eval` exits 0 either way (verified in 2.9.1's source).
 
-`./go ci`: thirteen checks GO, the new one `tower` (ci/tower.sh: transition table, duplicate event, out-of-order event, the crash case, a failing step, six audit verdicts; proven to fail on a broken precondition and on a self-confirming audit, then restored). `./go demo-crew`: GO, 79 s, on the refactored `crew-run`.
-
-`./go demo`, from a stopped plane with warm images, three runs: the first NO-GO (below, fixed), then `GO: demo, milestone M6, -4204s to rollback` (below, the VM clock), then with the clock synced:
+`./go demo-triage` at L0, 3 s, `PLANE_HOST=nowhere.invalid`, no engine socket:
 
 ```
-GO: demo-rollback
-GO: e2e
-GO: demo, milestone M6, 360s to rollback (budget 900s, plan §2)
+[triage] canary-5xx: incident "Canary 0.2.0-waitlist 100% error rate at 5% traffic"
+         1. Canary version 0.2.0-waitlist contains a regression … — Canary error_rate is 1.000 while stable error_rate is 0.000 with canary receiving 0.208 traffic.
+         2. Canary routing or configuration misconfiguration … — Canary receives traffic (0.208) but experiences a 100% error rate (1.000) whereas stable operates normally
+         proposal: rollback 0.2.0-waitlist — …
+[demo-triage] canary-5xx: 2 hypotheses, proposal rollback (expected rollback)
+[demo-triage] misleading-stable-fails-too: 2 hypotheses, proposal hold (expected hold)
+[demo-triage] misleading-no-canary-traffic: 2 hypotheses, proposal hold (expected hold)
+GO: demo-triage
 ```
 
-360 s warm against ADR 0019 §7's estimate of ≈ 295 s; the difference is e2e's own `up` and a second plane readiness pass. Cold (image pulls, workbench build) is not measured this session; the GitHub `engine-compat` job measures it on push.
+`./go demo-launch` at L0, 123 s warm (kill-switch, release held at 25%, brief, `GO_FOR_LAUNCH=GO`, 100%, un-promote):
+
+```
+[launchpad] 25%: GO — held; ./go promote runs go-for-launch (record at .crew/release.json)
+GO: launchpad
+[go-for-launch] promotion brief for 0.2.0-waitlist (by core/promote.sh from the record — no model at L0, the release role writes it from L1):
+# Promotion brief: 0.2.0-waitlist
+… 5%: GO: slo / 25%: GO: slo with the slo: lines verbatim …
+Recommendation: GO — every stage passed verify; the numbers above are the evidence.
+GO: go-for-launch
+[go-for-launch] 0.2.0-waitlist at 100% of traffic (envoy-canary)
+[demo-launch] 0.2.0-waitlist at 100%: 10/10 healthz samples; now the un-promote
+GO: demo-launch
+```
+
+`./go promote GO_FOR_LAUNCH=GO PROFILE=l1` on the same record, 8 s: the real release role's brief **recommended NO-GO** ("the deployed canary image was not built from the merge SHA") — a correct reading of the record's `image` line; the human's GO then shifted to 100%. That brief is the one worth showing on stage.
+
+`./go demo` from a stopped plane (warm images): `GO: demo, milestone M7, 306s to rollback (budget 900s, plan §2)`. No `NOT YET` line anywhere in the run. `git grep 'NOT YET'` finds no M7 stub.
 
 ## What changed
 
-- `core/tower.sh`: the state machine (`open`, `step`), four steps in `core/steps/` (`assign` → crew.sh; `ci` → the gates in a worktree + a `gates` commit status on the PR; `merge` → the code host; `release` → `make release`, log kept, `slo:` numbers recorded); `adapters/inproc/run.sh` pulls one event, applies it, acks, until the queue is empty. Idempotency: precondition ≠ state → dropped; the merge seam is the adapter (`adapters/gitea/merge.sh` on an already-merged PR performs nothing and prints the same shas).
-- `adapters/firestore-emulator/{get,put,delete}.sh` and `adapters/pubsub-emulator/{publish,pull,ack}.sh`: curl + jq, plain JSON in `core/`, typed encoding inside the adapter; `adapters/gitea/{status,merge,pr}.sh`. `core/audit.sh` and `./go audit TICKET=<id>`: chain from the document, NO-GO on a missing link, an sha mismatch, or a divergence from the code host (owner addition).
-- Makefile: `e2e` real and the last `demo` stage, `audit`, `crew-run` now calls `core/steps/ci.sh` (one CI code path for demo-crew, record and the tower), `TICKET ?= 0001`, `demo` names M6 and says so when the engine clock is behind the host instead of printing a negative number. `core/launchpad.sh`: `100%: NOT YET (M7, go-for-launch)`.
-- `roles/dev-worker/role.env`: `TOKEN_BUDGET` 10M → 12M, **provisional — a decision, not a measurement** (owner ruling 2026-09-16). What is measured is ADR 0018 run 3: 10,056,737 tokens at call 43, work done at call 31, the PR text unwritten after four mutation-suite runs. No run has finished under the new prompt (which forbids the suite), so the 12M has no run of its own behind it. **The condition that fixes it**: two consecutive successful `./go record TICKET=0001 PROFILE=l1` on this prompt; the budget becomes the larger total plus one call's headroom, both `run.json` totals as provenance, dedicated commit. The comment in `role.env` says the same.
-- `adapters/gitea/bootstrap.sh` waits for `empty: false` after the main push (the cold-plane 404, below). Docs: README, ARCHITECTURE, PLAN §7 notes (M6, M7, M8), ADR status lines 0003/0012/0013/0014/0015/0017, ADR 0019, roles/{architect,test-reviewer}/ROLE.md → M7, tickets 0001 and 0003.
+- `adapters/adk/`: the `adk` AgentHarness adapter (ADR 0020 §1) — `run.sh` (`ROLE INPUT OUT THINKING TIMEOUT_S` → `calls.json`, `final.md`, `run.json`), package `lights_out_adk/` (`roles.py` reads `roles/<role>/prompt.md` + `role.env`; `model.py` derives the model from `AGENT_HARNESS`: `replay` → `ReplayLlm`, else `gemini-3.8-flash` with `BuiltInPlanner(thinking_level)` and `RecordingLlm` under `ADK_RECORD=1`; `replay.py` keyed by sha256 of the canonical input, indexed by model turns in the request; `run.py` on `InMemoryRunner`), three agents `agents/{product,ops_triage,release}/` with the seven decision tools of ADR 0020 §3 and their evalsets. Fixtures at `fixtures/adk/<role>/<sha256>.json` (3 + 2 + 2), recorded this session.
+- `roles/{product,ops-triage,release}/prompt.md` (ROLE.md gone) and `role.env` (`HARNESS=adk`, `TIMEOUT_S=900`); `core/crew.sh` resolves `${HARNESS:-$AGENT_HARNESS}`. `roles/dev-worker/prompt.md` rewritten under ticket 0004 (no gate name, gate tool, `make`/`./go`); `ci/prompts.sh` enforces it, self-tested on a planted word.
+- `core/launchpad.sh` writes `RELEASE_RECORD` (`.crew/release.json`: version, stable, stages with `slo:` lines, verdict) and the stub line is gone; `core/promote.sh` = go-for-launch; `core/triage.sh` = alert → `.crew/triage/<name>/incident.json`. Makefile: `triage`, `demo-triage`, `promote`, `demo-launch`, `record-evals`; `CI_CHECKS` += `prompts evals promote`; `go` socket list += `demo-launch`. Workflow job `launch` runs `./go demo-launch`.
+- Workbench: `workbench/pyproject.toml` + `uv.lock` (`google-adk==2.9.1`, `google-cloud-aiplatform==2.1.3`, rouge-score, pandas, tabulate) into `/opt/workbench-venv`; image +300 MB (1.13 → 1.43 GB arm64), venv layer 25 s warm; `go` tags the image on Containerfile + pyproject + lock; telemetry consent answered no under both HOMEs and every `adk` call runs `</dev/null`.
+- Docs: ADR 0020 (accepted, with the L0-brief note), README, ARCHITECTURE, PLAN §7 notes (M7, M8), §5 note, ADR status lines 0003/0013/0014/0017/0019, tickets 0003/0004, ROLE.md of architect/test-reviewer → M8, `core/steps/ci.sh` review line → M8.
 
-## Contradicts docs/PLAN.md
+## Contradicts docs/PLAN.md and ADR 0020 as drafted
 
-- **Plan §3's table says CI at L0 is Gitea Actions. At M6 it is not, and the runner socket is re-dated for the third time (M4 → M5 → M6 → M8).** ADR 0019 §4: the six gates run by the tower on the PR head and posted as the `gates` commit status are the CI leg; the Gitea runner has run no job since M2. Declared in README and PLAN §7. ADR 0003's rule binds M8: if M8 closes with the runner idle, M8 is not closed. Five facts stand unverified for the real job (ADR 0019 §4 lists them); the first is whether github.com is reachable from inside the podman machine for `actions/checkout`.
-- **The canary the tower releases is not built from the merge commit** (ADR 0019 §5, option i). The audit prints `image: stable image, not built from merge.sha (M8)` on every line; plan §8 step 5 ("merge, build, immagine firmata") is M8's.
-- **`go-for-launch` was M6's in every ADR since 0013; it is M7's now** (ADR 0019 §8, PLAN §7 note): the human reads a promotion brief the release agent composes, and that agent is M7's.
-- The first ADR 0019 draft had the audit read only the state store; the owner overruled it the same day ("an audit that reads only its own archive confirms itself"). §6 and the rejected-alternatives list carry the correction.
+- **Plan §3 "Agenti ADK: stub" at L0 is a replay model, declared** (ADR 0020 §2): the tools, the eval and the drivers run for real; the model turns come from `fixtures/adk/`. Same pattern as the M5 crew fixture. README says so.
+- **ADR 0020 §4 as drafted had `./go promote` run the release role at every level; at L0 that is impossible by construction** — a live release record carries live numbers, no recording keyed on its text can match it, and keying on less would put recorded numbers beside a record that says otherwise. Found at the first `demo-launch`. Decision (dated note in §4): at L0 `core/promote.sh` renders the brief from the record and labels it so; from L1 the release role writes it; `ci/promote.sh` case (h) proves the L0 path. This is the second place (after the crew) where "replay" means something narrower than "the agent ran"; both are declared, neither is silent.
+- **`adk eval` needs `google-cloud-aiplatform` even with no LLM-judge criterion**: `evaluation/vertex_ai_eval_facade.py` imports `vertexai` at module level through the metric registry. The minimal set the plan session measured (177 MB) does not run; 296 MB does; the full `[eval]` extra (658 MB, scikit-learn, gepa) is not needed. Pinned and explained in `workbench/pyproject.toml`.
+- **`adk eval` writes `.adk/eval_history/` under the agent dir**, and `ci/secrets.sh` (working-tree scan, ignores .gitignore) flags the request ids in it as `generic-api-key`. `ci/evals.sh` deletes it after each run. Same family as the `.env` contradiction below.
+- Review roles re-dated a second time (M6 → M7 → M8), with ticket 0003 and the two dev-worker `record`s (ADR 0020 §9, PLAN §7 notes). ADR 0003's rule binds M8: `core/steps/ci.sh` still prints "nobody reviews until M8".
+- The tower does not emit an alert on a real rollback and does not call the triage role (ADR 0020 §3): the alert is a derivative of `RELEASE_RECORD` shape-wise, but the replay key would never match a live one. M8's tower can emit one; at L0 it would need the same "no model" honesty as promote.
 
 ## Found this session, fixed
 
-- **Cold-plane `open-pr on gitea failed` — the M5 HANDOFF transient, root-caused.** Gitea's log: `404 … v1.mustAllowPulls` on both the list and the create call, ~2 s after bootstrap's first push. A freshly created repo stays `empty: true` until the post-receive hook has run, asynchronously to `git push` returning, and an empty repo has no pulls unit. Reproduced on the first `./go demo` from a stopped plane this session (`NO-GO: e2e — a step failed`), never on a warm one. Fixed in `bootstrap.sh` step 5: poll `GET /repos/{o}/{r}` until `.empty == false`, READY_TIMEOUT bound. Two demos from a stopped plane passed after it.
-- **The podman machine's clock was 4,512 s behind the host** (`date +%s` on both sides), so `demo`'s `LIGHTS_OUT_T0` arithmetic printed `-4204s to rollback` and would have passed any budget. Environment, not repo: a VM that slept. The Makefile now says "not timed: the engine clock is Ns behind the host, budget unverified" instead of a negative number; the clock was synced with `podman machine ssh "sudo date -s @$(date +%s)"` for the recorded run. Anyone timing `./go demo` on macOS should compare the two clocks first. **M8 prerequisite (owner, 2026-09-16)**: the same skew, at L2, breaks image signing and OIDC — Workload Identity Federation tokens, cosign/Binary Authorization signatures and Sigstore certificates all carry short validity windows, and a VM 75 minutes behind produces "invalid token", "certificate not yet valid" and "signature verification failed" errors that look like misconfigured IAM or a wrong key, not like a clock. Before any L2 work: an `engine-compat` (or `up`) check that the engine host's clock is within a stated tolerance of the workbench's, NO-GO with both timestamps, and the README's L2 prerequisites list it. The tolerance's provenance is the token lifetime it protects (OIDC `iat`/`exp` skew allowances, typically minutes), to be read from the docs at M8, not guessed here.
+- `RecordingLlm` must carry the real model id in its `model` field: ADK copies `agent.canonical_model.model` into every request, so a wrapper named "recording" hit `models/recording is not found`.
+- ADK logs every failure with a full traceback; `run.py` sets `google_adk` logging to CRITICAL and filters the `[EXPERIMENTAL]` warning so the adapter's one stderr line is what the driver shows. A replay's `run.json` puts the recorded tokens under `recorded` and reports 0 spent (ADR 0017 §2's rule).
+- `go` forwards no host environment: `GO_FOR_LAUNCH=GO ./go promote` does nothing; `./go promote GO_FOR_LAUNCH=GO` (a make variable) is the form. Help text and ADR say so.
+- Product role, attempt 1: asked about status codes on the complete ticket. The prompt gained "ready does not mean exhaustive"; attempts 2–3 passed (3 was a re-record after `ci/prompts.sh` rejected the English word "make" in the new paragraph — the check is that literal). ops-triage and release recorded first time.
+- `ci/promote.sh`'s new case (h) has to sit before the test's `cd "$repo"`; a shellcheck SC2015 in it failed `ci-shell` on the first `./go demo`.
 
 ## Found, not fixed
 
-- **`./go ci` still cannot pass with a real key in `.env`** (M5 HANDOFF's `ci/secrets.sh` contradiction, unchanged): this session parked `.env` outside the tree for every `ci` and `demo` run and restored it at the end. Owner of `ci/` decides between a gitignore-aware `gitleaks` invocation and ADR 0002's no-allowlist rule.
-- `demo` runs two releases back to back (demo-rollback, then e2e's); the 1m PromQL window holds because ≥ 97 s pass between them, and the Makefile comment says the order matters. If e2e's `up` ever gets faster, re-check.
-- The e2e PR number on a warm plane is whatever Gitea has next (#2 in the acceptance run above, #1 on a fresh plane): the document records it, nothing else depends on it.
-- The gate-writer subagent stalled (10 min, no output) on `ci/tower.sh`; the main session wrote it from ADR 0019 §6/§9. Tests-from-the-spec rule respected in letter; the same session wrote the implementation, so the next reader of `ci/tower.sh` should read the ADR first and the test second.
-- `record` at L1 was not run: the 12M budget is provisional (above); the next two `record`s fix it.
-- **`roles/dev-worker/prompt.md` names pipeline tools** (the six gates by name, `make`, `./go`, the mutation suite): forbidding the suite treats the symptom. `tickets/0004.md` (opened this session, owner decision) extracts the rule — `roles/*/prompt.md` never names a gate or a Makefile target, only the objective — for M7's prompt work.
+- **`./go ci` still cannot pass with a real key in `.env`** (M5, M6): parked outside the tree for every `ci`/`demo` run, restored for the three `record-evals` and the L1 `promote`. Owner of `ci/` decides (gitignore-aware gitleaks vs ADR 0002).
+- `ci/prompts.sh` forbids the bare words `gate`, `gates`, `make` in any prompt, including English prose ("make the change"). It is what ticket 0004 asked for; if it bites, the rule text should change, not the check.
+- The three ADK roles have no `TOKEN_BUDGET`; `run.json` records the numbers (ops-triage ≈ 3.2k tokens, 2 calls, 9 s at L1). A dedicated commit can set budgets from a few more runs.
+- `demo` measured 306 s warm from a stopped plane vs 360 s at M6 — noise from a warm image cache, not a speed-up. Cold is measured by the GitHub `engine-compat` job; the workbench image now pulls ~300 MB more of wheels on a cold build.
+- The M6 `.env` clock-skew prerequisite for M8 stands (see the M6 HANDOFF in git history).
 
-## Prerequisites M8 inherits from this session
+## Prerequisites M8 inherits
 
-- Engine-host clock skew check before signing or OIDC (above).
-- The runner socket and the first Gitea Actions job (ADR 0019 §4's five unverified facts; ADR 0003's rule).
-- Image build from the merge commit and push to Zot (ADR 0019 §5).
+- The review roles: `architect` and `test-reviewer` prompts, a `review` tower step (precondition `review`, next `ci-passed`/`ci-failed`), a medium-risk PR recorded at L1; ticket 0003's perimeter rule before that `record`; the two dev-worker `record`s that fix the 12M budget and validate the rewritten prompt (ticket 0004's second criterion).
+- Engine-host clock skew check before signing/OIDC; the runner socket and the first Gitea Actions job (ADR 0019 §4's five facts; ADR 0003's rule); image build from the merge commit and Zot push — the release role's NO-GO brief above is the user-visible reason.
+- If M8's tower emits alerts from `RELEASE_RECORD` on a rollback, `core/triage.sh` is the consumer; at L0 the same "no model for live input" rule as `promote` applies.
 
-## First thing M7 should look at
+## First thing M8 should look at
 
-- ADR 0019 §8 hands M7 three things beyond the ADK roles: `go-for-launch` (the stub at `core/launchpad.sh` line ~84; ADR 0003's rule binds), the first real prompts for `architect` and `test-reviewer` (state `review` is terminal today — a medium/high PR stops there visibly), and ticket 0003's perimeter rule before the next `record`. Ticket 0004 (prompts name no gate and no Makefile target) belongs to the same prompt work: write the three prompts under that rule, then the two `record`s that fix the budget.
-- The tower's `review` state is where M7's review agent plugs in: a `review` step with precondition `review` and next states `ci-passed`/`ci-failed` is the whole change to `core/tower.sh`'s tables.
-- Before any `record`: the `.env` vs `ci/secrets.sh` contradiction above, and re-verify the 3.8 routing the way ADR 0018 did.
+- `core/steps/ci.sh` line 53 ("nobody reviews until M8"): the review step is the one stub-like line left, and ADR 0003's rule binds it.
+- Before any `record`: park `.env` for `ci`, sync the podman clock (`podman machine ssh "sudo date -s @$(date +%s)"`), and re-read ADR 0018 for the 3.8 routing check.

@@ -2,7 +2,7 @@
 
 - Status: accepted (amends ADR 0013 §4: hold on green, exit code carries the
   branch, second acceptance target; extends ADR 0013 §6: `demo-hold` writes
-  `app/flags/flags.json` and restores it). Amended by ADR 0019 §8: the human gate is M7, not M6 (re-dated by ADR 0019 §8)
+  `app/flags/flags.json` and restores it). Amended by ADR 0019 §8: the human gate is M7, not M6 (re-dated by ADR 0019 §8). Amended by ADR 0020 [launchpad writes `RELEASE_RECORD`; the held line names `./go promote`].
 - Date: 2026-09-14
 - Milestone: M3
 

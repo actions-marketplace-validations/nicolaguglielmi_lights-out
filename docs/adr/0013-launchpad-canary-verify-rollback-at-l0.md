@@ -1,6 +1,6 @@
 # ADR 0013 — Launchpad at M3: a second compose revision behind Envoy runtime weights, `slo.promql` selects canary vs stable by `service_version` through `target_info`, thresholds live in `verify/slo.sh`, freeze and kill switch are flags
 
-- Status: accepted (amends ADR 0003 stage list; ADR 0011 §1 query text and §4 gate rules; ADR 0012 §4 canary cluster, §7 ports; ADR 0007 §4 declared design becomes executable). Amended by ADR 0014 §1 and §4: a canary that clears 5% and 25% is held there at exit 0 for the human gate instead of being retracted, and `demo-hold` proves that branch. Amended by ADR 0019 §5, §8: Zot stays empty through M6; `100%: NOT YET (M7, go-for-launch)`.
+- Status: accepted (amends ADR 0003 stage list; ADR 0011 §1 query text and §4 gate rules; ADR 0012 §4 canary cluster, §7 ports; ADR 0007 §4 declared design becomes executable). Amended by ADR 0014 §1 and §4: a canary that clears 5% and 25% is held there at exit 0 for the human gate instead of being retracted, and `demo-hold` proves that branch. Amended by ADR 0019 §5, §8: Zot stays empty through M6; `100%: NOT YET (M7, go-for-launch)`. Amended by ADR 0020 [launchpad writes `RELEASE_RECORD`; the held line names `./go promote`].
 - Date: 2026-09-14
 - Milestone: M3
 

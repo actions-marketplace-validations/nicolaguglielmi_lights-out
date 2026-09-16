@@ -6,7 +6,7 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M6 of 10. What runs today:
+Milestone M7 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -20,12 +20,14 @@ Milestone M6 of 10. What runs today:
 | PR gates | M4 | ✓ six fixture PRs prove risk, SAST, deps, test, mutation, secrets |
 | ticket → PR | M5 | ✓ crew driver, six roles, one real run recorded, replay at L0 |
 | e2e | M6 | ✓ ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
+| ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.9.1; adk eval in ci; replay at L0 |
+| go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
 
 | | |
 |---|---|
 | **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
-A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero, then runs the whole golden path once more through the tower (`e2e`). Promotion to 100% is the M7 human gate (go-for-launch; the release agent that composes the promotion brief is M7's).
+A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero, then runs the whole golden path once more through the tower (`e2e`). Promotion to 100% is go-for-launch, `./go promote` after a held release; the brief is composed by the release role from L1, rendered from the release record at L0.
 
 The PR gates (`./go demo-gates`) run on six committed fixture patches and prove both verdicts: risk scoring, dependency scanning, SAST, test failure, mutation inadequacy, and secrets. `./go demo-crew` proves the ticket→PR pipeline: the crew container runs the dev-worker role on ticket 0001, opening a PR that passes `make gates`. At L0 the fixture is replayed; at L1 a real run against the Gemini API is recorded.
 
@@ -34,6 +36,8 @@ The PR gates (`./go demo-gates`) run on six committed fixture patches and prove 
 The tower (`core/tower.sh`) is a state machine over a JSON document per ticket in the state store, driven by step events on the event bus, with the `inproc` orchestrator pulling one event at a time. `./go e2e` runs it end to end and `./go audit TICKET=<id>` rebuilds the chain deploy → merge → PR → ticket → spec from the document and cross-checks it against the code host: a record that says merged while the PR is open is a NO-GO.
 
 Declared at L0 (ADR 0019): the CI leg of `e2e` is the six gates run by the tower on the PR head and posted as the `gates` commit status on the PR — the Gitea runner does not execute them until M8; the canary the tower releases after the merge is the stable image under `0.2.0-waitlist`, not a build of the merged commit — build and push to Zot arrive at M8 with the Registry port, and every audit prints `image: stable image, not built from merge.sha (M8)`; the bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
+
+Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset.
 
 ## Quick start
 
@@ -64,6 +68,11 @@ Then explore:
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]
+./go triage          # run the ops-triage role on an alert: ALERT=<file>
+./go demo-triage     # prove a fake alert becomes an incident with ranked hypotheses and a proposal (no plane)
+./go promote         # go-for-launch: the brief, then GO_FOR_LAUNCH=GO|NO-GO (or the terminal), then 100% or rollback
+./go demo-launch     # prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
+./go record-evals    # record the ADK roles' responses at L1 (PROFILE=l1)
 ./go mutation-baseline # measure baseline mutation score on the whole package
 ./go kill-switch     # turn off waitlist for all versions (manual flag edit)
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
@@ -89,7 +98,7 @@ The first run builds the workbench image (about 1 GB on disk, 350–400 MB downl
 | **Metrics** | Prometheus | Prometheus | Managed Prometheus + Cloud Monitoring | idem |
 | **Flags** | flagd (file) | flagd | flagd on Cloud Run or Unleash | idem |
 | **Events and state** | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore | + adapter Cloud Workflows |
-| **Agent ADK** | Stub | ADK local (`adk web`) | ADK on Cloud Run | Agent Engine + BigQuery analytics |
+| **Agent ADK** | Replay of recorded model responses (`fixtures/adk/`) | ADK 2.9.1 in workbench, `gemini-3.8-flash`, thinking per role | ADK on Cloud Run | Agent Engine + BigQuery analytics |
 | **Time to first rollback** | < 15 min | < 20 min | ~45 min (terraform apply) | ~90 min |
 
 *Note: Google renamed Vertex AI to Gemini Enterprise Agent Platform in April–May 2026. The endpoints, `GOOGLE_GENAI_USE_VERTEXAI` environment variable, and `aiplatform.googleapis.com` remain unchanged; `vertex` still appears in env vars and Terraform.*
@@ -149,12 +158,13 @@ At L0 the canary revision reuses the same image as stable, with the `waitlist` f
 
 The controller itself generates no load; the Makefile starts `app/load.sh` beside it (one user looping through registration POSTs), stopping when the controller exits.
 
-At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERSION`). Two proof commands demonstrate the two branches:
+At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERSION`). Three proof commands demonstrate the flow:
 
 - `./go demo-rollback` releases the failing version (waitlist on), expects NO-GO at 5%, and asserts the rollback (weights.canary=0, traffic on stable). This is now `./go demo`'s last stage.
-- `./go demo-hold` releases the same failing version with the kill switch thrown first (waitlist off), expects GO all the way, and asserts the canary is held at 25% (not silently rolled back), then rolls back itself for clean state. A reader can step through the stages or let it run end-to-end (~140 s warm).
+- `./go demo-hold` releases the same failing version with the kill switch thrown first (waitlist off), expects GO all the way, and asserts the canary is held at 25% (not silently rolled back), then rolls back itself for clean state.
+- `./go demo-launch` proves go-for-launch: a held canary, the brief, `GO_FOR_LAUNCH=GO` to promote to 100%, then the un-promote. A reader can step through the stages or let it run end-to-end (~150 s warm).
 
-Both are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path.
+`demo-rollback` and `demo-hold` are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path. `demo-launch` is also optional; the manual human path is `./go kill-switch`, `./go release`, `./go promote` (the answer travels as `./go promote GO_FOR_LAUNCH=GO`; `go` forwards no host environment).
 
 **Kill switch and freeze** are feature-flag edits in the committed `app/flags/flags.json`, live within seconds through flagd's file poller, no deploy:
 - `./go kill-switch` turns `waitlist` off for every version: the canary stops producing 501s.
@@ -202,7 +212,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-hold, kill-switch, freeze, unfreeze, e2e
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-hold, demo-launch, triage, demo-triage, promote, record-evals, kill-switch, freeze, unfreeze, e2e
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -263,6 +273,12 @@ lights-out/
       0012-l0-plane-layout-runner-envoy-readiness.md
       0013-launchpad-canary-verify-rollback-at-l0.md
       0014-prove-the-go-branch-with-demo-hold.md
+      0015-pr-gates-at-m4.md
+      0016-risk-model-and-merge-policy.md
+      0017-agent-runtime-at-m5.md
+      0018-gemini-cli-pin-for-the-model-id-fix.md
+      0019-control-plane-at-m6.md
+      0020-adk-agents-and-go-for-launch-at-m7.md
 
   verify/                   # SLO verification; shape-checked at M1, evaluated at M3
     slo.promql               # traffic, error_rate and latency_p95, canary vs stable via target_info join
@@ -281,6 +297,7 @@ lights-out/
   compose.yaml               # the L0 plane: app + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
 
   adapters/                 # one directory per adapter named in profiles/*.env
+    adk/                    # M7: ADK roles, replay/recording model, evalsets
     envoy-canary/           # Containerfile, envoy.yaml, ready.sh, deploy.sh, shift.sh, rollback.sh
     prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh
     gitea/                  # ready.sh, runner/Containerfile, runner/config.yaml
@@ -289,11 +306,11 @@ lights-out/
     pubsub-emulator/        # ready.sh
     firestore-emulator/     # ready.sh
 
-  roles/                    # M5: agent role definitions (dev-worker with prompt and budgets)
+  roles/                    # M5/M7: agent role definitions (prompt.md + role.env; the three ADK roles name HARNESS=adk)
   policy/                   # from M4: policy-as-code
   tickets/                  # project tickets, one per file; 0001 is the first bug found
   gates/                    # from M4: PR gates, identical at every level
-  fixtures/                 # M5: recorded agent responses at L1, replayed at L0
+  fixtures/                 # M5: recorded agent responses at L1, replayed at L0; fixtures/adk/: recorded ADK model responses
   .crew/                    # M5: per-ticket workspace and output directory (gitignored)
   design/                   # from M10: Stitch artifacts
   infra/                    # from M8: Terraform for GCP

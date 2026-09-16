@@ -6,7 +6,7 @@ The core knows no vendor. Every integration sits behind a port with at least two
 
 | Port | Adapter | Note |
 |---|---|---|
-| `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events |
+| `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events; `adk`: no workspace; `INPUT` file → `OUT/calls.json`, `final.md`, `run.json`; a role selects it with `HARNESS=adk` in its role.env (ADR 0020 §1) |
 | `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr, status, merge, pr; `github`: branch, PR, comments, merge |
 | `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md`; others read from external service |
 | `EventBus` | `pubsub-emulator`, `pubsub` | Verbs: `publish`, `pull`, `ack` |
@@ -36,12 +36,16 @@ Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`
 1. Picks an engine (`CONTAINER_ENGINE`, else podman, else docker)
 2. Builds or reuses the `workbench` image from `workbench/Containerfile`
 3. Runs `make <cmd>` inside it with the repo mounted at the same absolute path
-4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `release`, `demo-rollback`, `demo-hold`, `e2e`, `shell`, `gates`, `demo-gates`, `mutation-baseline`, `assign`, `demo-crew`, `record`)
+4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `release`, `demo-rollback`, `demo-hold`, `demo-launch`, `e2e`, `shell`, `gates`, `demo-gates`, `mutation-baseline`, `assign`, `demo-crew`, `record`, `triage`, `demo-triage`, `promote`, `record-evals`)
 5. Runs without the socket for targets that do not (`ci`, `engine-compat`)
 
 For `engine-compat` and `demo`, `./go` runs `ci/engine-compat.sh` on the host first.
 
 See [ADR 0004](adr/0004-containerised-toolchain.md).
+
+## Human gate
+
+`core/launchpad.sh` writes `RELEASE_RECORD` (`.crew/release.json`) with the release outcome and metrics at each stage. `core/promote.sh` is go-for-launch: it reads the record, checks that the canary is held (not rolled back), runs the release role (at L1+) or renders the brief from the record (at L0), prints it, and asks for a human answer: `GO_FOR_LAUNCH=GO|NO-GO` if set, else one line from the terminal, else NO-GO. `GO` shifts the canary to 100% of traffic; `NO-GO` rolls it back. `demo-launch` proves this flow mechanically and runs on every push in the `launch` CI job. See [ADR 0020](docs/adr/0020-adk-agents-and-go-for-launch-at-m7.md) §4.
 
 ## Demo Stages
 
@@ -61,6 +65,8 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 | deploy | M3 | Staging → 5% → 25%, held for human gate |
 | rollback | M3 | Automatic on verify NO-GO, or manual trigger |
 | e2e | M6 | Full path through the tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
+
+`demo-launch` is not a stage of `./go demo` (ADR 0020 §4); it runs in the `launch` CI job to prove go-for-launch on every push.
 
 See [ADR 0003](adr/0003-make-demo-before-m3.md).
 
@@ -106,5 +112,7 @@ The canary revision is the same image as stable, with `waitlist` targeted at the
 See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](adr/0013-launchpad-canary-verify-rollback-at-l0.md), [ADR 0014](adr/0014-prove-the-go-branch-with-demo-hold.md).
 
 ## Status
+
+M7 — ADK agents and go-for-launch: product, ops-triage, release on ADK 2.9.1 with prompt.md and recorded model responses at L0 (`fixtures/adk/`), replay at L0 and live at L1+; adk eval suite with the ambiguous question and two misleading alerts; three new ci checks (`prompts`, `evals`, `promote`); `core/promote.sh` is go-for-launch reading `RELEASE_RECORD`, composing the brief (live at L1+, rendered from record at L0), and asking the human: GO_FOR_LAUNCH=GO|NO-GO; `./go promote` and `./go demo-launch` on every push; at L0 the promotion is Envoy weight 100 on the canary cluster, the canary does not become the stable image (M8); the review roles (architect, test-reviewer, the tower `review` step), ticket 0003 and the two `record`s that fix the budget move to M8.
 
 M6 — Control plane: tower state machine in `core/tower.sh` with four step scripts in `core/steps/`, event bus (Pub/Sub emulator) and state store (Firestore emulator) adapters, `inproc` orchestrator, audit log that rebuilds deploy→PR→ticket→spec and cross-checks the code host, `./go e2e` runs the full path ticket→PR→CI→merge→canary→verify NO-GO→rollback with automated gates posted as commit status.
