@@ -92,7 +92,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness tower contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -115,14 +115,19 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	@printf '[demo] verify: metric shape only; canary vs stable is evaluated inside demo-rollback below\n' >&2
 	@$(MAKE) --no-print-directory demo-rollback
 	@printf '[demo] deploy, verify (canary vs stable), rollback: proved by demo-rollback above (docs/adr/0013, 0014)\n' >&2
-	@printf '[demo] e2e: NOT YET (M6)\n' >&2
+	@$(MAKE) --no-print-directory e2e
+	@printf '[demo] e2e: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)\n' >&2
 	@printf 'lights-out: app at %s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_URL)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
+	if [ "$$elapsed" -lt 0 ]; then \
+		printf 'GO: demo, milestone M6, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
+		exit 0; \
+	fi; \
 	if [ "$(DEMO_BUDGET_SECONDS)" -gt 0 ] && [ "$$elapsed" -gt "$(DEMO_BUDGET_SECONDS)" ]; then \
 		printf 'NO-GO: demo — rollback reached, but %ss > %ss budget (plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"; \
 		exit 1; \
 	fi; \
-	printf 'GO: demo, milestone M3, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
+	printf 'GO: demo, milestone M6, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
 
 .PHONY: up
 up: ## Start the L0 plane in compose and wait until every adapter is ready (docs/adr/0012 §6)
@@ -234,36 +239,25 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 assign: ## Turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker] (docs/adr/0017 §4)
 	@TICKET="$(TICKET)" ROLE="$(ROLE)" sh core/crew.sh
 
-# Shared by demo-crew and record (docs/adr/0017 §6): runs assign, fetches
-# the resulting branch from CODE_HOST into a throwaway worktree off the
-# commit assign started from, judges it with the M4 gates (the same
-# mechanism demo-gates uses on a fixture patch), and leaves the verdict at
-# $(GATES_OUT)/verdict.env at the repo root — the caller decides what a
-# GO or a NO-GO means. Always exits 0; a gates NO-GO is data, not a
-# Makefile failure, so the caller can read verdict.env either way.
+# Shared by demo-crew and record (docs/adr/0017 §6): runs assign, then
+# the CI step the tower uses (core/steps/ci.sh, docs/adr/0019 §1) on the
+# range .crew/<ticket>/pr-opened.env records — fetch from CODE_HOST,
+# throwaway worktree, `make gates`, verdict posted as a commit status —
+# leaving the verdict at $(GATES_OUT)/verdict.env at the repo root; the
+# caller decides what a GO or a NO-GO means. Always exits 0 past assign;
+# a gates NO-GO is data, not a Makefile failure.
 .PHONY: crew-run
 crew-run:
 	@rm -f "$(GATES_OUT)/verdict.env"
-	@main_sha=$$(git rev-parse HEAD); \
-	role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
+	@role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
 	$(MAKE) --no-print-directory assign TICKET="$(TICKET)" ROLE="$$role" >&2 || { \
 		printf 'NO-GO: crew-run — assign did not produce a PR\n'; exit 1; \
 	}; \
-	branch="ticket/$(TICKET)"; \
-	clone_url=$$(sh "adapters/$(CODE_HOST)/clone-url.sh"); \
-	git fetch -q "$$clone_url" "$$branch" || { \
-		printf 'NO-GO: crew-run — could not fetch %s from %s\n' "$$branch" "$(CODE_HOST)"; exit 1; \
-	}; \
-	head_sha=$$(git rev-parse FETCH_HEAD); \
-	wt=$$(mktemp -d)/wt; \
-	git worktree add --detach "$$wt" FETCH_HEAD >/dev/null 2>&1 || { \
-		printf 'NO-GO: crew-run — git worktree add failed\n'; exit 1; \
-	}; \
-	out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
-	printf '[crew-run] gates: %s\n' "$$out" >&2; \
-	mkdir -p "$(GATES_OUT)"; \
-	cp "$$wt/$(GATES_OUT)/verdict.env" "$(GATES_OUT)/verdict.env" 2>/dev/null || : > "$(GATES_OUT)/verdict.env"; \
-	git worktree remove --force "$$wt"
+	. ".crew/$(TICKET)/pr-opened.env"; \
+	TICKET="$(TICKET)" PR_NUMBER="$$PR_NUMBER" BASE_SHA="$$BASE_SHA" HEAD_SHA="$$HEAD_SHA" \
+		sh core/steps/ci.sh >/dev/null || { \
+		printf 'NO-GO: crew-run — the CI step did not reach a verdict\n'; exit 1; \
+	}
 
 .PHONY: demo-crew
 demo-crew: ## Prove ticket 0001 becomes a PR that passes the M4 gates (docs/adr/0017; the M5 acceptance command)
@@ -447,6 +441,31 @@ unfreeze: ## Turn release-freeze off (docs/adr/0013 §6)
 	printf 'lights-out: release-freeze is off\n' >&2; \
 	printf 'GO: unfreeze\n'
 
+# The M6 acceptance command (docs/adr/0019 §7). A replay on a per-`up`
+# plane: the ticket's document is deleted first so the machine starts at
+# `opened` every time — a production tower never deletes. Then: open
+# (document + the `assign` event), the inproc orchestrator until the
+# queue is empty, the final state asserted as rolled-back (the done-when
+# ends in a rollback; the demo-rollback precedent), and the audit. Order
+# inside `demo`: after demo-rollback, so ≥ 97 s pass between its rollback
+# and this canary's 5% verify and the 1m window (docs/adr/0013 §2) holds
+# only this stage's canary; put e2e first and the two runs share a window.
+TICKET ?= 0001
+
 .PHONY: e2e
-e2e: ## Golden path: ticket, PR, CI, canary, rollback
-	$(call not_yet,e2e,M6)
+e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)
+	@$(MAKE) --no-print-directory up
+	@printf '[e2e] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
+	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: e2e — could not reset the document\n'; exit 1; }
+	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: e2e — could not open ticket %s\n' "$(TICKET)"; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: e2e — a step failed; see the [tower] lines above\n'; exit 1; }
+	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
+	if [ "$$state" != "rolled-back" ]; then \
+		printf 'NO-GO: e2e — ticket %s ended at %s, expected rolled-back\n' "$(TICKET)" "$$state"; exit 1; \
+	fi
+	@$(MAKE) --no-print-directory audit TICKET="$(TICKET)" >&2 || { printf 'NO-GO: e2e — audit did not pass\n'; exit 1; }
+	@printf 'GO: e2e\n'
+
+.PHONY: audit
+audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
+	@TICKET="$(TICKET)" sh core/audit.sh

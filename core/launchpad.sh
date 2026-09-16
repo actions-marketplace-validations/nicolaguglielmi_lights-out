@@ -7,7 +7,7 @@
 # or Prometheus word appears below. Stages: rollback to a known state, read
 # the stable version, check the freeze flag, staging, then 5% and 25%, each
 # gated by verify/slo.sh. A NO-GO at any stage rolls back and exits 1. A
-# full pass holds the canary at 25%, waiting for the M6 human gate, and
+# full pass holds the canary at 25%, waiting for the M7 human gate, and
 # exits 0. Generates no traffic itself: production has real traffic, the
 # Makefile `release` target starts app/load.sh beside this at L0.
 #
@@ -81,5 +81,5 @@ for pct in 5 25; do
 done
 
 printf '[launchpad] 25%%: GO — canary holds 25%% of traffic, waiting for go-for-launch\n' >&2
-printf '[launchpad] 100%%: NOT YET (M6, go-for-launch)\n' >&2
+printf '[launchpad] 100%%: NOT YET (M7, go-for-launch)\n' >&2
 go
