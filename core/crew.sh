@@ -29,6 +29,8 @@ if [ ! -f "roles/$ROLE/prompt.md" ]; then
 fi
 # shellcheck disable=SC1090,SC1091 # role.env's path is built from $ROLE
 . "roles/$ROLE/role.env"
+# A role may name its own harness (docs/adr/0020 §1); the profile's is the default.
+harness=${HARNESS:-$AGENT_HARNESS}
 
 here=$(pwd)
 crew_dir="$here/.crew/$TICKET"
@@ -61,13 +63,13 @@ done
 
 mkdir -p "$crew_dir/out"
 
-printf '[crew] ticket %s: role %s, harness %s\n' "$TICKET" "$ROLE" "$AGENT_HARNESS" >&2
+printf '[crew] ticket %s: role %s, harness %s\n' "$TICKET" "$ROLE" "$harness" >&2
 
 ROLE="$ROLE" TICKET="$TICKET" TICKET_FILE="$crew_dir/ticket.md" \
 WORKSPACE="$crew_dir/workspace" BASE="$base" OUT="$crew_dir/out" \
 THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
-  sh "adapters/$AGENT_HARNESS/run.sh" >&2 \
-  || nogo "$AGENT_HARNESS run failed for ticket $TICKET"
+  sh "adapters/$harness/run.sh" >&2 \
+  || nogo "$harness run failed for ticket $TICKET"
 
 sh core/harness-check.sh "$crew_dir/out" "$crew_dir/workspace" "$base" \
   || nogo "worker produced no change or an incomplete artefact"

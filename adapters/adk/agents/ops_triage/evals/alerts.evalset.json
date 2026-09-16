@@ -1,0 +1,182 @@
+{
+  "eval_set_id": "alerts",
+  "name": "alerts",
+  "description": "The ops-triage role: a real 5xx canary rollback, and two alerts whose headline blames the canary but whose own numbers do not support singling it out (docs/adr/0020 \u00a73).",
+  "eval_cases": [
+    {
+      "eval_id": "canary-5xx",
+      "conversation": [
+        {
+          "invocation_id": "5986f5de-3da3-5086-9035-49911e9a12b0",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n      \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=0.043 stable(0.1.0-m2)=0.024\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Filed the incident and proposed rolling back 0.2.0-waitlist."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "file_incident",
+                "args": {
+                  "title": "canary 0.2.0-waitlist: 100% error rate at 5%",
+                  "hypotheses": [
+                    {
+                      "rank": 1,
+                      "cause": "the canary build itself is broken",
+                      "evidence": "error_rate canary=1.000 vs stable=0.000, at real traffic"
+                    },
+                    {
+                      "rank": 2,
+                      "cause": "a config only the canary received",
+                      "evidence": "stable on the same window is unaffected"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "propose_rollback",
+                "args": {
+                  "version": "0.2.0-waitlist",
+                  "reason": "error_rate=1.000 on the canary alone, at real traffic, stable unaffected"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "ops_triage",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "misleading-stable-fails-too",
+      "conversation": [
+        {
+          "invocation_id": "6c7cfe5e-a402-5ac3-8676-9daa17a47938",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.211 stable(0.1.0-m2)=4.021\",\n      \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=1.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=0.041 stable(0.1.0-m2)=0.039\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Filed the incident; holding rather than rolling back, since stable fails the same way."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "file_incident",
+                "args": {
+                  "title": "error_rate 100% on both canary and stable at 5%",
+                  "hypotheses": [
+                    {
+                      "rank": 1,
+                      "cause": "a shared dependency is down for every version",
+                      "evidence": "stable error_rate=1.000 too, not just the canary"
+                    },
+                    {
+                      "rank": 2,
+                      "cause": "the canary build is broken",
+                      "evidence": "cannot be distinguished from the shared-dependency cause with stable failing identically"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "propose_hold",
+                "args": {
+                  "reason": "stable fails identically; rolling back the canary would not fix an outage that is not canary-specific"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "ops_triage",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "misleading-no-canary-traffic",
+      "conversation": [
+        {
+          "invocation_id": "6288afb3-e2fb-503f-ab98-1d49570bdb86",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=4.107\",\n      \"slo: error_rate canary(0.2.0-waitlist)=no data stable(0.1.0-m2)=0.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=no data stable(0.1.0-m2)=0.026\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Filed the incident; holding, since the canary saw no traffic at all this window."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "file_incident",
+                "args": {
+                  "title": "canary reports no data at 5%, not an observed failure",
+                  "hypotheses": [
+                    {
+                      "rank": 1,
+                      "cause": "the canary received no traffic this window",
+                      "evidence": "traffic canary=0.000; error_rate and latency both read 'no data'"
+                    },
+                    {
+                      "rank": 2,
+                      "cause": "a routing problem is keeping traffic off the canary entirely",
+                      "evidence": "zero canary traffic while stable serves normally"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "propose_hold",
+                "args": {
+                  "reason": "no canary traffic this window; there is no error rate to roll back on, only an absence of data"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "ops_triage",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    }
+  ]
+}

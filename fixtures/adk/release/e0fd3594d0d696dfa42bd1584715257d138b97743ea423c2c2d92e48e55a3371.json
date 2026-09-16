@@ -1,0 +1,63 @@
+{
+  "input": "{\n  \"held_at\": null,\n  \"image\": \"zot.local/lights-out/backend:0.2.0-waitlist\",\n  \"stable\": \"0.1.0-m2\",\n  \"stages\": [\n    {\n      \"numbers\": [\n        \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n        \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000\"\n      ],\n      \"pct\": 5,\n      \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n    }\n  ],\n  \"verdict\": \"rolled-back\",\n  \"version\": \"0.2.0-waitlist\"\n}",
+  "instruction_sha256": "5af11a944f8c313ad8e0f9356d15f0110f7d35ee6be35037ee921430f62f268d",
+  "model": "gemini-3.8-flash",
+  "recorded_at": "2026-09-16T14:47:52Z",
+  "responses": [
+    {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "args": {
+                "reason": "The canary 0.2.0-waitlist was rolled back at 5% traffic due to error_rate exceeding the SLO and was not held."
+              },
+              "id": "call_236148",
+              "name": "decline_brief"
+            },
+            "thought_signature": "EoEDCv4CARFNMg_5XM1NEcMc2OFZnFS8sC7iDFOQBohKOnkYxUS-UFYH9iOqbgJO3TBIJd5KF5-SJTf8JSmmVOxGyxjw_ZlkRojHo16GfxzVlsoonub0TP0v_7umHX9wMQEA2x21hc0hE0CdW4fIZR8PPJT1Rx4BbTP_49OWWOugSun6Zy2eMZKPP3y6wLiOX1pX880yODddpjFrFR1IfiHG6Tox5fukOXyUgvedOlqPQadJwQDiXWO69hhcDvsnAqSv2eGqhxeQrZyOwcUuShIQG12KBxzDQszm07IWq84ph11ZoNtM4lh1Ft3Kl0U_oRQVQbTGlgDCGeETj7DAZm3XoWQzS9zzSjnwscYaYe7Di53Hqy7AjUxhwL2rOO7WWuHxRFIV442PL-XbYEdBZEiw8HRT6KEeG0ZR9gJTgapgZvYAKt1lJ6zo1gLs6N2uzPd1ipBC8TQAUDJ3GVxCdA4afUTnPGUDtikxEs79ok10w6x72HRy-Rdw2cWWuIYH1PnEKg=="
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 48,
+        "prompt_token_count": 828,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 828
+          }
+        ],
+        "thoughts_token_count": 67,
+        "total_token_count": 943
+      }
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Declined promotion brief because version 0.2.0-waitlist was rolled back after failing the 5% stage.",
+            "thought_signature": "EmcKZQERTTIPki3762tXl9-eKL17_JhAGpDwabmOy6A6jkZASCGzXgUB-5qM6xdCy2pxSgCKCyxILxvGO5oYF3cUHcFQ-UsF-GdcTO7R6dERAV8jCXIAgsyn-s0_puPT9A4Cf2S8CpFY"
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 26,
+        "prompt_token_count": 995,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 995
+          }
+        ],
+        "total_token_count": 1021
+      }
+    }
+  ]
+}

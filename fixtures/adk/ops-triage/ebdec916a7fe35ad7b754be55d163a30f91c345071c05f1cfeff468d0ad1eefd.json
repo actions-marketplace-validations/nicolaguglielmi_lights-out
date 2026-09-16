@@ -1,0 +1,84 @@
+{
+  "input": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=4.107\",\n      \"slo: error_rate canary(0.2.0-waitlist)=no data stable(0.1.0-m2)=0.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=no data stable(0.1.0-m2)=0.026\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}",
+  "instruction_sha256": "5fd0ef02c52b3d47ca18e15cb32ad77f822f8ca40f41b19430e6def0164d14a3",
+  "model": "gemini-3.8-flash",
+  "recorded_at": "2026-09-16T14:47:25Z",
+  "responses": [
+    {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "args": {
+                "hypotheses": [
+                  {
+                    "cause": "Traffic routing failed or canary was not reachable, causing missing metrics to be interpreted as 100% error rate.",
+                    "evidence": "traffic canary(0.2.0-waitlist)=0.000 and error_rate canary(0.2.0-waitlist)=no data contradict the headline claim of 100% error rate.",
+                    "rank": 1
+                  },
+                  {
+                    "cause": "The canary deployment failed to start up or register with service discovery before metrics collection.",
+                    "evidence": "latency_p95 canary(0.2.0-waitlist)=no data indicates no requests ever reached the canary instance.",
+                    "rank": 2
+                  }
+                ],
+                "title": "Canary 0.2.0-waitlist received no traffic and reported no data"
+              },
+              "id": "call_320769",
+              "name": "file_incident"
+            },
+            "thought_signature": "EtgLCtULARFNMg_p9x04eTcRT3nrRjam0v1Z5t_hO3rQbqGsmomzSgvTh0E5VozkKs_GhxByzA4787rnYaGl19UI-0H5t3IRXQYMC4EE--Cri2pAaRat00Y6Qqyz6ZG6qmroiHcrEi795ahXtGPJ8p4SsFXS97ndv6_Ja9KvlOiVdWLeMFjY6YHRF_vZaysabPW8Veyi2PWlfzLwlGXqxFDk4l3nv7pXZEkYSmanYNbbSBtnGDxJNe3Xqx2vJ9fklKcqzHPEJ62wnNjWZNPlsQdNReWf83eVh4Ud8ICLW2yt8LM_yssRL5_AEcGtarXh06crhesH7hCcSPCufOgBuXPxjeTJ4dUTvDM7tAvjAJz1OyOo2kKlln0Vm2jRLR-xA7iqv4NHL5CfPoBReBzF6-GqHiF7sfpzsb_r2Ki7eKyH1A-iqOSz4UlPTkapqDCX8v22h1tXLQPBTbaNy0DCuy3pFjPPwkZ35UwJ4hZIuSOnYrTgWl_PwFe5HXclJVgLb4ZnlT3tGv_C_zXlwiNgXETA3cbB82ybYzMBNkOgLTRSNEL1cwd-rR3kTnpKGin8F6-4cf0JBD68xb5umRQzd4qwA2fIihgpMrYG5JWHtaz-WjSye5hXtASTDQvwl1sfCQgzMMj-bG18IiTx0J0pSgEKTtzcdO4h6NDNE-kmgp0TVMtKo6E5lzdgRg2YrdKv1PYTMshghJcRRwOHtoCeHnV0OiE9sKEafZbCpgZozDdd6k3uXb4Wo11bKb9VJb7uV8l13OXH7jRocJzVaNtOG5lmndyQMbvyaAVggpLUHHNf_8EhYMz5eCyDFLKxDMqjEL4V2uV4UJU0h6mZ6brrBtBk8femiIUAVyQt5FY4wF9YR5BYh9fXs44vHspqlYyZGo9D3dNiyu81PhMFfEaIS9tBitTcNeAe1oc9g9RHsD_auTMTpmV3OUgBwBn5Pi6EVASOJsLEfZyttAtE8hTKJTMnPvDt6bYL7BLTpPJlvhhezPFVBW-uC-Cw5P4ARYB3JHJmYKkEf3NPKyjAogQrt8W-DlJhVhQz5WUystTUr0AiB_XUf3SX0OqoWXd9Dq1dE0Sz5XfA-55a4f7sLKaacJ9VMfiy2v_HVVQoKIyuAR_JlzGpR0LU8XdvYTkdwEbmuMSPkHcVxFpe8jT5-AK9Jn97jLEqU8-QkbPaE_3Jvd6w5OzrvlEjqv5pjCweBmC0oPNJrPVEzbJawpRA3bnRchCup8pNJICSwW1wfC8G-L2SvE96XiuqhfCMwWuCxjMI-d0hUYTwfKxPIHm6Ew0ybccPfqA9ebv6Kd2sIEeQGBFjn1HQ5aDsOsqY2IekkBZLczMlxYurzWKFugKdB7ggfa55FciLP3G7Uf7vQe9wUIBmqlZpy5YQKQtxBmI3pZv-z2bRWHbGhVgqjkDEQJGJiZbQQrPDGB3AQ0iMuNn1f95eWK_2DPGQuEJhb0ItzDk5WkzXj77PVHjgtAEdgM4aNErUxXQWhtxrAns_isbovGSpd-XdvBR-9J-cvk8QLoZ-msC1ImL0rfkzCIMUHzHSS2vFJIc-CPhWCIfN8peyeVhb00lMpoeKkREyfhjCdrr_wS18_E9N3Q9uIHjq5NNNMv9dnLZux0WQQmEogNoVELs7uaVFbQbtTy0o6ihWVS2KCgCO9g1FhgdHmYKl95ldwH2sEsfQ5IVdpQ3MitSwKqBTEwsi3BKiq_ls85HRFO9BoN898ZHdgdY9h85Y5brytnMc4xwQsp571N_epMGZN_FNvskF56GftmKvO0HCcd0Xn-lMYVnYvkVCcq7CtawTHraRS09BvwcFuAp0Lu6t7_lNSvYGRYJNElwS5NiB9BcVV7evFWPjGZjbCcVi-BoWiqL7OXX0sMpjlwoPH6FPlmdrzO47YzH_NZRRih0fQlvTqtLpnfiIu8wN5nxZPgcWEE0cwOjsGTDCphpiZBv2qc9c_HmsD4FKKPDf0yTLF7UQ8dWHLi2N0QewCTk="
+          },
+          {
+            "function_call": {
+              "args": {
+                "reason": "The canary received zero traffic (traffic canary=0.000) and reported no data for error rate or latency; investigate traffic routing and canary instance readiness instead of assuming a code regression."
+              },
+              "id": "call_320770",
+              "name": "propose_hold"
+            }
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 235,
+        "prompt_token_count": 1169,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 1169
+          }
+        ],
+        "thoughts_token_count": 432,
+        "total_token_count": 1836
+      }
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "I propose holding the release while investigating traffic routing and canary readiness rather than rolling back, as the canary observed zero traffic and reported no metrics.",
+            "thought_signature": "EmcKZQERTTIPb83hVAS0Y1dgOZHGVRwA583Afh_88PrPkOzPitlScLpGBdS6zgk1bayENK-SVxou_5mZr_DC9eBi0o0JBtJa1zwepKi_ffEpna7P8eWepdORjG7S76hTqtj6-fpb_av5"
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 28,
+        "prompt_token_count": 2083,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 2083
+          }
+        ],
+        "total_token_count": 2111
+      }
+    }
+  ]
+}

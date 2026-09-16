@@ -1,0 +1,88 @@
+{
+  "eval_set_id": "briefs",
+  "name": "briefs",
+  "description": "The release role: a held record gets a promotion brief; a rolled-back record has nothing to promote, so the role declines (docs/adr/0020 \u00a73).",
+  "eval_cases": [
+    {
+      "eval_id": "held-release",
+      "conversation": [
+        {
+          "invocation_id": "5b170e50-39be-570b-b2d1-124736658c9e",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "{\n  \"held_at\": 25,\n  \"image\": \"zot.local/lights-out/backend:0.2.0-waitlist\",\n  \"stable\": \"0.1.0-m2\",\n  \"stages\": [\n    {\n      \"numbers\": [\n        \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n        \"slo: error_rate canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=0.000\"\n      ],\n      \"pct\": 5,\n      \"verdict\": \"GO\"\n    },\n    {\n      \"numbers\": [\n        \"slo: traffic canary(0.2.0-waitlist)=1.040 stable(0.1.0-m2)=3.186\",\n        \"slo: error_rate canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=0.000\"\n      ],\n      \"pct\": 25,\n      \"verdict\": \"GO\"\n    }\n  ],\n  \"verdict\": \"held\",\n  \"version\": \"0.2.0-waitlist\"\n}\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Submitted the promotion brief for 0.2.0-waitlist."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "submit_brief",
+                "args": {
+                  "version": "0.2.0-waitlist",
+                  "brief": "Release 0.2.0-waitlist: stage 5% GO, stage 25% GO, held at 25% for the human gate. Recommend promoting to 100%."
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "release",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "rolled-back-release",
+      "conversation": [
+        {
+          "invocation_id": "d8c34417-0a9c-5573-ae5a-d409cd96f5b0",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "{\n  \"held_at\": null,\n  \"image\": \"zot.local/lights-out/backend:0.2.0-waitlist\",\n  \"stable\": \"0.1.0-m2\",\n  \"stages\": [\n    {\n      \"numbers\": [\n        \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n        \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000\"\n      ],\n      \"pct\": 5,\n      \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n    }\n  ],\n  \"verdict\": \"rolled-back\",\n  \"version\": \"0.2.0-waitlist\"\n}\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Declined: this release already rolled back, nothing to promote."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "decline_brief",
+                "args": {
+                  "reason": "the release rolled back at 5%; there is nothing to promote"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "release",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    }
+  ]
+}
