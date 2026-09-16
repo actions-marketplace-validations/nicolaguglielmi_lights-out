@@ -102,6 +102,8 @@ Quindi `thinking` diventa un campo della definizione del ruolo, accanto a budget
 
 Conseguenza operativa: a L1 il free tier limita ai modelli Flash e a un tetto giornaliero di richieste, che con 3.8 Flash basta se i task del demo restano piccoli e il thinking resta basso. La demo dal palco gira a L2, dove alzi il thinking e non hai il tetto.
 
+*Nota 2026-09-16 (ADR 0018):* fino al secondo run reale del 16 settembre questa tabella era decorativa. Con Gemini CLI 0.59.0 il thinking per ruolo non è mai stato applicato: la CLI rimappava la richiesta a `gemini-3.5-flash` prima di consultare l'alias su cui `THINKING` viaggia, e la fixture di ticket 0001 è registrata col thinking di default. Il pin alla 0.61.0-preview.0 (ADR 0018) è il primo runtime in cui la leva è davvero collegata; i budget in `roles/dev-worker/role.env` sono stati rimisurati lì.
+
 ### Con cosa lo costruisci tu
 Da non confondere con il precedente: i modelli qui sotto servono a **scrivere questo repo** con Claude Code, non girano mai a runtime. La ripartizione sta nel frontmatter dei subagent in `.claude/agents/`, così non devi ricordartela ogni sessione.
 

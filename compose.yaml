@@ -136,6 +136,9 @@ services:
       UV_LINK_MODE: copy
       POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
       TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
+      # As the backend test image sets it (app/backend/Containerfile); the
+      # metrics test needs it and the worker cannot know that.
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
 
   # --- the plane (M2) ---
 

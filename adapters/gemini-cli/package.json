@@ -1,8 +1,8 @@
 {
   "name": "lights-out-crew-gemini-cli",
   "private": true,
-  "description": "Pins the Gemini CLI version the gemini-cli AgentHarness adapter runs (docs/adr/0017 §3). Never published.",
+  "description": "Pins the Gemini CLI version the gemini-cli AgentHarness adapter runs (docs/adr/0017 §3). Deliberately on the preview channel (docs/adr/0018): 0.59.0 and 0.60.0 silently serve gemini-3.5-flash for gemini-3.8-flash; the fix (google-gemini/gemini-cli#29252) has no stable release yet. Return to the stable channel at 0.61.0. Never published.",
   "dependencies": {
-    "@google/gemini-cli": "0.59.0"
+    "@google/gemini-cli": "0.61.0-preview.0"
   }
 }

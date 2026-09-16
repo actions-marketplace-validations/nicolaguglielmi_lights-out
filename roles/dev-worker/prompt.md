@@ -24,12 +24,17 @@ own guardrails is time and budget spent on nothing the ticket asked for.
 
 ## How this repo works
 
-- Tests: from `app/backend`, `uv sync --locked && python -m pytest tests
-  -q -p no:cacheprovider`. `TEST_DATABASE_URL` and
-  `POSTGRES_MAINTENANCE_URL` are already set for you, pointing at the
-  plane's own Postgres — the same database the repo's own test command
-  uses. There is no container engine here and no `make`: you cannot run
-  `./go` or `make` targets, only plain commands inside this checkout.
+- Tests: from `app/backend`, `uv sync --locked && uv run pytest tests -q
+  -p no:cacheprovider`. Use exactly this command: it works as written,
+  first time, with no environment variable, no `PYTHONPATH`, no symlink
+  and no change to `conftest.py` or `pyproject.toml`. `flags/`, `fakes/`
+  and `contracts/` are already reachable from `app/backend` and
+  `TEST_DATABASE_URL` and `POSTGRES_MAINTENANCE_URL` are already set,
+  pointing at the plane's own Postgres. If a test fails, the cause is in
+  the code or the test, never in the environment: do not spend calls
+  inspecting the interpreter, the venv or the path. There is no
+  container engine here and no `make`: you cannot run `./go` or `make`
+  targets, only plain commands inside this checkout.
 - Your change is judged after you finish by six gates: risk scoring, a
   secret scan, a dependency scan, SAST (bandit), the test suite, and
   mutation testing on the lines you changed. A test that calls the new

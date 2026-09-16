@@ -74,3 +74,57 @@ Three unrelated fixes, done in one session between M5's close and M6:
 1. **`gates/mutation.sh` no longer leaks its Postgres container.** `docker-compose -p lo-mutation ... run --rm` only ever removed the `backend-test` container, never the `postgres` it depends on, on any exit path (`go`, or any `nogo`) — there was no `down` anywhere in the file. Fixed by merging a `docker-compose -p lo-mutation --profile test down -v` into the existing `trap ... EXIT` (the one that already cleaned up the temp log), so it fires on every exit path, not just success. **Verified live**, not just read: ran `./go gates BASE=<ref> HEAD=<ref>` against a throwaway one-line change (on a throwaway branch, deleted after), through the actual mutation run to a real NO-GO (0/1 mutants killed, the expected outcome of a trivial change) — `docker-compose -p lo-mutation ps -a`, `docker volume ls`, and `docker network ls` afterward show nothing left for the `lo-mutation` project: container, volume, and network are all torn down, confirmed in the run's own compose output ("Stopping/Stopped/Removing/Removed" for all three). `make mutation-baseline` (`-p lo-mutation-baseline`) and the stray `lo-mutation-measure` project have the identical gap and are **not** touched by this fix — out of scope, left for whoever picks them up.
 2. **`tickets/0002.md` needed nothing.** It already carries `Status: open`, the root cause, three ranked options, and a `## Acceptance criteria` section with two Given/When/Then blocks (ADR-recording; `run.json`'s `"model"` field verified, not assumed) — matching `tickets/0001.md`'s own convention. No edit made.
 3. **Verification-only re-check of the CLI model-routing question, no decision.** This session could **not** repeat the original live probe (calling the CLI against the real Gemini API and reading `stats.models`): there is no `.env` and no `GEMINI_API_KEY` in this session, which was deliberately read-only for this question. That live re-verification — whether the model that actually answers is `gemini-3.8-flash` — still has to happen in a session that has the key, **before** tomorrow's ADR is written; do not assume the earlier probe still holds without repeating it. What *was* checked without a key, today: `npm view @google/gemini-cli versions` shows nothing newer than `0.61.0-nightly.20260915.g9c1b0a610` (today's own nightly); `npm view @google/gemini-cli dist-tags` still has `latest: 0.59.0`; the GitHub releases API confirms `v0.59.0` (2026-09-08) is still the only non-prerelease release, everything since (`v0.60.0-preview.0` and every `v0.61.0-nightly.*` through today) is marked `prerelease: true`. In other words: **past stable `0.59.0`, only preview and nightly builds exist** — no newer stable release to fall back on. Pinning a public repo to a nightly (ADR 0018's draft direction) is a real tradeoff to weigh explicitly against the Vertex AI option (ticket 0002's option 3) tomorrow, not a formality — nightlies get less upstream review and the pin would need its own return-to-stable exit condition either way. No pin change, no ADR commit, no ticket edit made here.
+
+## Maintenance, 2026-09-16 (post-M5, pre-M6, no milestone): ADR 0018, the CLI pin
+
+Decision session for ticket 0002, not a milestone. One commit.
+
+### Acceptance
+
+- `./go ci` at L0 (no `.env`): all twelve checks `GO`, then `GO: ci`.
+- `./go demo-crew` at L0, with the new `core/crew.sh` workspace links in place (the fixture's own `conftest.py` hunk applies over them unchanged):
+
+```
+[crew-run] gates: GO: gates — risk low, auto-merge
+GO: demo-crew
+```
+- The eval of the bump (ADR 0018 §3), one real `./go record TICKET=0001 PROFILE=l1` on the new pin — `.crew/0001/out/run.json` after run 3:
+
+```json
+{"harness":"gemini-cli","model":"gemini-3.8-flash","thinking":"high","turns":1,
+ "tokens":{"input":2847923,"output":4626,"total":2930036},"duration_s":545,"exit_code":0}
+```
+
+### What was decided, in five lines
+
+- Four live probes, same key, same one-line call, in the workbench: `0.59.0` → 3.5, `0.60.0` (stable since 2026-09-15 20:31Z) → 3.5, `0.61.0-preview.0` → **3.8**, `0.61.0-nightly.20260915` → 3.8. `v0.60.0` is `behind 4` of the fix commit (`ed2ac40d`, #29252); the preview contains it.
+- Pinned `@google/gemini-cli@0.61.0-preview.0` (exact, lockfile). **Return to the stable channel at `0.61.0`**, by a dedicated commit with the same eval. Written in `package.json`'s description, the README and ADR 0018 §4.
+- Vertex was not an option for this ticket: `hasGemini35FlashGAAccess()` in the CLI returns `true` under `USE_VERTEX_AI` too, so the CLI remaps there as well (read in the v0.60.0 source, `packages/core/src/config/config.ts`). "On Vertex we choose the model" holds only for a harness that is not the Gemini CLI.
+- The fixture `fixtures/0001/dev-worker/` **stays recorded on `gemini-3.5-flash`**, declared in the README: run 3 did not reach the gates (below), and ADR 0018 §5 says the fixture follows the eval run's verdict.
+- Ticket 0002 closed; ticket 0003 opened (below).
+
+### Three real attempts on the new pin — the reference number for this pin, same caveat as M5's six
+
+1. Exit 1 in 38 s, no model call: `Could not resolve a model name for alias "gemini-3.8-flash"`. `entrypoint.sh`'s thinking alias was abstract (no `model`) under `modelConfigs.aliases`; the fixed CLI refuses it. Fixed: the documented shape of the built-in `gemini-3.5-flash` alias (`customAliases`, `extends: chat-base-3`, concrete `model`).
+2. 5m44s, `gemini-3.8-flash` served, hooks firing, budget denied at 7,575,131 ≥ 5,000,000 after 38 calls, **zero edits**: every call went to making the backend tests run from the checkout (the suite is written for the test image's layout; `conftest.py` looks for `app/backend/flags/flags.json`, `fakes` is not importable, `OTEL_SEMCONV_STABILITY_OPT_IN` unset). Two `run.sh` bugs found on the way: `stats.models | keys | first` would have recorded the CLI's helper model (`gemini-3-flash-preview`, 7,624 tokens) instead of the one that answered; and `run.json` was not written when the final message was missing, so the eval's own assertion was unreadable. Both fixed.
+3. 9m17s, `gemini-3.8-flash` served, the prompt's test command worked at call 10 first time, **exactly the ticket's four files edited, tests green at call 31**, then the model ran the mutation suite itself four times (calls 34–43, `MUTATION_LINES=... uv run sh tests/mutation/run.sh`, one to two minutes and a large output each) and was denied at 10,056,737 ≥ 10,000,000 before writing the PR text. The work is kept under `.crew/0001` (WIP commit on `ticket/0001` in the workspace).
+
+Fixes with a run as provenance, all in this commit: `core/crew.sh` gives the workspace the test image's layout (three git-excluded links `app/backend/{flags,fakes,contracts} → ../…`), `compose.yaml` sets `OTEL_SEMCONV_STABILITY_OPT_IN=http` on the crew service, `roles/dev-worker/prompt.md` gives the command that actually works (`uv run pytest`, not `python -m pytest`: the venv is not on `PATH`) and says the environment is not the place to look, `roles/dev-worker/role.env` `TOKEN_BUDGET` 5M → 10M (run 2's measurement).
+
+### Two facts that were true at M5 and nobody knew
+
+1. **With 0.59.0 the thinking level per role was never applied.** The remap to 3.5 happened in `resolveModel` before the model-config alias lookup, so the alias `THINKING` rides on was never consulted; plan §5's table was decorative until run 2 of this session. Read from the two code paths, not measured (the transcript does not record the thinking config sent). ADR 0017's "Contradicts the plan" section and plan §5 carry a dated correction. Consequence for M6: every budget in `role.env` measured before 2026-09-16 was measured without thinking; the 3.8 + `high` cost per call is ~200–235k tokens (hook accounting) against ~140k on the 3.5 run.
+2. **The recorded fixture carries a patch outside the ticket.** `fixtures/0001/dev-worker/patch` edits `app/backend/tests/conftest.py` (the flags-file fallback), a file ticket 0001 never names; the 3.5 model did it for the same test-layout reason run 2 hit, and `record` accepted it because nothing checks that a diff stays inside the ticket's perimeter. **`tickets/0003.md`, candidate for M6**, with acceptance criteria. Whether 0001 is re-recorded without the hunk is ADR 0018 §5's call at the next `record`.
+
+### Other things found, not fixed here
+
+- **`./go ci` cannot pass at L1 with `.env` present.** `ci/secrets.sh` runs `gitleaks dir .` on the working tree and gitleaks does not honour `.gitignore`: a real `GEMINI_API_KEY` in `.env` — exactly what the README tells an L1 user to create — is reported as a leak (correctly, as a string; wrongly, as a verdict), and `.crew/.uv-cache/` adds 21 false positives from sqlalchemy's own sources. This session ran `./go ci` in the L0 state (key moved out of the tree, cache deleted) to get it green. Whoever owns `ci/` next decides between excluding gitignored paths from the dir scan and ADR 0002's "no allowlist" rule; it is a real contradiction, not a nuisance.
+- The `record`-and-mutation interaction: the prompt tells the worker a mutation gate will judge it, and 3.8 with `high` takes that as an invitation to run the suite itself, at one to two minutes and a large output per run — the single most expensive thing the worker can call, four times in run 3. M6's prompt work should decide whether the worker may run it at all, and if so, once.
+- Budget accounting: the hook sums `totalTokenCount` per model call (context re-sent every call, cached or not); the CLI's `stats.total_tokens` for the same runs is 3.5–5× lower (run 3: 10,056,737 vs 2,930,036). Both numbers are recorded; the hook's is the one enforced. Not a bug, but the two must never be compared as if they measured the same thing.
+- `run.sh`'s `turns` field still reads `1` (M5 caveat unchanged).
+
+### First thing M6 should look at
+
+- Ticket 0003 before the second fixture is recorded.
+- The `ci/secrets.sh` contradiction above, before the first Gitea Actions job runs `ci` in a workspace that may have an `.env`.
+- `roles/dev-worker/prompt.md` and the mutation suite: one decision, then a fourth `record` of 0001 on 3.8 — run 3 shows the model finishes the ticket in ~31 calls when the environment does not fight it.
