@@ -6,7 +6,7 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M5 of 10. What runs today:
+Milestone M6 of 10. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -19,15 +19,21 @@ Milestone M5 of 10. What runs today:
 | rollback | M3 | ✓ automatic on verify NO-GO, triggered by `./go demo-rollback` |
 | PR gates | M4 | ✓ six fixture PRs prove risk, SAST, deps, test, mutation, secrets |
 | ticket → PR | M5 | ✓ crew driver, six roles, one real run recorded, replay at L0 |
-| e2e | M6 | NOT YET |
+| e2e | M6 | ✓ ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
 
 | | |
 |---|---|
 | **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
 
-A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero. Promotion to 100% is the M6 human gate.
+A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero, then runs the whole golden path once more through the tower (`e2e`). Promotion to 100% is the M7 human gate (go-for-launch; the release agent that composes the promotion brief is M7's).
 
 The PR gates (`./go demo-gates`) run on six committed fixture patches and prove both verdicts: risk scoring, dependency scanning, SAST, test failure, mutation inadequacy, and secrets. `./go demo-crew` proves the ticket→PR pipeline: the crew container runs the dev-worker role on ticket 0001, opening a PR that passes `make gates`. At L0 the fixture is replayed; at L1 a real run against the Gemini API is recorded.
+
+## Control plane
+
+The tower (`core/tower.sh`) is a state machine over a JSON document per ticket in the state store, driven by step events on the event bus, with the `inproc` orchestrator pulling one event at a time. `./go e2e` runs it end to end and `./go audit TICKET=<id>` rebuilds the chain deploy → merge → PR → ticket → spec from the document and cross-checks it against the code host: a record that says merged while the PR is open is a NO-GO.
+
+Declared at L0 (ADR 0019): the CI leg of `e2e` is the six gates run by the tower on the PR head and posted as the `gates` commit status on the PR — the Gitea runner does not execute them until M8; the canary the tower releases after the merge is the stable image under `0.2.0-waitlist`, not a build of the merged commit — build and push to Zot arrive at M8 with the Registry port, and every audit prints `image: stable image, not built from merge.sha (M8)`; the bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
 
 ## Quick start
 
@@ -53,6 +59,8 @@ Then explore:
 ./go demo-rollback   # release the failing version and prove automatic rollback
 ./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
+./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
+./go audit           # rebuild the chain from a ticket's state: ./go audit TICKET=0001
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]
@@ -65,7 +73,7 @@ Then explore:
 ./go clean           # remove the workbench image
 ```
 
-The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulls about 840 MB (amd64) / 720 MB (arm64) of images on the first run, the emulators image being more than half (measured 2026-09-14, ADR 0012). The image includes gcloud and terraform, although nothing uses them before M8.
+The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulls about 840 MB (amd64) / 720 MB (arm64) of images on the first run, the emulators image being more than half (measured 2026-09-14, ADR 0012). The image includes gcloud and terraform, although nothing uses them before M8. `./go demo` now needs the network for the `deps` gate (osv-scanner) inside e2e, not only for image pulls.
 
 ## Levels
 
@@ -108,7 +116,7 @@ Six gates run in order on a git range (two commits or more, measured by `git mer
 
 **Six fixtures:** `honest-fix` (ticket 0001 resolved, every gate GO, risk low); `fake-test` (same fix, inadequate test, mutation NO-GO); `migration` (adds a schema column, every gate GO, risk high); `sast-finding` (one bandit issue); `vulnerable-dep` (a known advisory); `failing-test` (one assertion fails). Each fixture is a git-format-patch `.patch` file applied in a worktree, with expected verdicts and JSON data recorded in `expect`.
 
-**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M6 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
+**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M8 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
 
 **Model reality check:** The worker pins Gemini CLI `0.61.0-preview.0`, deliberately on the preview channel, because `0.59.0` and the current stable `0.60.0` silently serve `gemini-3.5-flash` when asked for `gemini-3.8-flash` (upstream fix google-gemini/gemini-cli#29252, in no stable release yet); the pin returns to the stable channel at `0.61.0`. A live L1 run on this pin answers from `gemini-3.8-flash` (verified 2026-09-16). The fixture at `fixtures/0001/dev-worker/` stays recorded on `gemini-3.5-flash` — its `run.json` says so — so at L0 the replayed PR was written by 3.5 while a live L1 run answers from 3.8, until the fixture is next re-recorded. See ADR 0018.
 
@@ -126,8 +134,8 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by the `service_version` label reached via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves `app/flags/flags.json`, the one bind mount; edit the file and the flag flips within seconds |
-| Pub/Sub emulator | 8085 | Unused until M6 |
-| Firestore emulator | 8086 | Unused until M6 |
+| Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
+| Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
 
 `./go smoke` signs up, logs in and creates a meetup through Envoy.
 
@@ -137,7 +145,7 @@ At L0 the canary revision reuses the same image as stable, with the `waitlist` f
 
 ## Release controller
 
-`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M6 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable.
+`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable.
 
 The controller itself generates no load; the Makefile starts `app/load.sh` beside it (one user looping through registration POSTs), stopping when the controller exits.
 

@@ -213,13 +213,19 @@ La porta `AgentHarness` con adapter `replay` e `gemini-cli`. Le definizioni dei 
 Dispatcher, macchina a stati del ticket, modello degli artefatti, idempotenza, audit log che ricostruisce la catena deploy → PR → task → spec.
 **Fatto quando:** `./go e2e` percorre ticket → PR → CI → canary → verify fallito → rollback, senza intervento umano, e l'audit mostra la catena completa.
 
+*Nota 2026-09-16 (M6, ADR 0019):* a L0 la "CI" del percorso e2e sono i sei gate di M4 eseguiti dalla tower sull'head della PR e pubblicati come commit status su Gitea, non un job di Gitea Actions: la socket del runner e il primo job di Gitea slittano a M8 (terzo rinvio, stesse tre condizioni di ADR 0015 §7; la regola di ADR 0003 vincola M8). Il canary rilasciato dopo la merge resta l'immagine stable sotto `0.2.0-waitlist`, non una build del merge commit (build e push su Zot a M8); ogni riga di audit lo dichiara. L'audit, per decisione mia, non legge solo il proprio archivio: confronta il documento con il code host e fallisce se divergono. `go-for-launch` e i primi prompt di `architect` e `test-reviewer` passano a M7.
+
 ### M7 — Agenti ADK
 Product agent conversazionale, triage agent sugli alert, release agent che compone il promotion brief. Suite `adk eval` con casi che includono la domanda ambigua e l'alert fuorviante.
 **Fatto quando:** `adk eval` passa in CI; un alert finto produce un incident con ipotesi ordinate e una proposta di rollback, senza che l'agente tocchi l'ambiente.
 
+*Nota 2026-09-16 (M6, ADR 0019):* M7 eredita anche `go-for-launch` (lo stub `[launchpad] 100%: NOT YET (M7, go-for-launch)`; la regola di ADR 0003 vincola M7), i primi prompt reali di `architect` e `test-reviewer`, e la regola di perimetro del ticket 0003 prima del prossimo `record`.
+
 ### M8 — GCP (L2)
 Terraform per progetto, Artifact Registry, Cloud Run, Cloud Deploy con le fasi canary e il verify job, Cloud Monitoring, Binary Authorization, Workload Identity Federation da GitHub, Secret Manager con credenziali per ruolo.
 **Fatto quando:** su un progetto nuovo, `./go up PROFILE=l2` porta dallo zero al primo rollback automatico in meno di un'ora, e i file in `gates/` e `verify/` sono gli stessi di L0, verificato da un test che ne confronta gli hash.
+
+*Nota 2026-09-16 (M6, ADR 0019):* qui arrivano anche la socket del runner di Gitea e il primo job di Gitea Actions (tre condizioni di ADR 0015 §7), la build dell'immagine dal merge commit e il push su Zot.
 
 ### M9 — Piattaforma (L3) e self-test notturno
 Agent Engine per gli agenti ADK, BigQuery agent analytics, adapter Cloud Workflows, opzione GKE, e un job schedulato che ogni notte esegue il golden path completo su un progetto usa e getta.
