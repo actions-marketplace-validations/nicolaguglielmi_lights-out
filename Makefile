@@ -59,6 +59,11 @@ export CANARY_VERSION
 STAGE_SECONDS ?= 60
 export STAGE_SECONDS
 
+# Where launchpad writes the decision and its numbers, and what promote
+# reads (docs/adr/0020 §4). Under .crew/, gitignored.
+RELEASE_RECORD ?= .crew/release.json
+export RELEASE_RECORD
+
 # Plan §2's ceiling on `./go demo` reaching the automatic rollback, timed by
 # ./go from before engine-compat, where the cold pulls happen (docs/adr/0013
 # §7). 0 disables the verdict; the elapsed time is still printed.
@@ -92,7 +97,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness tower contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness tower prompts evals promote contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -120,14 +125,14 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	@printf 'lights-out: app at %s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_URL)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
 	if [ "$$elapsed" -lt 0 ]; then \
-		printf 'GO: demo, milestone M6, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
+		printf 'GO: demo, milestone M7, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
 		exit 0; \
 	fi; \
 	if [ "$(DEMO_BUDGET_SECONDS)" -gt 0 ] && [ "$$elapsed" -gt "$(DEMO_BUDGET_SECONDS)" ]; then \
 		printf 'NO-GO: demo — rollback reached, but %ss > %ss budget (plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"; \
 		exit 1; \
 	fi; \
-	printf 'GO: demo, milestone M6, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
+	printf 'GO: demo, milestone M7, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
 
 .PHONY: up
 up: ## Start the L0 plane in compose and wait until every adapter is ready (docs/adr/0012 §6)
@@ -469,3 +474,109 @@ e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify 
 .PHONY: audit
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
+
+# The ADK roles (docs/adr/0020). triage and promote need no engine socket:
+# the roles' tools touch nothing, the drivers read files and, for promote,
+# the Envoy admin port through PLANE_HOST.
+.PHONY: triage
+triage: ## Run the ops-triage role on an alert: ALERT=<file> → .crew/triage/<name>/incident.json (docs/adr/0020 §3)
+	@ALERT="$(ALERT)" sh core/triage.sh
+
+# The M7 acceptance for the alert half of the done-when: every alert case
+# of the ops-triage evalset, through `triage`, with the plane unreachable
+# (PLANE_HOST=nowhere.invalid), each incident's proposal compared with
+# the tool the evalset expects. A triage that touched the plane could
+# not pass; a replay keyed on anything but the eval's text could not
+# either (docs/adr/0020 §3).
+.PHONY: demo-triage
+demo-triage: ## Prove a fake alert becomes an incident with ranked hypotheses and a proposal, no plane (docs/adr/0020 §3)
+	@evalset=adapters/adk/agents/ops_triage/evals/alerts.evalset.json; \
+	[ -f "$$evalset" ] || { printf 'NO-GO: demo-triage — no %s\n' "$$evalset"; exit 1; }; \
+	mkdir -p .crew/triage-alerts; \
+	for id in $$(jq -r '.eval_cases[].eval_id' "$$evalset"); do \
+		alert=".crew/triage-alerts/$$id.json"; \
+		jq -r --arg id "$$id" '.eval_cases[] | select(.eval_id == $$id) | .conversation[0].user_content.parts[0].text' "$$evalset" > "$$alert"; \
+		want=$$(jq -r --arg id "$$id" '.eval_cases[] | select(.eval_id == $$id) | .conversation[0].intermediate_data.tool_uses[-1].name' "$$evalset"); \
+		case "$$want" in propose_rollback) want=rollback ;; propose_hold) want=hold ;; esac; \
+		out=$$(PLANE_HOST=nowhere.invalid ALERT="$$alert" sh core/triage.sh) || { \
+			printf '[demo-triage] %s: %s\n' "$$id" "$$out" >&2; \
+			printf 'NO-GO: demo-triage — %s did not produce an incident\n' "$$id"; exit 1; }; \
+		got=$$(jq -r .proposal.action ".crew/triage/$$id/incident.json"); \
+		n=$$(jq '.hypotheses | length' ".crew/triage/$$id/incident.json"); \
+		printf '[demo-triage] %s: %s hypotheses, proposal %s (expected %s)\n' "$$id" "$$n" "$$got" "$$want" >&2; \
+		[ "$$got" = "$$want" ] || { printf 'NO-GO: demo-triage — %s proposed %s, expected %s\n' "$$id" "$$got" "$$want"; exit 1; }; \
+	done; \
+	printf 'GO: demo-triage\n'
+
+.PHONY: promote
+promote: ## go-for-launch: the brief, then the human answer — GO_FOR_LAUNCH=GO|NO-GO or the terminal — then 100% or rollback (docs/adr/0020 §4)
+	@sh core/promote.sh
+
+# The go-for-launch proof (docs/adr/0020 §4): a release that verify passes
+# (kill switch on, the demo-hold setup) is held at 25%%, promoted with the
+# human answered by GO_FOR_LAUNCH=GO, checked at 100%% of traffic, then
+# rolled back — the un-promote — and checked at 0. Not a `demo` stage:
+# plan §2's criterion is the rollback (docs/adr/0014, 0020 §4).
+.PHONY: demo-launch
+demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the un-promote (docs/adr/0020 §4)
+	@backup=$$(mktemp); \
+	cp app/flags/flags.json "$$backup"; \
+	trap 'cat "$$backup" > app/flags/flags.json; rm -f "$$backup"' EXIT INT TERM; \
+	$(MAKE) --no-print-directory kill-switch; \
+	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
+	printf '[demo-launch] stable is %s; releasing %s with waitlist off\n' "$$stable" "$(CANARY_VERSION)" >&2; \
+	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
+		printf 'NO-GO: demo-launch — release rolled back; expected a hold at 25%%\n'; exit 1; \
+	fi; \
+	if ! GO_FOR_LAUNCH=GO $(MAKE) --no-print-directory promote; then \
+		printf 'NO-GO: demo-launch — go-for-launch did not promote; see the brief and the reason above\n'; exit 1; \
+	fi; \
+	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
+	[ "$$canary_w" = "100" ] || { printf 'NO-GO: demo-launch — Envoy reports weights.canary=%s after promote, want 100\n' "$$canary_w"; exit 1; }; \
+	ok=0; total=10; i=0; \
+	while [ "$$i" -lt "$$total" ]; do \
+		v=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
+		[ "$$v" = "$(CANARY_VERSION)" ] && ok=$$((ok + 1)); \
+		i=$$((i + 1)); \
+	done; \
+	[ "$$ok" -eq "$$total" ] || { printf 'NO-GO: demo-launch — only %s/%s healthz through Envoy report %s at 100%%\n' "$$ok" "$$total" "$(CANARY_VERSION)"; exit 1; }; \
+	printf '[demo-launch] %s at 100%%: %s/%s healthz samples; now the un-promote\n' "$(CANARY_VERSION)" "$$ok" "$$total" >&2; \
+	sh adapters/$(DELIVERY)/rollback.sh; \
+	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
+	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-launch — Envoy reports weights.canary=%s after the un-promote, want 0\n' "$$canary_w"; exit 1; }; \
+	printf 'GO: demo-launch\n'
+
+# Records the ADK roles' model responses at L1 (docs/adr/0020 §2), one
+# role at a time: ci/evals.sh with ADK_RECORD=1 writes fixtures/adk/<role>/
+# while the eval runs; a role whose eval fails has its new recordings
+# moved to .crew/adk/<role>/ for study, never committed. Refuses at L0
+# (recording a replay is circular, the `record` precedent) and refuses a
+# fixture that contains the key.
+.PHONY: record-evals
+record-evals: ## Record the ADK roles' responses at L1 and keep them only if the eval passes: [ROLES="ops_triage release"] (docs/adr/0020 §2)
+	@if [ "$(AGENT_HARNESS)" = "replay" ]; then \
+		printf 'NO-GO: record-evals — recording a replay is circular; PROFILE=l1\n'; exit 1; \
+	fi
+	@roles="$(ROLES)"; [ -n "$$roles" ] || roles=$$(ls -d adapters/adk/agents/*/evals | awk -F/ '{print $$4}'); \
+	failed=""; \
+	for r in $$roles; do \
+		role=$$(printf '%s' "$$r" | tr _ -); \
+		before=$$(mktemp); ls fixtures/adk/$$role 2>/dev/null | sort > "$$before"; \
+		out=$$(ADK_RECORD=1 ROLES="$$r" sh ci/evals.sh) || true; \
+		printf '[record-evals] %s: %s\n' "$$role" "$$out" >&2; \
+		if grep -rq -- "$$GEMINI_API_KEY" fixtures/adk/$$role 2>/dev/null; then \
+			rm -rf fixtures/adk/$$role; printf 'NO-GO: record-evals — the key appeared in a %s recording; deleted\n' "$$role"; exit 1; \
+		fi; \
+		case "$$out" in \
+			"GO: evals") ;; \
+			*) mkdir -p .crew/adk/$$role; \
+			   for f in $$(ls fixtures/adk/$$role 2>/dev/null); do \
+			     grep -qx "$$f" "$$before" && git diff --quiet -- fixtures/adk/$$role/$$f 2>/dev/null || mv fixtures/adk/$$role/$$f .crew/adk/$$role/; \
+			   done; \
+			   git checkout -q -- fixtures/adk/$$role 2>/dev/null || true; \
+			   failed="$$failed $$role" ;; \
+		esac; \
+		rm -f "$$before"; \
+	done; \
+	[ -z "$$failed" ] || { printf 'NO-GO: record-evals — eval failed for:%s (recordings kept under .crew/adk/)\n' "$$failed"; exit 1; }; \
+	printf 'GO: record-evals\n'

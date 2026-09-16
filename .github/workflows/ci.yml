@@ -49,3 +49,18 @@ jobs:
       - run: ./go demo-gates
         env:
           CONTAINER_ENGINE: docker
+
+  # go-for-launch's proof (docs/adr/0020 §4): a held canary promoted to
+  # 100% with the human answered by GO_FOR_LAUNCH=GO, then the un-promote.
+  # Not a `demo` stage — plan §2's criterion is the rollback — so it runs
+  # here on every push instead. Needs the plane: same shape as engine-compat.
+  launch:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./go demo-launch
+        env:
+          CONTAINER_ENGINE: docker
