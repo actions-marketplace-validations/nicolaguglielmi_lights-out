@@ -281,7 +281,12 @@ M6; `demo-hold` ≈ 140 s warm (ADR 0014 arithmetic).
    perimeter rule and the two `record`s that fix the dev-worker budget: **M8**
    — all three need a medium-risk PR run at L1, which is the same `record`
    work as the budget, and this session's scope is the owner's; plan §7 M7
-   and M8 get the dated note, ADR 0019 §8's way. Product on the tower's
+   and M8 get the dated note, ADR 0019 §8's way. *Owner ruling at close,
+   2026-09-16: not inside M8 — a milestone of its own after M8, because
+   none of it depends on GCP and in M8 it would sit there by placement
+   only; M9 proposed, shifting the platform and design milestones by one.
+   gcloud and terraform leave the base image for a `workbench-cloud`
+   image inside M8, with an ADR amending 0004 (HANDOFF).* Product on the tower's
    `assign` path, session memory, Agent Engine, BigQuery analytics: M9. The
    canary as the new stable image, Vertex: M8.
 

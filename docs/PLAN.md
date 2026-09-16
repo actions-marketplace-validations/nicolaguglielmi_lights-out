@@ -231,6 +231,9 @@ Terraform per progetto, Artifact Registry, Cloud Run, Cloud Deploy con le fasi c
 
 *Nota 2026-09-16 (M6, ADR 0019):* qui arrivano anche la socket del runner di Gitea e il primo job di Gitea Actions (tre condizioni di ADR 0015 §7), la build dell'immagine dal merge commit e il push su Zot. M8 eredita anche da ADR 0020 i ruoli review (architect, test-reviewer, lo step `review` della tower), ticket 0003 e i due `record` di dev-worker che risolvono il budget (entrambi richiedono una run PR a medio rischio a L1, lo stesso lavoro `record` del budget).
 
+*Nota 2026-09-16 (chiusura M7, decisione mia):* i ruoli di review **non** entrano in M8: diventano una milestone propria, dopo M8, perché nessuna parte di quel lavoro dipende da GCP e in M8 ci starebbe solo per collocazione (secondo rinvio dei ruoli, terzo della socket). Numero proposto in HANDOFF: **M9 — Review**, prima del self-test notturno, che slitta a M10, e del design loop, che slitta a M11; da accettare o cambiare prima di iniziare M8. Dentro M8 invece va lo spostamento di gcloud e terraform (474 MB, nessuno script li usa prima di L2) dal workbench base a un'immagine `workbench-cloud`, con l'ADR che emenda 0004: è la milestone dove i due strumenti servono per la prima volta. Misure a chiusura M7: workbench 1.42 GB (gcloud 368, ADK 304, node 118, terraform 106); `./go demo` a freddo 684 s sui 900 di budget.
+
+
 ### M9 — Piattaforma (L3) e self-test notturno
 Agent Engine per gli agenti ADK, BigQuery agent analytics, adapter Cloud Workflows, opzione GKE, e un job schedulato che ogni notte esegue il golden path completo su un progetto usa e getta.
 **Fatto quando:** il badge del nightly è verde nel README, e una regressione nei prompt lo fa diventare rosso.
