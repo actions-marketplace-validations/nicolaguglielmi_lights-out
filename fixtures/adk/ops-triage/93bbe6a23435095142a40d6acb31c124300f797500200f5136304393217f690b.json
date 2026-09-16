@@ -1,0 +1,84 @@
+{
+  "input": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.211 stable(0.1.0-m2)=4.021\",\n      \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=1.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=0.041 stable(0.1.0-m2)=0.039\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}",
+  "instruction_sha256": "5fd0ef02c52b3d47ca18e15cb32ad77f822f8ca40f41b19430e6def0164d14a3",
+  "model": "gemini-3.8-flash",
+  "recorded_at": "2026-09-16T14:47:25Z",
+  "responses": [
+    {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "args": {
+                "hypotheses": [
+                  {
+                    "cause": "A shared backend or upstream dependency failure is affecting both versions equally.",
+                    "evidence": "error_rate is 1.000 on stable(0.1.0-m2) as well as canary(0.2.0-waitlist), contradicting the headline implicating only the canary.",
+                    "rank": 1
+                  },
+                  {
+                    "cause": "Canary code introduced a failure that propagated globally or triggered an environment-wide outage.",
+                    "evidence": "traffic canary=0.211 vs stable=4.021 confirms canary was receiving traffic when 100% error rate occurred across both.",
+                    "rank": 2
+                  }
+                ],
+                "title": "Shared 100% error rate across stable 0.1.0-m2 and canary 0.2.0-waitlist"
+              },
+              "id": "call_183570",
+              "name": "file_incident"
+            },
+            "thought_signature": "ErsJCrgJARFNMg_OmqexyPb2p2UXKqDN6-7dlX5p1PpOTTdcCDlHP9Qu5xZZswixgJ-xPSzID4za6bXpx4csdDxoyh9yywO3-S1b09678BIlhMGeI8WXJjetkHD5mInJVbBZe6IjJ8wEpsh42hlOQVmbNt_KB1asiaeIXhxNFj6LQ6qhauFjZCT-gFe-l5bQHXlhJQS-YuYWa0Zh109ElkYET24U25IAW0hG4r3JhqGQJHztGoco3OA6xc2BzAZcNC_i2sUQ04XJtMrS4dCZULEGhtTf6eWCFeNUIi8d0HmFsyj_dHgkhQgsWU2_sj2x1iwLoFl0WR9djg2OqrJLiO9Q7-BHjclaXna02KuzG-oAppwTjeU1qFo7RzLi3aqpBtq86aDLzR-eE8VmdACLn8rdgCbKYizuqjWK3iQK8ifUzAFEsXz-aaoykWA1M3hceuIWC8abUCsN4LNSqlbzKmJR1ViMNgdB8NqtT7DLONlKKxYdtOlHQcZbIVB240BBFvn4aohvTWPpbwOtxP74jx3aEXV70pAN1sDIc9hHpfLv63jvhESVIDa4PRxxilFw4hi3FaIErd_q82He03LMLhTynleuyZiWKTThh65F74nCCZRMlGRq4aMQ7np56jaMNflBLhZC07hSLUWTcqVYakM81zcdaz498A9JtMStPKQLvOkJj6FvOzzG0IWpnPjNh8bLYrz9KNBw6SP449FfupVorLV-JuaUF5NI-Vf1EJnrOWUS0NdRCy7mojbVHZGBXVGlcJWoHywQTVwsLZsvUZdXOj2YTeUCj-_Rz1pURuQjNV_aNz9IfBbKGqKWwAwsRM4jmBZHTCOKcufiw-pkFLQHVBKjBaIjRVx_dkaJFaDJENEq7hrJ_jopVlqLrSSN4kMn7Y5RJXae7BnXw8tcafmjaCRB4C68NvHlw8ePj2JdowlOsvcVyLeryDTG6vFr6Binms-ag5o84E8cp1fWxSlTvdWjqosQ5wACEPxm8H8OyJxAR3dVSB-I4XXKdMk9NyC4x2SaxxDEIUlHV_PnKE8mNtzTBSHcEHq3Ab54OHcfqIh6nb0tc0QtFbXeSSTbBrZlLWS8kUOSX_WPJ_XSDeJ-TBvrzNorvLMtwY46TNr4KAv6aEf92DhxLNyaq5W2nUNhR3alusXY_nA4V_RSwz_7kaeHN9MaVyxbwo_GSIZJW66i75J62wlxBj9rqfKnZkQbbFVvi7VTfswkXXcWb4zBXWlKuC4JVqg5br1rNPLOq44NCL-eof65pvxUdM80o6tb_VGbUrM0fDVun9mCGDcRGYBzjI-WvJaa6YQBgrfDMKIpAggqkUHOjMHEuUN86eTMQr4yMJMGe7U-rYjyqFOj-cMEhWFdp_bTKr5FBWjDZ8qTuEYou17CNvUXD1B8himrErehCSbExKT1x4u_2H-fbVvXkmR5-R98F_2K6FfE1fJDvJvayF7W446KLDOxgXl4PUMi1cC3CY5mUHHiEwcZpPyWlN7PDW5wwbPG4DTy88sx3yWinkJML3qpKzyAWP9Zay46fUJ3Jx_eUFVfSbAEzbObY9eYAdjP8GHn7KmwKexQlNYonO6h8aabw0qEXLmkWw7cjnTgpJHSw7k="
+          },
+          {
+            "function_call": {
+              "args": {
+                "reason": "Error rate is 1.000 on stable as well as canary; investigate shared dependencies, database connectivity, and upstream infrastructure rather than rolling back."
+              },
+              "id": "call_183571",
+              "name": "propose_hold"
+            }
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 233,
+        "prompt_token_count": 1175,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 1175
+          }
+        ],
+        "thoughts_token_count": 354,
+        "total_token_count": 1762
+      }
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "I propose holding the canary release and investigating shared upstream dependencies, as stable is failing with the same 100% error rate.",
+            "thought_signature": "EmcKZQERTTIPr8hLU2z5DllC8Oh6JSZBkVEQMi0Ex6K2XackcmWaudDi0fr3wCTYdUunOwFsl2NPNK8Fj0hEU-tBLkgnf09p7VNCEbtxm0FZdnrgVBJT6KUUekAkq2Z0pXq8ki-ZcUd5"
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 27,
+        "prompt_token_count": 2007,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 2007
+          }
+        ],
+        "total_token_count": 2034
+      }
+    }
+  ]
+}

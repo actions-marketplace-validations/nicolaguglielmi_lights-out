@@ -1,0 +1,67 @@
+{
+  "input": "# 0005 \u2014 Add a waiting list when a meetup is full\n\n- Status: open\n- Labels: app/backend, feature\n- Found: 2026-09-16, a member asked to be notified when a full meetup frees a seat\n\n## Problem\n\nA meetup with `capacity` already reached refuses every further signup\nwith a flat 409. Members who wanted in have no way to be notified if a\nspot opens up later, so they give up and go elsewhere. We want a\nwaiting list: once a meetup is full, further signups join a queue\ninstead of being rejected outright, and when a confirmed attendee\ncancels, the first person on the queue takes their seat.\n\n## Acceptance criteria\n\nGiven a meetup at capacity\nWhen a new member signs up\nThen they are added to the waiting list instead of getting a 409\n\nGiven a waiting list with at least one member\nWhen a confirmed attendee cancels their signup\nThen the first member on the waiting list is promoted to attendee\n\nGiven a member already on the waiting list\nWhen they sign up again for the same meetup\nThen the request is rejected as a duplicate, not queued twice",
+  "instruction_sha256": "35ae93ea67b426af244cc1ce57823c190df4f8346803e0f1d36390d313cc129f",
+  "model": "gemini-3.8-flash",
+  "recorded_at": "2026-09-16T14:50:50Z",
+  "responses": [
+    {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "args": {
+                "criteria": [
+                  "Given a meetup at capacity, when a new member signs up, then they are added to the waiting list instead of getting a 409",
+                  "Given a waiting list with at least one member, when a confirmed attendee cancels their signup, then the first member on the waiting list is promoted to attendee",
+                  "Given a member already on the waiting list, when they sign up again for the same meetup, then the request is rejected as a duplicate, not queued twice"
+                ]
+              },
+              "id": "call_247862",
+              "name": "confirm_acceptance"
+            },
+            "thought_signature": "EvsdCvgdARFNMg9zZZzTbVR7_42B1wyOgLRsnGm6uzQpvr8WwlznvQ0ysrVI289J2fFZWVO5M-szApkrqdyrabINkA1H3dQPbGR4g5kfQ6KiTnYapzwH3PxgBlCplrOqxTfqBDWROaNXc79NqgnZKZnxhxrtEkBze1Jq_ZYl91UcxhqN6p9M4Sg9n2z47WqZJZpaD1YrybwT9s2t-C2uGjVCa0nGO4K97yH0_603SAfM1TSfEcuWZPpwOiU2NxiUY8gIDe-DZPtwTOj1akqPRgKShBtcYODBcrMvfTyiSRxfqh1GH6-bjNC_HzgZqAoLSRE1ogyTtzpwScjcpa4m1UtN0cv70lE2jW60O5b7xh3B_h_F4WIbKThdncL2jlHYQCWFiqI298CyBFsNaM91nbcGYSQAqI44bcOKSRgpTxUv2vl6RFxx__kqwt5UGvo_aU2bR0yrKfu-BK5DU5TxFIa-hHMaxjk0Ek0fQRiSJcKWvJMP69UnQpmQsnzYeF1vW6Lh_eLOaEG2TfY3Y9coamUFfCSJBe53OAfb01JDIwvCjF4LucjpiHYJuPKTxh23FjnI8BR-7gMAUeYFCAcmOb1XVBqlhsyFFcAHVojw5HDhhufkw5k2tBc4zHa32sL5D-c53jUI0_aHz0lSjmhlpPdWJF9D-xlBMOiUXbWsqXgZHR1aAhlKkJb-1-Pqe2_SUdQAPMv_-uYANq45QDijrKr4NYfDlMNxhEyEb2joztBqIfd_LMlyhn9XRVpNIK9cntHF8Lnrpkm1RawA18UFWDU32ALdxCjRWYGDnxldNOzz3UUho4ClTaBtbJDvM8ZKQrGi_R5QZeVi5gFLupoOTiqQ6q2_h-uuagfXt_GAbdgN5oqRLuUWcw3VmfpcIk0v0wpT40YpoClCLfEC8Q11LAPIduPSc2VtAJ7vM_UiGwW5NFNV5c-AdZx6sDElH5aKUD9PLBsqaJy2vY-CjcXUFX3C6Ewg-DcZA5DainbU1gcr8q1KTZ2KZ8AhzMs53TuyORcPTOKuhiO6n6QyuZNePCGcm7NSD88zkrZ-4cZAe4VM2dw559mEicO7uYi0CTnP5yg1O0XjoXmrTenyIi-SDSzX9edsGgRWfdxZb1VPGQJy9bCjPPJ5VVu-oN8GKGvFtoPpDtoWqK9Zod98tX-7Sj6qW_nRpVces1Oo-EU35LGPoIJkfFzDZNmF1PrEr2G9NOuSEwbYZPLV0hS-fHe1UFuiyUjfeFhTCroqfpz1N8PkZ78WTafBLEIm9zf1AlkeTBDXnVmjCGK7mDV2eNjrJ7l2Zc0EQAngepy71K68oZ1_FPfhRCqAKJ0R6xJ-hVPETcSGfrmyM_8uZNYlybShiTuOx1cm8Vmlu4avieGJLlU4mXi9nEo_-HOz6Be6t09t_fPMglgHT7jIX6NEOP19PR2wfPFTwBD5MBipgebn-su90DAC0MQIvg47pJUTxMgMo2mjO8gMMF9VmVQ0YgNEDByfu5WpNm9BPbGu45yQMHGMa6qPDqPGrXrFlc5wzm7_9rZRdly97HPlnasmqeq9iFkfQGcytFiLvzdUIsbonZYW6r8wNsW4Po2tCDRJ5k0tfYKJGqAp_MJbyEHj945q5pmzTlQWjFvq0amPKmxW8GxVu5rhoYm6RDjk2Jpm7Nk8JQcmMI6BZwv8swBkYW_5LrJiIjN8TXszCFnsUKxQybDbwMiBvekVQL_79s3uaXxuUuWnryYjUtghNXsHirhU-9gv7tSU-Vwds0qmQzaja9b-elijD1ziswhIlfUh6SuZrj5O1DpaRwXXnkiznzSSRCMW8ZCFtG_OUVlSrStRpfL9PS_JWZcY3qf_NOVL33ESuMapqVeZ1FmpqnhWK-nQ8Gd7vfYqNeWauFxvUCWiaTHuGS1sWm77hUToDMUiVb5MIUU6ICaq0UG0ac_4C6AnjWJOmPIwAGl23tSTG5cDxdwIwe8TOmmF6Qwaa0LNsLoE6we6EDqyirmSv_ywB4a_8wtA0QlqKlkf6E04h0WzO1wgIIqGh1Bl1uXblgcASmAcRKq7kK-8GJgBzvfl1TdbgAbbVsI1KcC0uKSZq455jZ1k-3epBO0cV0i_pbAWm_0M496kVkfl1_iaO_oiYqa3nYCkk_LPC6XdcNaPhfoFdNNoKHYnDHIHx7vXCAwj35HEV3fzo5JyQOTbOjfqfXlYWAfQcW8Eu8emrV4neaQ3liJcUlrFY_0U25LaSQCnwGsG-cYzLDCbgEE4x9AmDiZwE_ad091ZwRHcFqZBEx8n2rQ1Gh-LbmCBE0u1k1epvyawR0VgXrh31dqfwK2D9Gwog5JMpE8rAbgtYJZR2p3AAuzgP3UjkyYJZCeULK6k3Y7VzFE1w2uHFcREU-lJ2qQAF10ExgrFaQiRyP7Mq154P3okEaRz7iVat5XSKXE2t3HcS4WRWeKWFfurYckooy7HJTE3XJcv4FlIosPwML63p_DpkT4M7HhypAvybIUISz6fF54xVygnehdObtr2cHIfn3jYyowZ9d1vBJPTeGZvENYUe8lRjhnNq1iopmHlY55bcCe0_3FuclEHGuQLNUZtZDtYMk5iQGkuxvkszydL8n52V6HJStR1McmDvfMrBi-9EYGYQBhx16afW_gQMwyt2K8ZbdxDQY48B2OphWTMXsEk0vqaYdAergJzVajxlpNQF0mTxSyc49mKCTKuDrDeofkxFlBY2xU9kZ77pVVkmwoLhOsN022az4EZFVlGGxBqjOxLixowwG9mpok32YLQOV1J5LX95ZJcuHzqfKbWt4pY412GZp9rV6VcMqsrk489sAefXxJ5tCoOvOiwAAVBndkIzCAH2dSrwpI9mKOj4nRW4vsjUo1d7PepbwIox_9Pwa3E9PhjgDuPMmRdkC0cEJRbYBVHe_WkkLFWTDQQFmsidcOSdZYQN1Diu7CbMkWy6yjng0Tk8nwGLlAFVRVT8JWKhdfOgxDy36ALIHPHCQzGVVacgk9HotvxtgeWMZLMpJ2pmWuUSCNymdx0nIoFe33bJ7Sx9qqVon-eLanu5B7JLcmRCvlPXPN5TJJAT5MfDSyC3kAgUPi9qZkbPFrzVBPuMVRmeAc5mGLzH0omkwLtxlEEyKSCFd2hJf4V-hpbZWiM5Fok8Xzlwoo58xeLwHBSlWf5wE1Ac_emHrmLP5WE4GmsJAVZcKEz-_pN9-jKNf1YAqBSg9SKcOJgkkezuDsCOK7DOcqZhKORyOGIUfVB6MZoX7RsrSWeZsZN1LwirwMD_53hg7i6AafBw5vp0VkM-1shoAZP8tbP71FIzqdAnvNbFKQbCULV2WHQ35DgWWk_CFJ3rVt77ucIGF0IhmCgP3fHZlXMjIPLvgSwT0byOgoect6041Ii4mbBSRGksOM0j1yjTiTIIPjzRp6TfNis4_5-gx2q-0DtFPXx3rrjydMIAFcwmnCLVE02lP4BxVQ2IiO6Z5YbFSOzukbdWZNSIQ_hWk_4wAmzVzSTTXhV_K6X-3i4yGNSL1sO_5ovagS_1Xu_eBOMU3BCMcbn2O08vSSU8yuCRq5j-T-08Q1k63L2cFceq58sx0pJlHzW5irZio-NyCCFOQoT4svCL6qQ562-BcssJgDyCy3PIUM7-y_jY2LVCP01clg32s4nwJ-4oRDxYTljYS2s_GUEkj515fJMlTYEVYo8jriGgZtxD7emzoYyEWvHPWGvh1ksUU9_qAk9lpE7gLSQfdumcqhZ7nRwOgrxv_vDN-4_988nbbI6yBnDS3vI2VE5tKApuEQx_4QVT6d43nC636ZjrAhY7BsDuCmMEWNrGdOKdzjAidwVTdmkRsgDWrIyg_KZy51XlawwFt_jrT8gj1_mcVIO4_2rizpB7HETVYwtQlLNcDh4oXOVAk_JjaTPygY0gqxU4pEM_fsuQbY7Axt-r0llBKRtqn3BL7Qo8mOrdQ2CZS-DvGbwc8lM0t5LgTcHtatNsoJwlU1VreAtP2Vhmc5_1Stu8HjQXnNqEaS9l5_vBi_mb0GoQQd6Oh-I26LuDU9omg3dTMPR0RDN1bhtZp7rsFMX9vl1PtcV9t79Rcky3SAiNr864bW0yllbZ-r2HcnlJwKFuXhf2P-weBgPDetvkr_L0cViQYr9IpTtBcatpHwq98q7141oftcAPXCmO7idyFJF_HcF4791ycF1HXAnmDgK5oXvi4lgEVRbZnjn1VJ_BvzKZAYM8RPAFlCTEvhV12VokWSxjuY_-5Hbg1N6UHC1Aio8UXG516AR5-jQs5O1YpgQTN0Rw6lWEel2ySbTRONOxmLNJIfjq0wxxtnHYwS0AJumr7YmUSBNoHPdlzSiZu2YDy3MV1XFSkLZu6TNh7mjGLeVANadGe2CK89ClYDvaTVp_oOfX2rfGI_yHZeK0pPxlxkjr0jdX1e9OPqJwxEgQPXmxfNXt8-Sd9Sr0EIQbfAL0iC7sUfEbzP1vH_k9QezkuCYJlGsUpEGvzOlK_apk7R-6YJR86DKuix9NGGMGK3sSfZ3wo5ARmXGXcrwyTxlJm1F8ONH6hbhlKMex0287NfHs0DlyAnubNGV00S2-zLciOoQMJz1l99S38U7MSPfvBzZAufDiJwTQk-jGMMUjFxIMQsD_Zn_DUvk_1gS-jMk_tVAQE8X4xsQ5LBL6KjIonYqRKwMObflPAtXp0k2pMqeZJcto_HTWTjdfjCFdgSh2enT7tUyDKF2YLcvIyVckDnZAdHKHakGDt2ykColjlY6n8JAg9K3PITAXK-KwiCcMKISaXFraz2gZW2h6w7dWa0DamBZTzfRSzf30pgeuHgws0WIACs6i8RSJCoLxgZClsFl0wiF3Z5Itgf2mxB39t1nWKYmb63LsfhaOvbAOqAxz88GDAQpdWokx27avsweDQreGP-HaVatvi_8bScA2cWZRd7u-1MIMe0PYCnNXeQB-g3IV4MuJN-jnsGvQglXNBF4kM9SXF0GyfZ_dkeQwFf-gfrQweh2QQLD8o0DehEv2aWh35gQGzi5CxBtGduyO7ratlF2r7J-G7I255GOniZD7Kq5iVezYaq36SqdN4_61k07iTGqn6ITzSwZ6iUVHcGsOrenqPr-ce8MEluoX1Fs2UqfeA=="
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 111,
+        "prompt_token_count": 870,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 870
+          }
+        ],
+        "thoughts_token_count": 846,
+        "total_token_count": 1827
+      }
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "I confirmed the ticket's acceptance criteria because they explicitly cover all expected behaviors described in the problem statement and are ready for implementation.",
+            "thought_signature": "EmcKZQERTTIPB2hmtpvNhoxiniPHIS_bhhJe_c0oPaPgADMuX8-DFY9reElNCa7s82vdxKV_2IoL5HfUb7-XZJ_7GSMjbd5vHi-sCk2TANNJODwy08pVnGgQuG1DvXDIEehzftGYYfUP"
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 26,
+        "prompt_token_count": 1942,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 1942
+          }
+        ],
+        "total_token_count": 1968
+      }
+    }
+  ]
+}

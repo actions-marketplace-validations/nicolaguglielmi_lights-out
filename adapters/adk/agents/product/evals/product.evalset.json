@@ -1,0 +1,117 @@
+{
+  "eval_set_id": "product",
+  "name": "product",
+  "description": "The product role: an ambiguous ticket asks the product owner before confirming; a ticket that already has acceptance criteria confirms directly (docs/adr/0020 \u00a73).",
+  "eval_cases": [
+    {
+      "eval_id": "ambiguous-ticket",
+      "conversation": [
+        {
+          "invocation_id": "d72cd218-955d-5e14-bfe4-7dc53bd1a516",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "# 0005 \u2014 Add a waiting list when a meetup is full\n\n- Status: open\n- Labels: app/backend, feature\n- Found: 2026-09-16, a member asked to be notified when a full meetup frees a seat\n\n## Problem\n\nA meetup with `capacity` already reached refuses every further signup\nwith a flat 409. Members who wanted in have no way to be notified if a\nspot opens up later, so they give up and go elsewhere. We want a\nwaiting list: once a meetup is full, further signups join a queue\ninstead of being rejected outright, and when a confirmed attendee\ncancels, the first person on the queue takes their seat.\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "I need to check the waiting list behaviour with the product owner before confirming acceptance."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "ask_product_owner",
+                "args": {
+                  "question": "What should happen when a full meetup gets a new signup, and when a spot frees up?"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        },
+        {
+          "invocation_id": "3acc5992-c6cc-5ab7-91f0-55fdc4ba0029",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Yes -- three cases matter:\n\nGiven a meetup at capacity\nWhen a new member signs up\nThen they join the waiting list instead of getting a 409\n\nGiven a waiting list with at least one member\nWhen a confirmed attendee cancels their signup\nThen the first member on the waiting list is promoted to attendee\n\nGiven a member already on the waiting list\nWhen they sign up again for the same meetup\nThen the request is rejected as a duplicate, not queued twice\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "Acceptance confirmed: three Given/When/Then cases for the waiting list."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "confirm_acceptance",
+                "args": {
+                  "criteria": "Yes -- three cases matter:\n\nGiven a meetup at capacity\nWhen a new member signs up\nThen they join the waiting list instead of getting a 409\n\nGiven a waiting list with at least one member\nWhen a confirmed attendee cancels their signup\nThen the first member on the waiting list is promoted to attendee\n\nGiven a member already on the waiting list\nWhen they sign up again for the same meetup\nThen the request is rejected as a duplicate, not queued twice\n"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "product",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "complete-ticket",
+      "conversation": [
+        {
+          "invocation_id": "85cdaa1e-6b81-5dea-bf7d-911701edddd0",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "# 0005 \u2014 Add a waiting list when a meetup is full\n\n- Status: open\n- Labels: app/backend, feature\n- Found: 2026-09-16, a member asked to be notified when a full meetup frees a seat\n\n## Problem\n\nA meetup with `capacity` already reached refuses every further signup\nwith a flat 409. Members who wanted in have no way to be notified if a\nspot opens up later, so they give up and go elsewhere. We want a\nwaiting list: once a meetup is full, further signups join a queue\ninstead of being rejected outright, and when a confirmed attendee\ncancels, the first person on the queue takes their seat.\n\n## Acceptance criteria\n\nGiven a meetup at capacity\nWhen a new member signs up\nThen they are added to the waiting list instead of getting a 409\n\nGiven a waiting list with at least one member\nWhen a confirmed attendee cancels their signup\nThen the first member on the waiting list is promoted to attendee\n\nGiven a member already on the waiting list\nWhen they sign up again for the same meetup\nThen the request is rejected as a duplicate, not queued twice\n"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": "The ticket already states its acceptance criteria; confirming as written."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "confirm_acceptance",
+                "args": {
+                  "criteria": "the ticket's own Acceptance criteria section"
+                }
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "product",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "input": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n      \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=0.043 stable(0.1.0-m2)=0.024\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}",
+  "instruction_sha256": "5fd0ef02c52b3d47ca18e15cb32ad77f822f8ca40f41b19430e6def0164d14a3",
+  "model": "gemini-3.8-flash",
+  "recorded_at": "2026-09-16T14:47:25Z",
+  "responses": [
+    {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "args": {
+                "hypotheses": [
+                  {
+                    "cause": "Canary version 0.2.0-waitlist contains a regression or broken endpoint causing all incoming requests to fail.",
+                    "evidence": "Canary error_rate is 1.000 while stable error_rate is 0.000 with canary receiving 0.208 traffic.",
+                    "rank": 1
+                  },
+                  {
+                    "cause": "Canary routing or configuration misconfiguration in the deployment layer targeting non-existent routes or failing health checks.",
+                    "evidence": "Canary receives traffic (0.208) but experiences a 100% error rate (1.000) whereas stable operates normally at 0.000 error rate.",
+                    "rank": 2
+                  }
+                ],
+                "title": "Canary 0.2.0-waitlist 100% error rate at 5% traffic"
+              },
+              "id": "call_250063",
+              "name": "file_incident"
+            },
+            "thought_signature": "EmcKZQERTTIPijKNYFaHD0Ss-ad2tLSqYPAfmDEwF_dPt0vskUFBwJ6WYM-f1ZPMX9M0wHGrnS9p4IOHHyfQl0N-Xp8UHj3UsfepEKfYtMo_XB9aGnB6YEn0LHtlhjbWyzUh88HZCUo_"
+          },
+          {
+            "function_call": {
+              "args": {
+                "reason": "Canary 0.2.0-waitlist is failing with a 1.000 error rate across active traffic (0.208) while stable 0.1.0-m2 maintains a 0.000 error rate.",
+                "version": "0.2.0-waitlist"
+              },
+              "id": "call_250064",
+              "name": "propose_rollback"
+            }
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 278,
+        "prompt_token_count": 1175,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 1175
+          }
+        ],
+        "total_token_count": 1453
+      }
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "I propose rolling back canary version 0.2.0-waitlist due to a 100% error rate on active traffic while stable remains healthy.",
+            "thought_signature": "EmcKZQERTTIPZ4VTdwtXqeGTAy99U4nD8IiujwB6BsgGfxLFvsOxhfATAClESdPGeY7UTFuXvlX53JqN-O4AHt112w0Gv0h9X23kG5svHyY2ZIBfo9v5v2YC38M1ONUi_wpD17ZoZNE1"
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 33,
+        "prompt_token_count": 1743,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 1743
+          }
+        ],
+        "total_token_count": 1776
+      }
+    }
+  ]
+}
