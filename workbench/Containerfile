@@ -87,7 +87,19 @@ RUN set -eu; \
     chmod 0755 /usr/local/bin/osv-scanner; \
     rm -rf /tmp/*
 
-ENV PATH=/opt/google-cloud-sdk/bin:$PATH \
+# The workbench's Python deps (docs/adr/0020 §5): google-adk and what
+# `adk eval` needs, pinned by uv.lock, on the system interpreter (no
+# managed Python download), in a venv that PATH puts first. The ADK CLI
+# asks for telemetry consent on a TTY unless ~/.adk/config.json answers;
+# answered "no" under both HOMEs (/root under rootless podman, /tmp under
+# docker, see go), and every adk call in this repo also runs </dev/null.
+COPY pyproject.toml uv.lock /opt/workbench-py/
+RUN cd /opt/workbench-py \
+ && UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/workbench-venv uv sync --frozen --no-dev --no-install-project --no-cache \
+ && for h in /root /tmp; do mkdir -p "$h/.adk" && printf '{"telemetry": false}\n' > "$h/.adk/config.json"; done \
+ && chmod -R a+rwX /tmp/.adk
+
+ENV PATH=/opt/workbench-venv/bin:/opt/google-cloud-sdk/bin:$PATH \
     CLOUDSDK_PYTHON=/usr/bin/python3 \
     CLOUDSDK_CORE_DISABLE_USAGE_REPORTING=true \
     UV_LINK_MODE=copy \
@@ -96,6 +108,6 @@ ENV PATH=/opt/google-cloud-sdk/bin:$PATH \
 
 RUN node --version && uv --version && docker-compose version && terraform version \
  && gcloud version && gitleaks version && actionlint -version && shellcheck --version \
- && osv-scanner --version
+ && osv-scanner --version && adk --version </dev/null
 
 CMD ["make", "help"]

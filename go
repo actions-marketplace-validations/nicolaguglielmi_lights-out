@@ -18,6 +18,11 @@
 #   ./go assign         turn a ticket into a PR: TICKET=<id>
 #   ./go demo-crew      prove ticket 0001 becomes a PR that passes the M4 gates
 #   ./go record         run a ticket for real at L1 and save the fixture: TICKET=<id>
+#   ./go triage         run the ops-triage role on an alert: ALERT=<file>
+#   ./go demo-triage    prove a fake alert becomes an incident with ranked hypotheses and a proposal
+#   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
+#   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
+#   ./go record-evals   record the ADK roles' responses at L1 (PROFILE=l1)
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
@@ -33,7 +38,9 @@ fi
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 containerfile="$here/workbench/Containerfile"
-image="localhost/lights-out-workbench:$(cksum "$containerfile" | cut -d' ' -f1)"
+# One tag per revision of the image's inputs: the Containerfile and the
+# Python lock it installs (docs/adr/0020 §5).
+image="localhost/lights-out-workbench:$(cat "$containerfile" "$here/workbench/pyproject.toml" "$here/workbench/uv.lock" | cksum | cut -d' ' -f1)"
 cmd="${1:-help}"
 [ $# -gt 0 ] && shift
 
@@ -92,7 +99,7 @@ fi
 # control of the engine; the README says so.
 socket_flags=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record)
+  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
