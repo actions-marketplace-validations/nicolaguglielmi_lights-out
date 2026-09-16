@@ -400,6 +400,19 @@ the pin decision to the owner. `roles/dev-worker/role.env`'s `THINKING`
 values and this ADR's §8 budgets are unaffected: thinking level and
 token accounting are orthogonal to which Flash generation answers.
 
+*Correction, 2026-09-16 (ADR 0018):* the last sentence was wrong. Under
+0.59.0 the remap to `gemini-3.5-flash` happened in `resolveModel` before
+the model-config alias lookup, so the alias §3 keys on `gemini-3.8-flash`
+— the only place `THINKING` is applied — was never consulted: **the
+per-role thinking level was never applied at M5**, and the recorded
+fixture ran on the CLI's default thinking for 3.5 Flash, not on
+`THINKING=high`. Read from the two code paths, not measured (the
+transcript does not record the thinking config sent). The alias was also
+abstract (no `model`), which the fixed CLI refuses; ADR 0018 §1 gives it
+the documented shape. The first run with the lever known to be wired is
+ADR 0018's eval run, and §8's budgets, measured without it, are
+re-measured there.
+
 ## Verify at L1 — closed (the build closes each before the milestone closes)
 
 Every item below is now closed, by six real L1 runs (attempts 1–6,

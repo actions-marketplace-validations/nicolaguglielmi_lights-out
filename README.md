@@ -72,7 +72,7 @@ The first run builds the workbench image (about 1 GB on disk, 350–400 MB downl
 | | L0 · Replay | L1 · Local | L2 · Cloud | L3 · Platform |
 |---|---|---|---|---|
 | **Needs** | podman rootless (podman machine on macOS) | + Gemini API key | + GCP project with billing | + Agent Engine quota |
-| **Models** | Recorded responses (fixtures) | Gemini API, `gemini-3.5-flash` (Gemini CLI v0.59.0 serves 3.5 not 3.8) | Gemini Enterprise Agent Platform, `gemini-3.8-flash` | idem + thinking level per role |
+| **Models** | Recorded responses (fixtures) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform, `gemini-3.8-flash` | idem + thinking level per role |
 | **Harness worker** | Replay from `fixtures/` | Gemini CLI headless in compose | Gemini CLI on Cloud Run Job | + adapter Antigravity SDK |
 | **Git and PR** | Gitea in compose | Gitea | GitHub real | GitHub real |
 | **CI** | Gitea Actions (act runner) | Gitea Actions | GitHub Actions or Cloud Build | idem |
@@ -110,7 +110,7 @@ Six gates run in order on a git range (two commits or more, measured by `git mer
 
 **Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M6 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
 
-**Model reality check:** Plan §5 commits to `gemini-3.8-flash` for every role. The model exists and is reachable, but Gemini CLI v0.59.0 silently serves `gemini-3.5-flash` instead, with no warning or error. The fixture at `fixtures/0001/dev-worker/` is recorded against what actually runs (`gemini-3.5-flash`), not what was requested. See ADR 0017 for details and the consequences when the CLI version changes.
+**Model reality check:** The worker pins Gemini CLI `0.61.0-preview.0`, deliberately on the preview channel, because `0.59.0` and the current stable `0.60.0` silently serve `gemini-3.5-flash` when asked for `gemini-3.8-flash` (upstream fix google-gemini/gemini-cli#29252, in no stable release yet); the pin returns to the stable channel at `0.61.0`. A live L1 run on this pin answers from `gemini-3.8-flash` (verified 2026-09-16). The fixture at `fixtures/0001/dev-worker/` stays recorded on `gemini-3.5-flash` — its `run.json` says so — so at L0 the replayed PR was written by 3.5 while a live L1 run answers from 3.8, until the fixture is next re-recorded. See ADR 0018.
 
 ## The L0 plane
 

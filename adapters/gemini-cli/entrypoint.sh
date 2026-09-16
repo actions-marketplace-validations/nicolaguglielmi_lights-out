@@ -38,13 +38,23 @@ cp "/roles/$ROLE/prompt.md" "$HOME/.gemini/GEMINI.md"
 # (docs/adr/0017 §3 verified facts); THINKING in role.env is lower case.
 thinking_level=$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')
 
+# The per-role thinking level rides on a user alias named like the model,
+# in the exact shape of the CLI's own built-in `gemini-3.5-flash` alias
+# (packages/core/src/config/defaultModelConfigs.ts at v0.61.0-preview.0):
+# `extends: chat-base-3` plus a concrete `modelConfig.model`. Found live
+# by docs/adr/0018's eval run: the first draft wrote an abstract alias
+# (no `model`) under `aliases`, which 0.59.0 never consulted because it
+# remapped the request to gemini-3.5-flash before the alias lookup, and
+# which 0.61.0-preview.0 refuses with "Could not resolve a model name for
+# alias" — an alias with no model in its chain shadows the model name.
+
 jq -n \
   --arg thinking "$thinking_level" \
   --argjson maxTurns "$MAX_TURNS" \
   '{
     security: {auth: {selectedType: "gemini-api-key"}},
     model: {name: "gemini-3.8-flash", maxSessionTurns: $maxTurns},
-    modelConfigs: {aliases: {"gemini-3.8-flash": {modelConfig: {generateContentConfig: {thinkingConfig: {thinkingLevel: $thinking}}}}}},
+    modelConfigs: {customAliases: {"gemini-3.8-flash": {extends: "chat-base-3", modelConfig: {model: "gemini-3.8-flash", generateContentConfig: {thinkingConfig: {thinkingLevel: $thinking}}}}}},
     tools: {exclude: ["web_fetch", "google_web_search"]},
     hooks: {
       BeforeTool: [{matcher: "run_shell_command|write_file|replace|read_file", hooks: [{name: "guard", type: "command", command: "/opt/gemini-cli-hooks/guard.sh"}]}],

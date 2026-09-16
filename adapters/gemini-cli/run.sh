@@ -96,16 +96,38 @@ response=$(jq -rs '
 # bundle). No turn count is reported there; approximated by the number of
 # "message" events with role "user", each opening one turn (the initial
 # prompt counts as the first) — a caveat recorded here, not guessed twice.
-# `stats.models`' own key names the model that actually answered — recorded
+# `stats.models`' keys name the models that actually answered — recorded
 # here rather than the model requested on the command line, because they
 # have already, once, been observed to differ (docs/adr/0017, "Contradicts
-# the plan" section).
+# the plan" section). Found live (docs/adr/0018's eval run): the CLI also
+# spends a few thousand tokens on a helper model of its own
+# (`gemini-3-flash-preview`, 7,624 of 1,394,455 tokens), so `keys | first`
+# — alphabetical — would have named the helper; the model that answered
+# is the one that spent the most tokens.
 stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
 turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null || echo null)
 tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
 tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
 tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
-model_served=$(printf '%s' "$stats" | jq -r '.models | keys | first // "unknown"')
+model_served=$(printf '%s' "$stats" | jq -r '(.models // {}) | to_entries | max_by(.value.total_tokens // 0) | .key // "unknown"')
+
+# run.json is written here, before the response check below, so a run
+# that ends without a final message (over budget, found live twice) still
+# records which model answered and what it spent: that is the whole eval
+# of a CLI bump (docs/adr/0018 §3), and it must not depend on the model
+# finishing. Overwritten below unchanged; the patch is the only artefact a
+# run without a final message never gets.
+write_run_json() {
+  jq -n \
+    --arg harness gemini-cli --arg model "$model_served" --arg thinking "$THINKING" \
+    --argjson turns "$turns" \
+    --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
+    --argjson duration "$duration" --argjson exitCode "$container_rc" \
+    '{harness: $harness, model: $model, thinking: $thinking, turns: $turns,
+      tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
+      duration_s: $duration, exit_code: $exitCode}' > "$OUT/run.json"
+}
+write_run_json
 
 # The adapter commits, not the model (docs/adr/0017 §1): whatever the
 # model left uncommitted is staged and committed here, under the crew
@@ -143,15 +165,6 @@ if [ "$committed" -eq 1 ]; then
 fi
 
 git -C "$WORKSPACE" format-patch --stdout "$BASE"..HEAD > "$OUT/patch" 2>/dev/null || : > "$OUT/patch"
-
-jq -n \
-  --arg harness gemini-cli --arg model "$model_served" --arg thinking "$THINKING" \
-  --argjson turns "$turns" \
-  --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
-  --argjson duration "$duration" --argjson exitCode "$container_rc" \
-  '{harness: $harness, model: $model, thinking: $thinking, turns: $turns,
-    tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
-    duration_s: $duration, exit_code: $exitCode}' > "$OUT/run.json"
 
 # No credential in what gets recorded (docs/adr/0017 §3): a leak here means
 # the run is not usable as a fixture, and nothing is silently kept.
