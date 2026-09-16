@@ -133,6 +133,8 @@ ADK copre i ruoli che non toccano il repo: product agent (dialogo lungo con il P
 
 Pinnare le versioni: ADK ha due linee di release attive, la 2.x e la 1.x. Scegliere la 2.x, fissare la versione esatta, e far passare `adk eval` prima di ogni bump.
 
+*Nota 2026-09-16 (M7, ADR 0020):* ADK 2.x è pinned a 2.9.1, `adk eval` a L0 gira sul modello replay.
+
 ### Il control plane
 Resta noioso di proposito: eventi su Pub/Sub, dispatcher, macchina a stati con lo stato su Firestore, worker come job effimeri. Entrambi hanno un emulatore ufficiale, quindi L0 e L2 condividono il codice. Cloud Workflows entra come adapter alternativo a L3, non come base.
 
@@ -221,11 +223,13 @@ Product agent conversazionale, triage agent sugli alert, release agent che compo
 
 *Nota 2026-09-16 (M6, ADR 0019):* M7 eredita anche `go-for-launch` (lo stub `[launchpad] 100%: NOT YET (M7, go-for-launch)`; la regola di ADR 0003 vincola M7), i primi prompt reali di `architect` e `test-reviewer`, e la regola di perimetro del ticket 0003 prima del prossimo `record`.
 
+*Nota 2026-09-16 (M7, ADR 0020):* i tre agenti ADK girano su ADK 2.9.1 dentro la workbench; a L0 il modello è replay di risposte registrate a L1 (fixtures/adk/), i tool e adk eval girano davvero, il modello no; `adk eval` giudica traiettorie di tool soltanto (nessun giudice LLM), ogni decisione è una tool call; `go-for-launch` landed (`./go promote`, provato da `./go demo-launch`, non una tappa di `./go demo`); a L0 il brief è renderizzato dal release record perché un record live non può essere replayato; i ruoli review (architect, test-reviewer, lo step `review` della tower), ticket 0003 e i due `record` di dev-worker vanno a M8.
+
 ### M8 — GCP (L2)
 Terraform per progetto, Artifact Registry, Cloud Run, Cloud Deploy con le fasi canary e il verify job, Cloud Monitoring, Binary Authorization, Workload Identity Federation da GitHub, Secret Manager con credenziali per ruolo.
 **Fatto quando:** su un progetto nuovo, `./go up PROFILE=l2` porta dallo zero al primo rollback automatico in meno di un'ora, e i file in `gates/` e `verify/` sono gli stessi di L0, verificato da un test che ne confronta gli hash.
 
-*Nota 2026-09-16 (M6, ADR 0019):* qui arrivano anche la socket del runner di Gitea e il primo job di Gitea Actions (tre condizioni di ADR 0015 §7), la build dell'immagine dal merge commit e il push su Zot.
+*Nota 2026-09-16 (M6, ADR 0019):* qui arrivano anche la socket del runner di Gitea e il primo job di Gitea Actions (tre condizioni di ADR 0015 §7), la build dell'immagine dal merge commit e il push su Zot. M8 eredita anche da ADR 0020 i ruoli review (architect, test-reviewer, lo step `review` della tower), ticket 0003 e i due `record` di dev-worker che risolvono il budget (entrambi richiedono una run PR a medio rischio a L1, lo stesso lavoro `record` del budget).
 
 ### M9 — Piattaforma (L3) e self-test notturno
 Agent Engine per gli agenti ADK, BigQuery agent analytics, adapter Cloud Workflows, opzione GKE, e un job schedulato che ogni notte esegue il golden path completo su un progetto usa e getta.
