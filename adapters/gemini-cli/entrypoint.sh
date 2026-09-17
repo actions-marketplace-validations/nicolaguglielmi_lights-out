@@ -68,10 +68,10 @@ jq -n \
   printf '\n---\n\n'
   printf 'Work only inside this repository checkout. Do not run git push or\n'
   printf 'git commit yourself: committing and pushing are not your job, the\n'
-  printf 'platform does that after you finish. When you are done, or when you\n'
-  printf 'believe the ticket is resolved, your final message must be exactly\n'
-  printf 'the pull request text: the first line is the PR title, a blank line,\n'
-  printf 'then the PR body.\n'
+  printf 'platform does that if your role needs it. When you are done, or when\n'
+  printf 'you believe your task is resolved, your final message is this run'"'"'s\n'
+  printf 'sole artefact: it must contain exactly what your instructions above\n'
+  printf 'say your final message must be, nothing else.\n'
 } > "$CREW_OUT/prompt.md"
 
 cd "$CREW_WORKSPACE"

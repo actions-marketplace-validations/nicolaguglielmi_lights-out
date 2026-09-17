@@ -10,7 +10,7 @@
 # hatch, reviewed per finding. Scope is exactly `meetups/`: `tests/` and
 # `fakes/` are not scanned (bandit would flag `assert`, B101, in every
 # pytest test, which is not a signal here) and the README says so. The
-# frontend gets no SAST at M4 (React/Vite/TS, no tests until M10, static
+# frontend gets no SAST at M4 (React/Vite/TS, no tests until M11, static
 # bundle).
 #
 # require_range runs first and its result is otherwise unused: bandit scans

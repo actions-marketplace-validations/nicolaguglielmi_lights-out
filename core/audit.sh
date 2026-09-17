@@ -42,6 +42,14 @@ esac
 case "$state" in
   ci-passed|review|ci-failed|merged|rolled-back|held) need .ci.verdict; need .ci.head_sha ;;
 esac
+# A reviewed merge with no review on the record is exactly what an audit
+# exists to catch (docs/adr/0021 §9): "review" alone means the step has
+# not run yet (nothing to need); any state past it must carry a verdict.
+decision=$(f .ci.decision)
+case "$state" in
+  ci-passed|ci-failed|merged|rolled-back|held)
+    [ "$decision" != review ] || { need .review.verdict; need .review.reason; } ;;
+esac
 case "$state" in
   opened) nogo "ticket $TICKET is only opened: no PR, no chain yet" ;;
   *) need .pr.number; need .pr.head_sha; need .spec.sha256; need .spec.title; need .task.harness ;;
@@ -85,7 +93,9 @@ esac
       printf 'PR       stopped at %s\n' "$state" ;;
   esac
   printf '  ← PR     #%s %s (gates %s, risk %s, %s; head %s)\n' \
-    "$(f .pr.number)" "$(f .pr.url)" "$(f .ci.verdict)" "$(f .ci.risk_level)" "$(f .ci.decision)" "$pr_head"
+    "$(f .pr.number)" "$(f .pr.url)" "$(f .ci.verdict)" "$(f .ci.risk_level)" "$decision" "$pr_head"
+  review_verdict=$(f .review.verdict)
+  [ -z "$review_verdict" ] || printf '  ← review %s (%s): %s\n' "$(f .review.role)" "$review_verdict" "$(f .review.reason)"
   printf '  ← ticket %s (%s, harness %s, model %s)\n' \
     "$TICKET" "$(f .task.role)" "$(f .task.harness)" "$(printf '%s' "$doc" | jq -r '.task.model // "none"')"
   printf '  ← spec   sha256:%s "%s"\n' "$(f .spec.sha256)" "$(f .spec.title)"

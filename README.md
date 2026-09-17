@@ -6,7 +6,7 @@ Six agent roles take a ticket to production on a Google stack. At every step, a 
 
 ## Status
 
-Milestone M7 of 10. What runs today:
+Milestone M9 of 11. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -22,10 +22,11 @@ Milestone M7 of 10. What runs today:
 | e2e | M6 | ✓ ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
 | ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.9.1; adk eval in ci; replay at L0 |
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
+| review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |
 
 | | |
 |---|---|
-| **Frontend** | No tests until M10. TypeScript type-check in the image build is the only frontend check at M1. |
+| **Frontend** | No tests until M11. TypeScript type-check in the image build is the only frontend check at M1. |
 
 A green `./go demo` reaches automatic rollback: the failing version (same image, `waitlist` targeted on) clears staging, fails verify at 5%, rolls back to 100/0 on its own, and exits nonzero, then runs the whole golden path once more through the tower (`e2e`). Promotion to 100% is go-for-launch, `./go promote` after a held release; the brief is composed by the release role from L1, rendered from the release record at L0.
 
@@ -68,6 +69,9 @@ Then explore:
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]
+./go review          # run the review step on a PR: TICKET=<id> [ROLE=test-reviewer]
+./go demo-review     # prove a medium-risk PR goes through review (L0 replay of fixture)
+./go record-review   # record the review role's response at L1 (TICKET=<id> [ROLE=test-reviewer] PROFILE=l1)
 ./go triage          # run the ops-triage role on an alert: ALERT=<file>
 ./go demo-triage     # prove a fake alert becomes an incident with ranked hypotheses and a proposal (no plane)
 ./go promote         # go-for-launch: the brief, then GO_FOR_LAUNCH=GO|NO-GO (or the terminal), then 100% or rollback
@@ -312,7 +316,7 @@ lights-out/
   gates/                    # from M4: PR gates, identical at every level
   fixtures/                 # M5: recorded agent responses at L1, replayed at L0; fixtures/adk/: recorded ADK model responses
   .crew/                    # M5: per-ticket workspace and output directory (gitignored)
-  design/                   # from M10: Stitch artifacts
+  design/                   # from M11: Stitch artifacts
   infra/                    # from M8: Terraform for GCP
   e2e/                      # from M6: golden path test
 ```

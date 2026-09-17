@@ -1,0 +1,8 @@
+APPROVED
+
+The proposed diff satisfies all architectural criteria:
+
+1. Perimeter adherence: All six modified files (`app/README.md`, `app/backend/meetups/app.py`, `app/backend/meetups/geocoder_client.py`, `app/backend/tests/test_geocoder_client.py`, `app/contracts/geocoder/examples.json`, and `app/fakes/geocoder/server.py`) remain strictly within the declared `## Perimeter`.
+2. Minimal abstractions: No external dependencies or unnecessary adapters are introduced. The only new abstraction is the `GeocoderAmbiguous` exception in `geocoder_client.py` as specified by the ticket notes, while malformed responses reuse the existing `GeocoderUnavailable` exception rather than introducing superfluous error classes.
+3. Preserved boundaries: The application layer (`app.py`) maps the client exceptions to appropriate HTTP responses (`422` with candidate display names, `502` for unreachable/malformed), preserving the boundary between the external geocoder contract and internal domain logic.
+4. Thresholds and parameters: The `delay_seconds: 2.5` parameter introduced in `examples.json` directly corresponds to the client's configured `TIMEOUT_SECONDS = 2.0`, exercising the timeout branch without arbitrary magic values.

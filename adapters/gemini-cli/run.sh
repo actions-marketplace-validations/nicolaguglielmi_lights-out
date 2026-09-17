@@ -18,6 +18,11 @@
 # first draft, made before any real run, and the reason docs/adr/0017
 # still lists "Verify at L1" items for what static reading cannot confirm
 # (throttling, retry behaviour, the exact turn count under `--yolo`).
+# Second artefact contract, docs/adr/0021 §3: every run writes its final
+# message to OUT/final.md (adk already did; this removes the variance,
+# not adds one) and records input_sha256 (the sha256 of TICKET_FILE, the
+# document this run was actually given) in run.json — a role that reviews
+# a diff instead of writing one reads those two fields, nothing else.
 # Adapter convention (docs/adr/0012 §6): not a gate, silent on success, one
 # stderr line and exit 1 on failure.
 set -eu
@@ -26,6 +31,7 @@ set -eu
 : "${WORKSPACE:?WORKSPACE not set}"
 : "${BASE:?BASE not set}"
 : "${OUT:?OUT not set}"
+: "${TICKET_FILE:?TICKET_FILE not set}"
 : "${THINKING:?THINKING not set}"
 : "${MAX_TURNS:?MAX_TURNS not set}"
 : "${TIMEOUT_S:?TIMEOUT_S not set}"
@@ -38,14 +44,23 @@ case "${GEMINI_API_KEY:-}" in
     ;;
 esac
 
+# WORKSPACE, OUT and TICKET_FILE are host paths under this checkout's
+# .crew/ (crew.sh's and step-review.sh's own convention); compose mounts
+# ./.crew at /crew 1:1 (docs/adr/0017 §3), so the in-container path is
+# always the same suffix. Was hardcoded to $TICKET/{workspace,out,ticket.md}
+# until docs/adr/0021 §3: a review run's input document is not ticket.md.
+crew_root=$(pwd)/.crew
+to_container() { printf '/crew/%s' "${1#"$crew_root"/}"; }
+
 mkdir -p "$OUT"
+input_sha256=$(sha256sum "$TICKET_FILE" | cut -d' ' -f1)
 start=$(date +%s)
 container_rc=0
 docker-compose --profile crew run --rm --build \
   -e ROLE -e TICKET \
-  -e TICKET_FILE="/crew/$TICKET/ticket.md" \
-  -e CREW_WORKSPACE="/crew/$TICKET/workspace" \
-  -e CREW_OUT="/crew/$TICKET/out" \
+  -e TICKET_FILE="$(to_container "$TICKET_FILE")" \
+  -e CREW_WORKSPACE="$(to_container "$WORKSPACE")" \
+  -e CREW_OUT="$(to_container "$OUT")" \
   -e THINKING -e MAX_TURNS -e TIMEOUT_S -e TOKEN_BUDGET \
   gemini-cli >&2 || container_rc=$?
 end=$(date +%s)
@@ -120,12 +135,12 @@ model_served=$(printf '%s' "$stats" | jq -r '(.models // {}) | to_entries | max_
 write_run_json() {
   jq -n \
     --arg harness gemini-cli --arg model "$model_served" --arg thinking "$THINKING" \
-    --argjson turns "$turns" \
+    --argjson turns "$turns" --arg insha "$input_sha256" \
     --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
     --argjson duration "$duration" --argjson exitCode "$container_rc" \
     '{harness: $harness, model: $model, thinking: $thinking, turns: $turns,
       tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
-      duration_s: $duration, exit_code: $exitCode}' > "$OUT/run.json"
+      duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}' > "$OUT/run.json"
 }
 write_run_json
 
@@ -151,6 +166,11 @@ if [ -z "$response" ]; then
   printf 'harness-gemini-cli: no trailing assistant message after the last tool call\n' >&2
   exit 1
 fi
+
+# The second artefact contract (docs/adr/0021 §3): the final message,
+# verbatim, is what a reading role's step script reads. pr.json below is
+# the same text, parsed as PR text, for a writing role's step script.
+printf '%s\n' "$response" > "$OUT/final.md"
 
 title=$(printf '%s\n' "$response" | head -n1)
 body=$(printf '%s\n' "$response" | tail -n +2 | sed '/./,$!d')

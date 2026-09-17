@@ -38,6 +38,14 @@ When the smoke posts `Milano, Duomo`
 Then it still returns `201` with non-null coordinates (no regression on
 the known-venue path).
 
+## Perimeter
+
+- `app/backend/meetups/geocoder_client.py`
+- `app/fakes/geocoder/server.py`
+- `app/contracts/geocoder/examples.json`
+- `app/backend/tests/test_geocoder_*.py`
+- `app/README.md`
+
 ## Notes for the implementer
 
 - A real Nominatim returns `200 []` for an unknown place, which is why
@@ -46,15 +54,20 @@ the known-venue path).
   decision this ticket makes; the contract file is where it is recorded.
 - Touches `app/backend/meetups/geocoder_client.py`,
   `app/fakes/geocoder/server.py`, `app/contracts/geocoder/examples.json`,
-  the tests under `app/backend/tests/`, and one sentence in
-  `app/README.md`. No migration, no auth: low risk under M4's scoring.
+  `app/backend/tests/test_geocoder_*.py`, and one sentence in
+  `app/README.md` — the `## Perimeter` section above, spelled as globs
+  (docs/adr/0021 §5; not `app/backend/tests/*`, which the M5 fixture's
+  stray `conftest.py` hunk would have passed). No migration, no auth: low
+  risk under M4's scoring.
 - One committed resolution of this bug is available in `gates/fixtures/honest-fix/` as a fixture patch for M5's first worker to pick up or reference; not merged, recorded here for continuity.
+- At M5, the dev-worker agent picked up this ticket and opened PR #1, recorded in `fixtures/0001/dev-worker/`; status remains open (nothing merges at M5).
+- At M6 the tower merges the replayed PR on the L0 Gitea during `./go e2e` and releases the (stable) canary that rolls back; the ticket stays open upstream — nothing merges into this repository's own main (ADR 0019 §5, §7).
 
 ---
 
 Work only inside this repository checkout. Do not run git push or
 git commit yourself: committing and pushing are not your job, the
-platform does that after you finish. When you are done, or when you
-believe the ticket is resolved, your final message must be exactly
-the pull request text: the first line is the PR title, a blank line,
-then the PR body.
+platform does that if your role needs it. When you are done, or when
+you believe your task is resolved, your final message is this run's
+sole artefact: it must contain exactly what your instructions above
+say your final message must be, nothing else.

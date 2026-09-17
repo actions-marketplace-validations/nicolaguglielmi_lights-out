@@ -74,6 +74,13 @@ THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET=
 sh core/harness-check.sh "$crew_dir/out" "$crew_dir/workspace" "$base" \
   || nogo "worker produced no change or an incomplete artefact"
 
+# Ticket 0003 (docs/adr/0021 §5): the diff must stay inside the ticket's
+# declared perimeter, checked before a PR ever exists so a bad fixture is
+# never written and the demo's own PRs are checked the same way.
+perimeter_out=$(git -C "$crew_dir/workspace" diff --name-only "$base"..HEAD \
+  | sh core/perimeter.sh "$crew_dir/ticket.md" 2>&1) && perimeter_rc=0 || perimeter_rc=$?
+[ "$perimeter_rc" -eq 0 ] || nogo "$perimeter_out"
+
 sh "adapters/$CODE_HOST/push.sh" "$crew_dir/workspace" "ticket/$TICKET" >&2 \
   || nogo "push to $CODE_HOST failed"
 

@@ -14,7 +14,7 @@ FastAPI backend + Postgres + React frontend. Demonstrates the core platform feat
 | `GET /healthz` | no | `{"status":"ok","version":APP_VERSION}` after `SELECT 1`; 503 otherwise |
 | `GET /metrics` | no | Prometheus text |
 
-The frontend is a React SPA (three views: login, meetup list with register, create meetup). TypeScript type-check runs in the image build; there is no frontend test framework at M1. The first behavioural frontend test arrives with the first frontend ticket (M10 at the latest), written from `design/CONTRACT.md`.
+The frontend is a React SPA (three views: login, meetup list with register, create meetup). TypeScript type-check runs in the image build; there is no frontend test framework at M1. The first behavioural frontend test arrives with the first frontend ticket (M11 at the latest), written from `design/CONTRACT.md`.
 
 ## Authentication
 
@@ -50,4 +50,4 @@ Run `./go test` (from the repo root, inside workbench) to run pytest against com
 - Geocoder fake and contract tests (fake serves the contract examples; client calls are correct).
 - Migration tests (apply twice, idempotent; broken file leaves schema_migrations unchanged).
 
-Frontend has no automated tests until M10; the type-check in the image build is the only check.
+Frontend has no automated tests until M11; the type-check in the image build is the only check.

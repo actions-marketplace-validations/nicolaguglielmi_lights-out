@@ -8,7 +8,7 @@
 
 Plan §5 requires a React frontend. M2 puts Envoy in front of the app with
 two weighted clusters; M8 deploys to Cloud Run, where one container is one
-revision. M10 makes a frontend worker read `design/` artefacts. The app must
+revision. M11 makes a frontend worker read `design/` artefacts. The app must
 read in an hour and `./go up` shares a 5-minute pull budget with the whole
 L0 plane (ADR 0004). npm facts verified on 2026-09-14.
 
@@ -31,7 +31,7 @@ L0 plane (ADR 0004). npm facts verified on 2026-09-14.
    the SPA. Envoy and Cloud Run see one upstream.
 3. **No vitest at M1.** The type check in the image build is the frontend
    check. The first behavioural frontend test arrives with the first
-   frontend ticket (M10 at the latest), written from `design/CONTRACT.md`.
+   frontend ticket (M11 at the latest), written from `design/CONTRACT.md`.
 4. **No dev server in compose.** Edit, `./go up` (compose rebuilds the
    changed layer), reload.
 
