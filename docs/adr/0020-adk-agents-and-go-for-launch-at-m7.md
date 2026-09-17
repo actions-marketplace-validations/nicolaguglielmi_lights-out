@@ -1,6 +1,6 @@
 # ADR 0020 — ADK agents and go-for-launch at M7: the three conversational roles run on `adapters/adk/` behind the AgentHarness verb with a second, declared artefact contract (tool calls + final text, no workspace) and a `HARNESS=adk` line in their `role.env`; at L0 the model is a `BaseLlm` that replays `LlmResponse`s recorded once at L1, keyed by the first user message, and every decision the eval must see is a tool call so `adk eval` judges trajectories with no LLM judge; `core/launchpad.sh` writes a release record and `core/promote.sh` is go-for-launch — a brief from the release role, one human answer, weight 100 or rollback; `demo-launch` proves it mechanically and does not join `./go demo`; the ADK is pinned into the workbench image by `uv.lock`; `ci/prompts.sh` enforces ticket 0004 and `dev-worker/prompt.md` is rewritten under it now; the review roles, ticket 0003 and the two budget `record`s re-date to M8
 
-- Status: accepted (amends ADR 0003 [the `100%` stub is removed; `demo-launch` is not a stage]; ADR 0013 §4 and ADR 0014 §1 [launchpad writes `RELEASE_RECORD`; the held line names `./go promote`]; ADR 0017 §1 [a second artefact contract on the same verb], §7 [the per-role `HARNESS` override now exists; `product`, `release`, `ops-triage` get `prompt.md`; `architect`, `test-reviewer` ROLE.md say M8]; ADR 0019 §8 [review roles, ticket 0003 and the budget records move to M8]; ADR 0004 [the workbench image carries a Python venv and its tag covers `uv.lock`])
+- Status: accepted (amends ADR 0003 [the `100%` stub is removed; `demo-launch` is not a stage]; ADR 0013 §4 and ADR 0014 §1 [launchpad writes `RELEASE_RECORD`; the held line names `./go promote`]; ADR 0017 §1 [a second artefact contract on the same verb], §7 [the per-role `HARNESS` override now exists; `product`, `release`, `ops-triage` get `prompt.md`; `architect`, `test-reviewer` ROLE.md say M8]; ADR 0019 §8 [review roles, ticket 0003 and the budget records move to M8]; ADR 0004 [the workbench image carries a Python venv and its tag covers `uv.lock`]; amended by ADR 0021 [§9's "not built at M9" list, now built at M9: review roles with prompts, review step in the tower, perimeter rule for tickets])
 - Date: 2026-09-16
 - Milestone: M7
 
@@ -286,9 +286,12 @@ M6; `demo-hold` ≈ 140 s warm (ADR 0014 arithmetic).
    none of it depends on GCP and in M8 it would sit there by placement
    only; M9 proposed, shifting the platform and design milestones by one.
    gcloud and terraform leave the base image for a `workbench-cloud`
-   image inside M8, with an ADR amending 0004 (HANDOFF).* Product on the tower's
-   `assign` path, session memory, Agent Engine, BigQuery analytics: M9. The
-   canary as the new stable image, Vertex: M8.
+   image inside M8, with an ADR amending 0004 (HANDOFF).* Number accepted
+   without change, 2026-09-17: M9 is Review, run before M8 because none of
+   its work depends on GCP; the platform milestone (Agent Engine, BigQuery,
+   the nightly) is now M10, design is M11; M8 (GCP) remains open. Product on
+   the tower's `assign` path, session memory, Agent Engine, BigQuery
+   analytics: M10. The canary as the new stable image, Vertex: M8.
 
 ## Alternatives rejected
 

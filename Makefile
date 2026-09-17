@@ -97,7 +97,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness tower prompts evals promote contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness tower perimeter review prompts evals promote contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -125,14 +125,14 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	@printf 'lights-out: app at %s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_URL)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
 	if [ "$$elapsed" -lt 0 ]; then \
-		printf 'GO: demo, milestone M7, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
+		printf 'GO: demo, milestone M9, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
 		exit 0; \
 	fi; \
 	if [ "$(DEMO_BUDGET_SECONDS)" -gt 0 ] && [ "$$elapsed" -gt "$(DEMO_BUDGET_SECONDS)" ]; then \
 		printf 'NO-GO: demo — rollback reached, but %ss > %ss budget (plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"; \
 		exit 1; \
 	fi; \
-	printf 'GO: demo, milestone M7, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
+	printf 'GO: demo, milestone M9, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
 
 .PHONY: up
 up: ## Start the L0 plane in compose and wait until every adapter is ready (docs/adr/0012 §6)
@@ -474,6 +474,70 @@ e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify 
 .PHONY: audit
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
+
+.PHONY: review
+review: ## Judge an opened PR outside the tower: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021)
+	@role="$(ROLE)"; [ -n "$$role" ] || role=test-reviewer; \
+	. ".crew/$(TICKET)/pr-opened.env"; \
+	TICKET="$(TICKET)" PR_NUMBER="$$PR_NUMBER" BASE_SHA="$$BASE_SHA" HEAD_SHA="$$HEAD_SHA" ROLE="$$role" \
+		sh core/steps/review.sh
+
+# TICKET defaults to 0005 here, not the golden path's 0001: ticket 0001 is
+# low-risk (docs/adr/0016 §4) and never enters review at all. A command-line
+# TICKET=<id> still wins over this default (docs/adr/0021 §9).
+.PHONY: demo-review
+demo-review: TICKET := 0005
+demo-review: ## Prove a medium/high-risk PR goes through the review step to a traceable verdict: TICKET=<id> (docs/adr/0021)
+	@$(MAKE) --no-print-directory up
+	@printf '[demo-review] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
+	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: demo-review — could not reset the document\n'; exit 1; }
+	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: demo-review — could not open ticket %s\n' "$(TICKET)"; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: demo-review — a step failed; see the [tower] lines above\n'; exit 1; }
+	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)") || { printf 'NO-GO: demo-review — no document for ticket %s\n' "$(TICKET)"; exit 1; }; \
+	state=$$(printf '%s' "$$doc" | jq -r .state); \
+	verdict=$$(printf '%s' "$$doc" | jq -r '.review.verdict // empty'); \
+	reason=$$(printf '%s' "$$doc" | jq -r '.review.reason // empty'); \
+	matches=$$(printf '%s' "$$doc" | jq -r 'if .review.input_matches_recorded == null then "" else (.review.input_matches_recorded | tostring) end'); \
+	if [ -z "$$verdict" ] || [ -z "$$reason" ]; then \
+		printf 'NO-GO: demo-review — ticket %s carries no review verdict/reason (state %s)\n' "$(TICKET)" "$$state"; exit 1; \
+	fi; \
+	case "$$verdict" in \
+		approved) case "$$state" in \
+			ci-passed|merged|held|rolled-back) : ;; \
+			*) printf 'NO-GO: demo-review — approved but state is %s, expected past ci-passed\n' "$$state"; exit 1 ;; \
+		esac ;; \
+		changes-requested) \
+			[ "$$state" = ci-failed ] || { printf 'NO-GO: demo-review — changes-requested but state is %s, expected ci-failed\n' "$$state"; exit 1; }; \
+			merge_sha=$$(printf '%s' "$$doc" | jq -r '.merge.sha // empty'); \
+			[ -z "$$merge_sha" ] || { printf 'NO-GO: demo-review — changes-requested but merge.sha is %s\n' "$$merge_sha"; exit 1; } ;; \
+		*) printf 'NO-GO: demo-review — unexpected verdict %s\n' "$$verdict"; exit 1 ;; \
+	esac; \
+	[ "$$matches" = "true" ] || { printf 'NO-GO: demo-review — recorded review input does not match this diff (input_matches_recorded=%s)\n' "$$matches"; exit 1; }; \
+	printf '[demo-review] test-reviewer: %s — %s\n' "$$verdict" "$$reason" >&2
+	@printf '[demo-review] second reviewer, architect (exercised once, not wired into the tower):\n' >&2
+	@$(MAKE) --no-print-directory review TICKET="$(TICKET)" ROLE=architect >&2 || { printf 'NO-GO: demo-review — architect run failed\n'; exit 1; }
+	@printf 'GO: demo-review\n'
+
+# The one real L1 run this ADR calls for beyond dev-worker's (docs/adr/0021
+# §9): the reviewer fixture L0 replays forever after. record's own
+# precedent: refuses at L0, requires .crew/<ticket>/pr-opened.env from a
+# prior `record TICKET=<id>` (the PR the reviewer reads).
+.PHONY: record-review
+record-review: ## Record a role's review verdict as a fixture: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021 §9)
+	@if [ "$(AGENT_HARNESS)" != "gemini-cli" ]; then \
+		printf 'NO-GO: record-review — recording a replay is circular; PROFILE=l1\n'; exit 1; \
+	fi
+	@$(MAKE) --no-print-directory up
+	@role="$(ROLE)"; [ -n "$$role" ] || role=test-reviewer; \
+	$(MAKE) --no-print-directory review TICKET="$(TICKET)" ROLE="$$role" >&2 || { \
+		printf 'NO-GO: record-review — the review step did not reach a verdict\n'; exit 1; \
+	}; \
+	dest="fixtures/$(TICKET)/$$role"; \
+	mkdir -p "$$dest"; \
+	cp ".crew/$(TICKET)/review/input.md" "$$dest/input.md"; \
+	cp .crew/$(TICKET)/review/out/* "$$dest/" 2>/dev/null || true; \
+	printf 'lights-out: fixture written to %s\n' "$$dest" >&2; \
+	printf 'GO: record-review\n'
 
 # The ADK roles (docs/adr/0020). triage and promote need no engine socket:
 # the roles' tools touch nothing, the drivers read files and, for promote,

@@ -8,7 +8,8 @@
 # demo-crew use — posts the verdict as the `gates` commit status, leaves
 # $GATES_OUT/verdict.env at the repo root, and prints the fields for the
 # document. Next state: ci-passed on GO + auto-merge, review on GO +
-# review, ci-failed on NO-GO. Called by the tower (PR_NUMBER, BASE_SHA,
+# review (core/steps/review.sh picks it up from there, docs/adr/0021),
+# ci-failed on NO-GO. Called by the tower (PR_NUMBER, BASE_SHA,
 # HEAD_SHA from the document) and by the Makefile's crew-run (from
 # .crew/<id>/pr-opened.env): one code path for both.
 set -eu
@@ -50,7 +51,7 @@ case "$verdict/$decision" in
 esac
 sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
   || { printf 'step-ci: could not post the status\n' >&2; exit 1; }
-[ "$state" != review ] || printf '[ci] risk %s: review requested, and nobody reviews until the review milestone after M8 (docs/adr/0020 §9) — terminal\n' "$level" >&2
+[ "$state" != review ] || printf '[ci] risk %s: review requested; test-reviewer picks it up next (docs/adr/0021)\n' "$level" >&2
 
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \

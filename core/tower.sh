@@ -41,6 +41,7 @@ precondition() {
   case "$1" in
     assign) printf 'opened' ;;
     ci) printf 'pr-opened' ;;
+    review) printf 'review' ;;
     merge) printf 'ci-passed' ;;
     release) printf 'merged' ;;
     *) return 1 ;;
@@ -49,6 +50,7 @@ precondition() {
 next() {
   case "$1" in
     pr-opened) printf 'ci' ;;
+    review) printf 'review' ;;
     ci-passed) printf 'merge' ;;
     merged) printf 'release' ;;
     *) : ;;

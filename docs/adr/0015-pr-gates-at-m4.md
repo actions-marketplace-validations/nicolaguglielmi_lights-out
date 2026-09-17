@@ -108,7 +108,7 @@ cold-runs every `gates/*.sh`, so each must answer in one line with no plane.
    `assert`) and `fakes/` are not scanned and the README says so. No
    severity floor: a floor is a number without provenance, and per-finding
    review is what the escape hatch is for. The frontend gets no SAST at M4
-   (React/Vite/TS, no tests until M10, static bundle); declared.
+   (React/Vite/TS, no tests until M11, static bundle); declared.
 5. **Dependency scan: `gates/deps.sh` = `osv-scanner scan source -L
    app/backend/uv.lock -L app/frontend/package-lock.json`** in workbench, no
    engine, network to api.osv.dev; exit 1 (vulnerabilities) is NO-GO, any

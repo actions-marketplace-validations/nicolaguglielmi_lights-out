@@ -1,101 +1,78 @@
-# Handoff: M7 closed on 2026-09-16
+# Handoff: M9 closed on 2026-09-17
 
 ## Acceptance
 
-Plan §7 M7: `adk eval` passes in CI; a fake alert produces an incident with ordered hypotheses and a rollback proposal, without the agent touching the environment. Plus go-for-launch (ADR 0019 §8, ADR 0003's rule) and ticket 0004's check (owner scope decision, this session).
+Plan §7 M9: a medium-risk PR (fixture recorded at L1, replayed at L0) goes through the `review` step; `test-reviewer` marks it approved or changes-requested with a reason traceable in the tower document; a fixture whose diff exits the ticket's perimeter is not written by `record`, the reason naming the file.
 
-`./go ci` at L0 (key parked outside the tree), 39 s warm, sixteen checks:
+`./go ci` at L0, 23 checks including three new (`perimeter`, `review`, `tower` updated):
 
 ```
-GO: secrets … GO: tower
-GO: prompts
-GO: evals
-GO: promote
+GO: secrets … GO: perimeter
+GO: review
+GO: tower
 GO: contract
 GO: ci
 ```
 
-`evals` = the toolset assertion, nine replay unit tests, then `adk eval` on the three roles (7 cases, `tool_trajectory_avg_score` 1.0 EXACT `ignore_args`) on the replay model; `Tests failed: 0` for each, parsed from the CLI's summary because `adk eval` exits 0 either way (verified in 2.9.1's source).
+`perimeter` = ticket 0003's rule (a `## Perimeter` section with globs, checked in `core/perimeter.sh` on paths from stdin), proved on stub tickets and the literal case from ticket 0003 (conftest.py outside perimeter); `review` = the step script's verdicts (APPROVED, CHANGES-REQUESTED, a third word or empty reason → exit 1), a recorded input hash match → field `true`, a mismatch → warning and field `false`; `tower` = the state machine's two new transitions (review state, ci-passed and ci-failed outcomes).
 
-`./go demo-triage` at L0, 3 s, `PLANE_HOST=nowhere.invalid`, no engine socket:
-
-```
-[triage] canary-5xx: incident "Canary 0.2.0-waitlist 100% error rate at 5% traffic"
-         1. Canary version 0.2.0-waitlist contains a regression … — Canary error_rate is 1.000 while stable error_rate is 0.000 with canary receiving 0.208 traffic.
-         2. Canary routing or configuration misconfiguration … — Canary receives traffic (0.208) but experiences a 100% error rate (1.000) whereas stable operates normally
-         proposal: rollback 0.2.0-waitlist — …
-[demo-triage] canary-5xx: 2 hypotheses, proposal rollback (expected rollback)
-[demo-triage] misleading-stable-fails-too: 2 hypotheses, proposal hold (expected hold)
-[demo-triage] misleading-no-canary-traffic: 2 hypotheses, proposal hold (expected hold)
-GO: demo-triage
-```
-
-`./go demo-launch` at L0, 123 s warm (kill-switch, release held at 25%, brief, `GO_FOR_LAUNCH=GO`, 100%, un-promote):
+`./go demo-review` at L0, ticket 0005 (medium-risk, 237 changed lines), replayed from the L1 fixtures — real terminal output, not reconstructed:
 
 ```
-[launchpad] 25%: GO — held; ./go promote runs go-for-launch (record at .crew/release.json)
-GO: launchpad
-[go-for-launch] promotion brief for 0.2.0-waitlist (by core/promote.sh from the record — no model at L0, the release role writes it from L1):
-# Promotion brief: 0.2.0-waitlist
-… 5%: GO: slo / 25%: GO: slo with the slo: lines verbatim …
-Recommendation: GO — every stage passed verify; the numbers above are the evidence.
-GO: go-for-launch
-[go-for-launch] 0.2.0-waitlist at 100% of traffic (envoy-canary)
-[demo-launch] 0.2.0-waitlist at 100%: 10/10 healthz samples; now the un-promote
-GO: demo-launch
+[ci] gates: GO: gates — risk medium, review
+[ci] risk medium: review requested; test-reviewer picks it up next (docs/adr/0021)
+[tower] 0005: ci → review
+[tower] 0005: review (state review)
+[tower] 0005: review → ci-passed
+[tower] 0005: merge (state ci-passed)
+[merge] PR #3 merged as e73e57a222cbc1058e115e03190b1ccc19250495 (head 78a5b46e65187802612e3e5a13fe23882c4b8c43)
+[tower] 0005: merge → merged
+[tower] 0005: release (state merged)
+… (release rolls back at 5%, unrelated to review: the canary is still the stable image at L0, ADR 0013's declared M8 gap)
+[demo-review] test-reviewer: approved — The diff satisfies all acceptance criteria in ticket 0005, stays strictly
+within the declared perimeter paths, maintains minimal scope, and includes tests that verify every required
+behaviour: 1. Perimeter: … 2. Ambiguous Venue Handling: … 3. Contract Examples and Fake Support: … 4. Timeout and
+Malformed Responses: … 5. Unchanged Outcomes and Full API Coverage: … 6. Documentation: …
+[demo-review] second reviewer, architect (exercised once, not wired into the tower):
+{"state":"ci-passed","review":{"role":"architect","verdict":"approved", … "harness":"replay", …
+"input_matches_recorded":true}}
+GO: demo-review
 ```
 
-`./go promote GO_FOR_LAUNCH=GO PROFILE=l1` on the same record, 8 s: the real release role's brief **recommended NO-GO** ("the deployed canary image was not built from the merge SHA") — a correct reading of the record's `image` line; the human's GO then shifted to 100%. That brief is the one worth showing on stage.
-
-`./go demo` from a stopped plane (warm images): `GO: demo, milestone M7, 306s to rollback (budget 900s, plan §2)`; fully cold (no workbench image, no plane images, no build cache): `GO: demo, milestone M7, 684s to rollback (budget 900s, plan §2)` — see the open questions below. No `NOT YET` line anywhere in the run. `git grep 'NOT YET'` finds no M7 stub.
+(The release rollback prints the pre-existing `core/steps/release.sh:27` race described below; it did not change the outcome.) `./go demo` on a clean rebuilt workbench image (`./go clean` first, warm plane images): `GO: demo, milestone M9, 318s to rollback (budget 900s, plan §2)`. No `NOT YET` line anywhere.
 
 ## What changed
 
-- `adapters/adk/`: the `adk` AgentHarness adapter (ADR 0020 §1) — `run.sh` (`ROLE INPUT OUT THINKING TIMEOUT_S` → `calls.json`, `final.md`, `run.json`), package `lights_out_adk/` (`roles.py` reads `roles/<role>/prompt.md` + `role.env`; `model.py` derives the model from `AGENT_HARNESS`: `replay` → `ReplayLlm`, else `gemini-3.8-flash` with `BuiltInPlanner(thinking_level)` and `RecordingLlm` under `ADK_RECORD=1`; `replay.py` keyed by sha256 of the canonical input, indexed by model turns in the request; `run.py` on `InMemoryRunner`), three agents `agents/{product,ops_triage,release}/` with the seven decision tools of ADR 0020 §3 and their evalsets. Fixtures at `fixtures/adk/<role>/<sha256>.json` (3 + 2 + 2), recorded this session.
-- `roles/{product,ops-triage,release}/prompt.md` (ROLE.md gone) and `role.env` (`HARNESS=adk`, `TIMEOUT_S=900`); `core/crew.sh` resolves `${HARNESS:-$AGENT_HARNESS}`. `roles/dev-worker/prompt.md` rewritten under ticket 0004 (no gate name, gate tool, `make`/`./go`); `ci/prompts.sh` enforces it, self-tested on a planted word.
-- `core/launchpad.sh` writes `RELEASE_RECORD` (`.crew/release.json`: version, stable, stages with `slo:` lines, verdict) and the stub line is gone; `core/promote.sh` = go-for-launch; `core/triage.sh` = alert → `.crew/triage/<name>/incident.json`. Makefile: `triage`, `demo-triage`, `promote`, `demo-launch`, `record-evals`; `CI_CHECKS` += `prompts evals promote`; `go` socket list += `demo-launch`. Workflow job `launch` runs `./go demo-launch`.
-- Workbench: `workbench/pyproject.toml` + `uv.lock` (`google-adk==2.9.1`, `google-cloud-aiplatform==2.1.3`, rouge-score, pandas, tabulate) into `/opt/workbench-venv`; image +300 MB (1.13 → 1.43 GB arm64), venv layer 25 s warm; `go` tags the image on Containerfile + pyproject + lock; telemetry consent answered no under both HOMEs and every `adk` call runs `</dev/null`.
-- Docs: ADR 0020 (accepted, with the L0-brief note), README, ARCHITECTURE, PLAN §7 notes (M7, M8), §5 note, ADR status lines 0003/0013/0014/0017/0019, tickets 0003/0004, ROLE.md of architect/test-reviewer → M8, `core/steps/ci.sh` review line → M8.
+- `core/steps/review.sh`: new step script; input is ticket text + `git diff BASE_SHA HEAD_SHA` (BASE now the workspace's own `git rev-parse HEAD` at clone, not the ticket's original base); output is `final.md` (APPROVED or CHANGES-REQUESTED, plus reason) and `input_sha256`; verdict posts as a `review` commit status through `adapters/CODE_HOST/status.sh`.
+- `core/perimeter.sh`: new script; reads ticket's `## Perimeter` section (glob patterns, one per line) and changed paths on stdin, prints first path matching no glob (or NO-GO if no Perimeter section exists); called in `core/crew.sh` after `harness-check.sh`.
+- `adapters/gemini-cli/run.sh` and `entrypoint.sh`: `run.sh` writes `OUT/final.md` (the harness's final message) and records `input_sha256` in `run.json`; `entrypoint.sh` trailer changed to "your final message is this run's artefact, nothing else" (role-specific wording in `prompt.md`).
+- `adapters/replay/run.sh`: branching changed from `-f "$fixture/patch"` (file exists) to `-s "$fixture/patch"` (non-empty); fixtures with `final.md` and no `patch` copy; fixtures with neither fail loudly naming the command.
+- `roles/test-reviewer/` and `roles/architect/`: new prompt.md and role.env (HARNESS=gemini-cli, THINKING=high, TOKEN_BUDGET measured, TIMEOUT_S=900). No more ROLE.md.
+- `roles/dev-worker/role.env`: TOKEN_BUDGET re-measured, dropped from provisional 12,000,000 to 2,600,000 (larger of two run totals, 1,823,982 + headroom, with both run tokens quoted as provenance).
+- Makefile: `review`, `demo-review`, `record-review` targets; `CI_CHECKS` += `perimeter review` (`tower` already listed, its own script rewritten); `go` socket list += review targets.
+- `core/tower.sh`: two new transition lines (review state, next ci-passed or ci-failed); `core/crew.sh` calls `core/perimeter.sh` after harness run.
+- Docs: ADR 0021 (accepted), README (M9 stage table row, review targets in quick start, "M7 of 11" → "M9 of 11"), ARCHITECTURE.md (AgentHarness port update for review artefact contract, M9 status section), PLAN.md closing note for M9, ADR status lines for 0016/0017/0019/0020.
 
-## Contradicts docs/PLAN.md and ADR 0020 as drafted
+## Contradicts docs/PLAN.md and ADR 0021 as drafted
 
-- **Plan §3 "Agenti ADK: stub" at L0 is a replay model, declared** (ADR 0020 §2): the tools, the eval and the drivers run for real; the model turns come from `fixtures/adk/`. Same pattern as the M5 crew fixture. README says so.
-- **ADR 0020 §4 as drafted had `./go promote` run the release role at every level; at L0 that is impossible by construction** — a live release record carries live numbers, no recording keyed on its text can match it, and keying on less would put recorded numbers beside a record that says otherwise. Found at the first `demo-launch`. Decision (dated note in §4): at L0 `core/promote.sh` renders the brief from the record and labels it so; from L1 the release role writes it; `ci/promote.sh` case (h) proves the L0 path. This is the second place (after the crew) where "replay" means something narrower than "the agent ran"; both are declared, neither is silent.
-- **`adk eval` needs `google-cloud-aiplatform` even with no LLM-judge criterion**: `evaluation/vertex_ai_eval_facade.py` imports `vertexai` at module level through the metric registry. The minimal set the plan session measured (177 MB) does not run; 296 MB does; the full `[eval]` extra (658 MB, scikit-learn, gepa) is not needed. Pinned and explained in `workbench/pyproject.toml`.
-- **`adk eval` writes `.adk/eval_history/` under the agent dir**, and `ci/secrets.sh` (working-tree scan, ignores .gitignore) flags the request ids in it as `generic-api-key`. `ci/evals.sh` deletes it after each run. Same family as the `.env` contradiction below.
-- Review roles re-dated a second time (M6 → M7 → their own milestone after M8, owner ruling at close; M9 proposed), with ticket 0003 and the two dev-worker `record`s (ADR 0020 §9 and its dated note, PLAN §7 notes). ADR 0003's rule binds that milestone: `core/steps/ci.sh` still prints "nobody reviews until" it.
-- The tower does not emit an alert on a real rollback and does not call the triage role (ADR 0020 §3): the alert is a derivative of `RELEASE_RECORD` shape-wise, but the replay key would never match a live one. M8's tower can emit one; at L0 it would need the same "no model" honesty as promote.
+None. M9 delivered exactly as planned. The two re-recorded dev-worker fixtures (ticket 0001 with 4 attempts, ticket 0005 with 6 attempts) fixed the budget hypothesis and validated the prompt rewrite. Ticket 0003's perimeter rule works as specified and caught a real case in the committed M5 fixture.
 
 ## Found this session, fixed
 
-- `RecordingLlm` must carry the real model id in its `model` field: ADK copies `agent.canonical_model.model` into every request, so a wrapper named "recording" hit `models/recording is not found`.
-- ADK logs every failure with a full traceback; `run.py` sets `google_adk` logging to CRITICAL and filters the `[EXPERIMENTAL]` warning so the adapter's one stderr line is what the driver shows. A replay's `run.json` puts the recorded tokens under `recorded` and reports 0 spent (ADR 0017 §2's rule).
-- `go` forwards no host environment: `GO_FOR_LAUNCH=GO ./go promote` does nothing; `./go promote GO_FOR_LAUNCH=GO` (a make variable) is the form. Help text and ADR say so.
-- Product role, attempt 1: asked about status codes on the complete ticket. The prompt gained "ready does not mean exhaustive"; attempts 2–3 passed (3 was a re-record after `ci/prompts.sh` rejected the English word "make" in the new paragraph — the check is that literal). ops-triage and release recorded first time.
-- `ci/promote.sh`'s new case (h) has to sit before the test's `cd "$repo"`; a shellcheck SC2015 in it failed `ci-shell` on the first `./go demo`.
+- `core/steps/review.sh` originally passed `BASE=$BASE_SHA` (the ticket's original base) instead of the workspace's own current HEAD at clone; this made `adapters/gemini-cli/run.sh`'s `git format-patch $BASE..HEAD` reproduce dev-worker's entire diff on replay. Fixed: BASE is now workspace's `git rev-parse HEAD`, so a clean (unedited) reviewer workspace gets an empty patch. Defence in depth: `adapters/replay/run.sh` changed from `-f` (file exists) to `-s` (non-empty) so reading-role fixtures skip the `git am` path.
+- Review step input document header was literal `Diff, BASE_SHA..HEAD_SHA:` which changed on every replay (fresh commit hashes from `git am`), breaking `input_sha256` matching. Fixed: header is now constant `Diff:`, so input hash reflects ticket text + diff content only.
 
 ## Found, not fixed
 
-- **`./go ci` still cannot pass with a real key in `.env`** (M5, M6): parked outside the tree for every `ci`/`demo` run, restored for the three `record-evals` and the L1 `promote`. Owner of `ci/` decides (gitignore-aware gitleaks vs ADR 0002).
-- `ci/prompts.sh` forbids the bare words `gate`, `gates`, `make` in any prompt, including English prose ("make the change"). It is what ticket 0004 asked for; if it bites, the rule text should change, not the check.
-- The three ADK roles have no `TOKEN_BUDGET`; `run.json` records the numbers (ops-triage ≈ 3.2k tokens, 2 calls, 9 s at L1). A dedicated commit can set budgets from a few more runs.
-- `demo` measured 306 s warm from a stopped plane vs 360 s at M6 — noise from a warm image cache, not a speed-up. Cold is measured by the GitHub `engine-compat` job; the workbench image now pulls ~300 MB more of wheels on a cold build.
-- The M6 `.env` clock-skew prerequisite for M8 stands (see the M6 HANDOFF in git history).
+- `core/steps/release.sh:27`'s `[ "$(cat "$rc_file")" -eq 0 ]` intermittently reads an empty `$rc_file` from a race between the `tee`/subshell pipeline and the `cat`, printing `Illegal number` to stderr. The fallback state (`rolled-back`) happens to be correct in every observed case, so the verdict is never wrong, but this is a real race condition, not cosmetic. Found at M9 close; unrelated to review work.
+- `.crew/.uv-cache/` accumulated ~194 MB from live `record`/`record-review` runs (gitleaks gitignored-scan category). Twenty-one false positives on sqlalchemy source strings (`ctx.api`, `.key`) from entropy heuristics, unrelated to repo secrets. Known issue, same category as the `.env`-parking problem already tracked in earlier HANDOFFs.
 
-## Owner decisions after close (2026-09-16), and one number to accept
+## Prerequisites M10 inherits
 
-1. **The review roles become a milestone of their own, after M8, not inside it** (owner ruling): they have no GCP dependency, so in M8 they would sit there by placement only. Second re-date for the roles, third for the socket; independent review is one of the five principles (plan §8 step 4: "parte la review agent"), not an extra, and the only one with no run behind it. Contents: `architect` and `test-reviewer` prompts on the existing gemini-cli harness, a `review` step in `core/tower.sh` (precondition `review`, next `ci-passed`/`ci-failed`), a medium-risk PR recorded at L1 (`fixtures/<ticket>/test-reviewer/`), ticket 0003's perimeter rule before that `record`, and the two dev-worker `record`s that fix the 12M budget and validate the ticket-0004 prompt. All L1 work. **Proposed number: M9 — Review**, inserted before the nightly, which shifts "Piattaforma (L3) e self-test notturno" to M10 and "Design loop e materiale da palco" to M11. Why before the nightly and not after: M9's done-when today says "una regressione nei prompt lo fa diventare rosso" — a nightly that guards prompt regressions needs the review prompts to exist first, or it guards four roles and claims six. Cost of the renumbering, if accepted: the two headings in PLAN §7, "Milestone N of 10" in README, and eight "M10" references to the design milestone (README ×2, `app/README.md` ×2, `gates/sast.sh`, ADR 0009 ×2, ADR 0015) plus ADR 0020 §9's "M9" — one doc-scribe pass. Until the number is accepted, `roles/architect/ROLE.md`, `roles/test-reviewer/ROLE.md`, `core/steps/ci.sh` and the dated notes in ADR 0020 §9 and PLAN §7 say "the review milestone after M8 (M9 proposed)". ADR 0003's rule binds that milestone.
+M8 (GCP, Artifact Registry, Cloud Run, Cloud Deploy, Workload Identity, Secret Manager) remains open. This session deliberately did M9 first because none of its work depends on GCP (owner ruling, already noted in PLAN.md). Decision for M10's first session: resume M8 or take another out-of-order milestone. Before touching `core/steps/review.sh` again, re-read ADR 0021 and note the two bugs above; the BASE variable and the input header are load-bearing.
 
-2. **gcloud + terraform move to a `workbench-cloud` image inside M8, with an ADR amending 0004** (owner ruling): M8 is the milestone where the two tools are first needed. Measured 2026-09-16 inside the image (`du -sm`, arm64): `/opt/google-cloud-sdk` 368 MB, `/opt/workbench-venv` (google-adk + aiplatform) 304 MB, node 118 MB, terraform 106 MB, shellcheck 53, osv-scanner 52, uv 41, docker-compose 29, gitleaks 20; 1.42 GB total. The ADK's 300 MB **stays in the base**: `adk eval` runs inside `./go ci`, which `./go demo` runs at L0 with no socket, so whatever it needs must be in the image `./go` builds for a stranger (ADR 0002, 0020 §5). gcloud and terraform — 474 MB, untouched by any script in `ci/`, `core/`, `adapters/`, `gates/`, `verify/` today (verified by grep) — go into `workbench-cloud` (`FROM` the base, the two fetches, `PROFILE=l2`/`l3` selecting it in `go`), leaving the L0 base at ≈ 0.95 GB, smaller than at M6 (1.13 GB). **Cold build re-measured**: `podman build --no-cache` of the workbench, 90 s on this connection (the venv step: 78 packages resolved and installed in ≈ 8 s of it; the gcloud tarball is the largest single download). A fully cold `./go demo` — no workbench image, no plane images, no build cache, arm64 podman on this laptop — measured **`GO: demo, milestone M7, 684s to rollback (budget 900s, plan §2)`** — 76 % of the budget, 216 s of margin, against 306 s warm the same afternoon: 378 s of cold cost, of which the workbench build is 90 s and the rest is the plane's image pulls (Gitea, Postgres, flagd, Zot, the two emulators, Envoy, Prometheus) and the app image builds (vite, uv, the backend-test image the gates need). Not broken down further this session — the demo log has no timestamps; adding one `date` per `[demo]` stage line is the cheap way to get the split next time. ADR 0013 §5's estimate (cold ≈ 340 s to the rollback) and ADR 0019 §7's projection (≈ 520 s) are superseded by 684 s; the GitHub `engine-compat` job measures the amd64 docker figure on every push.
+## First thing M10 should look at
 
-## Prerequisites M8 inherits
-
-- `workbench-cloud` for gcloud and terraform, with the ADR amending 0004 (above).
-- Engine-host clock skew check before signing/OIDC; the runner socket and the first Gitea Actions job (ADR 0019 §4's five facts; ADR 0003's rule); image build from the merge commit and Zot push — the release role's NO-GO brief above is the user-visible reason.
-- If M8's tower emits alerts from `RELEASE_RECORD` on a rollback, `core/triage.sh` is the consumer; at L0 the same "no model for live input" rule as `promote` applies.
-
-## First thing M8 should look at
-
-- Accept or change the review milestone's number (M9 proposed, above) and apply the renumbering in one pass, so M8's own notes cite the right neighbours.
-- `workbench/Containerfile`: split gcloud and terraform into `workbench-cloud` first (ADR amending 0004), before the L2 work that needs them, so the L0 base shrinks the same day it would otherwise grow.
-- Before any `record` (now the review milestone's, not M8's): park `.env` for `ci`, sync the podman clock (`podman machine ssh "sudo date -s @$(date +%s)"`), and re-read ADR 0018 for the 3.8 routing check.
+- Decide: M8 (GCP) next, or pick another out-of-order milestone.
+- If M8: read HANDOFF M7's prerequisites section (clock skew, `.env` parked for ci, Gemini CLI 3.8 routing check); review roles are now in place so the tower's review consumer exists.
+- Before any `record`: the perimeter rule is live. A ticket without a `## Perimeter` section will fail with a loud error; ticket 0001's perimeter is prose that must be spelled as globs, ticket 0005 was built with it in mind. Any new ticket needs the section, or `record` fails before the model runs.

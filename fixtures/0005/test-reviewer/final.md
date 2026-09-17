@@ -1,0 +1,15 @@
+APPROVED
+
+The diff satisfies all acceptance criteria in ticket 0005, stays strictly within the declared perimeter paths, maintains minimal scope, and includes tests that verify every required behaviour:
+
+1. Perimeter: The changes touch only `app/backend/meetups/geocoder_client.py`, `app/backend/meetups/app.py`, `app/fakes/geocoder/server.py`, `app/contracts/geocoder/examples.json`, `app/backend/tests/test_geocoder_client.py`, and `app/README.md`, all of which are within the declared `## Perimeter`.
+
+2. Ambiguous Venue Handling: `meetups/geocoder_client.py` defines `GeocoderAmbiguous` carrying candidate `display_name`s when `len(results) > 1`. `meetups/app.py` catches `GeocoderAmbiguous` and returns `422` with `{"detail": "ambiguous venue, be more specific", "candidates": exc.candidates}` before database insertion, preventing record creation. This is verified by `test_geocode_ambiguous_venue_raises_geocoder_ambiguous` and `test_create_meetup_returns_422_when_geocoder_ambiguous` (which also checks that no meetup record was saved).
+
+3. Contract Examples and Fake Support: `examples.json` adds the "Piazza del Popolo" multi-match example, a "Slow, Timeout" example with `delay_seconds: 2.5`, and three distinct malformed examples ("Malformed, Bad Lat", "Malformed, Missing Lon", and "Malformed, Missing Lat"). `fakes/geocoder/server.py` implements the optional `delay_seconds` using `time.sleep` before writing responses.
+
+4. Timeout and Malformed Responses: With the client's 2.0s timeout, the 2.5s delay causes `httpx.TimeoutException` caught and raised as `GeocoderUnavailable` in `test_geocode_raises_when_geocoder_times_out`. In `geocoder_client.py`, float conversion and dictionary indexing are wrapped in `try ... except (KeyError, ValueError, TypeError)`, raising `GeocoderUnavailable` (and returning 502 at the API level) for malformed responses rather than uncaught 500s. These are asserted by `test_geocode_raises_when_lat_not_a_number`, `test_geocode_raises_when_lon_missing`, `test_geocode_raises_when_lat_missing`, and `test_create_meetup_returns_502_when_geocoder_malformed`.
+
+5. Unchanged Outcomes and Full API Coverage: Existing outcomes remain intact ("Milano, Duomo" still resolves to its contract coordinates). `test_geocoder_client.py` adds API tests asserting full status and body shapes for single match (`201`), no-match (`201` with null coordinates), and unreachable geocoder (`502 {"detail": "geocoder unavailable"}`).
+
+6. Documentation: `app/README.md` replaces the one-sentence external dependency summary with one line per outcome (match, no match, ambiguous, unreachable), specifying status codes and response bodies as required.

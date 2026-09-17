@@ -1,0 +1,14 @@
+ALLOW run_shell_command -
+ALLOW run_shell_command -
+ALLOW run_shell_command -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -
+ALLOW read_file -

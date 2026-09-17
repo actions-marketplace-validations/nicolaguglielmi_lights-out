@@ -115,6 +115,17 @@ case "${STUB_CI:-pass}" in
   crash) exit 1 ;;
 esac
 STUB
+cat > "$root/steps/review.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+printf 'review\n' >> "$d/effects.log"
+case "${STUB_REVIEW:-approve}" in
+  approve) printf '%s\n' '{"state":"ci-passed","review":{"role":"test-reviewer","verdict":"approved","reason":"stub approved"}}' ;;
+  reject) printf '%s\n' '{"state":"ci-failed","review":{"role":"test-reviewer","verdict":"changes-requested","reason":"stub rejected"}}' ;;
+  crash) exit 1 ;;
+esac
+STUB
 cat > "$root/steps/release.sh" <<'STUB'
 #!/bin/sh
 set -eu
@@ -154,18 +165,42 @@ if [ -z "$mismatch" ]; then
   [ "$(doc | jq '.history | length')" = 5 ] || fail_case a-history "history has $(doc | jq '.history | length') entries, want 5"
   [ "$(doc | jq -r .merge.sha)" = merge-of-head1 ] || fail_case a-merge "merge.sha not recorded from the code host"
 fi
-# (a') review and ci-failed are terminal: no merge, nothing published.
-for variant in review fail; do
-  [ -z "$mismatch" ] || break
+# (a') ci-failed (a gate's own NO-GO) is terminal: no merge, nothing
+# published.
+if [ -z "$mismatch" ]; then
   reset
-  if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=$variant sh adapters/inproc/run.sh 2>"$log"; then
-    fail_case "a-$variant" "run failed"
+  if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=fail sh adapters/inproc/run.sh 2>"$log"; then
+    fail_case a-fail "run failed"
   fi
-  case "$variant" in review) want=review ;; fail) want=ci-failed ;; esac
-  [ "$(doc | jq -r .state)" = "$want" ] || fail_case "a-$variant" "state $(doc | jq -r .state), want $want"
-  [ "$(effects)" = "assign,ci," ] || fail_case "a-$variant" "effects: $(effects)"
-  [ "$(queue)" = 0 ] || fail_case "a-$variant" "an event was published after a terminal state"
-done
+  [ "$(doc | jq -r .state)" = ci-failed ] || fail_case a-fail "state $(doc | jq -r .state), want ci-failed"
+  [ "$(effects)" = "assign,ci," ] || fail_case a-fail "effects: $(effects)"
+  [ "$(queue)" = 0 ] || fail_case a-fail "an event was published after a terminal state"
+fi
+
+# (a'') review (docs/adr/0021 §1): a GO+review PR reaches the review step,
+# whose own verdict decides ci-passed or ci-failed — never review itself,
+# which is no longer terminal. approve continues on to merge/release
+# exactly like the golden path (a); reject is terminal, same as a gate's
+# NO-GO.
+if [ -z "$mismatch" ]; then
+  reset
+  if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=review STUB_REVIEW=approve sh adapters/inproc/run.sh 2>"$log"; then
+    fail_case a-review-approve "run failed"
+  fi
+  [ "$(doc | jq -r .state)" = rolled-back ] || fail_case a-review-approve "final state $(doc | jq -r .state), want rolled-back"
+  [ "$(effects)" = "assign,ci,review,merge performed 1,release," ] || fail_case a-review-approve "effects: $(effects)"
+  [ "$(queue)" = 0 ] || fail_case a-review-approve "queue not empty after the run"
+  [ "$(doc | jq -r .review.verdict)" = approved ] || fail_case a-review-approve "review.verdict not recorded"
+fi
+if [ -z "$mismatch" ]; then
+  reset
+  if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=review STUB_REVIEW=reject sh adapters/inproc/run.sh 2>"$log"; then
+    fail_case a-review-reject "run failed"
+  fi
+  [ "$(doc | jq -r .state)" = ci-failed ] || fail_case a-review-reject "state $(doc | jq -r .state), want ci-failed"
+  [ "$(effects)" = "assign,ci,review," ] || fail_case a-review-reject "effects: $(effects)"
+  [ "$(queue)" = 0 ] || fail_case a-review-reject "an event was published after ci-failed"
+fi
 
 # (b) the same event twice: applied once.
 if [ -z "$mismatch" ]; then
@@ -232,6 +267,11 @@ if [ -z "$mismatch" ]; then
   expect_nogo missing-link missing
   printf '%s' "$complete" | jq '.ci.head_sha = "other"' | sh adapters/stub-state/put.sh tickets 0001
   expect_nogo sha-mismatch other
+  # docs/adr/0021 §9: ci.decision=review past the review step must carry
+  # review.verdict/review.reason — a reviewed merge with no review on the
+  # record is exactly what an audit exists to catch.
+  printf '%s' "$complete" | jq '.ci.decision = "review"' | sh adapters/stub-state/put.sh tickets 0001
+  expect_nogo review-missing review.verdict
   printf '%s' "$complete" | sh adapters/stub-state/put.sh tickets 0001
   printf '%s\n' '{"number":1,"state":"open","merged":false,"head_sha":"head1","merge_sha":null}' > world/pr-1.json
   expect_nogo host-open open
