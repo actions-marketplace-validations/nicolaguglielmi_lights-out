@@ -230,8 +230,16 @@ services:
       GITEA_RUNNER_NAME: lights-out-l0
       GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
       DOCKER_HOST: unix:///var/run/docker.sock
+      # A job's own workdir is a fresh git clone (act_runner's host mode,
+      # not this compose mount) — it never sees the cosign key ./go up
+      # generated at $here/.crew/cosign.key on the workbench side.
+      # COSIGN_KEY overrides publish.sh's relative default to the one
+      # mounted below, read-only: the job signs with the same key
+      # core/launchpad.sh already has the public half of (docs/adr/0025 §2).
+      COSIGN_KEY: /crew/cosign.key
     volumes:
       - ${HOST_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      - ./.crew:/crew:ro
     security_opt:
       - label=disable
 
