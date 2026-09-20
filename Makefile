@@ -53,6 +53,23 @@ export ENVOY_ADMIN_URL
 CANARY_VERSION ?= 0.2.0-waitlist
 export CANARY_VERSION
 
+# The image `up` builds, publishes and signs as stable (docs/adr/0025 §1,
+# §3): the current checkout. CANARY_TAG is what a release deploys as
+# canary; it defaults to the same tag, so demo-rollback and demo-hold keep
+# releasing "the stable image under a different reported version" exactly
+# as before M8 — a real release from core/steps/release.sh overrides it to
+# the merge commit's own published tag. CANARY_IMAGE has no meaningful
+# default of its own (deploy.sh always sets it via core/launchpad.sh's
+# verified digest); the one here only keeps `docker-compose config -q`
+# (ci-compose) clean with no release in flight, the same reason
+# compose.yaml's own CANARY_VERSION default exists.
+APP_TAG ?= sha-$(shell git rev-parse HEAD)
+export APP_TAG
+CANARY_TAG ?= $(APP_TAG)
+export CANARY_TAG
+CANARY_IMAGE ?= localhost:5050/lights-out-backend:$(APP_TAG)
+export CANARY_IMAGE
+
 # Seconds launchpad holds a shift before calling verify/slo.sh: equal to the
 # slo.promql window, so a stage's numbers describe only this stage's canary
 # (docs/adr/0013 §2, §5).
@@ -97,7 +114,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests hooks harness tower perimeter review prompts evals promote contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests vendor-free hooks harness tower perimeter review prompts evals promote contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -135,14 +152,20 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	printf 'GO: demo, milestone M9, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
 
 .PHONY: up
-up: ## Start the L0 plane in compose and wait until every adapter is ready (docs/adr/0012 §6)
+up: ## Start the L0 plane, wait until every adapter is ready, then publish the signed stable image (docs/adr/0012 §6, 0025 §3)
 	@$(COMPOSE) up -d --build >&2
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
 		printf 'lights-out: waiting for %s\n' "$$a" >&2; \
 		sh "adapters/$$a/ready.sh" || exit 1; \
 	done
+	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
+	@$(MAKE) --no-print-directory publish TAG=$(APP_TAG)
 	@printf 'lights-out: plane is up, app at %s\n' "$(APP_URL)" >&2
+
+.PHONY: publish
+publish: ## Build, push and sign the image at TAG (docs/adr/0025 §1-§3)
+	@sh "adapters/$(REGISTRY)/publish.sh" "$(TAG)"
 
 .PHONY: smoke
 smoke: ## Sign up, log in and create a meetup through Envoy (app/smoke.sh)
@@ -333,10 +356,10 @@ mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's prov
 	printf 'mutation-baseline: %s/%s killed, score=%s, %ss wall time\n' "$$killed" "$$total" "$$score" "$$((end - start))" >&2
 
 .PHONY: release
-release: ## Deploy CANARY_VERSION and run the controller through staging, 5%, 25% (docs/adr/0013 §4)
+release: ## Deploy CANARY_VERSION at CANARY_TAG and run the controller through staging, 5%, 25% (docs/adr/0013 §4, 0025 §6)
 	@sh app/load.sh & \
 	load_pid=$$!; \
-	CANARY_VERSION="$(CANARY_VERSION)" STAGE_SECONDS="$(STAGE_SECONDS)" sh core/launchpad.sh; \
+	CANARY_VERSION="$(CANARY_VERSION)" CANARY_TAG="$(CANARY_TAG)" STAGE_SECONDS="$(STAGE_SECONDS)" sh core/launchpad.sh; \
 	rc=$$?; \
 	kill "$$load_pid" 2>/dev/null || true; \
 	wait "$$load_pid" 2>/dev/null || true; \
@@ -399,29 +422,19 @@ demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at
 	printf '[demo-hold] cleanup: rollback to 100/0 (not a verdict — the controller held at 25%%, this is hygiene for the next run)\n' >&2; \
 	printf 'GO: demo-hold\n'
 
-# Every target below writes app/flags/flags.json in place (jq's output
-# captured in a shell variable, then `>` truncates and rewrites the same
-# path) and never via a temp-file-plus-rename, even a same-directory one.
-# Reproduced live 2026-09-14 on flagd v0.16.3: a workbench container and the
-# flagd container each bind-mount app/flags/ separately (docs/adr/0012 §2);
-# a `mv`/`rename(2)` onto the watched path — same filesystem or not — gives
-# the path a new inode, and flagd's fileinfo poller, seen from the *other*
-# container's mount of the same host directory, would intermittently keep
-# serving the pre-rename (stale) evaluation, sometimes for minutes, with no
-# error and no further log line — the file on disk and `git diff` were
-# already correct while `waitlist` kept evaluating as if they were not. An
-# in-place truncate+write (no rename, same inode throughout) reproduced
-# correctly every time in the same setup; that is the only reason this
-# repo does not use the usual write-temp-then-rename pattern here.
+# The three targets below go through adapters/$(FLAGS)/set.sh and
+# evaluate.sh (docs/adr/0026 §3) instead of writing app/flags/flags.json
+# themselves — the same seam L2's flagd-on-Cloud-Run uses (docs/adr/0027
+# §8). set.sh's own header has the in-place-write story (why not a
+# temp-file-plus-rename): flagd's fileinfo poller, reproduced live
+# 2026-09-14 on v0.16.3, intermittently keeps serving a stale evaluation
+# after a rename, with no error.
 .PHONY: kill-switch
 kill-switch: ## Turn `waitlist` off for every version, live within seconds, no deploy (docs/adr/0013 §6)
-	@content=$$(jq 'del(.flags.waitlist.targeting) | .flags.waitlist.defaultVariant = "off"' app/flags/flags.json) \
-		&& printf '%s\n' "$$content" > app/flags/flags.json; \
+	@sh "adapters/$(FLAGS)/set.sh" waitlist off; \
 	i=0; v=""; \
 	while [ "$$i" -lt "$(READY_TIMEOUT)" ]; do \
-		v=$$(curl -fsS --connect-timeout 1 --max-time 3 -H 'Content-Type: application/json' \
-			-d '{"context":{"version":"$(CANARY_VERSION)"}}' \
-			"http://$(PLANE_HOST):8016/ofrep/v1/evaluate/flags/waitlist" | jq -r .value 2>/dev/null) || v=""; \
+		v=$$(sh "adapters/$(FLAGS)/evaluate.sh" waitlist "$(CANARY_VERSION)" 2>/dev/null) || v=""; \
 		[ "$$v" = "false" ] && break; \
 		i=$$((i + 1)); sleep 1; \
 	done; \
@@ -434,15 +447,13 @@ kill-switch: ## Turn `waitlist` off for every version, live within seconds, no d
 
 .PHONY: freeze
 freeze: ## Turn release-freeze on: launchpad refuses to deploy or shift (docs/adr/0013 §6)
-	@content=$$(jq '.flags["release-freeze"].defaultVariant = "on"' app/flags/flags.json) \
-		&& printf '%s\n' "$$content" > app/flags/flags.json; \
+	@sh "adapters/$(FLAGS)/set.sh" release-freeze on; \
 	printf 'lights-out: release-freeze is on (app/flags/flags.json edited; git checkout it to undo)\n' >&2; \
 	printf 'GO: freeze\n'
 
 .PHONY: unfreeze
 unfreeze: ## Turn release-freeze off (docs/adr/0013 §6)
-	@content=$$(jq '.flags["release-freeze"].defaultVariant = "off"' app/flags/flags.json) \
-		&& printf '%s\n' "$$content" > app/flags/flags.json; \
+	@sh "adapters/$(FLAGS)/set.sh" release-freeze off; \
 	printf 'lights-out: release-freeze is off\n' >&2; \
 	printf 'GO: unfreeze\n'
 
@@ -609,6 +620,17 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
 	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-launch — Envoy reports weights.canary=%s after the un-promote, want 0\n' "$$canary_w"; exit 1; }; \
 	printf 'GO: demo-launch\n'
+
+# The M8 acceptance command (docs/adr/0026 §4): the suite refuses to run by
+# accident (ci/contract.sh's cold run of every gates/*.sh sees CONFORMANCE
+# unset and NO-GOes instantly), so this target is the one place CONFORMANCE=1
+# is set. Not a ci-% self-check and not a demo-* stage: it stages real
+# releases on the plane, four to five minutes (docs/adr/0026 §7), and the
+# acceptance command is `./go delivery-conformance` (PROFILE=l2 at L2), never
+# a bare `make`/`sh gates/…` invocation.
+.PHONY: delivery-conformance
+delivery-conformance: ## Six-case Delivery/Flags conformance suite, real releases on the plane (docs/adr/0026)
+	@CONFORMANCE=1 sh gates/delivery-conformance.sh
 
 # Records the ADK roles' model responses at L1 (docs/adr/0020 §2), one
 # role at a time: ci/evals.sh with ADK_RECORD=1 writes fixtures/adk/<role>/

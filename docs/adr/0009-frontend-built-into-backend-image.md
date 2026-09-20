@@ -1,6 +1,6 @@
 # ADR 0009 — React + Vite + TypeScript, built in a node stage of the backend image, served by FastAPI at `/`; no frontend test framework at M1
 
-- Status: accepted
+- Status: accepted. Amended by ADR 0023: `design/` and `design/CONTRACT.md` describe the console, not this frontend; "M11 makes a frontend worker read `design/` artefacts" now refers to `console/`.
 - Date: 2026-09-14
 - Milestone: M1
 

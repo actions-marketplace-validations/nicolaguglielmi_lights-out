@@ -1,6 +1,6 @@
 # ADR 0004 — The toolchain lives in a `workbench` container; `./go` is the only host entrypoint
 
-- Status: accepted (amends ADR 0002 and ADR 0003). Amended by ADR 0012: §2 the runner is host mode on an image built from workbench, not docker mode; §4 engine-compat runs from `./go` on the selected engine and never joins `make ci`; §5 `:z` leaves the seed list, replaced by `security_opt: label=disable` on the one bind-mounted service. Amended by ADR 0015: Testcontainers rootless facts are void as of M4 (integration tests remain on compose Postgres per ADR 0010).
+- Status: accepted (amends ADR 0002 and ADR 0003). Amended by ADR 0012: §2 the runner is host mode on an image built from workbench, not docker mode; §4 engine-compat runs from `./go` on the selected engine and never joins `make ci`; §5 `:z` leaves the seed list, replaced by `security_opt: label=disable` on the one bind-mounted service. Amended by ADR 0015: Testcontainers rootless facts are void as of M4 (integration tests remain on compose Postgres per ADR 0010). Amended by ADR 0028: §1's tool list loses gcloud and terraform, which move to `workbench/cloud/Containerfile` built `FROM` the base image and selected by `WORKBENCH_FLAVOUR=cloud` in the l2/l3 profiles — the answer to the first consequence below; cosign joins the base instead (ADR 0025 §2).
 - Date: 2026-09-14
 - Milestone: M0
 
@@ -95,6 +95,8 @@ docker, else exit 1 with a message naming both. Acceptance criteria read
 - The image is 1 GB for a repo that is empty at M0; gcloud and terraform
   serve nobody before M8. Accepted by owner decision; if the 6-minute build
   budget breaks, the fix is publishing (point 3), not a second image.
+  (Overturned at M8 by ADR 0028: the fix was a second image after all —
+  474 MB measured at M7 close, for two tools no script touches before L2.)
 - `$PWD:$PWD` requires the repo under a path the VM mounts (`/Users` on
   macOS by default). Cloning to a mounted volume fails; README states it.
 - Under docker, files created in the bind mount are root-owned; `./go`

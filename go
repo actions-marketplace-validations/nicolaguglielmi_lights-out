@@ -68,6 +68,41 @@ if [ "$cmd" = clean ]; then
   exit 0
 fi
 
+# 1.5. docs/adr/0025, amended 2026-09-20: verified live, not assumed.
+# Rootless podman, unlike docker, does not treat localhost:5050 (Zot) as a
+# plain-HTTP registry without configuration — `docker-compose push` fails
+# with an opaque API 500. One-time and idempotent, only for podman, only
+# before the first push (`up`, which `demo` and `engine-compat` reach
+# through their own recursive `./go up`): a podman-machine VM (macOS,
+# Windows) needs the entry written inside it, root, over ssh, because the
+# daemon runs there, not on the host; native rootless podman (Linux, no
+# machine) needs it in the user's own config, no root.
+if [ "$engine" = podman ] && [ "$cmd" = up ]; then
+  reg_conf=/etc/containers/registries.conf.d/999-lights-out-local.conf
+  reg_tmp=$(mktemp)
+  cat > "$reg_tmp" <<'EOF'
+[[registry]]
+location = "localhost:5050"
+insecure = true
+EOF
+  machine=$(podman machine list --format '{{.Name}}' --noheading 2>/dev/null | head -1 | sed 's/\*$//')
+  if [ -n "$machine" ]; then
+    if ! podman machine ssh "$machine" -- test -f "$reg_conf" 2>/dev/null; then
+      podman machine ssh "$machine" -- sudo tee "$reg_conf" >/dev/null < "$reg_tmp" \
+        || die "could not write $reg_conf inside podman machine '$machine'. Run once yourself: podman machine ssh -- 'printf \"[[registry]]\\nlocation = \\\"localhost:5050\\\"\\ninsecure = true\\n\" | sudo tee $reg_conf'"
+      printf 'go: wrote %s inside podman machine %s — localhost:5050 (Zot) is an insecure registry for podman (docs/adr/0025)\n' "$reg_conf" "$machine" >&2
+    fi
+  else
+    user_conf="${XDG_CONFIG_HOME:-$HOME/.config}/containers/registries.conf.d/999-lights-out-local.conf"
+    if [ ! -f "$user_conf" ]; then
+      mkdir -p "$(dirname "$user_conf")"
+      cp "$reg_tmp" "$user_conf"
+      printf 'go: wrote %s — localhost:5050 (Zot) is an insecure registry for podman (docs/adr/0025)\n' "$user_conf" >&2
+    fi
+  fi
+  rm -f "$reg_tmp"
+fi
+
 # engine-compat is the one gate that runs on the host, because its subject
 # is the host engine (ADR 0004 point 4, ADR 0012 §5). It calls ./go up and
 # ./go smoke itself. demo runs it first, then continues inside workbench.
@@ -98,8 +133,9 @@ fi
 # 4. Targets that drive the engine get its socket. This hands workbench full
 # control of the engine; the README says so.
 socket_flags=""
+host_sock_flag=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review)
+  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
@@ -115,7 +151,12 @@ case "$cmd" in
     if [ "$engine" = docker ] && [ -S "$sock" ]; then
       sock_gid=$(stat -c %g "$sock" 2>/dev/null || stat -f %g "$sock")
       socket_flags="$socket_flags --group-add $sock_gid"
-    fi ;;
+    fi
+    # The same host path, passed through so compose can give the Gitea
+    # runner service its own copy of the socket (docs/adr/0015 §7, 0025
+    # §4: the runner is the only *compose service* with it; this is a
+    # separate mount from workbench's own above, not a second grant of it).
+    host_sock_flag="-e HOST_DOCKER_SOCK=$sock" ;;
 esac
 
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
@@ -124,7 +165,7 @@ run() {
     -v "$here:$here$label" -w "$here" \
     -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
     -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" \
-    $engine_flags $socket_flags \
+    $engine_flags $socket_flags $host_sock_flag \
     "$image" "$@"
 }
 

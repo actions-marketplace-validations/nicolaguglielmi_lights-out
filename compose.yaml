@@ -40,8 +40,13 @@ services:
   # image: tags the build so backend-canary (M3) can start a container from
   # exactly this image with no second build (docs/adr/0013 §1: "same image
   # and build as backend").
+  # image: registry-qualified and APP_TAG-driven (docs/adr/0025 §1, §3):
+  # `./go up` builds and tags it at the current checkout's sha, then
+  # publish.sh pushes and signs that exact tag — no retag, no rebuild.
+  # localhost:5050 is the one registry host both engines treat as
+  # insecure without configuration.
   backend:
-    image: lights-out-backend
+    image: localhost:5050/lights-out-backend:${APP_TAG:-latest}
     build:
       context: ./app
       dockerfile: backend/Containerfile
@@ -61,15 +66,15 @@ services:
       FLAGD_SYNC_PORT: "8015"
       APP_VERSION: 0.1.0-m2
 
-  # The canary revision (docs/adr/0013 §1): same image as backend, started
-  # only by adapters/envoy-canary/deploy.sh, never by `./go up`. No `build:`
-  # section: it reuses the `backend` image tag above, so a deploy never
-  # races a build. The `:-` default (not `:?`) keeps `docker-compose config
-  # -q` (ci-compose) clean with CANARY_VERSION unset; a drift between what
-  # the caller asked for and this default is caught by deploy.sh's own
-  # healthz check, not by compose failing to start.
+  # The canary revision (docs/adr/0013 §1): started only by
+  # adapters/envoy-canary/deploy.sh, never by `./go up`, at the specific
+  # verified digest core/launchpad.sh resolved (docs/adr/0025 §6) — no
+  # `build:` section, so a deploy never races a build. The Makefile
+  # defaults CANARY_IMAGE to the same tag `backend` above resolves to, so
+  # `docker-compose config -q` (ci-compose) stays clean with no release in
+  # flight; deploy.sh always overrides it for a real deploy.
   backend-canary:
-    image: lights-out-backend
+    image: ${CANARY_IMAGE:-localhost:5050/lights-out-backend:latest}
     profiles: ["canary"]
     depends_on:
       migrate:
@@ -203,6 +208,14 @@ services:
 
   # Host-mode runner built from the workbench image (docs/adr/0012 §3).
   # Registers against gitea with the fixed token; restarts while gitea boots.
+  # The engine socket (docs/adr/0015 §7, 0025 §4): the runner is the only
+  # compose service with it, jobs run only on refs the workbench user
+  # pushed (no fork PRs, no external webhook — this Gitea has neither),
+  # and the README's L0 trusted-network line names it. HOST_DOCKER_SOCK is
+  # the same path ./go resolves for its own socket mount into workbench;
+  # its `:-` default only keeps `docker-compose config -q` (ci-compose)
+  # clean when no target grants it — never used to start the service for
+  # real, exactly like backend-canary's CANARY_IMAGE default.
   runner:
     build:
       context: ./adapters/gitea/runner
@@ -216,6 +229,11 @@ services:
       GITEA_INSTANCE_URL: http://gitea:3000
       GITEA_RUNNER_NAME: lights-out-l0
       GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - ${HOST_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+    security_opt:
+      - label=disable
 
   # Both emulators come from the one official image (447 MB amd64, 356 MB
   # arm64 compressed, measured 2026-09-14): one pull, two containers.

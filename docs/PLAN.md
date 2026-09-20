@@ -26,7 +26,7 @@ Nomi interni da usare nel codice: il control plane è `tower`, i worker sono `cr
 
 Questa regola vince su qualunque altra scelta tecnica. In pratica significa:
 
-- `git clone && ./go demo` deve arrivare fino al rollback automatico di un canary. Al livello più basso, senza nemmeno una API key.
+- `git clone && ./go demo` deve arrivare fino al rollback automatico di un canary. A L0, senza nemmeno una API key. L0 non è una versione ridotta: è il prodotto completo, il cloud è opzionale (§3, ADR 0022).
 - Niente mock nascosti. Se un pezzo è simulato, deve esserlo in modo esplicito e dichiarato nel README con una riga tipo "at L0 the canary is a weighted Envoy split, not Cloud Run revisions".
 - Ogni livello superiore aggiunge integrazioni reali senza riscrivere il livello sotto. Gli script dei gate, le query delle metriche e le definizioni dei ruoli sono gli stessi a L0 e a L3.
 - Se una dipendenza esterna non è accessibile a uno sconosciuto (Stitch, Antigravity Enterprise, quote a pagamento), quella dipendenza **non può stare nel percorso critico**. Deve produrre un artefatto che viene committato nel repo, così chi clona parte da quell'artefatto.
@@ -35,22 +35,36 @@ Questa regola vince su qualunque altra scelta tecnica. In pratica significa:
 
 ## 3. Livelli di integrazione
 
-Quattro livelli. Ognuno è un profilo (`profiles/l0.env` … `profiles/l3.env`) e un target make. Il README deve avere questa tabella in cima.
+*Emendato 2026-09-20 (ADR 0022).* **Il locale è il prodotto, il cloud è un'aggiunta.** L0 non è il gradino più basso di una scala che porta a GCP: è la piattaforma completa, con tutte le capacità, senza account e senza chiave. L1 è lo stesso prodotto con un modello vivo. L2 e L3 esistono per chi vuole i servizi gestiti di Google al posto dei container: cambiano gli adapter, non le capacità.
 
-| | L0 · Replay | L1 · Local | L2 · Cloud | L3 · Platform |
+Quattro profili (`profiles/l0.env` … `profiles/l3.env`), in due gruppi:
+
+| | **Locale — il prodotto** | | **Cloud — opzionale** | |
 |---|---|---|---|---|
+| | L0 · Replay | L1 · Local | L2 · Cloud | L3 · Platform |
 | Serve | podman rootless (podman machine su macOS) | + Gemini API key | + progetto GCP con billing | + quote Agent Engine |
 | Modelli | risposte registrate (fixture) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform (ex Vertex AI), `gemini-3.8-flash` | idem + thinking level per ruolo |
 | Harness worker | replay | Gemini CLI headless in container | Gemini CLI su Cloud Run Job | + adapter Antigravity SDK |
-| Git e PR | Gitea in compose | Gitea | GitHub reale | GitHub reale |
+| Git e PR | Gitea in compose | Gitea | GitHub reale (adapter a M10) | GitHub reale |
 | CI | Gitea Actions (act runner) | Gitea Actions | GitHub Actions o Cloud Build | idem |
-| Registry | Zot locale | Zot | Artifact Registry + Binary Authorization | idem |
+| Registry e firma | Zot locale, firma con chiave locale, verifica della firma nel launchpad prima dello staging | idem | Artifact Registry, firma con chiave KMS, verifica con la stessa cosign, Binary Authorization come seconda serratura | idem |
 | Canary | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + opzione GKE |
+| Database dell'app | Postgres in compose | idem | Cloud SQL — **non scala a zero, unico costo fisso**: si ferma o si cancella fra un test e l'altro | idem |
 | Metriche | Prometheus | Prometheus | Managed Prometheus + Cloud Monitoring | idem |
-| Flag | flagd (file) | flagd | flagd su Cloud Run o Unleash | idem |
-| Eventi e stato | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore | + adapter Cloud Workflows |
+| Grafici della console | Grafana | Grafana | Cloud Monitoring | idem |
+| Flag | flagd (file) | flagd | flagd su Cloud Run (file su GCS) o Unleash | idem |
+| Eventi e stato | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore (adapter a M10) | + adapter Cloud Workflows |
 | Agenti ADK | stub | ADK locale (`adk web`) | ADK su Cloud Run | Agent Engine + BigQuery analytics |
+| Console | in compose, legge git e state store | idem | su Cloud Run, legge GitHub e Firestore | idem |
 | Tempo al primo rollback | < 15 min | < 20 min | ~45 min (terraform apply) | ~90 min |
+
+**Nessuna capacità esiste solo a L2.** Verificato riga per riga il 2026-09-20 (ADR 0022): l'unica capacità che il piano originale dava solo al cloud era il rifiuto di un'immagine non firmata (Binary Authorization). Senza l'equivalente locale, "niente arriva in produzione senza firma" varrebbe solo su GCP e L0 sarebbe una demo, non il prodotto. Quindi: la porta `Registry` firma a ogni livello (chiave locale generata a `./go up`, mai committata; chiave KMS a L2) e la porta `Delivery` verifica la firma prima di portare l'immagine in staging, a ogni livello. Workload Identity Federation e Secret Manager non sono capacità ma il modo in cui il cloud custodisce credenziali che il piano locale non ha: a L0 non c'è nessuna chiave, a L1 c'è la Gemini API key in `.env` e gli hook del harness ne bloccano l'accesso al worker.
+
+*Precisazione 2026-09-20 (ADR 0025 §6, ADR 0027 §5):* chi verifica la firma è `core/launchpad.sh` attraverso la porta `Registry` (`verify.sh`), prima dello staging e con lo stesso comando cosign a ogni livello — chiave su file a L0/L1, chiave KMS a L2. Binary Authorization resta a L2 come seconda serratura imposta dalla piattaforma, non come l'implementazione della regola: il controllo *sigstore* di Binary Authorization, verificato il 2026-09-20, è solo continuous validation su GKE e Artifact Registry, non ammissione.
+
+**Il costo di L2.** Tutto in L2 scala a zero tranne Cloud SQL. Il piano lo dichiara qui, `infra/README.md` lo ripete con il comando per fermare o cancellare l'istanza fra un test e l'altro, e `./go down PROFILE=l2` deve fermarla (non solo spegnere i servizi che scalano a zero da soli). In locale il database resta un container e il problema non esiste.
+
+**Il README segue quest'ordine:** prima il quick start locale (`./go demo`, niente account); poi la tabella qui sopra con i due gruppi di colonne; poi il resto del prodotto (app, gate, piano L0, launchpad, console); la sezione GCP arriva dopo tutto questo, si apre con la frase "everything below is optional" e con la riga sul costo di Cloud SQL, e non compare nel quick start.
 
 Due scelte che tengono in piedi la tabella:
 
@@ -66,17 +80,22 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | Porta | Adapter | Note |
 |---|---|---|
 | `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
-| `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge |
+| `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5) |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro |
 | `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
 | `StateStore` | `firestore-emulator`, `firestore` | stato del workflow, idempotenza |
 | `Orchestrator` | `inproc`, `cloud-workflows` | macchina a stati del ciclo di vita del ticket |
-| `Delivery` | `envoy-canary`, `cloud-deploy` | fasi, promote, rollback |
+| `Delivery` | `envoy-canary`, `cloud-deploy` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
 | `Metrics` | `prometheus`, `managed-prometheus` | stessa query PromQL |
-| `Flags` | `flagd`, `unleash` | OpenFeature, l'SDK non cambia |
-| `Registry` | `zot`, `artifact-registry` | firma e verifica |
+| `Flags` | `flagd`, `unleash` | OpenFeature, l'SDK non cambia; due verbi per il nucleo e i target: `evaluate.sh <flag> [version]`, `set.sh <flag> <variant>` (ADR 0026 §3) |
+| `Registry` | `zot`, `artifact-registry` | `publish.sh <tag>` costruisce, firma e pusha stampando il riferimento immutabile; `verify.sh <tag>` verifica la firma e stampa il digest verificato (ADR 0025 §1) |
+| `Charts` | `grafana`, `cloud-monitoring` | i grafici che la console mostra; la console non li ridisegna (ADR 0023) |
 
 Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud Deploy ha un concetto che Envoy non ha, o lo si modella in astratto o resta dentro l'adapter.
+
+*Emendamento 2026-09-20 (ADR 0024):* la regola è provata, non solo dichiarata. `ci/vendor-free.sh` fallisce se un file di `core/` nomina un fornitore di Delivery (Envoy, Cloud Deploy, Argo), anche in un commento. Il contratto di un adapter Delivery è la suite di conformità: promuove (staging → 5% → 25% → 100%), boccia e torna indietro su verify NO-GO, rispetta il freeze, riporta lo stato (`status.sh`: versione stabile, versione canary, peso). `envoy-canary` la passa oggi; `cloud-deploy` la passa come criterio di M8; è il requisito d'ingresso per qualunque adapter futuro. Il motore di container resta una scelta dell'utente, non un adapter: podman è il riferimento, docker è supportato e provato da `./go engine-compat` (ADR 0004, ADR 0012 §4).
+
+*Emendamento 2026-09-20 (ADR 0026):* `ready.sh` **non è un verbo della porta `Delivery`**: è la sonda di readiness che ogni adapter presente in `PLANE_ADAPTERS` deve a `make up`, qualunque sia la sua porta (ADR 0012 §6). La suite di conformità non la chiama mai. `status.sh` stampa un solo oggetto JSON con esattamente tre chiavi — `stable` (stringa), `canary` (stringa o `null`), `weight` (intero 0–100) — e niente altro: quello che un fornitore vuole aggiungere va su stderr. La lista di parole di `ci/vendor-free.sh` cresce con `flagd|unleash`, perché il freeze esce da `core/launchpad.sh` e passa dietro la porta `Flags`.
 
 ---
 
@@ -128,6 +147,8 @@ Stitch genera UI da prompt, esporta HTML/Tailwind, React, Vue, Angular, Flutter 
 
 Quindi entra così: il server MCP di Stitch si collega all'**agente interattivo** (Antigravity o Gemini CLI in sessione), che è il design step con l'umano dentro. Il risultato viene committato come artefatto: `design/tokens.json`, gli screen esportati in Tailwind sotto `design/screens/`, e un `design/CONTRACT.md` che elenca i componenti e gli stati. Il frontend worker headless legge quegli artefatti come spec e non chiama mai Stitch. Chi clona il repo trova i design già dentro e ottiene una UI funzionante senza aprire Stitch.
 
+*Emendamento 2026-09-20 (ADR 0023):* **il soggetto del design loop è la console, non l'app di esempio.** Le cinque schermate di M11 si progettano con Stitch e i loro artefatti vanno in `design/`; il frontend dell'app bersaglio resta com'è (ADR 0009) e non è più il destinatario di `design/CONTRACT.md`.
+
 ### Gli agenti ADK
 ADK copre i ruoli che non toccano il repo: product agent (dialogo lungo con il PO, sessioni e memoria), triage agent (volumi alti, un modello Flash basta), release agent (prepara il promotion brief). Motivi concreti: flusso di conferma dei tool per l'human-in-the-loop, possibilità di riavvolgere una sessione, analytics su BigQuery con provenienza delle tool call, e `adk eval` che usiamo come test di regressione degli agenti. A L3 girano su Agent Engine, sotto girano in locale.
 
@@ -153,7 +174,7 @@ lights-out/
   Makefile                  # up, demo, demo-rollback, e2e, clean, per ogni livello
   go                        # unico entrypoint host, POSIX sh
   profiles/                 # l0.env … l3.env
-  workbench/                # Containerfile della toolchain
+  workbench/                # Containerfile della toolchain (+ cloud/ per gcloud e terraform, ADR 0028)
   ci/                       # self-check del repo
   core/                     # nucleo senza fornitori: modello artefatti, macchina a stati, risk scoring
   adapters/                 # una cartella per adapter della tabella §4: codice e config del vendor (anche envoy-canary e cloud-deploy)
@@ -163,13 +184,16 @@ lights-out/
   gates/                    # script dei gate, containerizzati, identici a L0 e L3
   verify/                   # slo.promql e il verify runner
   tickets/                  # i ticket del progetto, uno per file, la sorgente del lavoro a L0 (Tracker=file)
-  design/                   # artefatti Stitch committati: tokens, screens, CONTRACT.md
+  design/                   # artefatti Stitch committati per la console: tokens, screens, CONTRACT.md
+  console/                  # M11: la vista sulla piattaforma, legge git e state store, scrive due cose sole
   app/                      # l'applicazione bersaglio
   infra/                    # terraform per L2 e L3
   fixtures/                 # risposte modello registrate per L0
   e2e/                      # il golden path
   docs/                     # architettura, ADR, guida al talk
 ```
+
+*Emendamento 2026-09-20 (ADR 0023):* aggiunta `console/`; `design/` descrive la console, non l'app bersaglio (ADR 0009 emendato).
 
 *Correzione 2026-09-14 (M2, ADR 0012):* la prima versione di questo layout aveva anche `delivery/ # envoy/ e clouddeploy/`, che duplicava gli adapter `envoy-canary` e `cloud-deploy` della tabella §4. Vince §4: la config di Envoy sta in `adapters/envoy-canary/`, quella di Cloud Deploy starà in `adapters/cloud-deploy/`, e `delivery/` non esiste. Aggiunta `tickets/`, che il layout non prevedeva.
 
@@ -229,6 +253,14 @@ Product agent conversazionale, triage agent sugli alert, release agent che compo
 Terraform per progetto, Artifact Registry, Cloud Run, Cloud Deploy con le fasi canary e il verify job, Cloud Monitoring, Binary Authorization, Workload Identity Federation da GitHub, Secret Manager con credenziali per ruolo.
 **Fatto quando:** su un progetto nuovo, `./go up PROFILE=l2` porta dallo zero al primo rollback automatico in meno di un'ora, e i file in `gates/` e `verify/` sono gli stessi di L0, verificato da un test che ne confronta gli hash.
 
+*Emendamento 2026-09-20 (ADR 0022):* la firma delle immagini che M8 costruisce arriva **a ogni livello, prima a L0**: chiave locale generata a `./go up` (mai nel repo), firma pushata su Zot con l'immagine, verifica nel launchpad prima dello staging; una immagine non firmata è `NO-GO: launchpad — unsigned image`. Binary Authorization a L2 è il secondo adapter della stessa regola, non la prima volta che la regola esiste. *(ADR 0024)* Prima di scrivere `adapters/cloud-deploy/`, la suite di conformità Delivery (`gates/delivery-conformance.sh DELIVERY=<nome>`), passata da `envoy-canary`; `cloud-deploy` è chiuso quando la passa a L2, con `ci/vendor-free.sh` ancora verde. Cloud SQL è l'unico pezzo di L2 che non scala a zero: `infra/README.md` lo dichiara con il comando per fermare o cancellare l'istanza, e `./go down PROFILE=l2` ferma l'istanza. Il README riordinato come in §3 (locale prima, GCP dopo e dichiarato opzionale) fa parte di M8, perché è la milestone in cui la sezione GCP smette di essere un piano.
+
+*Emendamento 2026-09-20 (ADR 0025, 0026, 0027, 0028), il livello meccanico di M8:*
+- **L'artefatto di rilascio (ADR 0025).** Il primo job di Gitea Actions è la build: su push a `main`, con la socket del motore (tre condizioni di ADR 0015 §7, tutte e tre verificate nel testo dell'ADR), il job fa `./go publish TAG=sha-$GITHUB_SHA` — check-out con `git`, non con `actions/checkout`, per non mettere github.com nel percorso della demo L0. La porta `Registry` prende due verbi (`publish.sh`, `verify.sh`), `./go up` genera la chiave e pubblica l'immagine stable firmata, `core/steps/release.sh` aspetta lo status `image` sul merge sha (`await.sh`, `IMAGE_TIMEOUT=300` s) e passa `CANARY_TAG` al launchpad, che verifica la firma prima dello staging e deploya il digest verificato (`deploy.sh <version> <image>`). `CANARY_VERSION` non cambia significato. Il segnaposto `"stable image, not built from merge.sha (M8)"` sparisce da `core/launchpad.sh`, `core/steps/release.sh` e `README.md`: M8 non è chiusa finché la stringa esiste ancora in uno di questi tre file. Strumento: cosign 3.1.3, con `--tlog-upload=false` in firma e `--insecure-ignore-tlog=true` in verifica (senza questi due flag la firma passa da Rekor e la regola d'oro salta).
+- **La suite di conformità (ADR 0026)** si scrive prima di `cloud-deploy`, con sei casi in ordine fisso, `CONFORMANCE=1` per non partire dentro `ci/contract.sh`, e il forzante del NO-GO che resta la regola di targeting committata (nessun interruttore di fault injection). Il freeze e il kill switch escono dal Makefile e passano dietro `adapters/$FLAGS/set.sh`, l'unico modo per far girare lo stesso caso a L2. *Emendamento 2026-09-20, decisione dell'owner:* un caso in più, a ogni livello, forza `NO-GO: launchpad — unsigned image` con un tag mai pubblicato — nessuno dei cinque casi originali toccava la firma.
+- **L2 (ADR 0027)** è il percorso di rilascio, non quello del ticket: `artifact-registry`, `cloud-deploy`, `managed-prometheus` e flagd su Cloud Run completi; `ready.sh` per tutti gli altri adapter nominati in `profiles/l2.env`; i verbi di `pubsub`, `firestore`, `github` e `github-issues` vanno alla milestone che fa girare la tower su GCP (M10). **Il verify job di Cloud Deploy resta spento**: decide `verify/slo.sh`, a ogni livello — è l'emendamento a questa riga di piano che conta di più. Secret Manager tiene un segreto solo (la password del database); "credenziali per ruolo" diventa un service account per ruolo. Workload Identity Federation si crea qui e si usa la prima volta a M10. *Emendamento 2026-09-20, decisione dell'owner:* il rifiuto di Binary Authorization non si prova più a mano una volta — `gates/unsigned-refused.sh` (`./go unsigned-refused PROFILE=l2`, NO-GO a L0) lo esercita davvero, fuori da `core/` apposta, con un'immagine push­ata direttamente in Artifact Registry e mai firmata da `publish.sh`; entra nell'acceptance di M8 insieme al test degli hash.
+- **La workbench si divide (ADR 0028):** gcloud e terraform (474 MB, misurati a chiusura M7) escono dall'immagine base e vanno in `workbench/cloud/Containerfile`, costruita `FROM` quella base; `WORKBENCH_FLAVOUR=cloud` nei profili l2/l3 e due righe in `./go` scelgono. cosign resta nella base, perché la firma serve prima a L0.
+
 *Nota 2026-09-16 (M6, ADR 0019):* qui arrivano anche la socket del runner di Gitea e il primo job di Gitea Actions (tre condizioni di ADR 0015 §7), la build dell'immagine dal merge commit e il push su Zot. M8 eredita anche da ADR 0020 i ruoli review (architect, test-reviewer, lo step `review` della tower), ticket 0003 e i due `record` di dev-worker che risolvono il budget (entrambi richiedono una run PR a medio rischio a L1, lo stesso lavoro `record` del budget).
 
 *Nota 2026-09-16 (chiusura M7, decisione mia):* i ruoli di review **non** entrano in M8: diventano una milestone propria, dopo M8, perché nessuna parte di quel lavoro dipende da GCP e in M8 ci starebbe solo per collocazione (secondo rinvio dei ruoli, terzo della socket). Numero proposto in HANDOFF: **M9 — Review**, prima del self-test notturno, che slitta a M10, e del design loop, che slitta a M11; da accettare o cambiare prima di iniziare M8. Dentro M8 invece va lo spostamento di gcloud e terraform (474 MB, nessuno script li usa prima di L2) dal workbench base a un'immagine `workbench-cloud`, con l'ADR che emenda 0004: è la milestone dove i due strumenti servono per la prima volta. Misure a chiusura M7: workbench 1.42 GB (gcloud 368, ADK 304, node 118, terraform 106); `./go demo` a freddo 684 s sui 900 di budget.
@@ -245,9 +277,22 @@ I ruoli `architect` e `test-reviewer` con prompt reali sul harness `gemini-cli` 
 Agent Engine per gli agenti ADK, BigQuery agent analytics, adapter Cloud Workflows, opzione GKE, e un job schedulato che ogni notte esegue il golden path completo su un progetto usa e getta.
 **Fatto quando:** il badge del nightly è verde nel README, e una regressione nei prompt lo fa diventare rosso.
 
-### M11 — Design loop e materiale da palco
-Il server MCP di Stitch collegato all'agente interattivo, gli artefatti di design committati, `docs/TALK.md` con la sequenza della demo e i video di backup di ogni passaggio.
-**Fatto quando:** un cloner senza accesso a Stitch ottiene comunque la UI corretta dagli artefatti nel repo.
+*Nota 2026-09-20 (ADR 0027 §1, ADR 0025 §4):* M10 eredita da M8 i verbi L2 della tower (`pubsub`, `firestore`, `github`, `github-issues`), il job dei gate su `pull_request` (ADR 0019 §4's "option A") e il primo consumatore reale di Workload Identity Federation: è la milestone in cui la tower gira davvero su GCP, quindi è lì che quel codice smette di essere infrastruttura senza consumatore.
+
+### M11 — Console, design loop e materiale da palco
+*Emendamento 2026-09-20 (ADR 0023): la console assorbe il design loop.* La console è la superficie umana della piattaforma e il soggetto che si progetta con Stitch: il server MCP di Stitch collegato all'agente interattivo produce gli artefatti in `design/`, committati, da cui il frontend worker costruisce la console senza mai chiamare Stitch.
+
+Principi vincolanti (ADR 0023):
+- **Una vista, non una fonte di verità.** Legge da git (ticket, ADR, commit, PR via `CodeHost`) e dallo state store (documenti della tower). Non ha un database suo, non duplica nulla, non tiene stato che non si ricostruisce da zero.
+- **Due sole azioni in scrittura:** rispondere a una domanda aperta su un ticket (la stessa che il ruolo product pone con `ask_product_owner`) e premere go-for-launch (lo stesso `core/promote.sh` di `./go promote`). Nient'altro accetta input.
+- **La CLI resta il canale primario.** Ogni cosa che la console mostra o fa esiste già come comando `./go`; senza console non si perde nulla.
+- **I grafici non si riscrivono.** La console incorpora o linka i pannelli della porta `Charts` (§4): Grafana a L0/L1, Cloud Monitoring a L2/L3.
+
+Schermate: lavagna dei ticket sulla macchina a stati della tower; dettaglio ticket con criteri di accettazione e domande aperte; navigatore ADR con le relazioni di emendamento (chi emenda chi, letto dalle righe `Status`); catena di audit navigabile da produzione fino alla spec (lo stesso `./go audit`); pannello go-for-launch con promotion brief ed esito canary.
+
+Con la console: `docs/TALK.md` con la sequenza della demo e i video di backup di ogni passaggio.
+
+**Fatto quando:** a L0, senza account e senza chiave, la console si apre, mostra il ticket 0001 con la sua catena completa (spec → ticket → PR → CI → merge → release → verify → rollback), e il go-for-launch premuto dalla console porta davvero il canary al 100% (lo stesso effetto di `./go promote` con `GO`). Un cloner senza accesso a Stitch ottiene comunque la console corretta dagli artefatti nel repo.
 
 ---
 
@@ -259,10 +304,10 @@ Un unico test end-to-end, che è insieme la demo, il test di regressione della p
 2. Il product agent verifica i criteri di accettazione e apre una domanda se mancano.
 3. Il dev worker implementa nel suo worktree e apre una PR.
 4. La CI esegue i gate, il risk scoring dice rischio medio, parte la review agent.
-5. Merge, build, immagine firmata, Cloud Deploy o Envoy porta al 5%.
+5. Merge, build, immagine firmata e firma verificata (a ogni livello, ADR 0022), Cloud Deploy o Envoy porta al 5%.
 6. Il verify legge le metriche e boccia, perché la feature dietro flag restituisce 5xx quando il flag è acceso.
 7. Rollback automatico, incident aperto, ipotesi ordinate.
-8. Seconda corsa con il flag spento: passa, arriva al gate umano, promozione al 100%.
+8. Seconda corsa con il flag spento: passa, arriva al gate umano, promozione al 100% — da `./go promote` o dal pannello della console, stesso codice.
 9. Accendi il flag in produzione, gli errori salgono, spegni il flag: risolto in secondi, senza deploy.
 
 Il punto 6 e il punto 9 sono due leve diverse con due tempi diversi, ed è la cosa che il pubblico deve portarsi a casa.
@@ -295,6 +340,8 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 6. Emulatori Pub/Sub e Firestore: copertura delle API che usiamo.
 7. Gitea Actions: quali feature di GitHub Actions non supporta, così isoliamo gli step.
 
+*Verificato 2026-09-20, prima di scrivere M8 (ADR 0025, 0027).* Punto 5: il canary di Cloud Deploy per Cloud Run **esiste ancora** e vale per servizi e worker pool, non per i job; `customCanaryDeployment.phaseConfigs` prende fasi con percentuale e `verify` opzionale, la fase `stable` al 100% è implicita, si avanza con `gcloud deploy rollouts advance` o con una automation; **le fasi canary sono saltate al primo deploy su un target**, quindi `./go up PROFILE=l2` deve creare il servizio prima; serve comunque uno `skaffold.yaml` anche per Cloud Run. Due derive rispetto a quello che il piano dava per scontato: (a) **Binary Authorization** — il controllo *sigstore* è solo continuous validation, su GKE e Artifact Registry, mentre l'ammissione su Cloud Run vuole attestor e attestazioni con chiave PKIX/KMS: la verifica della firma che decide resta quella del launchpad (cosign, stessa riga a ogni livello), BinAuthz è la seconda serratura (ADR 0027 §5); (b) **cosign** è alla 3.1.3, dove il formato bundle e i referrers OCI 1.1 sono il default e una firma con chiave locale finisce su Rekor se non si passa `--tlog-upload=false` (e `--insecure-ignore-tlog=true` in verifica) — senza quei due flag la firma a L0 richiederebbe rete e un log pubblico. Terzo dato: `google-github-actions/auth` è alla v3.
+
 ## 11. Rischi noti
 
 | Rischio | Cosa succede | Mitigazione |
@@ -302,9 +349,14 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 | Quota gratuita insufficiente a L1 | il cloner prova, sbatte sui rate limit, molla | task del demo piccoli, L0 come default assoluto, messaggio d'errore che spiega la quota |
 | Antigravity o Stitch cambiano | la demo si rompe una settimana prima del talk | entrambi fuori dal percorso critico, artefatti committati, video di backup |
 | L0 e L2 divergono | il repo pubblico diventa demo-ware | test che confronta gli hash di `gates/` e `verify/` tra i profili, nightly su L2 |
-| Costo del nightly | fattura a sorpresa | progetto usa e getta, budget alert, scale to zero, Flash sui ruoli non critici |
+| Costo di L2: ogni run da M8, più il nightly da M10 | fattura a sorpresa | progetto usa e getta, scale to zero, Flash sui ruoli non critici; il budget alert è una **risorsa Terraform** (`google_billing_budget` in `infra/project.tf`, ADR 0027 §2) creata dal **primo** `terraform apply` di M8, non un'aggiunta di M10 — importo e soglie sono una decisione dell'operatore, e un budget avvisa, non blocca la spesa |
 | Il repo diventa enorme | nessuno lo legge | l'app bersaglio resta piccola, se cresce si taglia |
 | docker è uno shim di podman | ci-engine-compat passa senza aver testato docker | il gate stampa le due versioni separate e marca lo shim come non testato |
+| Cloud SQL resta acceso | costo fisso fra un test e l'altro, l'unico in L2 | dichiarato in §3 e in `infra/README.md`; `./go down PROFILE=l2` ferma l'istanza; il budget alert della riga sopra, attivo dal primo apply |
+| Un adapter cloud in più | un nightly in più, un progetto GCP (o altro) che costa, una superficie che si rompe quando il fornitore cambia API | **politica: un solo adapter cloud alla volta** (`cloud-deploy`); il secondo si scrive quando qualcuno lo paga, e paga anche il suo nightly. Candidato naturale per il terzo adapter Delivery, quando servirà: Kubernetes con Argo Rollouts — legge già PromQL e copre più clienti di un adapter legato a un singolo fornitore (ADR 0024) |
+| La console diventa una seconda fonte di verità | CLI e console divergono, la demo mente | nessun database della console, due sole scritture che chiamano il codice della CLI (ADR 0023) |
+| Il job di Gitea Actions entra nel percorso della demo | `./go demo` diventa rosso per un runner ballerino, non per il canary | il fallimento è preciso (status del commit, non timeout) e `demo-rollback`, la prova del solo controller, non passa dal runner (ADR 0025) |
+| Le percentuali del canary vivono in due posti | `core/launchpad.sh` e la pipeline di Cloud Deploy divergono e nessuno se ne accorge | `shift.sh` boccia rumorosamente una percentuale senza fase, nominando il file della pipeline (ADR 0027 §3) |
 
 ## 12. Cosa non fare
 
@@ -313,6 +365,11 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 - Non dare credenziali di produzione a un agente, a nessun livello, nemmeno a L0 per comodità.
 - Non lasciare che il verify del canary dipenda da un giudizio del modello: la decisione è numerica, il modello arriva dopo per spiegare.
 - Non aggiungere un settimo ruolo senza togliere qualcosa: il titolo del talk dice sei.
+- Non dare alla console una scrittura che la CLI non ha, e non farle tenere stato suo: è una vista.
+- Non scrivere un secondo adapter cloud finché il primo non ha un nightly verde e qualcuno che paga il secondo.
+- Non nominare un fornitore di Delivery in `core/`, nemmeno in un commento: `ci/vendor-free.sh` lo boccia.
+- Non mettere una capacità solo a L2. Se il cloud sa fare una cosa che il locale non sa, il locale è una demo, e la regola d'oro salta.
+- Non lasciare che sia il verify di un fornitore a decidere il canary: decide `verify/slo.sh` con `verify/slo.promql`, a ogni livello (ADR 0027 §3).
 
 ---
 

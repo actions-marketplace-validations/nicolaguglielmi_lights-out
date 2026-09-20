@@ -36,7 +36,7 @@ The PR gates (`./go demo-gates`) run on six committed fixture patches and prove 
 
 The tower (`core/tower.sh`) is a state machine over a JSON document per ticket in the state store, driven by step events on the event bus, with the `inproc` orchestrator pulling one event at a time. `./go e2e` runs it end to end and `./go audit TICKET=<id>` rebuilds the chain deploy → merge → PR → ticket → spec from the document and cross-checks it against the code host: a record that says merged while the PR is open is a NO-GO.
 
-Declared at L0 (ADR 0019): the CI leg of `e2e` is the six gates run by the tower on the PR head and posted as the `gates` commit status on the PR — the Gitea runner does not execute them until M8; the canary the tower releases after the merge is the stable image under `0.2.0-waitlist`, not a build of the merged commit — build and push to Zot arrive at M8 with the Registry port, and every audit prints `image: stable image, not built from merge.sha (M8)`; the bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
+Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the six gates run by the tower on the PR head and posted as the `gates` commit status on the PR, not a Gitea Actions job — the runner's first job, from M8, is the release image build on `main`; the PR-gates job itself moves to the milestone that runs the tower on GCP. The canary the tower releases after the merge is a real build of the merge commit, signed by the `Registry` port and verified by the launchpad before it takes any traffic — `./go audit` prints the verified digest, not a placeholder. The bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
 
 Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset.
 
@@ -90,14 +90,18 @@ The first run builds the workbench image (about 1 GB on disk, 350–400 MB downl
 
 ## Levels
 
-| | L0 · Replay | L1 · Local | L2 · Cloud | L3 · Platform |
+Local first, cloud optional (ADR 0022): L0 and L1 are the whole product, no capability exists only in the cloud; L2 and L3 swap containers for managed Google services.
+
+| | **Local — the product** | | **Cloud — optional** | |
 |---|---|---|---|---|
+| | L0 · Replay | L1 · Local | L2 · Cloud | L3 · Platform |
 | **Needs** | podman rootless (podman machine on macOS) | + Gemini API key | + GCP project with billing | + Agent Engine quota |
 | **Models** | Recorded responses (fixtures) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform, `gemini-3.8-flash` | idem + thinking level per role |
 | **Harness worker** | Replay from `fixtures/` | Gemini CLI headless in compose | Gemini CLI on Cloud Run Job | + adapter Antigravity SDK |
 | **Git and PR** | Gitea in compose | Gitea | GitHub real | GitHub real |
 | **CI** | Gitea Actions (act runner) | Gitea Actions | GitHub Actions or Cloud Build | idem |
-| **Registry** | Zot local | Zot | Artifact Registry + Binary Authorization | idem |
+| **Registry and signing** | Zot local, local key, signature verified before staging (M8) | idem | Artifact Registry, KMS key, Binary Authorization | idem |
+| **App database** | Postgres in compose | idem | Cloud SQL — does not scale to zero, the one fixed cost; stop or delete it between runs (`infra/README.md`) | idem |
 | **Canary** | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + option GKE |
 | **Metrics** | Prometheus | Prometheus | Managed Prometheus + Cloud Monitoring | idem |
 | **Flags** | flagd (file) | flagd | flagd on Cloud Run or Unleash | idem |
@@ -129,7 +133,7 @@ Six gates run in order on a git range (two commits or more, measured by `git mer
 
 **Six fixtures:** `honest-fix` (ticket 0001 resolved, every gate GO, risk low); `fake-test` (same fix, inadequate test, mutation NO-GO); `migration` (adds a schema column, every gate GO, risk high); `sast-finding` (one bandit issue); `vulnerable-dep` (a known advisory); `failing-test` (one assertion fails). Each fixture is a git-format-patch `.patch` file applied in a worktree, with expected verdicts and JSON data recorded in `expect`.
 
-**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M8 the socket arrives under three conditions: the runner is the only service with it, jobs run only on refs the workbench user pushed, and the README's L0 trusted-network line extends to say the runner controls your engine.
+**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M8 the socket arrives, but not for this job: it goes to a new `image` job that builds, signs and pushes the merge commit (below); `gates` stays GitHub-only until the milestone that runs the tower on GCP. The socket's three conditions (ADR 0015 §7, ADR 0025 §4): the runner is the only compose service with it, jobs run only on refs the workbench user pushed, and the trusted-network line below says so.
 
 **Model reality check:** The worker pins Gemini CLI `0.61.0-preview.0`, deliberately on the preview channel, because `0.59.0` and the current stable `0.60.0` silently serve `gemini-3.5-flash` when asked for `gemini-3.8-flash` (upstream fix google-gemini/gemini-cli#29252, in no stable release yet); the pin returns to the stable channel at `0.61.0`. A live L1 run on this pin answers from `gemini-3.8-flash` (verified 2026-09-16). The fixture at `fixtures/0001/dev-worker/` stays recorded on `gemini-3.5-flash` — its `run.json` says so — so at L0 the replayed PR was written by 3.5 while a live L1 run answers from 3.8, until the fixture is next re-recorded. See ADR 0018.
 
@@ -152,7 +156,7 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 
 `./go smoke` signs up, logs in and creates a meetup through Envoy.
 
-**L0 assumes a trusted network**: every port is unauthenticated on every interface, the runner registration token in compose.yaml is public by design, and anyone on the LAN can register a runner or push to Zot.
+**L0 assumes a trusted network**: every port is unauthenticated on every interface, the runner registration token in compose.yaml is public by design, and anyone on the LAN can register a runner or push to Zot. From M8, the Gitea runner also controls your container engine (docs/adr/0015 §7, docs/adr/0025 §4): it is the only compose service with the socket, and it only runs jobs on refs pushed through this same workbench.
 
 At L0 the canary revision reuses the same image as stable, with the `waitlist` feature flag targeted at the version string `0.2.0-waitlist`: the failing version is the same code, different flag targeting. The first real code diff arrives with the M5 worker.
 
@@ -316,7 +320,8 @@ lights-out/
   gates/                    # from M4: PR gates, identical at every level
   fixtures/                 # M5: recorded agent responses at L1, replayed at L0; fixtures/adk/: recorded ADK model responses
   .crew/                    # M5: per-ticket workspace and output directory (gitignored)
-  design/                   # from M11: Stitch artifacts
+  design/                   # from M11: Stitch artifacts for the console (ADR 0023)
+  console/                  # from M11: the view over git and the state store (ADR 0023)
   infra/                    # from M8: Terraform for GCP
   e2e/                      # from M6: golden path test
 ```
