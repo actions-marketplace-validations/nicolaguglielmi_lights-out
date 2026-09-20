@@ -230,6 +230,15 @@ services:
       GITEA_RUNNER_NAME: lights-out-l0
       GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
       DOCKER_HOST: unix:///var/run/docker.sock
+      # `./go` sets this on workbench's own process (an -e flag on a
+      # per-invocation container), which is why every other docker-compose
+      # call in this repo has it — the runner is a long-lived service, not
+      # a fresh ./go invocation, so a job step's own `docker-compose push`
+      # (inside publish.sh) never would otherwise: docker-compose
+      # interpolates the whole file, gemini-cli's and this service's own
+      # build.args included, both `:?`-required. Baked in at container
+      # create time from workbench's own value, same as the image tag.
+      WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
       # A job's own workdir is a fresh git clone (act_runner's host mode,
       # not this compose mount) — it never sees the cosign key ./go up
       # generated at $here/.crew/cosign.key on the workbench side.
