@@ -1,16 +1,20 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# deploy-envoy-canary: starts backend-canary at the given version and waits
-# until it answers directly, not through Envoy, with that exact version
-# (docs/adr/0013 §4). No `--build`: backend-canary shares the `backend`
-# image tag, already built by `./go up`. Not a gate: no GO/NO-GO, one
-# stderr line and exit 1 on timeout.
+# deploy-envoy-canary: starts backend-canary at <image> (the verified
+# digest core/launchpad.sh passes, docs/adr/0025 §6), reporting <version>,
+# and waits until it answers directly, not through Envoy, with that exact
+# version (docs/adr/0013 §4). <image> is a bare repo@digest (docs/adr/0025
+# §1); localhost:5050 is the one registry host both engines treat as
+# insecure without configuration. No `--build`: the image already exists
+# in Zot, pushed by adapters/$REGISTRY/publish.sh. Not a gate: no GO/NO-GO,
+# one stderr line and exit 1 on timeout.
 set -eu
-version=${1:?usage: deploy.sh <version>}
+version=${1:?usage: deploy.sh <version> <image>}
+image=${2:?usage: deploy.sh <version> <image>}
 : "${READY_TIMEOUT:=60}"
 
-CANARY_VERSION="$version" docker-compose --profile canary up -d backend-canary >&2
+CANARY_VERSION="$version" CANARY_IMAGE="localhost:5050/$image" docker-compose --profile canary up -d backend-canary >&2
 
 i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do

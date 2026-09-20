@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # core-launchpad: the release controller (docs/adr/0013 §4, amended by
-# docs/adr/0014 §1). Vendor-free: it only calls the DELIVERY and METRICS
-# adapter scripts the profile names and the verify/slo.sh gate — no Envoy
-# or Prometheus word appears below. Stages: rollback to a known state, read
-# the stable version, check the freeze flag, staging, then 5% and 25%, each
-# gated by verify/slo.sh. A NO-GO at any stage rolls back and exits 1. A
-# full pass holds the canary at 25%, waiting for go-for-launch (core/
+# docs/adr/0014 §1, 0025 §6-§7). Vendor-free: it only calls the DELIVERY,
+# METRICS, REGISTRY and FLAGS adapter scripts the profile names and the
+# verify/slo.sh gate — no vendor name appears below (ci/vendor-free.sh).
+# Stages: rollback to a known state, read the stable version, check the
+# freeze flag, verify the signature, staging, then 5% and 25%, each gated
+# by verify/slo.sh. A NO-GO at any stage rolls back and exits 1. A full
+# pass holds the canary at 25%, waiting for go-for-launch (core/
 # promote.sh, docs/adr/0020 §4), and exits 0. Either way the decision and
 # the numbers that produced it are written to RELEASE_RECORD, the file
 # promote reads. Generates no traffic itself: production has real
@@ -21,11 +22,14 @@ name=launchpad
 . ci/lib.sh
 
 : "${CANARY_VERSION:?CANARY_VERSION not set}"
+: "${CANARY_TAG:?CANARY_TAG not set}"
 : "${STAGE_SECONDS:=60}"
 : "${PLANE_HOST:=host.containers.internal}"
 : "${APP_URL:=http://$PLANE_HOST:8080}"
 : "${DELIVERY:?DELIVERY not set; run this via ./go, not directly}"
 : "${METRICS:?METRICS not set; run this via ./go, not directly}"
+: "${REGISTRY:?REGISTRY not set; run this via ./go, not directly}"
+: "${FLAGS:?FLAGS not set; run this via ./go, not directly}"
 
 : "${RELEASE_RECORD:=.crew/release.json}"
 
@@ -37,18 +41,22 @@ rollback() {
   sh "$delivery/rollback.sh"
 }
 
-# The release record (docs/adr/0020 §4): version, stable, one entry per
-# verified stage with its verdict and the `slo:` lines behind it, and the
-# outcome. Built up as stages pass; written on every exit path below.
+# The release record (docs/adr/0020 §4, amended 0025 §7): version, stable,
+# the verified image (empty until the signature check below passes), one
+# entry per verified stage with its verdict and the `slo:` lines behind
+# it, and the outcome. Built up as stages pass; written on every exit
+# path below except a pre-staging refusal (freeze, signature), which
+# leaves the prior run's record on disk untouched (docs/adr/0026 §6 case 3).
 stages='[]'
+image=""
 record() {
   # record VERDICT [HELD_AT]
   mkdir -p "$(dirname "$RELEASE_RECORD")"
   jq -n --arg v "$CANARY_VERSION" --arg s "${STABLE_VERSION:-}" --argjson stages "$stages" \
-    --arg verdict "$1" --arg held "${2:-}" \
+    --arg verdict "$1" --arg held "${2:-}" --arg image "$image" \
     '{version: $v, stable: $s, stages: $stages, verdict: $verdict,
       held_at: (if $held == "" then null else ($held | tonumber) end),
-      image: "stable image, not built from merge.sha (M8)"}' > "$RELEASE_RECORD"
+      image: $image}' > "$RELEASE_RECORD"
 }
 
 fail_stage() {
@@ -59,10 +67,7 @@ fail_stage() {
 }
 
 frozen() {
-  freeze=$(curl -fsS --connect-timeout 1 --max-time 3 \
-      -H 'Content-Type: application/json' -d '{"context":{}}' \
-      "http://$PLANE_HOST:8016/ofrep/v1/evaluate/flags/release-freeze" \
-    | jq -r .value 2>/dev/null) || freeze=false
+  freeze=$(sh "adapters/$FLAGS/evaluate.sh" release-freeze 2>/dev/null) || freeze=false
   [ "$freeze" = "true" ]
 }
 
@@ -79,8 +84,14 @@ if frozen; then
   nogo "release-freeze is on"
 fi
 
-printf '[launchpad] staging: deploying %s (stable is %s)\n' "$CANARY_VERSION" "$stable_version" >&2
-sh "$delivery/deploy.sh" "$CANARY_VERSION" >&2 || fail_stage staging "deploy did not become healthy"
+# The signature check (docs/adr/0022 §3, 0025 §6): the Registry port
+# verifies before anything is staged; an unsigned or mis-signed tag is
+# refused by this exact line, not folded into a Delivery adapter's own
+# exit 1. cosign's own reason streams to stderr from verify.sh itself.
+image=$(sh "adapters/$REGISTRY/verify.sh" "$CANARY_TAG") || nogo "unsigned image"
+
+printf '[launchpad] staging: deploying %s at %s (stable is %s)\n' "$CANARY_VERSION" "$image" "$stable_version" >&2
+sh "$delivery/deploy.sh" "$CANARY_VERSION" "$image" >&2 || fail_stage staging "deploy did not become healthy"
 
 for pct in 5 25; do
   if frozen; then

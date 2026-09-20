@@ -1,0 +1,28 @@
+# Working-tree-only allowlist for ci/secrets.sh (docs/adr/0025 Consequences,
+# "Amended 2026-09-20, owner ruling"). Not .gitleaks.toml, and not at the
+# repo root: gitleaks never auto-loads this file on its own. ci/secrets.sh
+# passes it with -c to the `gitleaks dir` (working-tree) scan only; the
+# `gitleaks git` (history) scan keeps running with no config at all, so no
+# entry here can ever hide anything that was once committed.
+#
+# The one thing this allowlists is the passwordless local cosign key
+# `./go up` generates at .crew/cosign.key (docs/adr/0025 §2): gitignored,
+# never staged, never committed — ci/secrets.sh asserts exactly that, for
+# this exact path, before either scan runs. Both `paths` and `regexes` must
+# match (condition = "AND"): a same-named file holding anything else is
+# still a finding, and a file with this content anywhere else is still a
+# finding too. The path is anchored to precisely what gitleaks 8.30.1
+# reports for a file at .crew/cosign.key when scanning `.` (verified
+# against the pinned version 2026-09-20: it reports "path/to/file", not
+# "./path/to/file"), so a change to that reporting is a wrong anchor that
+# fails closed, not a silent hole.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "the local passwordless cosign key ./go up generates at .crew/cosign.key (docs/adr/0025 §2); gitignored, never committed"
+condition = "AND"
+paths = ['''^\.crew/cosign\.key$''']
+regexes = ['''-----BEGIN ENCRYPTED SIGSTORE PRIVATE KEY-----''']
+regexTarget = "match"

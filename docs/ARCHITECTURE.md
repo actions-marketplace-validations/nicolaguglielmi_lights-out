@@ -19,15 +19,30 @@ The core knows no vendor. Every integration sits behind a port with at least two
 
 **Rule: an adapter cannot introduce concepts into the core.** If Cloud Deploy has a concept that Envoy does not, either model it abstractly or keep it inside the adapter.
 
+*Amended 2026-09-20 (ADR 0024, 0025, 0026) — decided, built in M8.* `ci/vendor-free.sh` proves the rule for the `Delivery` column by grepping `core/` for vendor names, comments included; its word list grows to `flagd|unleash`, now that the freeze check reads `adapters/$FLAGS/evaluate.sh` instead of a hardcoded flagd URL in `core/launchpad.sh`. The port contracts M8 changes:
+
+| Port | Verbs after M8 | Note |
+|---|---|---|
+| `Delivery` | `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh` | four verbs. `ready.sh` is **not** one of them: every adapter in `PLANE_ADAPTERS` owes `make up` a readiness probe whatever its port (ADR 0012 §6), and the conformance suite never calls it. `status.sh` prints one JSON object with exactly three keys — `stable` (string), `canary` (string or `null`), `weight` (integer 0–100) — and nothing else (ADR 0026 §2) |
+| `Registry` | `publish.sh <tag>`, `verify.sh <tag-or-ref>` | `publish.sh` builds the current checkout, pushes it under `sha-<commit>` and signs it, printing the immutable `repo@sha256:…`; `verify.sh` verifies the signature and prints the digest it verified, which is the digest that gets deployed (ADR 0025 §1) |
+| `Flags` | `evaluate.sh <flag> [version]`, `set.sh <flag> <variant>` | the launchpad's freeze check and the `freeze`/`unfreeze`/`kill-switch` targets go through the port, so the same conformance case runs at L0 and L2 (ADR 0026 §3) |
+| `CodeHost` | `await.sh <sha> <context>` | waits for a commit status the tower did not produce — the image build job — and prints its state (ADR 0025 §5) |
+
+Every `Delivery` adapter must pass `gates/delivery-conformance.sh` to count as one: five cases, driven only through `core/launchpad.sh` and `core/promote.sh` (ADR 0024 §2, ADR 0026).
+
 ## Levels and Profiles
 
 Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`). The Makefile selects one with `PROFILE ?= l0` and exports it. Adapter choices come from environment variables named after the ports above. See [ADR 0001](adr/0001-profiles-and-single-makefile.md).
 
+*Amended 2026-09-20 (ADR 0022, 0028).* L0 and L1 are the whole product: every capability, no account, no key. L2 and L3 replace containers with managed services and add nothing the local plane lacks. `profiles/l2.env` and `profiles/l3.env` also carry `WORKBENCH_FLAVOUR=cloud`, which makes `./go` build `workbench/cloud/Containerfile` (gcloud and terraform) on top of the base workbench image; L0 and L1 never download either.
+
 ## Invariants
 
-1. **One PromQL file:** `verify/slo.promql` is the only query that decides if the canary passes. It runs identically on Prometheus local (L0/L1) and on Managed Prometheus (L2/L3). This is the line that prevents L0 and L2 from diverging.
+1. **One PromQL file:** `verify/slo.promql` is the only query that decides if the canary passes. It runs identically on Prometheus local (L0/L1) and on Managed Prometheus (L2/L3). This is the line that prevents L0 and L2 from diverging. At L2 this means Cloud Deploy's own `verify` stanza stays off: `core/launchpad.sh` decides at every level (ADR 0027 §3).
 
 2. **One workflow YAML:** the same `.github/workflows/ci.yml` runs on Gitea Actions (L0/L1) and GitHub Actions (L2/L3). The syntax is GitHub Actions. Gitea unsupported features are isolated in steps and skipped with conditions, never duplicated. See [ADR 0002](adr/0002-self-ci-is-make-ci.md).
+
+3. **Nothing reaches staging unsigned:** the `Registry` port signs what it publishes and `core/launchpad.sh` verifies the signature before the first traffic, at every level — a local key pair at L0/L1, a KMS key at L2, the same cosign command. An unsigned image is `NO-GO: launchpad — unsigned image`. See [ADR 0022](adr/0022-local-first-cloud-optional.md) and [ADR 0025](adr/0025-release-artefact-build-sign-verify.md).
 
 ## Toolchain and Entrypoint
 
@@ -66,7 +81,7 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 | rollback | M3 | Automatic on verify NO-GO, or manual trigger |
 | e2e | M6 | Full path through the tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
 
-`demo-launch` is not a stage of `./go demo` (ADR 0020 §4); it runs in the `launch` CI job to prove go-for-launch on every push.
+`demo-launch` is not a stage of `./go demo` (ADR 0020 §4); it runs in the `launch` CI job to prove go-for-launch on every push. Neither is `delivery-conformance` (ADR 0026 §4).
 
 See [ADR 0003](adr/0003-make-demo-before-m3.md).
 

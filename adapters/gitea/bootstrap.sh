@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # bootstrap-gitea: creates the admin user, the lights-out/lights-out repo
-# with Actions off, and force-pushes this checkout's HEAD to its main
+# with Actions on, and force-pushes this checkout's HEAD to its main
 # branch (docs/adr/0017 §5). Idempotent: safe on every `assign`, because
 # Gitea holds no persistent volume (docs/adr/0012) and starts empty on
-# every `./go up`. Actions stay off: a job nobody consults before M6 is
-# noise, not proof (docs/adr/0017 §5 amends docs/adr/0015 §7 — the runner
-# socket and the first Gitea job move to M6). Adapter convention (docs/adr/
-# 0012 §6): not a gate, silent on success, one stderr line and exit 1 on
-# failure.
+# every `./go up`. Actions were off through M7 — a job nobody consulted
+# was noise, not proof — and turn on at M8 (docs/adr/0025 §4): the runner
+# gets its first real job, the release image build, and
+# core/steps/release.sh's await.sh call needs the `image` status it posts.
+# Adapter convention (docs/adr/0012 §6): not a gate, silent on success,
+# one stderr line and exit 1 on failure.
 set -eu
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
@@ -41,11 +42,11 @@ case "$code" in
   *) printf 'bootstrap-gitea: create repo returned %s: %s\n' "$code" "$body" >&2; exit 1 ;;
 esac
 
-# 3. Actions off: a job that runs on every push and nobody reads before M6.
+# 3. Actions on (docs/adr/0025 §4): the runner's first job needs them.
 curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
-  -X PATCH -d '{"has_actions":false}' \
+  -X PATCH -d '{"has_actions":true}' \
   "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO" >/dev/null \
-  || { printf 'bootstrap-gitea: could not disable Actions\n' >&2; exit 1; }
+  || { printf 'bootstrap-gitea: could not enable Actions\n' >&2; exit 1; }
 
 # 4. Mirror this checkout's HEAD onto Gitea's main. Force: the L0 repo is a
 # mirror of the local clone, not a place to keep hand-made history.

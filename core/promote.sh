@@ -48,9 +48,9 @@ mkdir -p "$PROMOTE_OUT/out"
 if [ "$AGENT_HARNESS" = replay ]; then
   author="core/promote.sh from the record — no model at L0, the release role writes it from L1"
   brief=$(printf '%s' "$record" | jq -r '
-    "# Promotion brief: \(.version)\n\nPromote `\(.version)`, replacing stable `\(.stable)`.\n\n## Stages\n"
+    "# Promotion brief: \(.version)\n\nPromote `\(.version)` (`\(.image)`), replacing stable `\(.stable)`.\n\n## Stages\n"
     + ([.stages[] | "- \(.pct)%: \(.verdict)\n" + ([.numbers[] | "  - \(.)\n"] | join(""))] | join(""))
-    + "\n## Not verified\n- \(.image)\n- 100% of traffic: not observed yet; that is what this decision starts.\n"
+    + "\n## Not verified\n- 100% of traffic: not observed yet; that is what this decision starts.\n"
     + "\nRecommendation: GO — every stage passed verify; the numbers above are the evidence."')
 else
   author="the release role, $harness"

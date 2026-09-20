@@ -50,6 +50,37 @@ jobs:
         env:
           CONTAINER_ENGINE: docker
 
+  # The release artefact (docs/adr/0025 §4): the merge commit, built,
+  # pushed to Zot and signed. Gitea-only and main-only — ADR 0015 §7's
+  # three conditions (the runner is the only compose service with the
+  # engine socket; no fork PRs, no external webhook, this Gitea has
+  # neither). Checks out with plain git, not actions/checkout: the runner
+  # resolves actions from github.com, and an action download on the L0
+  # demo path is a network dependency the golden rule does not need.
+  # host-mode act_runner (docs/adr/0012 §3) means this step already runs
+  # inside a workbench-built container with make, docker-compose and
+  # cosign on PATH and the engine socket mounted — ./go's own
+  # LIGHTS_OUT_WORKBENCH=1 check execs `make publish` directly.
+  #
+  # Gitea Actions does not post a commit status of its own per job the way
+  # GitHub's UI does (verified 2026-09-20: core/steps/ci.sh already posts
+  # its own `gates` status explicitly, for the same reason) — so this job
+  # posts `image` itself, pending first and success/failure after, which
+  # is the status core/steps/release.sh's await.sh call is waiting for.
+  image:
+    runs-on: ubuntu-latest
+    if: github.server_url != 'https://github.com' && github.ref == 'refs/heads/main'
+    steps:
+      - run: |
+          git clone --branch main --single-branch --depth 50 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" .
+          git checkout "$GITHUB_SHA"
+      - run: sh adapters/gitea/status.sh "$GITHUB_SHA" pending image "building sha-$GITHUB_SHA"
+      - run: ./go publish TAG="sha-$GITHUB_SHA"
+      - if: success()
+        run: sh adapters/gitea/status.sh "$GITHUB_SHA" success image "published sha-$GITHUB_SHA"
+      - if: failure()
+        run: sh adapters/gitea/status.sh "$GITHUB_SHA" failure image "./go publish failed, see the job log"
+
   # go-for-launch's proof (docs/adr/0020 §4): a held canary promoted to
   # 100% with the human answered by GO_FOR_LAUNCH=GO, then the un-promote.
   # Not a `demo` stage — plan §2's criterion is the rollback — so it runs
