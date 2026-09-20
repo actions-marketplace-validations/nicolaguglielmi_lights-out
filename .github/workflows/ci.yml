@@ -67,6 +67,11 @@ jobs:
   # its own `gates` status explicitly, for the same reason) — so this job
   # posts `image` itself, pending first and success/failure after, which
   # is the status core/steps/release.sh's await.sh call is waiting for.
+  # The outcome branch below is a plain shell if, not a per-step status
+  # check keyed on the step's own pass/fail (Gitea Actions supports only
+  # unconditional re-runs, caught building this — see ci/gitea-compat.sh
+  # for the exact banned spellings), so the branch and the job's own exit
+  # code both come from one step's shell logic instead.
   image:
     runs-on: ubuntu-latest
     if: github.server_url != 'https://github.com' && github.ref == 'refs/heads/main'
@@ -75,11 +80,13 @@ jobs:
           git clone --branch main --single-branch --depth 50 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" .
           git checkout "$GITHUB_SHA"
       - run: sh adapters/gitea/status.sh "$GITHUB_SHA" pending image "building sha-$GITHUB_SHA"
-      - run: ./go publish TAG="sha-$GITHUB_SHA"
-      - if: success()
-        run: sh adapters/gitea/status.sh "$GITHUB_SHA" success image "published sha-$GITHUB_SHA"
-      - if: failure()
-        run: sh adapters/gitea/status.sh "$GITHUB_SHA" failure image "./go publish failed, see the job log"
+      - run: |
+          if ./go publish TAG="sha-$GITHUB_SHA"; then
+            sh adapters/gitea/status.sh "$GITHUB_SHA" success image "published sha-$GITHUB_SHA"
+          else
+            sh adapters/gitea/status.sh "$GITHUB_SHA" failure image "./go publish failed, see the job log"
+            exit 1
+          fi
 
   # go-for-launch's proof (docs/adr/0020 §4): a held canary promoted to
   # 100% with the human answered by GO_FOR_LAUNCH=GO, then the un-promote.
