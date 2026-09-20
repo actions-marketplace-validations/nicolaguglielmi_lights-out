@@ -22,7 +22,7 @@ state=""
 while [ "$i" -lt "$AWAIT_TIMEOUT" ]; do
   state=$(curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" \
       "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/commits/$sha/statuses" 2>/dev/null \
-    | jq -r --arg c "$context" '[.[] | select(.context == $c)] | .[0].state // empty')
+    | jq -r --arg c "$context" '[.[] | select(.context == $c)] | .[0].status // empty')
   case "$state" in
     success | failure | error)
       printf '%s\n' "$state"
