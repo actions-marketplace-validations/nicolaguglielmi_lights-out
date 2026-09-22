@@ -2,11 +2,13 @@
 
 Six agents ship it. One human turns the lights back on.
 
-Six agent roles take a ticket to production on a Google stack. At every step, a gate answers GO or NO-GO. The last gate is human: the flight readiness poll before the canary goes to 100%.
+Let agents work on a codebase you do not trust. Six agent roles take a ticket to production; every change passes numeric gates, stays inside the perimeter the ticket declares, and rolls itself back when the canary's numbers say so. At every step, a gate answers GO or NO-GO. The last gate is human: the flight readiness poll before the canary goes to 100%.
+
+lights-out is a governed-autonomy harness, not a code assistant: the decision that matters is never the model's (ADR 0029). It runs complete on a laptop with no account and no API key; Google Cloud is the optional target of the L2/L3 profiles.
 
 ## Status
 
-Milestone M9 of 11. What runs today:
+Milestone M9 closed; M12, the seam that puts the target app behind a port, is next (ADR 0029). What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|

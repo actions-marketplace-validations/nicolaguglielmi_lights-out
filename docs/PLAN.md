@@ -18,6 +18,8 @@ Tagline repo: *Six agents ship it. One human turns the lights back on.*
 
 Nomi interni da usare nel codice: il control plane è `tower`, i worker sono `crew`, la pipeline di rilascio è `launchpad`, il gate umano è `go-for-launch`. Non estendere la metafora oltre questi quattro.
 
+*Emendamento 2026-09-23 (ADR 0029).* **Cos'è il prodotto.** lights-out è un harness di autonomia governata: lascia che degli agenti facciano cambi a volume su un codebase di cui nessuno si fida, in sicurezza — ogni cambio passa gate numerici, resta nel perimetro che il ticket dichiara, torna indietro da solo su un verify NO-GO, e arriva in produzione attraverso una sola decisione umana. I sei ruoli sono la squadra di consegna dell'harness. Il valore è l'harness; il modello è sostituibile e lo è già. Lo stack Google è il target cloud opzionale (L2/L3), non l'identità. Il nome resta: "lights-out manufacturing" è il reparto che gira senza nessuno perché i sistemi di sicurezza sono fidati, e "one human turns the lights back on" è il gate umano — calza all'harness meglio di quanto calzasse a una fabbrica. Il talk è secondario. Il secondo arco è in §14.
+
 ---
 
 ## 2. La regola d'oro
@@ -162,6 +164,8 @@ Resta noioso di proposito: eventi su Pub/Sub, dispatcher, macchina a stati con l
 ### L'app bersaglio
 Serve un'applicazione vera su cui gli agenti lavorano. Deve essere abbastanza piccola da leggersi in un'ora e abbastanza vera da avere tutto ciò che rompe: **un backend Python (FastAPI) con Postgres, un frontend React, autenticazione, una migrazione di schema, un endpoint dipendente da un servizio esterno** (così esiste un contract test). Dominio suggerito: gestione iscrizioni a un meetup, che è anche il dominio che conosci meglio e regge bene sul palco.
 
+*Emendamento 2026-09-23 (ADR 0029).* L'app meetup è il **primo workload**, non il soggetto fisso del prodotto. Da M12 sta dietro una porta (ADR 0030 ne fissa nome e contratto): nessun file di `core/`, `gates/`, `verify/` la nomina, `ci/app-free.sh` lo prova, e un secondo workload deliberatamente minimo dimostra che il seam è reale. Misura del 2026-09-22: ~87 riferimenti all'app in 15 file fuori da `app/`, `core/crew.sh` compreso.
+
 ---
 
 ## 6. Layout del repo
@@ -294,6 +298,12 @@ Con la console: `docs/TALK.md` con la sequenza della demo e i video di backup di
 
 **Fatto quando:** a L0, senza account e senza chiave, la console si apre, mostra il ticket 0001 con la sua catena completa (spec → ticket → PR → CI → merge → release → verify → rollback), e il go-for-launch premuto dalla console porta davvero il canary al 100% (lo stesso effetto di `./go promote` con `GO`). Un cloner senza accesso a Stitch ottiene comunque la console corretta dagli artefatti nel repo.
 
+*Nota 2026-09-23 (ADR 0029, risequenziamento):* M12 è la prossima milestone. M11 viene anticipata subito dopo l'esperimento sul repo legacy (§14), perché il cliente di un engagement vuole vedere la catena di audit e premere lui go-for-launch. Il track cloud di M8 e M10 aspettano chi li paga — la politica che §11 già applica al secondo adapter cloud vale anche per il primo. Nulla di loro viene cancellato.
+
+### M12 — Il seam: l'app dietro una porta
+L'app bersaglio smette di essere cablata nella piattaforma. Una porta per il workload (nome e contratto in ADR 0030) con un file d'istanza che dichiara tutto ciò che gate, launchpad, verify e tower devono sapere dell'app: path del package, lockfile, comando di test, target di mutation, endpoint delle metriche, flag del kill switch, servizi compose. `ci/app-free.sh` fallisce se `core/`, `gates/` o `verify/` nominano l'app, come `ci/vendor-free.sh` fa per i fornitori di Delivery. Un secondo workload, deliberatamente minimo, dimostra che il seam è reale e non solo dichiarato. Zero ruoli nuovi, zero modelli nuovi, nessuna capacità visibile in più: è la milestone che rende possibili tutte le altre.
+**Fatto quando:** `./go ci` è verde con il nuovo check `app-free`; `./go demo` a L0 stampa lo stesso `GO: demo` di M9, entro lo stesso budget di 900 s, con le stesse fixture e gli stessi ticket; e il secondo workload arriva al rollback automatico e passa i gate su una fixture committata, con un comando fuori dalla lista fissa di `./go demo` (ADR 0003), la cui forma è fissata in ADR 0030.
+
 ---
 
 ## 8. Il golden path
@@ -357,6 +367,9 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 | La console diventa una seconda fonte di verità | CLI e console divergono, la demo mente | nessun database della console, due sole scritture che chiamano il codice della CLI (ADR 0023) |
 | Il job di Gitea Actions entra nel percorso della demo | `./go demo` diventa rosso per un runner ballerino, non per il canary | il fallimento è preciso (status del commit, non timeout) e `demo-rollback`, la prova del solo controller, non passa dal runner (ADR 0025) |
 | Le percentuali del canary vivono in due posti | `core/launchpad.sh` e la pipeline di Cloud Deploy divergono e nessuno se ne accorge | `shift.sh` boccia rumorosamente una percentuale senza fase, nominando il file della pipeline (ADR 0027 §3) |
+| Il seam è dichiarato, non provato | un secondo workload scopre che i gate sanno ancora dove sta l'app | `ci/app-free.sh` più il secondo workload minimo nell'acceptance di M12 (ADR 0029) |
+| Il mutation tool del linguaggio del legacy è debole o assente | il gate più affilato dell'harness si riduce a perimetro, risk scoring e audit | il repo dell'esperimento si sceglie in un ecosistema con un mutation tool serio — Java/PIT, .NET o JavaScript/Stryker — prima di promettere qualcosa a un cliente (ADR 0029 §6) |
+| Il progetto-fabbrica entra in B dalla porta di servizio | un hook privato che solo il consumatore usa, e B diventa un fork mantenuto in due posti | la regola di confine di §14: se il consumatore ha bisogno di un hook, l'hook entra qui, aperto, come porta (ADR 0029 §3) |
 
 ## 12. Cosa non fare
 
@@ -370,6 +383,9 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 - Non nominare un fornitore di Delivery in `core/`, nemmeno in un commento: `ci/vendor-free.sh` lo boccia.
 - Non mettere una capacità solo a L2. Se il cloud sa fare una cosa che il locale non sa, il locale è una demo, e la regola d'oro salta.
 - Non lasciare che sia il verify di un fornitore a decidere il canary: decide `verify/slo.sh` con `verify/slo.promql`, a ogni livello (ADR 0027 §3).
+- Non nominare l'app in `core/`, `gates/` o `verify/`: da M12 `ci/app-free.sh` lo boccia (ADR 0029).
+- Non far entrare in questo repo ciò che serve solo a chi gestisce molti engagement (intervista, PoC, proposta, portfolio): è il progetto consumatore, e consuma solo interfacce pubbliche (ADR 0029 §3).
+- Non promettere l'harness su un linguaggio il cui mutation tool non è stato provato sull'esperimento (§14).
 
 ---
 
@@ -378,3 +394,43 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 > Leggi `docs/PLAN.md` e `CLAUDE.md`. Prima di scrivere codice verifica sulla documentazione ufficiale i sette punti della sezione 10 e riportami solo ciò che risulta diverso dal piano. Poi fermati e aspetta.
 
 Da lì in avanti una milestone per sessione, con `/milestone M0`, `/milestone M1` e così via. Fra una milestone e l'altra: checkpoint del contesto, `/clear`, sessione nuova.
+
+---
+
+## 14. Il secondo arco: l'harness su un repo legacy
+
+*Aggiunto 2026-09-23 (ADR 0029).* Il 22 settembre la domanda era se la piattaforma potesse partire dall'intervista con un cliente e consegnare una PoC; poi se dovesse diventare un'intera azienda tech agentica. La risposta, dopo aver misurato il repo, è stata no a entrambe come prossimo passo — e sì a una cosa più piccola e più rara.
+
+### Le tre direzioni pesate
+
+| | A · Fabbrica end-to-end | B · Harness su repo legacy | C · Chiudere il piano |
+|---|---|---|---|
+| Chi paga, quanto gli fa male | medio — agenzie; il dolore è la velocità del pre-sale | **alto** — enterprise con legacy, budget già stanziati, paura acuta | basso diretto; credibilità |
+| Differenziazione | bassa davanti (chat→spec→scaffold lo fanno tutti); alta solo grazie a B dietro | **alta** — gate numerici, perimetro, rollback, audit | media |
+| Distanza da oggi | 2 milestone strutturali + 3 di ruoli + un loop di affinamento senza design | 1 strutturale + 1 gate pack + un baseline | 0 strutturali; M8 cloud costa denaro |
+| Rischio regola d'oro | **alto** — intervista e affinamento sono human-in-the-loop; a L0 resta un engagement finto replayato | basso — il seam si prova con `./go demo` identico | nullo |
+| Fragilità al modello | **alta** | bassa — il valore è nell'harness, il modello è dietro una porta | bassa |
+| Verificabilità prima di investire | bassa | **alta** — una milestone e un repo vero | n/a |
+
+Due righe decidono. La fragilità al modello: tutto quello che il repo ha già subito (routing 3.5/3.8 silenzioso, pin della CLI, budget rimisurati tre volte) colpisce dieci volte più forte su intervista, PoC e affinamento che su un gate di mutation. E A contiene B: la metà dietro della fabbrica *è* l'harness, senza la quale la metà davanti è un me-too. B è il test più economico della parte portante di A.
+
+### La decisione
+
+Direzione B, open. Apache 2.0 invariata: l'harness è l'artefatto di fiducia, un CTO lascia agenti autonomi sul suo monolite solo perché può leggere i gate. I ricavi vengono dal lavoro consegnato con l'harness — engagement di modernizzazione — non dalla licenza. La fabbrica (A) diventa un progetto separato, privato, che consuma lights-out solo attraverso interfacce pubbliche, e parte solo dopo che lights-out ha un consumatore diverso dal suo autore.
+
+**Regola di confine.** "Un cliente con una sola istanza ne ha bisogno?" → lights-out. "Ha senso solo per chi gestisce molti engagement?" → il progetto consumatore. Sei ruoli, ops continuo, console per istanza → qui. Intervista, PoC, proposta, portfolio → là. Se il consumatore ha bisogno di un hook che qui manca, l'hook entra qui, aperto, come porta.
+
+### La sequenza
+
+1. **M12 — il seam** (§7). Nessun rimpianto in qualunque scenario.
+2. **L'esperimento pubblico.** lights-out puntato su un repo legacy open source noto, in un ecosistema con un mutation tool serio (Java/PIT, .NET o JavaScript/Stryker), su un lotto di ticket meccanici — upgrade di dipendenza, dead code, test su codice non testato, migrazione di API deprecate. Catena di audit pubblicata, fixture replayabili, ispezionabile senza chiave. **Criterio di uscita:** se almeno due ticket su tre non producono una PR mergiabile senza che un umano tocchi il codice, la tesi dell'harness è più debole del previsto e A non si costruisce sopra.
+3. **Il primo engagement pagato.** È questa la validazione: l'esperimento dice se l'harness funziona, l'engagement dice se qualcuno paga.
+4. **M11 — console**, anticipata: il cliente vuole vedere la sua catena di audit e premere lui go-for-launch.
+5. **Il consumatore A**, se il punto 2 ha tenuto. Il loop di affinamento va progettato prima di scriverlo.
+6. Track cloud di M8 e M10 quando qualcuno li paga.
+
+### La superficie per i contributor
+
+Subito dopo il seam, un pomeriggio e non una milestone: `CONTRIBUTING.md`; una `ROADMAP.md` in inglese derivata da questo documento (che resta il documento di lavoro, in italiano); la suite di conformità come asticella di accettazione per adapter e gate pack contribuiti (lo schema di ADR 0026 esteso oltre Delivery); e la regola di §11 estesa: un adapter contribuito senza un nightly e un maintainer è un debito, non un regalo. Quello che il repo ha già e va solo dichiarato: il contratto dei gate come regola di contribuzione (`ci/contract.sh`), `RISK_HIGH_PLATFORM` (una PR che tocca la piattaforma non si auto-mergia), e L0 senza chiave come onboarding.
+
+Il repo su GitHub è privato al 2026-09-23; la pubblicazione è un atto dell'owner, dopo il seam e la superficie per i contributor.

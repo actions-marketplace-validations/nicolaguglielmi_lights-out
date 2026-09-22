@@ -1,6 +1,6 @@
 # lights-out
 
-Piattaforma di sviluppo agentico su stack Google: sei ruoli agente che portano un ticket fino alla produzione, e un solo gate umano prima del 100%.
+Harness di autonomia governata: sei ruoli agente portano un ticket fino alla produzione su un codebase di cui nessuno si fida — ogni cambio passa gate numerici, resta nel perimetro dichiarato dal ticket, torna indietro da solo — e un solo gate umano prima del 100%. Lo stack Google è il target cloud opzionale (L2/L3), non l'identità (ADR 0029). L'app bersaglio è il primo workload dietro una porta, non il soggetto del prodotto.
 
 Il piano completo è in `docs/PLAN.md`. Leggilo prima di lavorare su una milestone. Questo file contiene solo le regole che valgono sempre.
 
