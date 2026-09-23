@@ -1,85 +1,56 @@
-# Handoff: M9 closed on 2026-09-17
-
-> **Update 2026-09-23.** The product was refocused (ADR 0029: a
-> governed-autonomy harness; the app becomes a workload behind a port) and
-> M12 is next, designed in ADR 0030 and planned file by file in
-> `.claude/context/M12-PLAN.md`. The "First thing M10 should look at"
-> section below is superseded: M8's cloud track, M10 and M11 wait (plan
-> §14). Everything else in this handoff still holds.
+# Handoff: M12 closed on 2026-09-23
 
 ## Acceptance
 
-Plan §7 M9: a medium-risk PR (fixture recorded at L1, replayed at L0) goes through the `review` step; `test-reviewer` marks it approved or changes-requested with a reason traceable in the tower document; a fixture whose diff exits the ticket's perimeter is not written by `record`, the reason naming the file.
-
-`./go ci` at L0, 23 checks including three new (`perimeter`, `review`, `tower` updated):
+ADR 0030 §7 / `.claude/context/M12-PLAN.md`, verbatim:
 
 ```
-GO: secrets … GO: perimeter
-GO: review
-GO: tower
-GO: contract
-GO: ci
+./go ci          → GO: ci        (app-free and workloads added; compose removed)
+./go demo        → GO: demo, milestone M9, <t>s to rollback (budget 900s)  — same fixtures, same tickets
+./go demo-seam   → GO: demo-seam (down, up, smoke, verify, demo-rollback, demo-gates, down on
+                    workloads/minimal; asserts the rollback's NO-GO stage is error_rate)
+docker-compose config of the merged app project == the pre-M12 output
 ```
 
-`perimeter` = ticket 0003's rule (a `## Perimeter` section with globs, checked in `core/perimeter.sh` on paths from stdin), proved on stub tickets and the literal case from ticket 0003 (conftest.py outside perimeter); `review` = the step script's verdicts (APPROVED, CHANGES-REQUESTED, a third word or empty reason → exit 1), a recorded input hash match → field `true`, a mismatch → warning and field `false`; `tower` = the state machine's two new transitions (review state, ci-passed and ci-failed outcomes).
+**Verified, for real, this session:**
 
-`./go demo-review` at L0, ticket 0005 (medium-risk, 237 changed lines), replayed from the L1 fixtures — real terminal output, not reconstructed:
+- `./go ci` → `GO: ci`, twice (once after the app-alone seam, once after `workloads/minimal/` landed). 26 checks, `workloads` and `app-free` both green.
+- `docker-compose config` of the merged app project (`WORKLOAD=app`), captured before touching any file and again after the split: **byte-identical**, `diff` exit 0, no output.
+- `./go demo-gates` — green for the app's six fixtures, and separately, after `workloads/minimal/` was committed, green for its own `honest-fix` fixture (`WORKLOAD=workloads/minimal`).
+- `./go mutation-baseline WORKLOAD=workloads/minimal` — reproduced independently, twice (once by the gate-writer subagent, once by me against the real committed state): `{"total": 8, "killed": 8, "survived": 0, "score": 1.0}`.
 
-```
-[ci] gates: GO: gates — risk medium, review
-[ci] risk medium: review requested; test-reviewer picks it up next (docs/adr/0021)
-[tower] 0005: ci → review
-[tower] 0005: review (state review)
-[tower] 0005: review → ci-passed
-[tower] 0005: merge (state ci-passed)
-[merge] PR #3 merged as e73e57a222cbc1058e115e03190b1ccc19250495 (head 78a5b46e65187802612e3e5a13fe23882c4b8c43)
-[tower] 0005: merge → merged
-[tower] 0005: release (state merged)
-… (release rolls back at 5%, unrelated to review: the canary is still the stable image at L0, ADR 0013's declared M8 gap)
-[demo-review] test-reviewer: approved — The diff satisfies all acceptance criteria in ticket 0005, stays strictly
-within the declared perimeter paths, maintains minimal scope, and includes tests that verify every required
-behaviour: 1. Perimeter: … 2. Ambiguous Venue Handling: … 3. Contract Examples and Fake Support: … 4. Timeout and
-Malformed Responses: … 5. Unchanged Outcomes and Full API Coverage: … 6. Documentation: …
-[demo-review] second reviewer, architect (exercised once, not wired into the tower):
-{"state":"ci-passed","review":{"role":"architect","verdict":"approved", … "harness":"replay", …
-"input_matches_recorded":true}}
-GO: demo-review
-```
-
-(The release rollback prints the pre-existing `core/steps/release.sh:27` race described below; it did not change the outcome.) `./go demo` on a clean rebuilt workbench image (`./go clean` first, warm plane images): `GO: demo, milestone M9, 318s to rollback (budget 900s, plan §2)`. No `NOT YET` line anywhere.
+**Not verified — a real gap, not a formality:** `./go demo` and `./go demo-seam` both need Envoy bound to host port 8080. That port was already held for 24+ hours by an unrelated container (`lungimira`, a different project on this machine) before this session started, and still is. I asked the owner; they said to skip it and continue rather than stop the other container. **Neither `./go demo` nor `./go demo-seam` has actually been run to completion this session.** Everything that does not need port 8080 (`ci`, both workloads' `demo-gates`, the mutation baseline, the compose-config diff, the image builds) has been verified for real; the live up→smoke→verify→rollback path has not. This is the single most important thing to close before trusting this milestone fully — see "First thing M13 should look at".
 
 ## What changed
 
-- `core/steps/review.sh`: new step script; input is ticket text + `git diff BASE_SHA HEAD_SHA` (BASE now the workspace's own `git rev-parse HEAD` at clone, not the ticket's original base); output is `final.md` (APPROVED or CHANGES-REQUESTED, plus reason) and `input_sha256`; verdict posts as a `review` commit status through `adapters/CODE_HOST/status.sh`.
-- `core/perimeter.sh`: new script; reads ticket's `## Perimeter` section (glob patterns, one per line) and changed paths on stdin, prints first path matching no glob (or NO-GO if no Perimeter section exists); called in `core/crew.sh` after `harness-check.sh`.
-- `adapters/gemini-cli/run.sh` and `entrypoint.sh`: `run.sh` writes `OUT/final.md` (the harness's final message) and records `input_sha256` in `run.json`; `entrypoint.sh` trailer changed to "your final message is this run's artefact, nothing else" (role-specific wording in `prompt.md`).
-- `adapters/replay/run.sh`: branching changed from `-f "$fixture/patch"` (file exists) to `-s "$fixture/patch"` (non-empty); fixtures with `final.md` and no `patch` copy; fixtures with neither fail loudly naming the command.
-- `roles/test-reviewer/` and `roles/architect/`: new prompt.md and role.env (HARNESS=gemini-cli, THINKING=high, TOKEN_BUDGET measured, TIMEOUT_S=900). No more ROLE.md.
-- `roles/dev-worker/role.env`: TOKEN_BUDGET re-measured, dropped from provisional 12,000,000 to 2,600,000 (larger of two run totals, 1,823,982 + headroom, with both run tokens quoted as provenance).
-- Makefile: `review`, `demo-review`, `record-review` targets; `CI_CHECKS` += `perimeter review` (`tower` already listed, its own script rewritten); `go` socket list += review targets.
-- `core/tower.sh`: two new transition lines (review state, next ci-passed or ci-failed); `core/crew.sh` calls `core/perimeter.sh` after harness run.
-- Docs: ADR 0021 (accepted), README (M9 stage table row, review targets in quick start, "M7 of 11" → "M9 of 11"), ARCHITECTURE.md (AgentHarness port update for review artefact contract, M9 status section), PLAN.md closing note for M9, ADR status lines for 0016/0017/0019/0020.
+- **The Workload port applied to the app** (commit `42db129`): `WORKLOAD=<path>` (Makefile, default `app`) selects a directory; `include $(WORKLOAD)/workload.env` (seven keys), `COMPOSE_FILE := compose.yaml:$(WORKLOAD)/compose.yaml` and `FLAGS_FILE` are `:=` and exported. `compose.yaml` split: `app/compose.yaml` carries `postgres`/`migrate`/`geocoder`/`backend`/`backend-canary`/`backend-test` plus a `gemini-cli` fragment (only `depends_on`/`environment`, no `build:`) that compose merges into the root file's `gemini-cli` service — the root file never names the app. `gates/mutation.sh`, `deps.sh`, `sast.sh` (+ new `app/backend/tests/sast/run.sh`), `delivery-conformance.sh`, `verify/metric-shape.sh` all read the active workload's `WORKLOAD_*` variables instead of hardcoded app paths/`waitlist`, each with an empty/missing-path guard so a blank value NO-GOes naming the key rather than passing by "absence of subject". `ci/app-free.sh` (new) and `ci/workloads.sh` (new, replaces `ci/compose.sh`) enforce and validate the port. `adapters/flagd/ready.sh` polls `release-freeze` (the one flag every workload has) instead of the app's `waitlist`; `set.sh` drops its app-shaped default. `core/crew.sh` calls the workload's optional `crew-prepare.sh` instead of hardcoding the app's three test-layout symlinks. `policy/merge.env`: `MUTATION_BASELINE` moved to `workload.env`; `RISK_HIGH_PLATFORM` gained the workload's own gate surface.
+- **`workloads/minimal/`** (commit `acb0e75`): a second, deliberately minimal FastAPI workload (no database, no frontend — `/ping`, `/healthz`, `/metrics`) proving the seam is real. Every `workload.env` value differs from the app's. Real `uv.lock` (generated with `uv lock` inside the workbench, not hand-written). `MUTATION_BASELINE=1.0` (8/8 mutants killed), measured for real, not guessed. `fixtures/gates/honest-fix/` is a genuine fix (`include_in_schema=False` on `/healthz`/`/metrics`) with its own test, built as a real commit and exported with `git format-patch`, verified against the actual gates and against a negative control (the fix without its test correctly fails the mutation gate).
+- **`core/tests/test_risk.py`**: the pre-existing cases now derive their example paths from the real `policy/merge.env` globs at runtime instead of hardcoding a copy of the app's paths — see "Found this session, fixed" below for why this was necessary, not cosmetic.
+- **`docs/PLAN.md`**: §4 gains a `Workload` row; §5, §6, §7, §12 amended for `adapters/` joining `app-free`'s scope and `workloads/` in the layout.
+- Both `gate-writer` subagent runs verified their own work by actually executing it (building images, running pytest/bandit/cosmic-ray/osv-scanner for real, replicating `demo-gates`'s worktree/`git am` mechanism by hand before I ran the real thing) rather than reasoning about what should happen — worth preserving as the standard for future milestones with this much shell/container surface.
 
-## Contradicts docs/PLAN.md and ADR 0021 as drafted
+## Contradicts docs/PLAN.md or the ADRs as drafted
 
-None. M9 delivered exactly as planned. The two re-recorded dev-worker fixtures (ticket 0001 with 4 attempts, ticket 0005 with 6 attempts) fixed the budget hypothesis and validated the prompt rewrite. Ticket 0003's perimeter rule works as specified and caught a real case in the committed M5 fixture.
+- **M12-PLAN.md's pre-step 1 is wrong as written.** It says to park the owner's `.env` with `mv .env .env.l1` before running `ci`, and that "previous sessions parked it" this way successfully. That does not work: `.gitignore` excludes `.env` exactly, not `.env.l1` or any other rename, so gitleaks' working-tree scan (`ci/secrets.sh`) still finds the key under the new name — confirmed live, first `./go ci` run this session NO-GOed on it. The fix that actually works is moving the file fully **outside the repo directory** (`mv .env /tmp/<name> ... mv /tmp/<name> .env` around the `ci` run), which is what I did for the rest of the session. Whoever wrote that memory/precedent either mis-remembered what worked, or `.gitignore` used to be broader and narrowed since. Not fixed in `.gitignore` — deliberately out of scope for M12, but real, and it will bite the next session that trusts the documented in-repo rename.
+- **ADR 0030 §5's claim that app-free's eleven pre-M12 hits are "all edited by M12"** undersold one case: `core/tests/test_risk.py` needed a structural change, not just a literal-path edit, because its own design intentionally reads the *real* `policy/merge.env` (so the tests and the policy can't drift apart) — which meant its hardcoded example paths were never going to just disappear by editing them to a workload-neutral literal; they had to become *derived from the policy glob at runtime* instead. `gate-writer` flagged this rather than picking a fix silently; I resolved it in the main session (see below). Worth a line in ADR 0030 if it's ever revisited, since the pattern ("a test that legitimately needs to read real per-instance config from inside a scanned directory") will recur if `core/` ever grows another config-reading test.
 
 ## Found this session, fixed
 
-- `core/steps/review.sh` originally passed `BASE=$BASE_SHA` (the ticket's original base) instead of the workspace's own current HEAD at clone; this made `adapters/gemini-cli/run.sh`'s `git format-patch $BASE..HEAD` reproduce dev-worker's entire diff on replay. Fixed: BASE is now workspace's `git rev-parse HEAD`, so a clean (unedited) reviewer workspace gets an empty patch. Defence in depth: `adapters/replay/run.sh` changed from `-f` (file exists) to `-s` (non-empty) so reading-role fixtures skip the `git am` path.
-- Review step input document header was literal `Diff, BASE_SHA..HEAD_SHA:` which changed on every replay (fresh commit hashes from `git am`), breaking `input_sha256` matching. Fixed: header is now constant `Diff:`, so input hash reflects ticket text + diff content only.
+- **`core/tests/test_risk.py` vs. `ci/app-free.sh`**: fixed by deriving every example path from the actual `policy/merge.env` glob at test time (`self.policy["RISK_HIGH_MIGRATIONS"].split(":")[0].replace("*", "0004_x.sql")` and similarly for auth/payments/the new platform-glob case), rather than hardcoding a copy of today's app paths. This is not just gate-satisfying — it makes the tests more honest: they now prove the classifier reads whatever the policy says, and would keep passing unchanged if a real instance's `policy/merge.env` pointed somewhere else entirely, which the old hardcoded-literal version would not have.
+- Two comments (one of mine, one in a first draft before review) explaining *why* a file avoids naming the app ended up naming it anyway, inside their own explanatory prose (`"app/"`, `"workloads/"`, `geocoder_client.py`) — `ci/app-free.sh` is a blind substring grep, so an explanation of an absence is itself a presence. Caught by re-running the grep after every file, not by trusting a design review. Worth remembering for any future edit near these boundaries: grep the file yourself after writing the comment, the same way `ci/vendor-free.sh`'s own header already warns.
+- `gate-writer` (Stage 3) found and fixed three real bugs while verifying its own work, not asked for: a heredoc silently shadowing piped stdin in a first draft of `ci/workloads.sh` (SC2259 — would have made a whole validation branch permanently, silently inert); `docker-compose config` (v5.0.1) excluding profile-gated services unless `--profile canary --profile test` is passed explicitly (would have made every real workload NO-GO "missing service(s)" on every run); stderr merged into a JSON capture in the same file's first draft (a stray warning on stderr could have corrupted the parse on an otherwise-successful run). None of these were in my original brief; all three were caught by actually running the new code against realistic fixtures, not by reading it.
 
 ## Found, not fixed
 
-- `core/steps/release.sh:27`'s `[ "$(cat "$rc_file")" -eq 0 ]` intermittently reads an empty `$rc_file` from a race between the `tee`/subshell pipeline and the `cat`, printing `Illegal number` to stderr. The fallback state (`rolled-back`) happens to be correct in every observed case, so the verdict is never wrong, but this is a real race condition, not cosmetic. Found at M9 close; unrelated to review work.
-- `.crew/.uv-cache/` accumulated ~194 MB from live `record`/`record-review` runs (gitleaks gitignored-scan category). Twenty-one false positives on sqlalchemy source strings (`ctx.api`, `.key`) from entropy heuristics, unrelated to repo secrets. Known issue, same category as the `.env`-parking problem already tracked in earlier HANDOFFs.
+- **Port 8080 is held by an unrelated container (`lungimira`) on this development machine**, blocking `./go demo` and `./go demo-seam`'s live path. See "Acceptance" above — this is the one real hole in this milestone's proof. Not a repo bug; an environment fact of this particular machine at this particular time.
+- `.crew/.uv-cache/` and the `.env` gitleaks-parking fragility (both noted in the M9 handoff) are unchanged; not touched this session.
 
-## Prerequisites M10 inherits
+## Prerequisites M13 inherits
 
-M8 (GCP, Artifact Registry, Cloud Run, Cloud Deploy, Workload Identity, Secret Manager) remains open. This session deliberately did M9 first because none of its work depends on GCP (owner ruling, already noted in PLAN.md). Decision for M10's first session: resume M8 or take another out-of-order milestone. Before touching `core/steps/review.sh` again, re-read ADR 0021 and note the two bugs above; the BASE variable and the input header are load-bearing.
+M12 is the seam milestone the rest of plan §14 was waiting on. Per the plan's own sequence (§14): next is the public experiment on a legacy OSS repo (a mutation-tool-serious ecosystem — Java/PIT, .NET, or JS/Stryker), *not* another numbered platform milestone in the usual sense. If that experiment isn't starting immediately, the two loose threads below are the platform-side ones.
 
-## First thing M10 should look at
+## First thing M13 (or whoever picks this up next) should look at
 
-- Decide: M8 (GCP) next, or pick another out-of-order milestone.
-- If M8: read HANDOFF M7's prerequisites section (clock skew, `.env` parked for ci, Gemini CLI 3.8 routing check); review roles are now in place so the tower's review consumer exists.
-- Before any `record`: the perimeter rule is live. A ticket without a `## Perimeter` section will fail with a loud error; ticket 0001's perimeter is prose that must be spelled as globs, ticket 0005 was built with it in mind. Any new ticket needs the section, or `record` fails before the model runs.
+1. **Free port 8080 and actually run `./go demo` and `./go demo-seam` to completion**, on a clean container per the golden rule. Nothing in this milestone should be treated as fully closed until both print their real `GO:` line, not the `ci`/`demo-gates`/diff evidence gathered around the blocker.
+2. If starting the §14 legacy-repo experiment: `workloads/minimal/` is a deliberately trivial proof of the seam's *location*-independence (same language, no real complexity) — it is not evidence the seam holds for a differently-shaped workload (different language, real build tooling, a monorepo). ADR 0030's own Consequences section already says as much ("the seam is proven for location, not language"); the experiment is where that gets tested for real, starting with `envoy-canary`'s `/healthz` probe (it currently runs `python3` inside the container — a Python assumption baked into an adapter, named in ADR 0030's Consequences) and `roles/dev-worker/prompt.md` (names the meetup layout by design, deliberately untouched by M12).
+3. Fix the `.env` parking instruction wherever it's next referenced (a project memory, a future milestone's pre-steps) to say "move it outside the repo," not "rename it in place" — see "Contradicts" above.

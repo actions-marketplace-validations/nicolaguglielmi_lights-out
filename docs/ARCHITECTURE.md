@@ -6,6 +6,7 @@ The core knows no vendor. Every integration sits behind a port with at least two
 
 | Port | Adapter | Note |
 |---|---|---|
+| `Workload` | `app`, `workloads/minimal` | What the platform operates on; chosen by `WORKLOAD=<dir>` (default `app`), not by profile; defines compose services, environment keys, /healthz and /metrics on :8000, flags, smoke/load/test scripts, fixtures; unnamed in core/, gates/, verify/, adapters/ (verified by ci/app-free.sh); proven by ./go demo-seam (ADR 0030) |
 | `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events; coding roles produce `OUT/patch`, `pr.json`, `run.json`; review roles produce `OUT/final.md` (first line APPROVED or CHANGES-REQUESTED, rest reason), `input_sha256` (sha256 of the document), `run.json`; `adk`: no workspace; `INPUT` file → `OUT/calls.json`, `final.md`, `run.json`; a role selects it with `HARNESS=adk` in its role.env (ADR 0020 §1); review roles use `HARNESS=gemini-cli` (ADR 0021 §3) |
 | `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr, status, merge, pr; `github`: branch, PR, comments, merge |
 | `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md`; others read from external service |
@@ -32,7 +33,7 @@ Every `Delivery` adapter must pass `gates/delivery-conformance.sh` to count as o
 
 ## Levels and Profiles
 
-Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`). The Makefile selects one with `PROFILE ?= l0` and exports it. Adapter choices come from environment variables named after the ports above. See [ADR 0001](adr/0001-profiles-and-single-makefile.md).
+Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`). The Makefile selects one with `PROFILE ?= l0` and exports it. Adapter choices come from environment variables named after the ports above, except for the `Workload` port: it is chosen by `WORKLOAD=<dir>` (default `app`), not by the profile — it is the same workload at every level. See [ADR 0001](adr/0001-profiles-and-single-makefile.md) and [ADR 0030](adr/0030-workload-port.md).
 
 *Amended 2026-09-20 (ADR 0022, 0028).* L0 and L1 are the whole product: every capability, no account, no key. L2 and L3 replace containers with managed services and add nothing the local plane lacks. `profiles/l2.env` and `profiles/l3.env` also carry `WORKBENCH_FLAVOUR=cloud`, which makes `./go` build `workbench/cloud/Containerfile` (gcloud and terraform) on top of the base workbench image; L0 and L1 never download either.
 
@@ -51,7 +52,7 @@ Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`
 1. Picks an engine (`CONTAINER_ENGINE`, else podman, else docker)
 2. Builds or reuses the `workbench` image from `workbench/Containerfile`
 3. Runs `make <cmd>` inside it with the repo mounted at the same absolute path
-4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `release`, `demo-rollback`, `demo-hold`, `demo-launch`, `e2e`, `shell`, `gates`, `demo-gates`, `mutation-baseline`, `assign`, `demo-crew`, `record`, `triage`, `demo-triage`, `promote`, `record-evals`)
+4. Passes the socket for targets that need it (`up`, `down`, `test`, `demo`, `release`, `demo-rollback`, `demo-seam`, `demo-hold`, `demo-launch`, `e2e`, `shell`, `gates`, `demo-gates`, `mutation-baseline`, `assign`, `demo-crew`, `record`, `triage`, `demo-triage`, `promote`, `record-evals`)
 5. Runs without the socket for targets that do not (`ci`, `engine-compat`)
 
 For `engine-compat` and `demo`, `./go` runs `ci/engine-compat.sh` on the host first.
@@ -87,7 +88,7 @@ See [ADR 0003](adr/0003-make-demo-before-m3.md).
 
 ## PR gates
 
-Six gates run on a git range in order from cheap to expensive: `risk` (rules-not-points classifier), `secrets` (gitleaks), `deps` (osv-scanner), `sast` (bandit), `test` (pytest), `mutation` (cosmic-ray on changed lines against a measured baseline). Each gate exits with a single line: `GO: <name>` or `NO-GO: <name> — <reason>`.
+Six gates run on a git range in order from cheap to expensive: `risk` (rules-not-points classifier), `secrets` (gitleaks), `deps` (osv-scanner), `sast` (bandit), `test` (pytest), `mutation` (cosmic-ray on changed lines against a measured baseline). Each gate exits with a single line: `GO: <name>` or `NO-GO: <name> — <reason>`. The gates read the active workload's configuration (`WORKLOAD_MUTATION_SCOPE`, `WORKLOAD_LOCKFILES`, `WORKLOAD_KILL_SWITCH`, `MUTATION_BASELINE`) from its `workload.env` instead of hardcoding paths; the gates and the core/ platform code are guaranteed never to name a specific workload by `ci/app-free.sh` (ADR 0030).
 
 The `risk` gate is unique: it always GO when it classifies (the verdict is the classification itself — `low` = auto-merge, `medium` or `high` = review). A NO-GO from `risk` means "could not classify" (bad input, missing policy file), not "found something bad". The classifier reads five signals from the diff: migrations, auth, payments, platform (gates/ci/verify/policy/core and the toolchain), and diff size. Policy is data, not code: `policy/merge.env` holds globs, thresholds, and the auto-merge decision, readable by both sh and Python without a parser.
 
@@ -116,17 +117,19 @@ Eight services in `compose.yaml`:
 | Gitea | 3000 | Rootless, sqlite; the Actions runner registers on start in host mode |
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by `service_version` label via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
-| flagd | 8016 | OFREP; serves app/flags/flags.json, the one bind mount |
+| flagd | 8016 | OFREP; serves the active workload's `flags/flags.json` (`$WORKLOAD/flags/flags.json`, bind-mounted dynamically), the one bind mount |
 | Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
 | Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
 
-Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (`app/flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
+Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (the active workload's `flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
 
-The canary revision is the same image as stable, with `waitlist` targeted at the version string `0.2.0-waitlist`. The controller `core/launchpad.sh` shifts traffic through Envoy's admin API and evaluates `verify/slo.sh` at each stage. Automatic rollback on verify NO-GO.
+The canary revision is the same image as stable, with the workload's kill-switch flag (for the app, `waitlist`) targeted at its canary version (for the app, `0.2.0-waitlist`); the Workload port generalizes this (ADR 0030). The controller `core/launchpad.sh` shifts traffic through Envoy's admin API and evaluates `verify/slo.sh` at each stage. Automatic rollback on verify NO-GO.
 
 See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](adr/0013-launchpad-canary-verify-rollback-at-l0.md), [ADR 0014](adr/0014-prove-the-go-branch-with-demo-hold.md).
 
 ## Status
+
+M12 — The Workload port (ADR 0030): the platform no longer operates on a hardcoded app but on any workload — a directory that owns a `workload.env` with seven keys, three compose services, health and metrics endpoints, one flag file, smoke/load/test scripts, and gate fixtures. `WORKLOAD=<path>` (default `app`) selects it; the app is one workload, `workloads/minimal/` is a second minimal workload that proves the seam. Every gate and the core platform read the active workload's configuration instead of hardcoding paths, verified by `ci/app-free.sh`. `./go demo-seam` is the acceptance test: runs the platform on `workloads/minimal` and asserts the release record's failing stage was specifically an `error_rate` NO-GO (proving both workloads' metrics were compared). `ci/workloads.sh` validates every workload's contract; `./go ci` swaps `compose` for `workloads` and gains `app-free`. Targets `demo-hold`, `demo-launch`, `demo-rollback`, `demo-gates`, and `delivery-conformance` remain unchanged; they now read the active workload's variables instead of the app's hardcoded ones.
 
 M9 — Review: test-reviewer and architect roles with prompts on the existing gemini-cli harness (no ADK, these are reading roles); a `review` step in `core/tower.sh` (precondition `review`, next `ci-passed` or `ci-failed`), inserted where the risk classifier already routes medium/high PRs; review roles produce a second artefact contract with `final.md` (verdict and reason) and `input_sha256` (input document hash); ticket 0003's perimeter rule declares which files a ticket may change, checked in `core/perimeter.sh` before PR opens; two dev-worker `record` runs fix the token budget (ADR 0020 §9 measured 2.6M, down from provisional 12M) and validate ticket 0004's rewritten prompt; three new ci checks (`perimeter`, `review`, `tower` updated); medium-risk fixtures recorded at L1 and replayed at L0.
 

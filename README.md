@@ -8,7 +8,7 @@ lights-out is a governed-autonomy harness, not a code assistant: the decision th
 
 ## Status
 
-Milestone M9 closed; M12, the seam that puts the target app behind a port, is next (ADR 0029). What runs today:
+Milestone M12 closed (the Workload port; ADR 0030). M9 review and the gaps at M8, M10, M11 are not yet documented here. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -25,6 +25,7 @@ Milestone M9 closed; M12, the seam that puts the target app behind a port, is ne
 | ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.9.1; adk eval in ci; replay at L0 |
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
 | review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |
+| seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`); `workloads/minimal/` proves the seam; `./go demo-seam` runs it |
 
 | | |
 |---|---|
@@ -64,6 +65,7 @@ Then explore:
 ./go test            # run backend tests
 ./go verify          # check the metric shape
 ./go demo-rollback   # release the failing version and prove automatic rollback
+./go demo-seam       # run the Workload port acceptance test on workloads/minimal
 ./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
 ./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
@@ -119,7 +121,7 @@ Only L0 exists today. Levels L1–L3 describe the plan.
 
 ## The app
 
-A meetup RSVP platform: FastAPI backend (`app/backend/`), Postgres database, React frontend (`app/frontend/`). After `./go up` it answers behind Envoy at `http://localhost:8080` on the host or `http://host.containers.internal:8080` from inside workbench. Three auth-free endpoints list meetups, two auth routes signup and login, one create route, one RSVP route. Geocodes venues through a fake `GEOCODER_URL`. Feature-flagged partial waitlist (evaluates but returns 501 at M1).
+This workload (the default, `WORKLOAD=app`) is a meetup RSVP platform: FastAPI backend (`app/backend/`), Postgres database, React frontend (`app/frontend/`). The app is one implementation of the `Workload` port (ADR 0030); another is `workloads/minimal/`, a minimal second workload that exists only to prove the seam. After `./go up` it answers behind Envoy at `http://localhost:8080` on the host or `http://host.containers.internal:8080` from inside workbench. Three auth-free endpoints list meetups, two auth routes signup and login, one create route, one RSVP route. Geocodes venues through a fake `GEOCODER_URL`. Feature-flagged partial waitlist (evaluates but returns 501 at M1).
 
 Test and verify commands:
 - `./go test` — Run the backend test suite against compose Postgres (pytest, 25 tests).
@@ -129,13 +131,13 @@ Test and verify commands:
 
 Six gates run in order on a git range (two commits or more, measured by `git merge-base`), with both verdicts proven by committed fixture patches. Run with `./go demo-gates` on the six fixtures, or `./go gates BASE=<ref> HEAD=<ref>` on your own range.
 
-**Order:** risk (rules-based classification from path and size), secrets (gitleaks history and working tree), deps (osv-scanner on both lockfiles, a time bomb by design), SAST (bandit on `app/backend/meetups/` only), test (pytest, one failing assertion proves it works), mutation (cosmic-ray on changed lines, scored against a measured baseline).
+**Order:** risk (rules-based classification from path and size), secrets (gitleaks history and working tree), deps (osv-scanner on both lockfiles, a time bomb by design), SAST (bandit on the active workload's `WORKLOAD_MUTATION_SCOPE`), test (pytest, one failing assertion proves it works), mutation (cosmic-ray on changed lines, scored against a measured baseline).
 
 **Risk levels:** `low` → `auto-merge`; `medium` or `high` → review. The risk classifier reads five signals: auth, payments, migrations, platform (gates/ci/verify/policy/core and the toolchain), and diff size. Policy lives in `policy/merge.env`, readable by sh and Python.
 
 **Six fixtures:** `honest-fix` (ticket 0001 resolved, every gate GO, risk low); `fake-test` (same fix, inadequate test, mutation NO-GO); `migration` (adds a schema column, every gate GO, risk high); `sast-finding` (one bandit issue); `vulnerable-dep` (a known advisory); `failing-test` (one assertion fails). Each fixture is a git-format-patch `.patch` file applied in a worktree, with expected verdicts and JSON data recorded in `expect`.
 
-**Declared limits:** SAST scans only the shipped package at `app/backend/meetups/`; tests and fakes are not scanned. Dependency scan covers both dev and runtime dependencies in the app and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M8 the socket arrives, but not for this job: it goes to a new `image` job that builds, signs and pushes the merge commit (below); `gates` stays GitHub-only until the milestone that runs the tower on GCP. The socket's three conditions (ADR 0015 §7, ADR 0025 §4): the runner is the only compose service with it, jobs run only on refs the workbench user pushed, and the trusted-network line below says so.
+**Declared limits:** The six gates do not name the app or any workload (verified by `ci/app-free.sh`); instead, they read the active workload's `workload.env` configuration (`WORKLOAD_MUTATION_SCOPE`, `WORKLOAD_LOCKFILES`, `WORKLOAD_KILL_SWITCH`, `MUTATION_BASELINE`). Dependency scan covers both dev and runtime dependencies in the workload and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M8 the socket arrives, but not for this job: it goes to a new `image` job that builds, signs and pushes the merge commit (below); `gates` stays GitHub-only until the milestone that runs the tower on GCP. The socket's three conditions (ADR 0015 §7, ADR 0025 §4): the runner is the only compose service with it, jobs run only on refs the workbench user pushed, and the trusted-network line below says so.
 
 **Model reality check:** The worker pins Gemini CLI `0.61.0-preview.0`, deliberately on the preview channel, because `0.59.0` and the current stable `0.60.0` silently serve `gemini-3.5-flash` when asked for `gemini-3.8-flash` (upstream fix google-gemini/gemini-cli#29252, in no stable release yet); the pin returns to the stable channel at `0.61.0`. A live L1 run on this pin answers from `gemini-3.8-flash` (verified 2026-09-16). The fixture at `fixtures/0001/dev-worker/` stays recorded on `gemini-3.5-flash` — its `run.json` says so — so at L0 the replayed PR was written by 3.5 while a live L1 run answers from 3.8, until the fixture is next re-recorded. See ADR 0018.
 
@@ -152,7 +154,7 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 | Gitea | 3000 | Rootless, sqlite; bootstrap creates a fixed admin user (`lights-out` / `lights-out-local-not-a-secret`) and a public `lights-out/lights-out` repo with Actions disabled; the runner registers on start in host mode |
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by the `service_version` label reached via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
-| flagd | 8016 | OFREP; serves `app/flags/flags.json`, the one bind mount; edit the file and the flag flips within seconds |
+| flagd | 8016 | OFREP; serves the active workload's `flags/flags.json` (`$WORKLOAD/flags/flags.json`, bind-mounted dynamically); edit the file and the flag flips within seconds |
 | Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
 | Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
 
@@ -160,13 +162,13 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 
 **L0 assumes a trusted network**: every port is unauthenticated on every interface, the runner registration token in compose.yaml is public by design, and anyone on the LAN can register a runner or push to Zot. From M8, the Gitea runner also controls your container engine (docs/adr/0015 §7, docs/adr/0025 §4): it is the only compose service with the socket, and it only runs jobs on refs pushed through this same workbench.
 
-At L0 the canary revision reuses the same image as stable, with the `waitlist` feature flag targeted at the version string `0.2.0-waitlist`: the failing version is the same code, different flag targeting. The first real code diff arrives with the M5 worker.
+At L0 the canary revision reuses the same image as stable, with the `waitlist` feature flag (the app's `WORKLOAD_KILL_SWITCH`) targeted at the version string `0.2.0-waitlist` (the app's `CANARY_VERSION`): the failing version is the same code, different flag targeting. The Workload port generalizes this to any workload (ADR 0030). The first real code diff arrives with the M5 worker.
 
 ## Release controller
 
 `core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable.
 
-The controller itself generates no load; the Makefile starts `app/load.sh` beside it (one user looping through registration POSTs), stopping when the controller exits.
+The controller itself generates no load; the Makefile starts the active workload's `load.sh` (`$(WORKLOAD)/load.sh`, default `app/load.sh`) beside it, stopping when the controller exits.
 
 At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERSION`). Three proof commands demonstrate the flow:
 
@@ -176,11 +178,15 @@ At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERS
 
 `demo-rollback` and `demo-hold` are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path. `demo-launch` is also optional; the manual human path is `./go kill-switch`, `./go release`, `./go promote` (the answer travels as `./go promote GO_FOR_LAUNCH=GO`; `go` forwards no host environment).
 
-**Kill switch and freeze** are feature-flag edits in the committed `app/flags/flags.json`, live within seconds through flagd's file poller, no deploy:
-- `./go kill-switch` turns `waitlist` off for every version: the canary stops producing 501s.
+**Kill switch and freeze** are feature-flag edits in the active workload's `flags/flags.json`, live within seconds through flagd's file poller, no deploy:
+- `./go kill-switch` turns off the active workload's kill-switch flag (named by `WORKLOAD_KILL_SWITCH`; for the app it is literally `waitlist`) for every version: the canary stops producing 501s.
 - `./go freeze` / `./go unfreeze` toggle the `release-freeze` flag: `on` stops launchpad from deploying or shifting.
 
 **Timing budget**: plan §2 requires `./go demo` to reach automatic rollback in under 900 s on a fresh container (cold pulls included). M3 measured this at 92 s warm (images already present); with the baseline 258 s cold from M2, a reasoned estimate is roughly 350 s total, well under budget. (Caveat: the 350 s figure is an estimate, not a fresh cold measurement this session, because forcing a safe cold re-pull of ~50 host images was not performed here.)
+
+## The Workload port
+
+A workload is any directory that owns a `workload.env` file and provides the services and scripts the platform expects. The app and `workloads/minimal/` are two implementations; `WORKLOAD=<path>` (default `app`) selects which one runs. The contract is declared in ADR 0030: seven environment variables (e.g., `CANARY_VERSION`, `WORKLOAD_KILL_SWITCH`, `WORKLOAD_MUTATION_SCOPE`), three compose services (`backend`, `backend-canary`, `backend-test`), health and metrics endpoints on `:8000`, one flag file, `smoke.sh` and `load.sh`, in-image test runners (`tests/mutation/run.sh`, `tests/sast/run.sh`), and gate fixtures. Every gate and control system reads these values instead of naming the app, verified by `ci/app-free.sh`. `./go demo-seam` (like `demo-rollback` and `demo-launch`, outside the main `demo`) runs the acceptance test with `WORKLOAD=workloads/minimal` to prove the seam is real: two distinct workloads, same platform.
 
 ## How it runs
 
@@ -190,7 +196,7 @@ Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env`
 
 ### Engine socket
 
-Targets `up`, `down`, `test`, `demo`, `demo-rollback`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images.
+Targets `up`, `down`, `test`, `demo`, `demo-rollback`, `demo-seam`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images.
 
 The `ci` target never gets the socket. `engine-compat` is the one gate that runs on the host itself, before workbench starts: `./go engine-compat` and `./go demo` both begin with `ci/engine-compat.sh`.
 
@@ -222,7 +228,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-hold, demo-launch, triage, demo-triage, promote, record-evals, kill-switch, freeze, unfreeze, e2e
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, promote, record-evals, kill-switch, freeze, unfreeze, e2e
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -240,11 +246,7 @@ lights-out/
     merge.env               # policy-as-code: risk levels, mutation baseline and margin
 
   gates/                    # PR gates: risk, secrets, deps, sast, test, mutation
-    *.sh                    # individual gate scripts
-    fixtures/               # six committed example PRs with expected verdicts
-      <name>/
-        *.patch             # git-format-patch applied in worktrees
-        expect              # expected gate outcomes and JSON data
+    *.sh                    # individual gate scripts (read WORKLOAD_* from active workload)
 
   profiles/
     l0.env                  # L0: podman, no key, no account
@@ -262,7 +264,8 @@ lights-out/
     readme.sh               # every ./go X in README exists
     gitea-compat.sh         # workflow uses only what Gitea Actions supports
     profiles.sh             # profiles are plain KEY=value, same keys
-    compose.sh              # docker-compose config -q
+    workloads.sh            # validate every workload's workload.env (replaces compose.sh)
+    app-free.sh             # verify core/gates/verify/adapters never name the app (ADR 0030)
     engine-compat.sh        # host side, runs first in ./go (ADR 0012)
 
   docs/
@@ -295,7 +298,7 @@ lights-out/
     metric-shape.sh         # checks them against one live /metrics scrape
     slo.sh                  # verifies canary metrics against stable, the release gate
 
-  app/                      # the target application (docs/adr/0005-0010)
+  app/                      # the default workload (docs/adr/0005-0010)
     backend/                 # FastAPI + psycopg, meetups/, migrations/, tests/
     frontend/                # React + Vite + TypeScript, built into the backend image
     fakes/geocoder/          # the external-service dependency, stdlib only
@@ -303,8 +306,16 @@ lights-out/
     flags/                   # flagd file-resolver flag definitions
     load.sh                  # load generator: loops registration POSTs through Envoy
     smoke.sh                 # signup, login, meetup through Envoy
+    fixtures/gates/          # gate fixtures proving risk, test, mutation, deps, sast, secrets
+      <name>/
+        *.patch              # git-format-patch applied in worktrees
+        expect               # expected gate outcomes and JSON data
 
-  compose.yaml               # the L0 plane: app + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
+  workloads/                # other workloads behind the Workload port
+    minimal/                 # a second minimal workload (no database, no frontend; proves the seam)
+      fixtures/gates/        # gate fixture for this workload (at least one required)
+
+  compose.yaml               # the L0 plane: workload + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
 
   adapters/                 # one directory per adapter named in profiles/*.env
     adk/                    # M7: ADK roles, replay/recording model, evalsets
