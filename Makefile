@@ -9,7 +9,21 @@ SHELL := /bin/sh
 PROFILE ?= l0
 include profiles/$(PROFILE).env
 -include .env
+
+# The Workload port (docs/adr/0030 §1): a workload is a directory: not the
+# profile's choice, the same at every level. include stops make, naming
+# the file, if it is missing. COMPOSE_FILE merges the workload's compose
+# file after the plane's; both are := and exported, never ?=, because
+# demo-seam re-enters make with a different WORKLOAD and export is what
+# hands the parent's values down to that recursive call.
+WORKLOAD ?= app
+include $(WORKLOAD)/workload.env
 export
+
+COMPOSE_FILE := compose.yaml:$(WORKLOAD)/compose.yaml
+export COMPOSE_FILE
+FLAGS_FILE := $(WORKLOAD)/flags/flags.json
+export FLAGS_FILE
 
 # docker-compose over the podman socket builds through the classic /build
 # API; pinning this avoids compose spawning a buildkitd container
@@ -45,13 +59,6 @@ export CREW_UID CREW_GID
 # admin API the same way it reaches every other plane port (PLANE_HOST).
 ENVOY_ADMIN_URL ?= http://$(PLANE_HOST):9901
 export ENVOY_ADMIN_URL
-
-# The L0 "failing version": app/flags/flags.json targets `waitlist` on for
-# exactly this string (docs/adr/0013 §1). A drift between the two makes
-# demo-rollback's and demo-hold's assertions fail loudly instead of quietly
-# passing for the wrong reason.
-CANARY_VERSION ?= 0.2.0-waitlist
-export CANARY_VERSION
 
 # The image `up` builds, publishes and signs as stable (docs/adr/0025 §1,
 # §3): the current checkout. CANARY_TAG is what a release deploys as
@@ -114,7 +121,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles compose core-tests vendor-free hooks harness tower perimeter review prompts evals promote contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -132,7 +139,7 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	@$(MAKE) --no-print-directory up
 	@printf '[demo] up: L0 plane, %s\n' "$(PLANE_ADAPTERS)" >&2
 	@$(MAKE) --no-print-directory smoke
-	@printf '[demo] smoke: a meetup created through Envoy at %s\n' "$(APP_URL)" >&2
+	@printf '[demo] smoke: the happy path passed through Envoy at %s\n' "$(APP_URL)" >&2
 	@$(MAKE) --no-print-directory verify
 	@printf '[demo] verify: metric shape only; canary vs stable is evaluated inside demo-rollback below\n' >&2
 	@$(MAKE) --no-print-directory demo-rollback
@@ -168,12 +175,12 @@ publish: ## Build, push and sign the image at TAG (docs/adr/0025 §1-§3)
 	@sh "adapters/$(REGISTRY)/publish.sh" "$(TAG)"
 
 .PHONY: smoke
-smoke: ## Sign up, log in and create a meetup through Envoy (app/smoke.sh)
-	@sh app/smoke.sh
+smoke: ## Run the workload's happy path through Envoy (<workload>/smoke.sh)
+	@sh "$(WORKLOAD)/smoke.sh"
 
 .PHONY: down
 down: ## Stop the app, including a held canary revision if one is running
-	@$(COMPOSE) --profile test --profile canary down
+	@$(COMPOSE) --profile test --profile canary down --remove-orphans
 
 .PHONY: test
 test: ## Run the backend test suite against compose Postgres (docs/adr/0010)
@@ -233,7 +240,7 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 	@main_sha=$$(git rev-parse HEAD); \
 	tmp1=$$(mktemp); tmp2=$$(mktemp); \
 	trap 'rm -f "$$tmp1" "$$tmp2"' EXIT; \
-	for f in gates/fixtures/*/; do \
+	for f in "$(WORKLOAD)/fixtures/gates"/*/; do \
 		name=$$(basename "$$f"); \
 		wt=$$(mktemp -d)/wt; \
 		err=$$(git worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
@@ -357,7 +364,7 @@ mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's prov
 
 .PHONY: release
 release: ## Deploy CANARY_VERSION at CANARY_TAG and run the controller through staging, 5%, 25% (docs/adr/0013 §4, 0025 §6)
-	@sh app/load.sh & \
+	@sh "$(WORKLOAD)/load.sh" & \
 	load_pid=$$!; \
 	CANARY_VERSION="$(CANARY_VERSION)" CANARY_TAG="$(CANARY_TAG)" STAGE_SECONDS="$(STAGE_SECONDS)" sh core/launchpad.sh; \
 	rc=$$?; \
@@ -368,7 +375,7 @@ release: ## Deploy CANARY_VERSION at CANARY_TAG and run the controller through s
 .PHONY: demo-rollback
 demo-rollback: ## Release the failing default and prove the canary rolls back on its own (docs/adr/0013 §4)
 	@stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
-	printf '[demo-rollback] stable is %s; releasing %s (waitlist targeted on)\n' "$$stable" "$(CANARY_VERSION)" >&2; \
+	printf '[demo-rollback] stable is %s; releasing %s (%s targeted on)\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
 	if $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
 		printf 'NO-GO: demo-rollback — release passed; expected a NO-GO at 5%%\n'; \
 		exit 1; \
@@ -393,11 +400,11 @@ demo-rollback: ## Release the failing default and prove the canary rolls back on
 .PHONY: demo-hold
 demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at 25% for the human gate (docs/adr/0014)
 	@backup=$$(mktemp); \
-	cp app/flags/flags.json "$$backup"; \
-	trap 'cat "$$backup" > app/flags/flags.json; rm -f "$$backup"' EXIT INT TERM; \
+	cp "$(FLAGS_FILE)" "$$backup"; \
+	trap 'cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"' EXIT INT TERM; \
 	$(MAKE) --no-print-directory kill-switch; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
-	printf '[demo-hold] stable is %s; releasing %s with waitlist off\n' "$$stable" "$(CANARY_VERSION)" >&2; \
+	printf '[demo-hold] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
 	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
 		printf 'NO-GO: demo-hold — release rolled back; expected GO through 25%%\n'; \
 		exit 1; \
@@ -423,32 +430,32 @@ demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at
 	printf 'GO: demo-hold\n'
 
 # The three targets below go through adapters/$(FLAGS)/set.sh and
-# evaluate.sh (docs/adr/0026 §3) instead of writing app/flags/flags.json
+# evaluate.sh (docs/adr/0026 §3) instead of writing FLAGS_FILE
 # themselves — the same seam L2's flagd-on-Cloud-Run uses (docs/adr/0027
 # §8). set.sh's own header has the in-place-write story (why not a
 # temp-file-plus-rename): flagd's fileinfo poller, reproduced live
 # 2026-09-14 on v0.16.3, intermittently keeps serving a stale evaluation
 # after a rename, with no error.
 .PHONY: kill-switch
-kill-switch: ## Turn `waitlist` off for every version, live within seconds, no deploy (docs/adr/0013 §6)
-	@sh "adapters/$(FLAGS)/set.sh" waitlist off; \
+kill-switch: ## Turn the workload's kill switch off for every version, live within seconds, no deploy (docs/adr/0013 §6, 0030 §2)
+	@sh "adapters/$(FLAGS)/set.sh" "$(WORKLOAD_KILL_SWITCH)" off; \
 	i=0; v=""; \
 	while [ "$$i" -lt "$(READY_TIMEOUT)" ]; do \
-		v=$$(sh "adapters/$(FLAGS)/evaluate.sh" waitlist "$(CANARY_VERSION)" 2>/dev/null) || v=""; \
+		v=$$(sh "adapters/$(FLAGS)/evaluate.sh" "$(WORKLOAD_KILL_SWITCH)" "$(CANARY_VERSION)" 2>/dev/null) || v=""; \
 		[ "$$v" = "false" ] && break; \
 		i=$$((i + 1)); sleep 1; \
 	done; \
 	if [ "$$v" != "false" ]; then \
-		printf 'NO-GO: kill-switch — waitlist still evaluates %s for %s after %ss\n' "$${v:-no answer}" "$(CANARY_VERSION)" "$(READY_TIMEOUT)"; \
+		printf 'NO-GO: kill-switch — %s still evaluates %s for %s after %ss\n' "$(WORKLOAD_KILL_SWITCH)" "$${v:-no answer}" "$(CANARY_VERSION)" "$(READY_TIMEOUT)"; \
 		exit 1; \
 	fi; \
-	printf 'lights-out: waitlist is off for every version (app/flags/flags.json edited; git checkout it to undo)\n' >&2; \
+	printf 'lights-out: %s is off for every version (%s edited; git checkout it to undo)\n' "$(WORKLOAD_KILL_SWITCH)" "$(FLAGS_FILE)" >&2; \
 	printf 'GO: kill-switch\n'
 
 .PHONY: freeze
 freeze: ## Turn release-freeze on: launchpad refuses to deploy or shift (docs/adr/0013 §6)
 	@sh "adapters/$(FLAGS)/set.sh" release-freeze on; \
-	printf 'lights-out: release-freeze is on (app/flags/flags.json edited; git checkout it to undo)\n' >&2; \
+	printf 'lights-out: release-freeze is on (%s edited; git checkout it to undo)\n' "$(FLAGS_FILE)" >&2; \
 	printf 'GO: freeze\n'
 
 .PHONY: unfreeze
@@ -595,11 +602,11 @@ promote: ## go-for-launch: the brief, then the human answer — GO_FOR_LAUNCH=GO
 .PHONY: demo-launch
 demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the un-promote (docs/adr/0020 §4)
 	@backup=$$(mktemp); \
-	cp app/flags/flags.json "$$backup"; \
-	trap 'cat "$$backup" > app/flags/flags.json; rm -f "$$backup"' EXIT INT TERM; \
+	cp "$(FLAGS_FILE)" "$$backup"; \
+	trap 'cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"' EXIT INT TERM; \
 	$(MAKE) --no-print-directory kill-switch; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
-	printf '[demo-launch] stable is %s; releasing %s with waitlist off\n' "$$stable" "$(CANARY_VERSION)" >&2; \
+	printf '[demo-launch] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
 	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
 		printf 'NO-GO: demo-launch — release rolled back; expected a hold at 25%%\n'; exit 1; \
 	fi; \
@@ -620,6 +627,33 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
 	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-launch — Envoy reports weights.canary=%s after the un-promote, want 0\n' "$$canary_w"; exit 1; }; \
 	printf 'GO: demo-launch\n'
+
+# The M12 acceptance command (docs/adr/0030 §7), outside `./go demo` (ADR
+# 0003): the Workload port exercised on a second, deliberately minimal
+# workload, forced regardless of the ambient WORKLOAD (the plain command
+# takes no argument). demo-rollback already proves a canary rolls back on
+# *some* NO-GO; this additionally proves the failing stage is specifically
+# an error_rate NO-GO — "no traffic" would also make demo-rollback pass
+# (the ADR 0014 lesson) but would mean the two workloads' metrics were
+# never actually compared. --remove-orphans on both `down` calls: a later
+# `up` must not re-mount an anonymous volume Prometheus already wrote
+# into, or verify could join the two workloads' backend:8000 series
+# (docs.docker.com, verified 2026-09-23).
+.PHONY: demo-seam
+demo-seam: ## Prove the Workload port on a second, minimal workload (docs/adr/0030 §7)
+	@$(MAKE) --no-print-directory down WORKLOAD=workloads/minimal
+	@$(MAKE) --no-print-directory up WORKLOAD=workloads/minimal
+	@$(MAKE) --no-print-directory smoke WORKLOAD=workloads/minimal
+	@$(MAKE) --no-print-directory verify WORKLOAD=workloads/minimal
+	@$(MAKE) --no-print-directory demo-rollback WORKLOAD=workloads/minimal
+	@$(MAKE) --no-print-directory demo-gates WORKLOAD=workloads/minimal
+	@verdict=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
+	case "$$verdict" in \
+		"NO-GO: slo — error_rate "*) : ;; \
+		*) printf 'NO-GO: demo-seam — last release stage was [%s], want an error_rate NO-GO\n' "$$verdict"; exit 1 ;; \
+	esac
+	@$(MAKE) --no-print-directory down WORKLOAD=workloads/minimal
+	@printf 'GO: demo-seam\n'
 
 # The M8 acceptance command (docs/adr/0026 §4): the suite refuses to run by
 # accident (ci/contract.sh's cold run of every gates/*.sh sees CONFORMANCE

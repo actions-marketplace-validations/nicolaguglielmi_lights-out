@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # gates-mutation: docs/adr/0015 §3. Cosmic-ray over the lines the range
-# BASE..HEAD added or changed under app/backend/meetups/. require_range must
+# BASE..HEAD added or changed under the workload's own mutation scope
+# ($WORKLOAD/$WORKLOAD_MUTATION_SCOPE, docs/adr/0030 §2). require_range must
 # be the first thing that can fail: it is what a cold ci/contract.sh run
 # sees (no BASE/HEAD, no plane), and it is what keeps this gate instant
 # whenever there is no range to judge. Nothing before it may touch git or
@@ -19,24 +20,32 @@ require_range
 gates_out=${GATES_OUT:-.gates-out}
 mkdir -p "$gates_out"
 
-# Parse the range's hunks under app/backend/meetups/ into
-# "meetups/<file>=<start>-<end>,..." groups, space-separated (the
-# app/backend/ prefix is dropped: the Containerfile COPYs the package to
-# /app/meetups, module-path = "meetups" in cosmic-ray.toml). Only the new
-# side of each hunk is kept: a pure deletion (new count 0) has no line left
-# to mutate.
-mutation_lines=$(python3 - "$base" "$head" <<'PY'
+[ -n "${WORKLOAD_MUTATION_SCOPE:-}" ] || nogo "WORKLOAD_MUTATION_SCOPE is empty"
+[ -e "$WORKLOAD/$WORKLOAD_MUTATION_SCOPE" ] || nogo "$WORKLOAD/$WORKLOAD_MUTATION_SCOPE does not exist"
+
+# Parse the range's hunks under the workload's mutation scope into
+# "<module-relative-path>=<start>-<end>,..." groups, space-separated (the
+# $WORKLOAD/$WORKLOAD_TEST_ROOT prefix is dropped: every workload's
+# Containerfile COPYs its package under its own image's WORKDIR, matching
+# cosmic-ray.toml's module-path, docs/adr/0030 §2). Only the new side of
+# each hunk is kept: a pure deletion (new count 0) has no line left to
+# mutate.
+mutation_lines=$(python3 - "$base" "$head" "$WORKLOAD/$WORKLOAD_MUTATION_SCOPE" \
+  "$WORKLOAD" "${WORKLOAD_TEST_ROOT:-}" <<'PY'
 import re
 import subprocess
 import sys
 
-base, head = sys.argv[1], sys.argv[2]
+base, head, scope, workload, test_root = sys.argv[1:6]
 diff = subprocess.run(
-    ["git", "diff", "-U0", base, head, "--", "app/backend/meetups/"],
+    ["git", "diff", "-U0", base, head, "--", scope],
     capture_output=True, text=True, check=True,
 ).stdout
 
-prefix = "app/backend/"
+# A workload with no extra subdirectory (WORKLOAD_TEST_ROOT="", docs/adr/
+# 0030 §2) strips only the workload prefix itself -- never a trailing
+# double slash, never an accidental no-op strip.
+prefix = f"{workload}/{test_root}" if test_root else f"{workload}/"
 hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 file_ranges: dict[str, list[str]] = {}
 current = None
@@ -70,9 +79,13 @@ if [ -z "$mutation_lines" ]; then
   go
 fi
 
-# MUTATION_BASELINE, MUTATION_MARGIN (docs/adr/0015 §3, docs/adr/0016 §6).
+# MUTATION_BASELINE (the workload's own workload.env, already exported by
+# make, docs/adr/0030 §2) and MUTATION_MARGIN (a decision, stays in
+# policy/merge.env: docs/adr/0015 §3, docs/adr/0016 §6, docs/adr/0030 §2
+# alternative (d)).
 # shellcheck disable=SC1091
 . policy/merge.env
+[ -n "${MUTATION_BASELINE:-}" ] || nogo "MUTATION_BASELINE is empty"
 
 # A project name of our own (docs/adr/0015 §2 shared interface, docs/adr/0017
 # §11), via -p rather than a written .env: this worktree's backend-test/

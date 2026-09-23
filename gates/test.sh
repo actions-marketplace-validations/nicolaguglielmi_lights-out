@@ -5,10 +5,14 @@
 # integration and contract tests — which are already one thing, not three:
 # `docker-compose --profile test run --rm --build backend-test`, the exact
 # command docs/adr/0010 §4 gives `./go test` (the Makefile `test:` target).
-# That one pytest run starts the real compose Postgres (integration; no
-# Testcontainers, docs/adr/0015 §1), builds the `test` stage and exercises
-# the geocoder contract test (docs/adr/0006 §4) alongside every unit test
-# in app/backend/tests/. No new test infrastructure is added here.
+# That one test run starts the real compose Postgres (integration; no
+# Testcontainers, docs/adr/0015 §1) and exercises every unit and contract
+# test the workload ships in its test image. Workload-agnostic by
+# construction, not by any effort of this gate's own: `backend-test`'s
+# meaning (profile test, its default command runs the suite, its exit code
+# is the verdict) is fixed by the Workload port, docs/adr/0030 §3, one of
+# the three services every workload provides. No new test infrastructure is
+# added here.
 #
 # require_range (docs/adr/0015 §2) still runs first, unconditionally: it is
 # what ci/contract.sh's cold scan sees (NO-GO in one line, no docker, when

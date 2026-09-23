@@ -11,6 +11,7 @@ name=metric-shape
 . ci/lib.sh
 
 : "${APP_URL:=http://host.containers.internal:8080}"
+[ -n "${WORKLOAD_SAMPLE_PATH:-}" ] || nogo "WORKLOAD_SAMPLE_PATH is empty"
 
 promql=verify/slo.promql
 [ -f "$promql" ] || nogo "$promql not found"
@@ -18,8 +19,8 @@ promql=verify/slo.promql
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-if ! curl -fsS --connect-timeout 1 --max-time 3 "$APP_URL/api/meetups" >/dev/null 2>"$tmp/meetups.err"; then
-  cat "$tmp/meetups.err" >&2
+if ! curl -fsS --connect-timeout 1 --max-time 3 "$APP_URL$WORKLOAD_SAMPLE_PATH" >/dev/null 2>"$tmp/sample.err"; then
+  cat "$tmp/sample.err" >&2
   nogo "app not reachable at $APP_URL; run ./go up"
 fi
 

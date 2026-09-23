@@ -20,6 +20,7 @@ name=crew
 : "${AGENT_HARNESS:?AGENT_HARNESS not set; run this via ./go, not directly}"
 : "${CODE_HOST:?CODE_HOST not set; run this via ./go, not directly}"
 : "${TRACKER:?TRACKER not set; run this via ./go, not directly}"
+: "${WORKLOAD:?WORKLOAD not set; run this via ./go, not directly}"
 
 # A role without a prompt has no run at M5 (docs/adr/0017 §7): the reason
 # is whichever milestone's ROLE.md names, not re-derived here.
@@ -47,19 +48,13 @@ git clone -q "$(sh "adapters/$CODE_HOST/clone-url.sh")" "$crew_dir/workspace" >&
 base=$(git -C "$crew_dir/workspace" rev-parse HEAD)
 git -C "$crew_dir/workspace" checkout -q -b "ticket/$TICKET" >&2
 
-# The backend test suite is written for the test image's layout
-# (app/backend/Containerfile, stage `test`: flags/, fakes/ and contracts/
-# next to the backend sources, PYTHONPATH there), not for a source
-# checkout. Found live, twice (docs/adr/0018 eval runs, and the M5
-# fixture before them, whose patch carries an out-of-ticket conftest.py
-# edit made for exactly this reason): the worker burns its budget
-# rediscovering that. So the workspace gets the same layout as three
-# links, excluded from git so the adapter's `git add -A` never commits
-# them. Ticket-agnostic: it is this repo's app, not ticket 0001's.
-for d in flags fakes contracts; do
-  ln -s "../$d" "$crew_dir/workspace/app/backend/$d"
-  printf 'app/backend/%s\n' "$d" >> "$crew_dir/workspace/.git/info/exclude"
-done
+# A workload may need its checked-out workspace prepared before the
+# harness starts on it — a layout its test suite assumes but a plain
+# checkout does not provide (docs/adr/0030 §3). Optional: a workload
+# without one skips this silently.
+if [ -f "$WORKLOAD/crew-prepare.sh" ]; then
+  sh "$WORKLOAD/crew-prepare.sh" "$crew_dir/workspace"
+fi
 
 mkdir -p "$crew_dir/out"
 

@@ -12,8 +12,8 @@
 # promote.sh, docs/adr/0020 §4), and exits 0. Either way the decision and
 # the numbers that produced it are written to RELEASE_RECORD, the file
 # promote reads. Generates no traffic itself: production has real
-# traffic, the Makefile `release` target starts app/load.sh beside this
-# at L0.
+# traffic, the Makefile `release` target starts the workload's `load.sh`
+# beside this at L0 (docs/adr/0030 §3).
 #
 # Not scanned by ci/contract.sh (core/, not ci/ gates/ verify/), but reuses
 # ci/lib.sh's go/nogo for the same GO:/NO-GO: line shape.
