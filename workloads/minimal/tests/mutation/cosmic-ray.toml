@@ -1,0 +1,59 @@
+# Cosmic Ray config for the mutation gate (docs/adr/0015 §3, docs/adr/0030
+# §3). Schema keys confirmed against cosmic-ray 8.7.0's installed source and
+# docs, not guessed: cosmic_ray/config.py (top-level table name, module-path,
+# test-command, timeout, distributor.name), cosmic_ray/distribution/
+# local.py (docstring: `[cosmic-ray.distributor] name = "local"`), docs/
+# source/tutorials/intro/index.rst in the sdist (a full worked example with
+# the same keys), and docs/source/how-tos/filters.rst (the operators-filter
+# example below).
+#
+# module-path is relative to the test image's WORKDIR (/app, see
+# ../../Containerfile): the Containerfile COPYs minimal to ./minimal, so
+# this mutates exactly the shipped package, nothing under tests/.
+#
+# Every key in this file must live under the "cosmic-ray" table:
+# cosmic_ray/config.py's deserialize_config() does
+# `toml.loads(text)["cosmic-ray"]`, confirmed by reading the installed
+# 8.7.0 source (also matches serialize_config()'s own
+# `toml.dumps({"cosmic-ray": config})`).
+[cosmic-ray]
+module-path = "minimal"
+excluded-modules = []
+test-command = "python -m pytest tests -q -x -p no:cacheprovider"
+
+# Measured 2026-09-23 inside the backend-test image (docker-compose
+# --profile test run --rm -T backend-test sh -c "python -m pytest tests -q
+# -x -p no:cacheprovider"), clean suite, no mutation, three runs after the
+# image was warm: pytest reported "5 passed ... in 0.51s", "0.51s", "0.51s".
+# 10 x the slowest of the three (0.51s) = 5.1s, rounded up, per docs/adr/
+# 0015 §3 ("10 x the clean-run time measured at M4 close").
+timeout = 6
+
+[cosmic-ray.distributor]
+# This suite has no shared state to protect (docs/adr/0030 §6: no
+# database), unlike the app's -- kept "local" anyway: cosmic_ray.
+# distribution.local.LocalDistributor runs pending_work one item at a time
+# in-process (read from its installed source), and a workload this small
+# gains nothing from a second distributor.
+name = "local"
+
+# [cosmic-ray.filters.line-filter.lines] is appended at runtime by
+# tests/mutation/run.sh from $MUTATION_LINES; there is deliberately no
+# static section here.
+
+[cosmic-ray.filters.operators-filter]
+# The one exclusion (docs/adr/0015 §3): comparisons that swap between
+# value-equality (==, !=, <, <=, >, >=) and identity (is, is not). This is
+# the exact regex pair from cosmic-ray's own filters how-to (docs/source/
+# how-tos/filters.rst in the 8.7.0 sdist), whose own worked example
+# highlights "==" -> "is" as a mutation CPython can make a style warning
+# rather than a test-quality signal (small ints and interned string
+# literals can compare equal under `is` too). Confirmed against the
+# installed cosmic_ray.operators.comparison_operator_replacement (8.7.0):
+# identity-negation (`is` <-> `is not`) is deliberately NOT matched by
+# either pattern below -- it is a real logical negation, not a style
+# artefact, so it stays a live mutation.
+exclude-operators = [
+  "core/ReplaceComparisonOperator_Is(Not)?_(Not)?(Eq|[LG]tE?)",
+  "core/ReplaceComparisonOperator_(Not)?(Eq|[LG]tE?)_Is(Not)?",
+]

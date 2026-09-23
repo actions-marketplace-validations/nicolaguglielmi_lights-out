@@ -1,0 +1,71 @@
+From aaeed7433daa963eb146620259940ae78e7b7898 Mon Sep 17 00:00:00 2001
+From: Nicola <nicola.guglielmi@gmail.com>
+Date: Wed, 23 Sep 2026 09:26:29 +0200
+Subject: [PATCH] =?UTF-8?q?[M12]=20fixture:=20honest-fix=20=E2=80=94=20/he?=
+ =?UTF-8?q?althz=20and=20/metrics=20excluded=20from=20the=20OpenAPI=20sche?=
+ =?UTF-8?q?ma?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+minimal/app.py already treats /healthz and /metrics as operational, not
+application, traffic: FastAPIInstrumentor.instrument_app's excluded_urls
+keeps them out of OTel tracing. That distinction never reached the
+generated OpenAPI schema — both routes were fully documented operations,
+indistinguishable from /ping, the one real route this workload has.
+
+include_in_schema=False on both routes carries the existing intent
+through. test_app.py gets one new test: GET /openapi.json's paths must
+not include /healthz or /metrics, and must include /ping — fails against
+the unfixed routes (both appeared in paths), passes against the fix.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01SqWLqKWP9vA5itKWLEXonS
+---
+ workloads/minimal/minimal/app.py    |  4 ++--
+ workloads/minimal/tests/test_app.py | 13 +++++++++++++
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/workloads/minimal/minimal/app.py b/workloads/minimal/minimal/app.py
+index 20b3678..2b42922 100644
+--- a/workloads/minimal/minimal/app.py
++++ b/workloads/minimal/minimal/app.py
+@@ -43,12 +43,12 @@ def ping():
+     return {"ok": True}
+ 
+ 
+-@app.get("/healthz")
++@app.get("/healthz", include_in_schema=False)
+ def healthz():
+     return {"status": "ok", "version": APP_VERSION}
+ 
+ 
+-@app.get("/metrics")
++@app.get("/metrics", include_in_schema=False)
+ def metrics_endpoint():
+     return Response(
+         content=prometheus_client.generate_latest(),
+diff --git a/workloads/minimal/tests/test_app.py b/workloads/minimal/tests/test_app.py
+index 79f7e13..74df1d7 100644
+--- a/workloads/minimal/tests/test_app.py
++++ b/workloads/minimal/tests/test_app.py
+@@ -114,3 +114,16 @@ def test_metrics_exposes_stable_http_semconv_shape(client):
+             continue
+         assert 'http_route="/healthz"' not in line
+         assert 'http_route="/metrics"' not in line
++
++
++def test_healthz_and_metrics_are_excluded_from_the_openapi_schema(client):
++    # /healthz and /metrics are operational endpoints, already excluded from
++    # OTel tracing (FastAPIInstrumentor's excluded_urls, minimal/app.py) --
++    # they should not appear in the generated OpenAPI schema/docs alongside
++    # the one real application route, /ping.
++    resp = client.get("/openapi.json")
++    assert resp.status_code == 200
++    paths = resp.json()["paths"]
++    assert "/healthz" not in paths
++    assert "/metrics" not in paths
++    assert "/ping" in paths
+-- 
+2.50.1 (Apple Git-155)
+
