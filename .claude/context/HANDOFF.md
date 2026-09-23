@@ -1,5 +1,7 @@
 # Handoff: M12 closed on 2026-09-23
 
+> **Update 2026-09-23, gap closed.** `./go demo` and `./go demo-seam` ran to completion on a rebuilt workbench and a clean plane, on `APP_PORT=9000` (new knob, default 8080; 8080 is still held by `lungimira`): `GO: demo, milestone M9, 525s to rollback (budget 900s, plan §2)` and `GO: demo-seam`. The default `docker-compose config` stays byte-identical to the pre-M12 capture. The "Not verified" paragraph and item 1 of "First thing M13 should look at" below are resolved; the `.env` parking fix is in the owner's memory and in PLAN §7's M12 note. Two small leftovers: `compose.yaml` mounts `./${WORKLOAD}/flags` with no `:?` guard (a bare `docker-compose` outside make mounts `./flags`); the demo's closing line still says `milestone M9`.
+
 ## Acceptance
 
 ADR 0030 §7 / `.claude/context/M12-PLAN.md`, verbatim:
