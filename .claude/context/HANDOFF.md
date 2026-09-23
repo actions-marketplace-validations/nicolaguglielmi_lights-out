@@ -1,5 +1,12 @@
 # Handoff: M9 closed on 2026-09-17
 
+> **Update 2026-09-23.** The product was refocused (ADR 0029: a
+> governed-autonomy harness; the app becomes a workload behind a port) and
+> M12 is next, designed in ADR 0030 and planned file by file in
+> `.claude/context/M12-PLAN.md`. The "First thing M10 should look at"
+> section below is superseded: M8's cloud track, M10 and M11 wait (plan
+> §14). Everything else in this handoff still holds.
+
 ## Acceptance
 
 Plan §7 M9: a medium-risk PR (fixture recorded at L1, replayed at L0) goes through the `review` step; `test-reviewer` marks it approved or changes-requested with a reason traceable in the tower document; a fixture whose diff exits the ticket's perimeter is not written by `record`, the reason naming the file.
