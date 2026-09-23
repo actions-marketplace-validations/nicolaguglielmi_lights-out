@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# This instance's compose services (docs/adr/0030 §3, §6): merged after
+# the root compose.yaml, the same way app/compose.yaml is. No database, no
+# frontend, no gemini-cli fragment (its tests need nothing beyond what the
+# root file already gives the worker). The image name stays
+# lights-out-backend, the same as every other workload's: one plane runs
+# one workload at a time, so one name serves (docs/adr/0030 §3).
+services:
+  backend:
+    image: localhost:5050/lights-out-backend:${APP_TAG:-latest}
+    build:
+      context: ./workloads/minimal
+      dockerfile: Containerfile
+      target: runtime
+    depends_on:
+      flagd:
+        condition: service_started
+    environment:
+      FLAGD_RESOLVER: in-process
+      FLAGD_HOST: flagd
+      FLAGD_SYNC_PORT: "8015"
+      APP_VERSION: 0.1.0-minimal
+
+  backend-canary:
+    image: ${CANARY_IMAGE:-localhost:5050/lights-out-backend:latest}
+    profiles: ["canary"]
+    depends_on:
+      flagd:
+        condition: service_started
+    environment:
+      FLAGD_RESOLVER: in-process
+      FLAGD_HOST: flagd
+      FLAGD_SYNC_PORT: "8015"
+      APP_VERSION: ${CANARY_VERSION:-0.2.0-outage}
+
+  backend-test:
+    build:
+      context: ./workloads/minimal
+      dockerfile: Containerfile
+      target: test
+    profiles: ["test"]

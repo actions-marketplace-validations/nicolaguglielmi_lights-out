@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Build context is ./workloads/minimal (docs/adr/0010, 0030). Classic
+# syntax only: no RUN --mount, no heredocs — DOCKER_BUILDKIT=0 builds this
+# (docs/adr/0010). Same Python digest and uv version as app/backend/
+# Containerfile (docs/adr/0030 §6). Stages: runtime (ships) -> test (adds
+# dev deps and the test tree). No frontend stage: this workload has none.
+
+FROM docker.io/library/python:3.13-slim-trixie@sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 AS runtime
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    PATH=/opt/venv/bin:$PATH \
+    OTEL_SEMCONV_STABILITY_OPT_IN=http
+RUN pip install --no-cache-dir uv==0.12.13
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev
+COPY minimal ./minimal
+COPY flags/flags.json ./flags/flags.json
+EXPOSE 8000
+CMD ["uvicorn", "minimal.app:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM runtime AS test
+ENV PYTHONPATH=/app
+RUN uv sync --locked
+COPY tests ./tests
+CMD ["python", "-m", "pytest", "tests", "-q"]
