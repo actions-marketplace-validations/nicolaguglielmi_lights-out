@@ -36,8 +36,12 @@ COMPOSE := docker-compose
 # Workbench reaches a port compose publishes on the engine host through this
 # alias (docs/adr/0011, 0012 §6); it is the one place the hostname is written.
 PLANE_HOST ?= host.containers.internal
-APP_URL ?= http://$(PLANE_HOST):8080
-export PLANE_HOST APP_URL
+# The host port the edge publishes the app on (compose.yaml, service envoy);
+# inside the plane it stays 8080. Set APP_PORT in .env when 8080 is taken
+# on the machine — found closing M12, where another project held it.
+APP_PORT ?= 8080
+APP_URL ?= http://$(PLANE_HOST):$(APP_PORT)
+export PLANE_HOST APP_PORT APP_URL
 
 # Seconds each adapters/<name>/ready.sh polls before giving up: 4x the 15 s a
 # cold plane took to answer at M2 close (docs/adr/0012 §6, HANDOFF).

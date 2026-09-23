@@ -8,7 +8,7 @@ lights-out is a governed-autonomy harness, not a code assistant: the decision th
 
 ## Status
 
-Milestone M12 closed (the Workload port; ADR 0030). M9 review and the gaps at M8, M10, M11 are not yet documented here. What runs today:
+Milestone M12 closed (the Workload port, ADR 0030). Next is the legacy-repo experiment of plan §14. What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -48,6 +48,8 @@ Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) an
 Prerequisites: podman (rootless), git, a POSIX shell. Nothing else.
 
 On macOS, podman runs inside `podman machine`, a VM. The docker CLI is compatible but not the documented path; use `CONTAINER_ENGINE=docker` if needed.
+
+If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free port) in `.env`: the app then answers at `http://localhost:9000`, and every command follows it.
 
 ```sh
 git clone <this repository>
