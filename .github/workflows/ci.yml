@@ -102,3 +102,20 @@ jobs:
       - run: ./go demo-launch
         env:
           CONTAINER_ENGINE: docker
+
+  # The Workload port's own acceptance (docs/adr/0030 §7): down, up, smoke,
+  # verify, demo-rollback, demo-gates, down against workloads/minimal/
+  # instead of app/, proving the seam by swapping which directory is
+  # selected. Same shape as launch: needs the plane, GitHub-only until M5
+  # decides the Gitea runner's own engine access (docs/adr/0012
+  # consequences).
+  seam:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./go demo-seam
+        env:
+          CONTAINER_ENGINE: docker

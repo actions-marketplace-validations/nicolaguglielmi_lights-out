@@ -1,119 +1,29 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# One root compose file for the whole L0 plane (docs/adr/0010, 0012): the
-# app (postgres, migrate, geocoder, backend) and, from M2, the plane around
-# it. Vendor config lives in adapters/<name>/ and is copied into images at
-# build; the only bind mount is app/flags/ into flagd. Run through ./go:
-# WORKBENCH_IMAGE is set there and the runner image is built from it.
-# From M3 (docs/adr/0013): backend-canary is the same image as backend,
-# a second revision the release controller starts on demand (profile
-# "canary", not part of `./go up`).
+# The plane (docs/adr/0010, 0012): everything the platform runs regardless
+# of which workload is selected. The workload's own services (docs/adr/
+# 0030) live in $(WORKLOAD)/compose.yaml, merged in by the Makefile
+# (COMPOSE_FILE=compose.yaml:$(WORKLOAD)/compose.yaml) — this file never
+# names one. Vendor config lives in adapters/<name>/ and is copied into
+# images at build; the only bind mount is the workload's flags/ directory
+# into flagd. Run through ./go: WORKBENCH_IMAGE is set there and the
+# runner image is built from it.
 name: lights-out
 
 services:
-  postgres:
-    image: docker.io/library/postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
-    environment:
-      POSTGRES_DB: meetups
-      POSTGRES_USER: meetups
-      POSTGRES_PASSWORD: meetups
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
-  migrate:
-    build:
-      context: ./app
-      dockerfile: backend/Containerfile
-      target: runtime
-    command: ["python", "-m", "meetups.migrate"]
-    restart: "no"
-    depends_on:
-      - postgres
-    environment:
-      DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups
-
-  geocoder:
-    build:
-      context: ./app
-      dockerfile: fakes/geocoder/Containerfile
-
-  # image: tags the build so backend-canary (M3) can start a container from
-  # exactly this image with no second build (docs/adr/0013 §1: "same image
-  # and build as backend").
-  # image: registry-qualified and APP_TAG-driven (docs/adr/0025 §1, §3):
-  # `./go up` builds and tags it at the current checkout's sha, then
-  # publish.sh pushes and signs that exact tag — no retag, no rebuild.
-  # localhost:5050 is the one registry host both engines treat as
-  # insecure without configuration.
-  backend:
-    image: localhost:5050/lights-out-backend:${APP_TAG:-latest}
-    build:
-      context: ./app
-      dockerfile: backend/Containerfile
-      target: runtime
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      geocoder:
-        condition: service_started
-      flagd:
-        condition: service_started
-    environment:
-      DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups
-      GEOCODER_URL: http://geocoder:8001
-      FLAGD_RESOLVER: in-process
-      FLAGD_HOST: flagd
-      FLAGD_SYNC_PORT: "8015"
-      APP_VERSION: 0.1.0-m2
-
-  # The canary revision (docs/adr/0013 §1): started only by
-  # adapters/envoy-canary/deploy.sh, never by `./go up`, at the specific
-  # verified digest core/launchpad.sh resolved (docs/adr/0025 §6) — no
-  # `build:` section, so a deploy never races a build. The Makefile
-  # defaults CANARY_IMAGE to the same tag `backend` above resolves to, so
-  # `docker-compose config -q` (ci-compose) stays clean with no release in
-  # flight; deploy.sh always overrides it for a real deploy.
-  backend-canary:
-    image: ${CANARY_IMAGE:-localhost:5050/lights-out-backend:latest}
-    profiles: ["canary"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      geocoder:
-        condition: service_started
-      flagd:
-        condition: service_started
-    environment:
-      DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups
-      GEOCODER_URL: http://geocoder:8001
-      FLAGD_RESOLVER: in-process
-      FLAGD_HOST: flagd
-      FLAGD_SYNC_PORT: "8015"
-      APP_VERSION: ${CANARY_VERSION:-0.2.0-waitlist}
-
-  backend-test:
-    build:
-      context: ./app
-      dockerfile: backend/Containerfile
-      target: test
-    profiles: ["test"]
-    depends_on:
-      - postgres
-    environment:
-      POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
-      TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
-
   # The gemini-cli AgentHarness worker (docs/adr/0017 §3): workbench plus
   # @google/gemini-cli, pinned by adapters/gemini-cli/package-lock.json. No
-  # engine socket. Reaches the plane's Postgres to run the app's own tests
-  # (docs/adr/0017 §10), at the same meetups_test database ./go test uses —
-  # safe because demo-crew and record run one worker at a time. user:
-  # CREW_UID:CREW_GID (the Makefile's `id -u`/`id -g`) keeps files the
-  # model's git writes in the bind-mounted workspace writable by workbench
-  # afterwards; HOME is set because that uid has no passwd entry. The `:-`
-  # default on GEMINI_API_KEY keeps `docker-compose config -q` (ci-compose)
-  # clean with no key set — the adapter itself refuses an empty or
-  # placeholder key, loudly, before this service ever starts.
+  # engine socket. Reaches its workload's Postgres to run the workload's
+  # own tests (docs/adr/0017 §10; the `depends_on`/`environment` that make
+  # that possible live in the workload's own compose fragment, merged in —
+  # docs/adr/0030 §3) — safe because demo-crew and record run one worker
+  # at a time. user: CREW_UID:CREW_GID (the Makefile's `id -u`/`id -g`)
+  # keeps files the model's git writes in the bind-mounted workspace
+  # writable by workbench afterwards; HOME is set because that uid has no
+  # passwd entry. The `:-` default on GEMINI_API_KEY keeps
+  # `docker-compose config -q` (ci-workloads) clean with no key set — the
+  # adapter itself refuses an empty or placeholder key, loudly, before
+  # this service ever starts.
   gemini-cli:
     build:
       context: ./adapters/gemini-cli
@@ -122,8 +32,6 @@ services:
         WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
     profiles: ["crew"]
     user: "${CREW_UID:-0}:${CREW_GID:-0}"
-    depends_on:
-      - postgres
     volumes:
       - ./.crew:/crew
       - ./roles:/roles:ro
@@ -139,11 +47,6 @@ services:
       UV_PROJECT_ENVIRONMENT: /tmp/crew-venv
       UV_CACHE_DIR: /crew/.uv-cache
       UV_LINK_MODE: copy
-      POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
-      TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
-      # As the backend test image sets it (app/backend/Containerfile); the
-      # metrics test needs it and the worker cannot know that.
-      OTEL_SEMCONV_STABILITY_OPT_IN: http
 
   # --- the plane (M2) ---
 
@@ -180,7 +83,7 @@ services:
     image: ghcr.io/open-feature/flagd:v0.16.3@sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3
     command: ["start", "--uri", "file:/flags/flags.json"]
     volumes:
-      - ./app/flags:/flags:ro
+      - ./${WORKLOAD}/flags:/flags:ro
     security_opt:
       - label=disable
     ports:
@@ -213,9 +116,9 @@ services:
   # pushed (no fork PRs, no external webhook — this Gitea has neither),
   # and the README's L0 trusted-network line names it. HOST_DOCKER_SOCK is
   # the same path ./go resolves for its own socket mount into workbench;
-  # its `:-` default only keeps `docker-compose config -q` (ci-compose)
+  # its `:-` default only keeps `docker-compose config -q` (ci-workloads)
   # clean when no target grants it — never used to start the service for
-  # real, exactly like backend-canary's CANARY_IMAGE default.
+  # real, exactly like the workload's own canary service's image default.
   runner:
     build:
       context: ./adapters/gitea/runner
@@ -265,6 +168,3 @@ services:
     command: ["gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8086", "--project=lights-out"]
     ports:
       - "8086:8086"
-
-volumes:
-  postgres-data:

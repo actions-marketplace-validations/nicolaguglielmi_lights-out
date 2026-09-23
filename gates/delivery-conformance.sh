@@ -16,15 +16,16 @@
 # $APP_URL/healthz, never Envoy's admin API — demo-rollback/demo-hold/
 # demo-launch keep that L0-only proof, this suite proves the port.
 #
-# Leaves app/flags/flags.json changed on disk (verified 2026-09-20): the
-# trap restores waitlist to "off" through the port, not to the committed
+# Leaves the workload's flag file ($FLAGS_FILE) changed on disk (verified
+# 2026-09-20): the trap restores the workload's kill switch
+# ($WORKLOAD_KILL_SWITCH) to "off" through the port, not to the committed
 # per-version targeting rule (set.sh's two-argument contract cannot express
 # a targeting rule, and restoring "on" instead would leave every version
-# waitlisted, breaking a plain ./go demo afterward — see set.sh's own
+# kill-switched, breaking a plain ./go demo afterward — see set.sh's own
 # header and this repo's HANDOFF). A second run's own preflight catches
 # this and NO-GOes naming the fix; `demo-rollback` run right after this
-# suite without restoring first would not: `git checkout --
-# app/flags/flags.json` before either.
+# suite without restoring first would not: `git checkout -- "$FLAGS_FILE"`
+# before either.
 #
 # Lives in gates/, so ci/contract.sh cold-runs it inside `make ci` with no
 # CONFORMANCE set and no plane up; the guard below must be the first thing
@@ -44,13 +45,18 @@ if [ "${CONFORMANCE:-}" != "1" ]; then
   nogo "set CONFORMANCE=1: this suite drives real releases on the plane (./go delivery-conformance)"
 fi
 
-: "${CANARY_VERSION:=0.2.0-waitlist}"
 : "${RELEASE_RECORD:=.crew/release.json}"
 : "${PLANE_HOST:=host.containers.internal}"
 : "${APP_URL:=http://$PLANE_HOST:8080}"
 
 [ -n "${DELIVERY:-}" ] || nogo "DELIVERY is not set; a profile sets it — run via make delivery-conformance"
 [ -n "${FLAGS:-}" ] || nogo "FLAGS is not set; a profile sets it — run via make delivery-conformance"
+[ -n "${WORKLOAD_KILL_SWITCH:-}" ] || nogo "WORKLOAD_KILL_SWITCH is empty; the workload's workload.env should set it (docs/adr/0030 §2)"
+# CANARY_VERSION comes from the workload's workload.env, already exported
+# by make (docs/adr/0030 §2) — no hardcoded fallback here, so a blank
+# value NO-GOes naming the key instead of silently driving a release
+# against "".
+[ -n "${CANARY_VERSION:-}" ] || nogo "CANARY_VERSION is empty; the workload's workload.env should set it (docs/adr/0030 §2)"
 
 # The tag ./go up publishes (docs/adr/0025 §3). Computed here, not defaulted
 # by the Makefile as of this writing: every `make release` call below passes
@@ -71,7 +77,7 @@ delivery_adapter="adapters/$DELIVERY"
 # the time it runs (go/nogo call exit, which fires this) — so a restore
 # failure is a warning on stderr, not a second verdict line.
 # ---------------------------------------------------------------------------
-waitlist_touched=0
+kill_switch_touched=0
 freeze_touched=0
 
 # shellcheck disable=SC2329 # invoked by name via `trap` below, not called directly
@@ -81,16 +87,17 @@ restore_flags() {
     sh "$flags_adapter/set.sh" release-freeze off >&2 \
       || printf 'delivery-conformance: cleanup could not restore release-freeze; run: sh %s/set.sh release-freeze off\n' "$flags_adapter" >&2
   fi
-  if [ "$waitlist_touched" -eq 1 ]; then
-    # "off", matching app/flags/flags.json's own committed defaultVariant —
-    # not "on": set.sh's two-argument contract can set a flat default but
+  if [ "$kill_switch_touched" -eq 1 ]; then
+    # "off", matching the workload's committed flags/flags.json defaultVariant
+    # — not "on": set.sh's two-argument contract can set a flat default but
     # cannot reconstruct the committed per-version targeting rule, and "on"
-    # here would leave *every* version waitlisted, not just CANARY_VERSION,
-    # which breaks a plain ./go smoke/demo run afterward, silently. "off"
-    # fails safe: a second delivery-conformance run's own preflight NO-GOes
-    # with a clear reason instead of passing against a subtly wrong state.
-    sh "$flags_adapter/set.sh" waitlist off >&2 \
-      || printf 'delivery-conformance: cleanup could not restore waitlist; run: sh %s/set.sh waitlist off\n' "$flags_adapter" >&2
+    # here would leave *every* version kill-switched, not just
+    # CANARY_VERSION, which breaks a plain ./go smoke/demo run afterward,
+    # silently. "off" fails safe: a second delivery-conformance run's own
+    # preflight NO-GOes with a clear reason instead of passing against a
+    # subtly wrong state.
+    sh "$flags_adapter/set.sh" "$WORKLOAD_KILL_SWITCH" off >&2 \
+      || printf 'delivery-conformance: cleanup could not restore %s; run: sh %s/set.sh %s off\n' "$WORKLOAD_KILL_SWITCH" "$flags_adapter" "$WORKLOAD_KILL_SWITCH" >&2
   fi
   exit "$ec"
 }
@@ -177,11 +184,11 @@ fi
 [ "$freeze_val" = "false" ] \
   || nogo "release-freeze already evaluates $freeze_val, want false; run: sh $flags_adapter/set.sh release-freeze off"
 
-if ! waitlist_val=$(sh "$flags_adapter/evaluate.sh" waitlist "$CANARY_VERSION"); then
-  nogo "adapters/$FLAGS/evaluate.sh waitlist $CANARY_VERSION failed; is the plane up? (./go up)"
+if ! kill_switch_val=$(sh "$flags_adapter/evaluate.sh" "$WORKLOAD_KILL_SWITCH" "$CANARY_VERSION"); then
+  nogo "adapters/$FLAGS/evaluate.sh $WORKLOAD_KILL_SWITCH $CANARY_VERSION failed; is the plane up? (./go up)"
 fi
-[ "$waitlist_val" = "true" ] \
-  || nogo "waitlist $CANARY_VERSION already evaluates $waitlist_val, want true; app/flags/flags.json's committed targeting rule may be missing"
+[ "$kill_switch_val" = "true" ] \
+  || nogo "$WORKLOAD_KILL_SWITCH $CANARY_VERSION already evaluates $kill_switch_val, want true; the workload's committed flags/flags.json targeting rule may be missing"
 
 fetch_status preflight
 weight0=$(printf '%s' "$status_json" | jq -r .weight)
@@ -194,7 +201,8 @@ printf '[delivery-conformance] preflight GO: DELIVERY=%s FLAGS=%s stable=%s CANA
 
 # ---------------------------------------------------------------------------
 # Case 1: rejects and rolls back. No setup — the committed targeting rule
-# (app/flags/flags.json, via waitlist) is the failure.
+# (the workload's own flags/flags.json, via $WORKLOAD_KILL_SWITCH) is the
+# failure.
 # ---------------------------------------------------------------------------
 
 run_release "case1 rejects-and-rolls-back" "$CANARY_VERSION" "$CANARY_TAG"
@@ -220,12 +228,12 @@ ok=$(healthz_matches "$record_stable")
 printf '[delivery-conformance] case1 rejects-and-rolls-back: GO\n' >&2
 
 # ---------------------------------------------------------------------------
-# Case 2: promotes. Setup: the kill switch (waitlist off), the same way
-# demo-hold already makes verify pass.
+# Case 2: promotes. Setup: the workload's kill switch ($WORKLOAD_KILL_SWITCH
+# off), the same way demo-hold already makes verify pass.
 # ---------------------------------------------------------------------------
 
-sh "$flags_adapter/set.sh" waitlist off >&2 || nogo "case2 promotes: adapters/$FLAGS/set.sh waitlist off failed"
-waitlist_touched=1
+sh "$flags_adapter/set.sh" "$WORKLOAD_KILL_SWITCH" off >&2 || nogo "case2 promotes: adapters/$FLAGS/set.sh $WORKLOAD_KILL_SWITCH off failed"
+kill_switch_touched=1
 
 run_release "case2 promotes" "$CANARY_VERSION" "$CANARY_TAG"
 [ "$release_rc" -eq 0 ] || nogo "case2 promotes: make release exited $release_rc, want 0 (stdout: $release_out)"
@@ -265,7 +273,7 @@ printf '[delivery-conformance] case2 promotes: GO\n' >&2
 # No teardown release here (docs/adr/0026 §6.2): case 3's own `make release`
 # rolls back unconditionally before it ever checks the freeze flag
 # (core/launchpad.sh's opening `rollback`), which is what leaves traffic on
-# stable for case 3. The waitlist flag itself is restored by the trap.
+# stable for case 3. The kill switch flag itself is restored by the trap.
 
 # ---------------------------------------------------------------------------
 # Case 3: respects the freeze.
@@ -315,7 +323,7 @@ printf '[delivery-conformance] case4 rollback-is-idempotent: GO\n' >&2
 # owner ruling). No setup. CANARY_VERSION is the snapshot's stable, not the
 # targeted version: the case isolates the signature check, which the
 # launchpad runs before staging and before either % stage (docs/adr/0025
-# §6), from the waitlist-targeting failure case 1 already covers.
+# §6), from the kill-switch-targeting failure case 1 already covers.
 # ---------------------------------------------------------------------------
 
 fetch_status "case5 unsigned-image (snapshot)"

@@ -77,7 +77,7 @@ Due scelte che tengono in piedi la tabella:
 
 ## 4. Porte e adapter
 
-Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfaccia con almeno due implementazioni, e la scelta avviene da variabile d'ambiente del profilo.
+Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfaccia con almeno due implementazioni, e la scelta avviene da variabile d'ambiente del profilo — eccetto `Workload`, scelto da `WORKLOAD=<path>` (default `app`), lo stesso a ogni livello (ADR 0030 §1).
 
 | Porta | Adapter | Note |
 |---|---|---|
@@ -92,6 +92,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `Flags` | `flagd`, `unleash` | OpenFeature, l'SDK non cambia; due verbi per il nucleo e i target: `evaluate.sh <flag> [version]`, `set.sh <flag> <variant>` (ADR 0026 §3) |
 | `Registry` | `zot`, `artifact-registry` | `publish.sh <tag>` costruisce, firma e pusha stampando il riferimento immutabile; `verify.sh <tag>` verifica la firma e stampa il digest verificato (ADR 0025 §1) |
 | `Charts` | `grafana`, `cloud-monitoring` | i grafici che la console mostra; la console non li ridisegna (ADR 0023) |
+| `Workload` | `app`, `workloads/minimal` | ciò su cui la piattaforma opera, scelto da `WORKLOAD=<dir>` (default `app`), non dal profilo; `workload.env`, `compose.yaml`, `/healthz` e `/metrics` su `:8000`, `flags/flags.json`, `smoke.sh`, `load.sh`, runner in-image test/mutation/SAST, `fixtures/gates/`; non nominato in `core/`, `gates/`, `verify/`, `adapters/` (`ci/app-free.sh`); verificato da `ci/workloads.sh` e `./go demo-seam` (ADR 0030) |
 
 Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud Deploy ha un concetto che Envoy non ha, o lo si modella in astratto o resta dentro l'adapter.
 
@@ -164,7 +165,9 @@ Resta noioso di proposito: eventi su Pub/Sub, dispatcher, macchina a stati con l
 ### L'app bersaglio
 Serve un'applicazione vera su cui gli agenti lavorano. Deve essere abbastanza piccola da leggersi in un'ora e abbastanza vera da avere tutto ciò che rompe: **un backend Python (FastAPI) con Postgres, un frontend React, autenticazione, una migrazione di schema, un endpoint dipendente da un servizio esterno** (così esiste un contract test). Dominio suggerito: gestione iscrizioni a un meetup, che è anche il dominio che conosci meglio e regge bene sul palco.
 
-*Emendamento 2026-09-23 (ADR 0029).* L'app meetup è il **primo workload**, non il soggetto fisso del prodotto. Da M12 sta dietro una porta (ADR 0030 ne fissa nome e contratto): nessun file di `core/`, `gates/`, `verify/` la nomina, `ci/app-free.sh` lo prova, e un secondo workload deliberatamente minimo dimostra che il seam è reale. Misura del 2026-09-22: ~87 riferimenti all'app in 15 file fuori da `app/`, `core/crew.sh` compreso.
+*Emendamento 2026-09-23 (ADR 0029).* L'app meetup è il **primo workload**, non il soggetto fisso del prodotto. Da M12 sta dietro una porta (ADR 0030 ne fissa nome e contratto): nessun file di `core/`, `gates/`, `verify/` o `adapters/` la nomina, `ci/app-free.sh` lo prova, e un secondo workload deliberatamente minimo dimostra che il seam è reale. Misura del 2026-09-22: ~87 riferimenti all'app in 15 file fuori da `app/`, `core/crew.sh` compreso.
+
+*Emendamento 2026-09-23 (ADR 0030).* Nome e contratto della porta `Workload`: una directory scelta da `WORKLOAD=<path>` (default `app`), sette chiavi in `workload.env`, tre servizi compose fissi (`backend`, `backend-canary`, `backend-test`), `/healthz` e `/metrics` su `:8000`, un file di flag, due runner in-image (test/mutation, SAST), `fixtures/gates/`. `adapters/` entra nel perimetro di `ci/app-free.sh` insieme a `core/`, `gates/`, `verify/`: `adapters/flagd/ready.sh` interrogava il flag `waitlist` per nome, che il secondo workload non ha. `workloads/minimal/` è quel secondo workload, provato da `./go demo-seam`.
 
 ---
 
@@ -190,7 +193,8 @@ lights-out/
   tickets/                  # i ticket del progetto, uno per file, la sorgente del lavoro a L0 (Tracker=file)
   design/                   # artefatti Stitch committati per la console: tokens, screens, CONTRACT.md
   console/                  # M11: la vista sulla piattaforma, legge git e state store, scrive due cose sole
-  app/                      # l'applicazione bersaglio
+  app/                      # l'applicazione bersaglio: il primo workload (ADR 0030)
+  workloads/                # altri workload che provano il seam (M12, ADR 0030): minimal/
   infra/                    # terraform per L2 e L3
   fixtures/                 # risposte modello registrate per L0
   e2e/                      # il golden path
@@ -198,6 +202,8 @@ lights-out/
 ```
 
 *Emendamento 2026-09-20 (ADR 0023):* aggiunta `console/`; `design/` descrive la console, non l'app bersaglio (ADR 0009 emendato).
+
+*Emendamento 2026-09-23 (ADR 0030):* aggiunta `workloads/`, il secondo workload che prova il seam della porta `Workload`.
 
 *Correzione 2026-09-14 (M2, ADR 0012):* la prima versione di questo layout aveva anche `delivery/ # envoy/ e clouddeploy/`, che duplicava gli adapter `envoy-canary` e `cloud-deploy` della tabella §4. Vince §4: la config di Envoy sta in `adapters/envoy-canary/`, quella di Cloud Deploy starà in `adapters/cloud-deploy/`, e `delivery/` non esiste. Aggiunta `tickets/`, che il layout non prevedeva.
 
@@ -301,7 +307,7 @@ Con la console: `docs/TALK.md` con la sequenza della demo e i video di backup di
 *Nota 2026-09-23 (ADR 0029, risequenziamento):* M12 è la prossima milestone. M11 viene anticipata subito dopo l'esperimento sul repo legacy (§14), perché il cliente di un engagement vuole vedere la catena di audit e premere lui go-for-launch. Il track cloud di M8 e M10 aspettano chi li paga — la politica che §11 già applica al secondo adapter cloud vale anche per il primo. Nulla di loro viene cancellato.
 
 ### M12 — Il seam: l'app dietro una porta
-L'app bersaglio smette di essere cablata nella piattaforma. Una porta per il workload (nome e contratto in ADR 0030) con un file d'istanza che dichiara tutto ciò che gate, launchpad, verify e tower devono sapere dell'app: path del package, lockfile, comando di test, target di mutation, endpoint delle metriche, flag del kill switch, servizi compose. `ci/app-free.sh` fallisce se `core/`, `gates/` o `verify/` nominano l'app, come `ci/vendor-free.sh` fa per i fornitori di Delivery. Un secondo workload, deliberatamente minimo, dimostra che il seam è reale e non solo dichiarato. Zero ruoli nuovi, zero modelli nuovi, nessuna capacità visibile in più: è la milestone che rende possibili tutte le altre.
+L'app bersaglio smette di essere cablata nella piattaforma. Una porta per il workload (nome e contratto in ADR 0030) con un file d'istanza che dichiara tutto ciò che gate, launchpad, verify e tower devono sapere dell'app: path del package, lockfile, comando di test, target di mutation, endpoint delle metriche, flag del kill switch, servizi compose. `ci/app-free.sh` fallisce se `core/`, `gates/`, `verify/` o `adapters/` nominano l'app, come `ci/vendor-free.sh` fa per i fornitori di Delivery. Un secondo workload, deliberatamente minimo, dimostra che il seam è reale e non solo dichiarato. Zero ruoli nuovi, zero modelli nuovi, nessuna capacità visibile in più: è la milestone che rende possibili tutte le altre.
 **Fatto quando:** `./go ci` è verde con il nuovo check `app-free`; `./go demo` a L0 stampa lo stesso `GO: demo` di M9, entro lo stesso budget di 900 s, con le stesse fixture e gli stessi ticket; e il secondo workload arriva al rollback automatico e passa i gate su una fixture committata, con un comando fuori dalla lista fissa di `./go demo` (ADR 0003), la cui forma è fissata in ADR 0030.
 
 ---
@@ -383,7 +389,7 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 - Non nominare un fornitore di Delivery in `core/`, nemmeno in un commento: `ci/vendor-free.sh` lo boccia.
 - Non mettere una capacità solo a L2. Se il cloud sa fare una cosa che il locale non sa, il locale è una demo, e la regola d'oro salta.
 - Non lasciare che sia il verify di un fornitore a decidere il canary: decide `verify/slo.sh` con `verify/slo.promql`, a ogni livello (ADR 0027 §3).
-- Non nominare l'app in `core/`, `gates/` o `verify/`: da M12 `ci/app-free.sh` lo boccia (ADR 0029).
+- Non nominare l'app in `core/`, `gates/`, `verify/` o `adapters/`: da M12 `ci/app-free.sh` lo boccia (ADR 0029, ADR 0030 §5).
 - Non far entrare in questo repo ciò che serve solo a chi gestisce molti engagement (intervista, PoC, proposta, portfolio): è il progetto consumatore, e consuma solo interfacce pubbliche (ADR 0029 §3).
 - Non promettere l'harness su un linguaggio il cui mutation tool non è stato provato sull'esperimento (§14).
 

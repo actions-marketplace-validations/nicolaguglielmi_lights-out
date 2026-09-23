@@ -8,11 +8,12 @@
 #   ./go help           list the make targets
 #   ./go ci             repo self-checks, no engine socket inside
 #   ./go up             start the L0 plane in compose and wait for it
-#   ./go smoke          create a meetup through Envoy
+#   ./go smoke          run the workload's happy path through Envoy
 #   ./go demo           the demo, as far as the current milestone takes it
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
+#   ./go demo-seam      prove the Workload port on a second, minimal workload
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
 #   ./go assign         turn a ticket into a PR: TICKET=<id>
@@ -135,7 +136,7 @@ fi
 socket_flags=""
 host_sock_flag=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
