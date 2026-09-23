@@ -3,6 +3,7 @@
 - Status: accepted (amends plan §1 [the identity sentence: the Google stack is the optional cloud target, not what the product is], §5 "L'app bersaglio" [the meetup app is the first workload, no longer the product's fixed subject], §7 [M12 added; M8 cloud, M10 and M11 re-sequenced], §11 and §12 [new risks and don'ts]; consistent with ADR 0022 [local first] and ADR 0024 [adapters as plugins]; the technical design of the port is ADR 0030, written at M12)
 - Date: 2026-09-23
 - Milestone: plan amendment before M12
+- Amended 2026-09-23 (owner): decision 6's ecosystem is Python (Django allowed). The three listed below conflated the thesis with language independence, which needs a per-workload worker image; the worker already carries Python 3.13 and every Python gate runner. Language independence follows the first client's language (plan §14).
 
 ## Context
 
