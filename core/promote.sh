@@ -3,7 +3,8 @@
 #
 # core-promote: go-for-launch, the one human decision before 100% (docs/
 # adr/0020 §4). Reads the release record launchpad wrote, refuses anything
-# but a held canary, has the release role compose the promotion brief
+# but a held canary that the plane still runs at the held weight, has the
+# release role compose the promotion brief
 # from that record, prints the brief, and asks: GO_FOR_LAUNCH=GO|NO-GO
 # when set, else one line from the terminal, else NO-GO (nobody answered,
 # nothing moves). GO shifts the canary to 100% of traffic; NO-GO rolls it
@@ -29,6 +30,22 @@ version=$(printf '%s' "$record" | jq -r '.version // empty')
 if [ "$verdict" != held ]; then
   stage=$(printf '%s' "$record" | jq -r '.stages[-1].pct // "no"')
   nogo "release $version is $verdict at ${stage}%, nothing to promote"
+fi
+
+# The record is what launchpad decided, not what the plane runs now: a
+# later rollback (demo-hold's cleanup, another launchpad's opening one)
+# leaves it at `held`. The Delivery port's status.sh reads the plane
+# itself (docs/adr/0026 §2); promote only a canary that is still there at
+# the weight it was held at (ticket 0008).
+held_at=$(printf '%s' "$record" | jq -r '.held_at // empty')
+[ -n "$held_at" ] || nogo "$RELEASE_RECORD is held but names no held_at"
+status=$(sh "adapters/$DELIVERY/status.sh") \
+  || nogo "adapters/$DELIVERY/status.sh could not read the plane; nothing moved"
+plane_canary=$(printf '%s' "$status" | jq -r '.canary // "none"' 2>/dev/null) \
+  || nogo "adapters/$DELIVERY/status.sh did not print JSON" "$status"
+plane_weight=$(printf '%s' "$status" | jq -r '.weight' 2>/dev/null)
+if [ "$plane_canary" != "$version" ] || [ "$plane_weight" != "$held_at" ]; then
+  nogo "the record holds $version at ${held_at}%, the plane has canary $plane_canary at ${plane_weight}%; nothing moved"
 fi
 
 # The brief: the release role over the record, through its harness. At L0

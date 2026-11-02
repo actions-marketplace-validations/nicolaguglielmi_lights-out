@@ -7,9 +7,11 @@
 # symlinking core/ and ci/, a roles/release/role.env pointing HARNESS at
 # a stub harness whose run.sh answers with whatever $root/world/calls.json
 # the case set (so the case controls what "the release role answered"),
-# and adapters/stub-delivery/{shift.sh,rollback.sh} logging their own
-# call instead of touching Envoy. Written from docs/adr/0020 §4, §8, not
-# from core/promote.sh.
+# adapters/stub-delivery/{shift.sh,rollback.sh} logging their own call
+# instead of touching Envoy, and adapters/stub-delivery/status.sh printing
+# $root/world/status.json (so the case controls what "the plane runs").
+# Written from docs/adr/0020 §4, §8, docs/adr/0026 §2 and ticket 0008,
+# not from core/promote.sh.
 set -eu
 name=promote
 . ci/lib.sh
@@ -42,7 +44,15 @@ set -eu
 d=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 printf 'rollback\n' >> "$d/effects.log"
 STUB
-chmod +x "$root/adapters/stub-delivery/shift.sh" "$root/adapters/stub-delivery/rollback.sh"
+# status.sh reads, it changes nothing: not logged to effects.log.
+cat > "$root/adapters/stub-delivery/status.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cat "$d/world/status.json"
+STUB
+chmod +x "$root/adapters/stub-delivery/shift.sh" "$root/adapters/stub-delivery/rollback.sh" \
+  "$root/adapters/stub-delivery/status.sh"
 
 # stub-harness/run.sh: the ADK adapter's artefact contract (docs/adr/0020
 # §1), but the answer is whatever $root/world/calls.json the case wrote --
@@ -74,6 +84,13 @@ reset() {
   rm -rf "$out_dir"
   : > "$root/effects.log"
   : > "$root/harness.log"
+  plane_status '"0.2.0-waitlist"' 25
+}
+
+# plane_status CANARY_JSON WEIGHT: what status.sh reports (docs/adr/0026
+# §2's three keys). reset() sets the plane held_record() describes.
+plane_status() {
+  printf '{"stable":"0.1.0-m2","canary":%s,"weight":%s}\n' "$1" "$2" > "$root/world/status.json"
 }
 
 held_record() {
@@ -257,7 +274,38 @@ if [ -z "$mismatch" ]; then
   done
 fi
 
+# (i) held at 25 for 0.2.0-waitlist, but the plane's canary is another
+# version (ticket 0008): NO-GO naming what the plane has, nothing moves,
+# no brief, even with GO_FOR_LAUNCH=GO.
+if [ -z "$mismatch" ]; then
+  reset
+  held_record
+  good_brief_calls
+  plane_status '"0.3.0-other"' 25
+  run_promote GO_FOR_LAUNCH=GO
+  want_one_line i
+  case "$out" in "NO-GO: go-for-launch — "*"0.3.0-other"*) : ;; *) fail_case i "stdout: $out, want a NO-GO naming the plane's canary 0.3.0-other" ;; esac
+  [ "$rc" -eq 1 ] || fail_case i "exit $rc, want 1"
+  [ -z "$(effects)" ] || fail_case i "effects: $(effects), want none: a canary the plane does not run must not reach the shift"
+  [ -z "$(harness_calls)" ] || fail_case i "the release role was called for a canary the plane does not run"
+fi
+
+# (j) held at 25, the plane runs the same canary at another weight (here
+# 100: already promoted): NO-GO naming the weight, nothing moves.
+if [ -z "$mismatch" ]; then
+  reset
+  held_record
+  good_brief_calls
+  plane_status '"0.2.0-waitlist"' 100
+  run_promote GO_FOR_LAUNCH=GO
+  want_one_line j
+  case "$out" in "NO-GO: go-for-launch — "*"100"*) : ;; *) fail_case j "stdout: $out, want a NO-GO naming the plane's weight 100" ;; esac
+  [ "$rc" -eq 1 ] || fail_case j "exit $rc, want 1"
+  [ -z "$(effects)" ] || fail_case j "effects: $(effects), want none: a weight other than held_at must not reach the shift"
+  [ -z "$(harness_calls)" ] || fail_case j "the release role was called for a plane that does not hold the canary"
+fi
+
 cd "$repo"
-[ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0020 §4"
+[ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0020 §4 or ticket 0008"
 
 go

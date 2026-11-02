@@ -3,6 +3,7 @@
 - Status: accepted (amends plan §4 [a `Workload` row; this port is chosen by `WORKLOAD`, not by the profile], §5, §7 M12 and §12 [app-free's scope gains `adapters/`], §6 [`workloads/`]; ADR 0010 §1 [the app's services leave the root `compose.yaml`]; ADR 0011 §2 and ADR 0012 §2 [metric-shape's sample GET and flagd's bind mount follow `WORKLOAD`]; ADR 0013 §6 and ADR 0026 §5 [the one flag file is the workload's; `waitlist` becomes `$WORKLOAD_KILL_SWITCH`]; ADR 0015 §4–§6 [SAST calls an in-image runner; lockfiles and gate fixtures come from the workload]; ADR 0016 §2 [the platform signal covers the workload's gate surface]; ADR 0020 §6 [`ci/prompts.sh`'s hand list]; ADR 0029 §2 [what it left open is fixed here]; consistent with ADR 0024 §1 [a plugin is a directory plus one line])
 - Date: 2026-09-23
 - Milestone: M12
+- Amended 2026-11-02 (owner, ticket 0010 item 2): §5's "the launchpad reads an unanswerable freeze as not frozen" no longer holds. An unanswered `release-freeze`, or an answer other than `true`/`false`, refuses the release: `NO-GO: launchpad — cannot read release-freeze from the Flags port; refusing to release`, rolled back when it happens past staging. A harness for an untrusted codebase fails closed; with flagd down, a freeze that was on used to be ignored.
 
 ## Context
 
