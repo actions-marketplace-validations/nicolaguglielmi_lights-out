@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ci-tower: proves core/tower.sh, adapters/inproc/run.sh and core/audit.sh
-# (docs/adr/0019 §1, §2, §6, §9) on stub adapters, cold: no plane, no
+# (docs/adr/0019 §1, §2, §6, §9; docs/adr/0034) on stub adapters, cold: no plane, no
 # engine, milliseconds. The ci/harness.sh shape. A temp root holds
 # file-backed stubs for the StateStore, EventBus and CodeHost ports plus a
 # TOWER_STEPS directory of stub steps — except `merge`, which is the real
@@ -206,8 +206,8 @@ fi
 if [ -z "$mismatch" ]; then
   reset
   if ! sh core/tower.sh open 0001 2>"$log" || ! sh adapters/inproc/run.sh 2>"$log"; then fail_case b "run failed"; fi
-  before=$(doc)
-  sh adapters/stub-bus/publish.sh '{"ticket":"0001","step":"ci"}'
+  before=$(doc) || fail_case b "no document after the run"
+  sh adapters/stub-bus/publish.sh '{"ticket":"0001","step":"ci"}' || fail_case b "could not publish the duplicate"
   sh adapters/inproc/run.sh 2>"$log" || fail_case b "second run exited $?"
   grep -q 'ci already applied' "$log" || fail_case b "no 'already applied' line on a duplicate event"
   [ "$(effects)" = "assign,ci,merge performed 1,release," ] || fail_case b "duplicate event had an effect: $(effects)"
@@ -217,7 +217,7 @@ fi
 # (c) out of order: merge on an opened document is dropped.
 if [ -z "$mismatch" ]; then
   reset
-  sh core/tower.sh open 0001 2>"$log"
+  sh core/tower.sh open 0001 2>"$log" || fail_case c "open exited $?"
   sh core/tower.sh step 0001 merge 2>"$log" || fail_case c "out-of-order step exited $?"
   [ -z "$(effects)" ] || fail_case c "out-of-order merge had an effect"
   [ "$(doc | jq -r .state)" = opened ] || fail_case c "state moved"
@@ -228,7 +228,7 @@ if [ -z "$mismatch" ]; then
   reset
   printf '%s\n' '{"number":1,"state":"closed","merged":true,"head_sha":"head1","merge_sha":"X"}' > world/pr-1.json
   printf '%s\n' '{"id":"0001","state":"ci-passed","history":[],"pr":{"number":1,"head_sha":"head1"},"ci":{"head_sha":"head1"}}' \
-    | sh adapters/stub-state/put.sh tickets 0001
+    | sh adapters/stub-state/put.sh tickets 0001 || fail_case d "could not seed the document"
   sh core/tower.sh step 0001 merge 2>"$log" || fail_case d "merge retry exited $?"
   [ -z "$(effects)" ] || fail_case d "a second merge was performed: $(effects)"
   [ "$(doc | jq -r .state)" = merged ] || fail_case d "state $(doc | jq -r .state), want merged"
@@ -238,16 +238,23 @@ if [ -z "$mismatch" ]; then
     || fail_case d "release was not requested after the recovered merge"
 fi
 
-# (e) a failing step: document untouched, exit 1, nothing published.
+# (e) a failing step: exit 1, nothing published, state and fields
+# untouched; the history gains exactly one entry, the failed attempt
+# (docs/adr/0034 §1).
 if [ -z "$mismatch" ]; then
   reset
-  sh core/tower.sh open 0001 2>"$log"
+  sh core/tower.sh open 0001 2>"$log" || fail_case e "open exited $?"
   rm -f bus/*.msg
-  STUB_CI=crash sh core/tower.sh step 0001 assign 2>"$log" >/dev/null || true
+  sh core/tower.sh step 0001 assign 2>"$log" >/dev/null || fail_case e "assign exited $?"
   rm -f bus/*.msg
-  before=$(doc)
+  before=$(doc) || fail_case e "no document after assign"
   if STUB_CI=crash sh core/tower.sh step 0001 ci 2>"$log"; then fail_case e "a failing step exited 0"; fi
-  [ "$(doc)" = "$before" ] || fail_case e "a failing step changed the document"
+  [ "$(doc | jq -c 'del(.history)')" = "$(printf '%s' "$before" | jq -c 'del(.history)')" ] \
+    || fail_case e "a failing step changed the document beyond its history"
+  [ "$(doc | jq -c '.history[:-1]')" = "$(printf '%s' "$before" | jq -c '.history')" ] \
+    || fail_case e "a failing step rewrote earlier history entries"
+  [ "$(doc | jq -r '.history[-1] | "\(.step) \(.state) \(.error != null)"')" = "ci pr-opened true" ] \
+    || fail_case e "last history entry is $(doc | jq -c '.history[-1]'), want a failed ci at pr-opened"
   [ "$(queue)" = 0 ] || fail_case e "a failing step published an event"
 fi
 
@@ -256,23 +263,26 @@ audit() { TICKET=0001 sh core/audit.sh 2>"$log"; }
 if [ -z "$mismatch" ]; then
   reset
   if ! sh core/tower.sh open 0001 2>"$log" || ! sh adapters/inproc/run.sh 2>"$log"; then fail_case f "run failed"; fi
-  complete=$(doc)
+  complete=$(doc) || fail_case f "no document after the run"
   out=$(audit) || true
   [ "$out" = "GO: audit" ] || fail_case f-go "audit on a complete chain: $out"
   expect_nogo() {  # NAME WORD: the audit must NO-GO and name WORD
     out=$(audit) && fail_case "f-$1" "audit passed: $out" || true
     case "$out" in "NO-GO: audit — "*"$2"*) : ;; *) fail_case "f-$1" "audit said: $out (want a NO-GO naming '$2')" ;; esac
   }
-  printf '%s' "$complete" | jq 'del(.merge.sha)' | sh adapters/stub-state/put.sh tickets 0001
+  printf '%s' "$complete" | jq 'del(.merge.sha)' | sh adapters/stub-state/put.sh tickets 0001 \
+    || fail_case f-missing-link "could not write the document"
   expect_nogo missing-link missing
-  printf '%s' "$complete" | jq '.ci.head_sha = "other"' | sh adapters/stub-state/put.sh tickets 0001
+  printf '%s' "$complete" | jq '.ci.head_sha = "other"' | sh adapters/stub-state/put.sh tickets 0001 \
+    || fail_case f-sha-mismatch "could not write the document"
   expect_nogo sha-mismatch other
   # docs/adr/0021 §9: ci.decision=review past the review step must carry
   # review.verdict/review.reason — a reviewed merge with no review on the
   # record is exactly what an audit exists to catch.
-  printf '%s' "$complete" | jq '.ci.decision = "review"' | sh adapters/stub-state/put.sh tickets 0001
+  printf '%s' "$complete" | jq '.ci.decision = "review"' | sh adapters/stub-state/put.sh tickets 0001 \
+    || fail_case f-review-missing "could not write the document"
   expect_nogo review-missing review.verdict
-  printf '%s' "$complete" | sh adapters/stub-state/put.sh tickets 0001
+  printf '%s' "$complete" | sh adapters/stub-state/put.sh tickets 0001 || fail_case f-host-open "could not write the document"
   printf '%s\n' '{"number":1,"state":"open","merged":false,"head_sha":"head1","merge_sha":null}' > world/pr-1.json
   expect_nogo host-open open
   printf '%s\n' '{"number":1,"state":"closed","merged":true,"head_sha":"head1","merge_sha":"other-merge"}' > world/pr-1.json
@@ -281,6 +291,44 @@ if [ -z "$mismatch" ]; then
   expect_nogo host-down unreachable
 fi
 
+# (g) resume (docs/adr/0034): a ticket whose ci step failed is stranded
+# at pr-opened with nothing queued; resume requests ci again, the run
+# reaches the next states to the end, the history keeps the failed
+# attempt, the resume and the new attempt, and the audit still passes.
+if [ -z "$mismatch" ]; then
+  reset
+  sh core/tower.sh open 0001 2>"$log" || fail_case g-resume "open exited $?"
+  if STUB_CI=crash sh adapters/inproc/run.sh 2>"$log"; then fail_case g-resume "a run with a failing step exited 0"; fi
+  [ "$(doc | jq -r .state)" = pr-opened ] || fail_case g-resume "stranded at $(doc | jq -r .state), want pr-opened"
+  [ "$(queue)" = 0 ] || fail_case g-resume "something was queued after the failed step"
+  sh core/tower.sh resume 0001 2>"$log" || fail_case g-resume "resume of a stranded ticket exited $?"
+  [ "$(queue)" = 1 ] || fail_case g-resume "resume queued $(queue) events, want 1"
+  sh adapters/inproc/run.sh 2>"$log" || fail_case g-resume "the resumed run exited $?"
+  [ "$(doc | jq -r .state)" = rolled-back ] || fail_case g-resume "final state $(doc | jq -r .state), want rolled-back"
+  [ "$(effects)" = "assign,ci,ci,merge performed 1,release," ] || fail_case g-resume "effects: $(effects)"
+  steps=$(doc | jq -r '[.history[] | .step + (if .error then "!" else "" end)] | join(",")')
+  [ "$steps" = "open,assign,ci!,resume,ci,merge,release" ] || fail_case g-resume "history steps: $steps"
+  out=$(audit) || true
+  [ "$out" = "GO: audit" ] || fail_case g-resume-audit "audit after a resumed run: $out"
+fi
+# (g') resume refuses a ticket that is not stranded: one whose last
+# history entry did not fail, mid-flight (assign queued) or terminal.
+if [ -z "$mismatch" ]; then
+  expect_refused() {  # NAME: resume must exit non-zero, say why, change and publish nothing
+    before=$(doc) || fail_case "$1" "no document"
+    queued=$(queue)
+    if sh core/tower.sh resume 0001 2>"$log"; then fail_case "$1" "resume of a ticket that is not stranded exited 0"; fi
+    grep -q 'not stranded' "$log" || fail_case "$1" "no 'not stranded' line on the refusal"
+    [ "$(doc)" = "$before" ] || fail_case "$1" "a refused resume changed the document"
+    [ "$(queue)" = "$queued" ] || fail_case "$1" "a refused resume published an event"
+  }
+  reset
+  sh core/tower.sh open 0001 2>"$log" || fail_case g-refuse-open "open exited $?"
+  expect_refused g-refuse-in-flight
+  sh adapters/inproc/run.sh 2>"$log" || fail_case g-refuse-terminal "run exited $?"
+  expect_refused g-refuse-terminal
+fi
+
 cd "$repo"
-[ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0019"
+[ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0019 or 0034"
 go
