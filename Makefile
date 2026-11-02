@@ -128,7 +128,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board roles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI

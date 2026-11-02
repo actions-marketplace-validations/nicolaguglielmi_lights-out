@@ -124,13 +124,31 @@ pre{margin:0;font-size:11.5px;line-height:1.5;color:var(--ink2);white-space:pre-
 .stdout .fresh{background:#14243a}
 .probe{font-size:11px;color:var(--mute);display:grid;gap:3px;margin-top:8px}
 .probe .err{word-break:break-word}
-aside{position:fixed;top:0;right:0;height:100%;width:min(460px,100%);background:#0c131b;border-left:1px solid var(--line);transform:translateX(105%);transition:transform .25s ease;z-index:10;padding:20px 18px;overflow:auto}
-aside.open{transform:none}
-aside h2{margin:0 0 4px;font-size:16px;letter-spacing:2px}
-aside .close{position:absolute;top:14px;right:14px}
-aside h4{margin:16px 0 6px;font-size:10px;letter-spacing:2px;color:var(--dim);font-weight:400}
-aside p{margin:0;color:var(--ink2)}
-aside ul{margin:0;padding-left:16px;color:var(--ink2)}
+.detail{position:relative;margin-top:10px;border:1px solid var(--line);border-top:2px solid var(--blue);border-radius:6px;background:#0c131b;padding:14px 16px}
+.detail h2{margin:0 40px 2px 0;font-size:15px;letter-spacing:2px}
+.detail .close{position:absolute;top:10px;right:10px}
+.detail .cols{display:grid;gap:4px 24px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.detail h4{margin:12px 0 6px;font-size:10px;letter-spacing:2px;color:var(--dim);font-weight:400}
+.detail p{margin:0;color:var(--ink2)}
+.detail ul{margin:0;padding-left:16px;color:var(--ink2)}
+.detail pre{max-height:220px}
+.node.sel rect.box{stroke-dasharray:6 3;stroke:var(--blue);stroke-width:2}
+.pulse circle{fill:var(--blue);filter:url(#glow)}
+.pulse.red circle{fill:var(--red)}
+.pulse text{font-size:10px;fill:#DCE7F2;stroke:#0B1017;stroke-width:4;paint-order:stroke;letter-spacing:.5px}
+.pulse.red text{fill:#FFB3AD}
+.edge.flow{stroke:var(--blue);stroke-width:1.8}
+.edge.flow.redflow{stroke:var(--red)}
+#tour-btn.hint{border-color:var(--amber);color:var(--amber);animation:pulse 1.6s ease-in-out infinite}
+.tour-on{outline:2px solid var(--amber);outline-offset:4px;border-radius:6px}
+.tour{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(600px,calc(100% - 32px));z-index:20;background:#141a10;border:1px solid #5a4a16;border-top:2px solid var(--amber);border-radius:6px;padding:14px 16px;box-shadow:0 10px 40px #000a}
+.tour.top{bottom:auto;top:16px}
+.tour h2{margin:0 0 6px;font-size:13px;letter-spacing:2px;color:var(--amber)}
+.tour p{margin:0;color:var(--ink);font-size:13px}
+.tour .row{justify-content:space-between;margin-top:12px}
+.tour .muted{font-size:11px}
+@media (prefers-reduced-motion:reduce){#tour-btn.hint{animation:none}}
+.node:focus{outline:none}.node:focus-visible rect.box{stroke:var(--blue);stroke-width:2}
 .inv{columns:2 360px;column-gap:24px;margin:0;padding:0;list-style:none}
 .inv li{break-inside:avoid;padding:4px 0 4px 16px;position:relative;color:#C5D1DD}
 .inv li::before{content:"";position:absolute;left:0;top:11px;width:6px;height:6px;border-radius:50%;background:var(--green)}
@@ -147,6 +165,7 @@ aside ul{margin:0;padding-left:16px;color:var(--ink2)}
     <div class="tag">Six agents ship it · one human clears it for launch</div>
   </div>
   <div class="row">
+    <button id="tour-btn" title="A one-minute guided tour of the board">? TOUR</button>
     <div class="row mode" role="group" aria-label="Mode">
       <button id="m-explain" aria-pressed="true">EXPLAINER</button>
       <button id="m-live" aria-pressed="false">LIVE <span class="dot" id="live-dot"></span></button>
@@ -166,6 +185,16 @@ aside ul{margin:0;padding-left:16px;color:var(--ink2)}
 
 <div class="sec">Launch sequence <small>click any station for what it does, which file does it, and what it prints</small></div>
 <div class="diagram"><svg id="svg" viewBox="0 0 1600 548" role="img" aria-label="The lights-out pipeline"></svg></div>
+<section class="detail hide" id="drawer" aria-live="polite">
+  <button class="close" id="d-close" aria-label="Close">✕</button>
+  <h2 id="d-title"></h2>
+  <div class="muted" id="d-step"></div>
+  <div class="cols">
+    <div><h4>WHAT IT DOES</h4><p id="d-what"></p></div>
+    <div><h4>WHERE</h4><ul id="d-files"></ul><h4>WHAT IT CAN PRINT</h4><div class="stdout" id="d-lines"></div></div>
+    <div id="d-live-wrap" class="hide"><h4>LIVE</h4><pre id="d-live"></pre></div>
+  </div>
+</section>
 
 <div id="explain-controls">
   <div class="controls">
@@ -212,15 +241,19 @@ aside ul{margin:0;padding-left:16px;color:var(--ink2)}
 </ul>
 </div>
 
-<aside id="drawer" aria-hidden="true">
-  <button class="close" id="d-close" aria-label="Close">✕</button>
-  <h2 id="d-title"></h2>
-  <div class="muted" id="d-step"></div>
-  <h4>WHAT IT DOES</h4><p id="d-what"></p>
-  <h4>WHERE</h4><ul id="d-files"></ul>
-  <h4>WHAT IT CAN PRINT</h4><div class="stdout" id="d-lines"></div>
-  <div id="d-live-wrap" class="hide"><h4>LIVE</h4><pre id="d-live"></pre></div>
-</aside>
+
+<div class="tour hide" id="tour" role="dialog" aria-labelledby="tour-title" aria-live="polite">
+  <h2 id="tour-title"></h2>
+  <p id="tour-text"></p>
+  <div class="row">
+    <span class="muted" id="tour-count"></span>
+    <div class="row">
+      <button id="tour-prev">◀ back</button>
+      <button id="tour-next">next ▶</button>
+      <button id="tour-close" aria-label="Close the tour">✕</button>
+    </div>
+  </div>
+</div>
 
 <!-- core/tower.sh's transition table. ci/board.sh fails when it drifts. -->
 <script type="application/json" id="tower-machine">
@@ -331,14 +364,14 @@ function draw() {
   svg.appendChild(el("text", {x:20, y:30, class:"blabel"}, "BUILD — the tower drives a ticket to a merged, signed image"));
   svg.appendChild(el("text", {x:20, y:R2-18, class:"blabel"}, "RELEASE — numbers decide every stage; one human decides 100%"));
   const mid = n => n.y + (n.h || H) / 2;
-  const line = (d, cls, red) => svg.appendChild(el("path", {d, class:"edge " + (cls || ""), "marker-end": red ? "url(#ar)" : "url(#aw)", id: cls && cls.includes("roll") ? undefined : undefined}));
-  const chain = (ids) => { for (let i = 0; i < ids.length - 1; i++) { const a = BYID[ids[i]], b = BYID[ids[i+1]]; line(`M${a.x+a.w},${mid(a)} L${b.x-2},${mid(b)}`); } };
+  const line = (d, key) => { const e = svg.appendChild(el("path", {d, class:"edge", "marker-end":"url(#aw)"})); if (key) EDGES[key] = {d, e}; };
+  const chain = (ids) => { for (let i = 0; i < ids.length - 1; i++) { const a = BYID[ids[i]], b = BYID[ids[i+1]]; line(`M${a.x+a.w},${mid(a)} L${b.x-2},${mid(b)}`, ids[i] + ">" + ids[i+1]); } };
   chain(["ticket","crew","perimeter","pr","gates","risk","merge","build"]);
   chain(["freeze","sign","staging","c5","c25","held","human","full","operate"]);
   const risk = BYID.risk, rev = BYID.review, merge = BYID.merge, build = BYID.build;
-  line(`M${risk.x+80},${risk.y+H} L${rev.x+80},${rev.y-2}`);
-  line(`M${rev.x+rev.w},${mid(rev)} L${merge.x+85},${mid(rev)} L${merge.x+85},${merge.y+H+2}`);
-  line(`M${build.x+90},${build.y+H} L${build.x+90},${R2-36} L95,${R2-36} L95,${R2-2}`);
+  line(`M${risk.x+80},${risk.y+H} L${rev.x+80},${rev.y-2}`, "risk>review");
+  line(`M${rev.x+rev.w},${mid(rev)} L${merge.x+85},${mid(rev)} L${merge.x+85},${merge.y+H+2}`, "review>merge");
+  line(`M${build.x+90},${build.y+H} L${build.x+90},${R2-36} L95,${R2-36} L95,${R2-2}`, "build>freeze");
   // rollback bus
   const bus = 424, rb = BYID.rollback;
   const g = el("g", {id:"rollpath"});
@@ -346,10 +379,15 @@ function draw() {
   g.appendChild(el("path", {d:`M${BYID.staging.x+80},${bus} L${BYID.human.x+90},${bus}`, class:"edge roll"}));
   g.appendChild(el("path", {d:`M${rb.x+rb.w/2},${bus} L${rb.x+rb.w/2},${rb.y-2}`, class:"edge roll", "marker-end":"url(#ar)"}));
   svg.appendChild(g);
+  for (const id of ["staging","c5","c25","human"]) {
+    const n = BYID[id], x = n.x + n.w / 2;
+    EDGES[id + ">rollback"] = {d:`M${x},${n.y+H} L${x},${bus} L${rb.x+rb.w/2},${bus} L${rb.x+rb.w/2},${rb.y-2}`, red:true};
+  }
   svg.appendChild(el("text", {x:BYID.c25.x+170, y:bus+16, class:"blabel", style:"fill:#F85149"}, "NO-GO → ROLLBACK"));
   // operate → new ticket
   const op = BYID.operate;
-  svg.appendChild(el("path", {d:`M${op.x+80},${op.y+H} L${op.x+80},532 L8,532 L8,${mid(BYID.ticket)} L18,${mid(BYID.ticket)}`, class:"edge loop", "marker-end":"url(#aw)"}));
+  const loop = `M${op.x+80},${op.y+H} L${op.x+80},532 L8,532 L8,${mid(BYID.ticket)} L18,${mid(BYID.ticket)}`;
+  EDGES["operate>ticket"] = {d:loop, e:svg.appendChild(el("path", {d:loop, class:"edge loop", "marker-end":"url(#aw)"}))};
   svg.appendChild(el("text", {x:op.x-150, y:526, class:"blabel"}, "incident → new ticket"));
   for (const b of BRACKETS) {
     const gb = el("g", {id:"br-" + b.id});
@@ -377,6 +415,40 @@ function draw() {
     gn.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(n.id); } });
     svg.appendChild(gn);
   }
+}
+
+// ---- handoffs ------------------------------------------------------------
+// Every handoff is a versioned artefact (the invariants below): a pulse
+// carries its name along the arrow from one station to the next.
+const EDGES = {};
+const ARTEFACT = {
+  "ticket>crew":"ticket.md", "crew>perimeter":"patch", "perimeter>pr":"branch", "pr>gates":"PR · base..head",
+  "gates>risk":"verdict.env", "risk>merge":"auto-merge", "risk>review":"review request", "review>merge":"APPROVED",
+  "merge>build":"merge sha", "build>freeze":"signed image", "freeze>sign":"release-freeze: off", "sign>staging":"digest",
+  "staging>c5":"canary up", "c5>c25":"GO: slo", "c25>held":"GO: slo", "held>human":"release.json · brief",
+  "human>full":"GO", "full>operate":"100%", "operate>ticket":"incident → ticket",
+  "staging>rollback":"NO-GO", "c5>rollback":"NO-GO: slo", "c25>rollback":"NO-GO: slo", "human>rollback":"NO-GO",
+};
+const still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+function handoff(from, to, ms) {
+  const a = (from || [])[0], b = (to || [])[0];
+  const edge = a && b && a !== b && EDGES[a + ">" + b];
+  if (!edge || still) return;
+  const path = svg.appendChild(el("path", {d:edge.d, fill:"none", stroke:"none"}));
+  const len = path.getTotalLength();
+  const g = svg.appendChild(el("g", {class:"pulse" + (edge.red ? " red" : "")}));
+  const dot = g.appendChild(el("circle", {r:5}));
+  const label = g.appendChild(el("text", {"text-anchor":"middle"}, ARTEFACT[a + ">" + b] || ""));
+  if (edge.e) edge.e.classList.add("flow");
+  const t0 = performance.now(), dur = ms || 900;
+  (function frame(now) {
+    const k = Math.min(1, (now - t0) / dur), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    const pt = path.getPointAtLength(e * len);
+    dot.setAttribute("cx", pt.x); dot.setAttribute("cy", pt.y);
+    label.setAttribute("x", pt.x); label.setAttribute("y", pt.y - 10);
+    if (k < 1) return requestAnimationFrame(frame);
+    setTimeout(() => { g.remove(); path.remove(); if (edge.e) edge.e.classList.remove("flow"); }, 250);
+  })(t0);
 }
 
 // ---- the explainer's scenarios ------------------------------------------
@@ -660,7 +732,11 @@ function pick(id) {
   try { localStorage.setItem("board.scenario", sc.id); } catch (e) {}
   show();
 }
-function step(d) { idx = Math.max(0, Math.min(sc.steps.length - 1, idx + d)); show(); }
+function step(d) {
+  const before = idx;
+  idx = Math.max(0, Math.min(sc.steps.length - 1, idx + d)); show();
+  if (idx === before + 1) handoff(sc.steps[before].focus, sc.steps[idx].focus, Math.min(1100, +document.getElementById("speed").value * .45));
+}
 function stop() { clearInterval(timer); timer = null; document.getElementById("b-play").textContent = "▶ play"; }
 function play() {
   if (timer) return stop();
@@ -787,9 +863,12 @@ function liveView() {
   if (live.freeze.ok && live.freeze.value === "true") v.nodes.freeze = "nogo";
   return v;
 }
+let liveFocus = null;
 function renderLive() {
   const v = liveView();
   render(v);
+  if (liveFocus && v.focus[0] && liveFocus !== v.focus[0]) handoff([liveFocus], v.focus, 1100);
+  liveFocus = v.focus[0] || liveFocus;
   const sub = document.getElementById("live-sub");
   const probes = document.getElementById("probes");
   const tickets = document.getElementById("tickets");
@@ -803,6 +882,7 @@ function renderLive() {
   tickets.innerHTML = tk.map(t => `<button data-id="${t.id}" aria-pressed="${t.id === liveTicket}">${esc(t.id)} <span class="muted">· ${esc(t.doc.state)}</span></button>`).join("");
   tickets.querySelectorAll("button").forEach(b => b.onclick = () => { liveTicket = b.dataset.id; renderLive(); });
   const rows = [["state store", live.tickets], ["delivery", live.delivery], ["release-freeze", live.freeze], ["release record", live.record]];
+  if (drawerNode) { const dl = liveDetail(drawerNode); if (dl) document.getElementById("d-live").textContent = dl; }
   probes.innerHTML = rows.filter(([, p]) => !p.ok).map(([n, p]) => `<div><span class="err">✕ ${n}:</span> ${esc(p.error)}</div>`).join("")
     || '<div>every probe answered</div>';
 }
@@ -820,6 +900,7 @@ function setMode(m) {
 // ---- drawer -------------------------------------------------------------
 let drawerNode = null;
 function openDrawer(id) {
+  if (drawerNode === id) return closeDrawer();
   const n = BYID[id]; drawerNode = id;
   document.getElementById("d-title").textContent = n.t;
   document.getElementById("d-step").textContent = n.step === "promote" ? "./go promote" : n.step === "triage" ? "./go triage" : n.step === "open" ? "tower: open" : "tower step: " + n.step;
@@ -830,9 +911,11 @@ function openDrawer(id) {
   const detail = mode === "live" && live && !live.unreachable ? liveDetail(id) : null;
   lw.classList.toggle("hide", !detail);
   if (detail) document.getElementById("d-live").textContent = detail;
+  document.querySelectorAll(".node.sel").forEach(x => x.classList.remove("sel"));
+  document.getElementById("n-" + id).classList.add("sel");
   const d = document.getElementById("drawer");
-  d.classList.add("open"); d.setAttribute("aria-hidden", "false");
-  document.getElementById("d-close").focus();
+  d.classList.remove("hide");
+  d.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 function liveDetail(id) {
   const rec = live.record && live.record.ok ? live.record.value : null;
@@ -850,13 +933,85 @@ function liveDetail(id) {
 }
 function closeDrawer() {
   const d = document.getElementById("drawer");
-  if (!d.classList.contains("open")) return;
-  d.classList.remove("open"); d.setAttribute("aria-hidden", "true");
+  if (d.classList.contains("hide")) return;
+  d.classList.add("hide");
   const n = drawerNode && document.getElementById("n-" + drawerNode);
-  if (n) n.focus();
+  if (n) { n.classList.remove("sel"); n.focus(); }
+  drawerNode = null;
 }
 document.getElementById("d-close").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+
+// ---- tour ---------------------------------------------------------------
+const TOUR = [
+  {sel:".mode", title:"Two modes", text:"EXPLAINER plays scripted walks through the real code paths, with example versions and numbers. LIVE reads your plane through the same port verbs the tower uses; a source that does not answer says so, nothing is filled in.",
+   enter:() => { setMode("explain"); pick("rollback"); idx = 13; show(); }},
+  {sel:"#scenarios", title:"Pick a scenario", text:"Each one is a path the code really takes: a clean release, a canary that rolls itself back, a fake test, a risky diff, a freeze, a human who says no, a change out of bounds, a kill switch. \"Bad canary rolls back\" is what ./go demo does."},
+  {sel:".diagram", title:"The launch sequence", text:"Top row: the tower takes a ticket to a merged, signed image. Bottom row: launchpad releases it in stages, and numbers decide each one. Amber is the only human gate. The red dashed path is the rollback.",
+   enter:() => { closeDrawer(); }},
+  {sel:"#explain-controls", title:"Step through it", text:"← and → step, space plays. Watch the arrow: the pulse carries the artefact handed over, because every handoff is a file, never a conversation. Here verify has just said NO-GO at 5%, and the rollback takes over.",
+   enter:() => { idx = 14; show(); setTimeout(() => step(1), 350); }},
+  {sel:"#say", title:"What happens, and where", text:"Each step says what the code does and which file does it."},
+  {sel:"#drawer", title:"Any station", text:"Click a station for what it does, which files do it and the exact lines it can print. In LIVE it also shows what the plane says about it now. Click it again, or Esc, to close.",
+   enter:() => { if (drawerNode !== "c5") openDrawer("c5"); }},
+  {sel:"#doc", card:true, title:"The tower document", text:"The tower's whole memory of a ticket: its state and its history. A failed step adds an error entry and the ticket waits; only ./go resume requests it again.",
+   enter:() => { closeDrawer(); }},
+  {sel:"#locks", card:true, title:"The locks", text:"What stops a change, and when. Red means it is stopping something right now: a freeze, a breached perimeter, a stranded ticket, a human NO-GO."},
+  {sel:"#stdout", card:true, title:"Traffic and verdicts", text:"The traffic split the Delivery port reports, and the one line every gate prints: GO, or NO-GO with the reason. That line is the whole contract between stations."},
+  {sel:".mode", title:"Now yours", text:"Run ./go up, then ./go demo-rollback in another terminal, and switch to LIVE to watch your own plane do it.",
+   enter:() => {}},
+];
+let tourAt = -1;
+function tourTarget(t) { const e = document.querySelector(t.sel); return e && t.card ? e.closest(".card") : e; }
+function tourShow(i) {
+  document.querySelectorAll(".tour-on").forEach(e => e.classList.remove("tour-on"));
+  tourAt = i;
+  const t = TOUR[i];
+  if (t.enter) t.enter();
+  const target = tourTarget(t);
+  if (target) { target.classList.add("tour-on"); target.scrollIntoView({block: target.offsetHeight > innerHeight * .5 ? "start" : "center", behavior: still ? "auto" : "smooth"}); }
+  document.getElementById("tour-title").textContent = t.title;
+  document.getElementById("tour-text").textContent = t.text;
+  document.getElementById("tour-count").textContent = `${i + 1} / ${TOUR.length}`;
+  document.getElementById("tour-prev").disabled = i === 0;
+  document.getElementById("tour-next").textContent = i === TOUR.length - 1 ? "done ✓" : "next ▶";
+  document.getElementById("tour").classList.remove("hide");
+  document.getElementById("tour-next").focus({preventScroll:true});
+  placeTour(); setTimeout(placeTour, 500);
+}
+// The card sits on the side of the screen the highlighted part is not on.
+function placeTour() {
+  if (tourAt < 0) return;
+  const target = tourTarget(TOUR[tourAt]);
+  if (!target) return;
+  const r = target.getBoundingClientRect();
+  document.getElementById("tour").classList.toggle("top", r.height < innerHeight * .5 && r.top + r.height / 2 > innerHeight / 2);
+}
+addEventListener("scroll", () => requestAnimationFrame(placeTour), {passive:true});
+function tourEnd() {
+  document.querySelectorAll(".tour-on").forEach(e => e.classList.remove("tour-on"));
+  document.getElementById("tour").classList.add("hide");
+  tourAt = -1;
+  document.getElementById("tour-btn").focus();
+}
+function tourStart() {
+  stop();
+  document.getElementById("tour-btn").classList.remove("hint");
+  try { localStorage.setItem("board.toured", "1"); } catch (e) {}
+  tourShow(0);
+}
+document.getElementById("tour-btn").onclick = tourStart;
+document.getElementById("tour-prev").onclick = () => tourShow(Math.max(0, tourAt - 1));
+document.getElementById("tour-next").onclick = () => tourAt === TOUR.length - 1 ? tourEnd() : tourShow(tourAt + 1);
+document.getElementById("tour-close").onclick = tourEnd;
+document.addEventListener("keydown", e => {
+  if (tourAt < 0) return;
+  if (e.key === "Escape") tourEnd();
+  else if (e.key === "ArrowRight") document.getElementById("tour-next").click();
+  else if (e.key === "ArrowLeft" && tourAt > 0) tourShow(tourAt - 1);
+  else return;
+  e.preventDefault(); e.stopImmediatePropagation();
+}, true);
 
 // ---- start --------------------------------------------------------------
 draw();
@@ -869,6 +1024,9 @@ liveTimer = setInterval(poll, 2000);
 let savedMode = null;
 try { savedMode = localStorage.getItem("board.mode"); } catch (e) {}
 if (savedMode === "live") setMode("live");
+let toured = null;
+try { toured = localStorage.getItem("board.toured"); } catch (e) {}
+if (!toured) document.getElementById("tour-btn").classList.add("hint");
 </script>
 </body>
 </html>
