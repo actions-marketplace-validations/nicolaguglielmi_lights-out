@@ -38,7 +38,8 @@ count=0
 for entry in "$@"; do
   [ -n "$entry" ] || nogo "WORKLOAD_LOCKFILES names an empty entry"
   path="$WORKLOAD/$entry"
-  [ -e "$path" ] || nogo "$path does not exist (from WORKLOAD_LOCKFILES)"
+  git cat-file -e "$head:$path" 2>/dev/null \
+    || nogo "$path is not tracked at $head (from WORKLOAD_LOCKFILES)"
   lockfiles="${lockfiles:+$lockfiles }$path"
   count=$((count + 1))
 done
@@ -48,7 +49,7 @@ printf 'deps: scanning %s lockfile(s) at %s and at the base %s: %s\n' \
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/base"
+mkdir -p "$tmp/base" "$tmp/head"
 
 # scan <out-json> <lockfile>...: osv-scanner's JSON on <out-json>, its own
 # messages on stderr; exits 0 or 1 as the tool does, NO-GO on anything else.
@@ -68,15 +69,24 @@ scan() {
   esac
 }
 
-# tuples <json>: one sorted "ecosystem package id" line per finding.
+# tuples <json> <out>: one sorted "ecosystem package id" line per finding.
+# jq on its own line, so unparseable scanner output is NO-GO, not an empty
+# list that would read as "nothing new".
 tuples() {
   jq -r '.results[]?.packages[]? | .package as $p
-         | .vulnerabilities[]? | "\($p.ecosystem) \($p.name) \(.id)"' "$1" \
-    | sort -u
+         | .vulnerabilities[]? | "\($p.ecosystem) \($p.name) \(.id)"' "$1" > "$2.raw" \
+    || nogo "osv-scanner wrote output jq cannot read: $1"
+  sort -u "$2.raw" > "$2"
 }
 
+# Both sides come from git, the head side included: the gate judges the
+# range it was given, whatever the working tree holds.
 base_files=""
+head_files=""
 for path in $lockfiles; do
+  mkdir -p "$tmp/head/$(dirname "$path")"
+  git show "$head:$path" > "$tmp/head/$path"
+  head_files="${head_files:+$head_files }$tmp/head/$path"
   if git cat-file -e "$base:$path" 2>/dev/null; then
     mkdir -p "$tmp/base/$(dirname "$path")"
     git show "$base:$path" > "$tmp/base/$path"
@@ -87,12 +97,12 @@ for path in $lockfiles; do
 done
 
 # shellcheck disable=SC2086 # space-separated path lists, no spaces in paths
-scan "$tmp/head.json" $lockfiles
+scan "$tmp/head.json" $head_files
 # shellcheck disable=SC2086
 scan "$tmp/base.json" $base_files
 
-tuples "$tmp/head.json" > "$tmp/head.txt"
-tuples "$tmp/base.json" > "$tmp/base.txt"
+tuples "$tmp/head.json" "$tmp/head.txt"
+tuples "$tmp/base.json" "$tmp/base.txt"
 comm -13 "$tmp/base.txt" "$tmp/head.txt" > "$tmp/new.txt"
 comm -12 "$tmp/base.txt" "$tmp/head.txt" > "$tmp/inherited.txt"
 new=$(wc -l < "$tmp/new.txt" | tr -d ' ')

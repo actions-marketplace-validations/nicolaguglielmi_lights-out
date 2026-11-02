@@ -43,9 +43,12 @@ APP_PORT ?= 8080
 APP_URL ?= http://$(PLANE_HOST):$(APP_PORT)
 export PLANE_HOST APP_PORT APP_URL
 
-# Seconds each adapters/<name>/ready.sh polls before giving up: 4x the 15 s a
-# cold plane took to answer at M2 close (docs/adr/0012 §6, HANDOFF).
-READY_TIMEOUT ?= 60
+# Seconds each adapters/<name>/ready.sh polls before giving up. 4x the 15 s a
+# cold plane took to answer at M2 close (docs/adr/0012 §6, HANDOFF) was 60;
+# raised to 180 on 2026-11-02 after GitHub's launch job measured
+# envoy-canary still not ready at 60 s on a cold runner. It is a ceiling,
+# not a delay: a plane that answers sooner is not slowed down.
+READY_TIMEOUT ?= 180
 export READY_TIMEOUT
 
 # Adapters that run as plane services at this profile, in readiness order.
@@ -150,7 +153,7 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	@printf '[demo] deploy, verify (canary vs stable), rollback: proved by demo-rollback above (docs/adr/0013, 0014)\n' >&2
 	@$(MAKE) --no-print-directory e2e
 	@printf '[demo] e2e: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)\n' >&2
-	@printf 'lights-out: app at %s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_URL)" >&2
+	@printf 'lights-out: open the app at http://localhost:%s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_PORT)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
 	if [ "$$elapsed" -lt 0 ]; then \
 		printf 'GO: demo, milestone M9, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
@@ -170,14 +173,16 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 # from M8 on (docs/adr/0025 §3).
 up: ## Start the L0 plane, wait until every adapter is ready, then publish the signed stable image (docs/adr/0012 §6, 0025 §3)
 	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
-	@$(COMPOSE) up -d --build >&2
+	@$(COMPOSE) up -d --build >&2 || { \
+		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, 3000, 5050, 8016, 8085, 8086, 9090 and 9901 on the host; only the app port (%s) moves, with APP_PORT=<port> in .env.\n' "$(APP_PORT)" "$(APP_PORT)" >&2; \
+		exit 1; }
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
 		printf 'lights-out: waiting for %s\n' "$$a" >&2; \
 		sh "adapters/$$a/ready.sh" || exit 1; \
 	done
 	@$(MAKE) --no-print-directory publish TAG=$(APP_TAG)
-	@printf 'lights-out: plane is up, app at %s\n' "$(APP_URL)" >&2
+	@printf 'lights-out: plane is up, app at http://localhost:%s\n' "$(APP_PORT)" >&2
 
 .PHONY: publish
 publish: ## Build, push and sign the image at TAG (docs/adr/0025 §1-§3)
@@ -189,7 +194,7 @@ smoke: ## Run the workload's happy path through Envoy (<workload>/smoke.sh)
 
 .PHONY: down
 down: ## Stop the app, including a held canary revision if one is running
-	@$(COMPOSE) --profile test --profile canary down --remove-orphans
+	@$(COMPOSE) --profile test --profile canary --profile crew down --remove-orphans
 
 .PHONY: test
 test: ## Run the backend test suite against compose Postgres (docs/adr/0010)
@@ -247,18 +252,23 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/adr/0015 §6)
 	@git worktree prune
 	@main_sha=$$(git rev-parse HEAD); \
-	tmp1=$$(mktemp); tmp2=$$(mktemp); \
-	trap 'rm -f "$$tmp1" "$$tmp2"' EXIT; \
+	if [ -n "$$(git status --porcelain -- gates ci verify policy core Makefile)" ]; then \
+		printf '[demo-gates] note: uncommitted edits under gates/, ci/, verify/, policy/, core/ or the Makefile are not judged here; the fixtures run against HEAD\n' >&2; \
+	fi; \
+	tmp1=$$(mktemp); tmp2=$$(mktemp); wtd=""; wt=""; \
+	drop_wt() { [ -z "$$wt" ] || git worktree remove --force "$$wt" >/dev/null 2>&1 || :; [ -z "$$wtd" ] || rm -rf "$$wtd"; wt=""; wtd=""; }; \
+	trap 'drop_wt; rm -f "$$tmp1" "$$tmp2"' EXIT; \
+	trap 'exit 130' INT TERM; \
 	for f in "$(WORKLOAD)/fixtures/gates"/*/; do \
 		name=$$(basename "$$f"); \
-		wt=$$(mktemp -d)/wt; \
+		wtd=$$(mktemp -d); wt=$$wtd/wt; \
 		err=$$(git worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
 			printf 'NO-GO: demo-gates — %s: git worktree add failed: %s\n' "$$name" "$$err"; exit 1; \
 		}; \
 		if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
 				am "$$f"*.patch >/dev/null 2>&1; then \
 			git -C "$$wt" am --abort >/dev/null 2>&1 || true; \
-			git worktree remove --force "$$wt"; \
+			drop_wt; \
 			printf 'NO-GO: demo-gates — %s does not apply; regenerate\n' "$$name"; \
 			exit 1; \
 		fi; \
@@ -271,11 +281,11 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 			printf '[demo-gates] %s: verdict mismatch\n  got:  %s\n  want: %s\n' "$$name" \
 				"$$(tr '\n' ' ' < "$$wt/$(GATES_OUT)/verdict.env" 2>/dev/null || echo '(no verdict.env)')" \
 				"$$(tr '\n' ' ' < "$$f/expect")" >&2; \
-			git worktree remove --force "$$wt"; \
+			drop_wt; \
 			printf 'NO-GO: demo-gates — %s does not match expect\n' "$$name"; \
 			exit 1; \
 		fi; \
-		git worktree remove --force "$$wt"; \
+		drop_wt; \
 	done; \
 	printf 'GO: demo-gates\n'
 
@@ -363,12 +373,15 @@ record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=d
 mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's provenance (docs/adr/0015 §3)
 	@$(COMPOSE) -p lo-mutation-baseline --profile test build backend-test >&2
 	@start=$$(date +%s); \
-	result=$$($(COMPOSE) -p lo-mutation-baseline --profile test run --rm -T -e MUTATION_LINES=all backend-test sh tests/mutation/run.sh); \
+	trap '$(COMPOSE) -p lo-mutation-baseline --profile test down -v >/dev/null 2>&1' EXIT; \
+	result=$$($(COMPOSE) -p lo-mutation-baseline --profile test run --rm -T -e MUTATION_LINES=all backend-test sh tests/mutation/run.sh) \
+		|| { printf 'mutation-baseline: the mutation run failed; nothing measured\n' >&2; exit 1; }; \
 	end=$$(date +%s); \
 	printf '%s\n' "$$result"; \
-	total=$$(printf '%s' "$$result" | jq -r .total); \
-	killed=$$(printf '%s' "$$result" | jq -r .killed); \
-	score=$$(printf '%s' "$$result" | jq -r .score); \
+	total=$$(printf '%s' "$$result" | jq -er .total) \
+		&& killed=$$(printf '%s' "$$result" | jq -er .killed) \
+		&& score=$$(printf '%s' "$$result" | jq -er .score) \
+		|| { printf 'mutation-baseline: the run did not report total, killed and score; nothing measured\n' >&2; exit 1; }; \
 	printf 'mutation-baseline: %s/%s killed, score=%s, %ss wall time\n' "$$killed" "$$total" "$$score" "$$((end - start))" >&2
 
 .PHONY: release
@@ -383,12 +396,19 @@ release: ## Deploy CANARY_VERSION at CANARY_TAG and run the controller through s
 
 .PHONY: demo-rollback
 demo-rollback: ## Release the failing default and prove the canary rolls back on its own (docs/adr/0013 §4)
-	@stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
+	@stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -er .version) \
+		|| { printf 'NO-GO: demo-rollback — no stable version at %s/healthz; run ./go up\n' "$(APP_URL)"; exit 1; }; \
 	printf '[demo-rollback] stable is %s; releasing %s (%s targeted on)\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
+	rm -f "$(RELEASE_RECORD)"; \
 	if $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
 		printf 'NO-GO: demo-rollback — release passed; expected a NO-GO at 5%%\n'; \
 		exit 1; \
 	fi; \
+	failed=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
+	case "$$failed" in \
+		"NO-GO: slo — "*) : ;; \
+		*) printf 'NO-GO: demo-rollback — the release stopped before verify judged the canary [%s]\n' "$$failed"; exit 1 ;; \
+	esac; \
 	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
 	if [ "$$canary_w" != "0" ]; then \
 		printf 'NO-GO: demo-rollback — Envoy still reports weights.canary=%s after rollback\n' "$$canary_w"; \
@@ -410,7 +430,9 @@ demo-rollback: ## Release the failing default and prove the canary rolls back on
 demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at 25% for the human gate (docs/adr/0014)
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
-	trap 'cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"' EXIT INT TERM; \
+	restore() { [ -f "$$backup" ] || return 0; cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"; }; \
+	trap 'rc=$$?; restore; [ "$$rc" -eq 0 ] || sh "adapters/$(DELIVERY)/rollback.sh" >&2' EXIT; \
+	trap 'exit 130' INT TERM; \
 	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
 	printf '[demo-hold] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
@@ -612,7 +634,9 @@ promote: ## go-for-launch: the brief, then the human answer — GO_FOR_LAUNCH=GO
 demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the un-promote (docs/adr/0020 §4)
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
-	trap 'cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"' EXIT INT TERM; \
+	restore() { [ -f "$$backup" ] || return 0; cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"; }; \
+	trap 'rc=$$?; restore; [ "$$rc" -eq 0 ] || sh "adapters/$(DELIVERY)/rollback.sh" >&2' EXIT; \
+	trap 'exit 130' INT TERM; \
 	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
 	printf '[demo-launch] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
@@ -650,6 +674,7 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 # (docs.docker.com, verified 2026-09-23).
 .PHONY: demo-seam
 demo-seam: ## Prove the Workload port on a second, minimal workload (docs/adr/0030 §7)
+	@rm -f "$(RELEASE_RECORD)"
 	@$(MAKE) --no-print-directory down WORKLOAD=workloads/minimal
 	@$(MAKE) --no-print-directory up WORKLOAD=workloads/minimal
 	@$(MAKE) --no-print-directory smoke WORKLOAD=workloads/minimal

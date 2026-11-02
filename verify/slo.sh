@@ -127,6 +127,10 @@ try:
             file=sys.stderr,
         )
 
+    if canary_version == stable_version:
+        # Both lookups would read the same series and every delta would be 0.
+        fail(f"canary and stable are the same version ({canary_version}); nothing to compare")
+
     traffic = values["traffic"]
     if not traffic.get(canary_version):
         fail(f"no traffic from canary({canary_version}) in the last window")

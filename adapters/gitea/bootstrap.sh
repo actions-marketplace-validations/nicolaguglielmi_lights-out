@@ -32,7 +32,7 @@ fi
 # curl's own failure-on-HTTP-error would discard the body and the code
 # together on the expected, idempotent 409, which is not a failure here.
 tmp=$(mktemp)
-code=$(curl -sS -o "$tmp" -w '%{http_code}' \
+code=$(curl -sS --connect-timeout 2 --max-time 15 -o "$tmp" -w '%{http_code}' \
   -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
   -d "{\"name\":\"$GITEA_REPO\",\"private\":false,\"auto_init\":false}" \
   "$GITEA_API/user/repos") || code=000
@@ -43,7 +43,7 @@ case "$code" in
 esac
 
 # 3. Actions on (docs/adr/0025 §4): the runner's first job needs them.
-curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
+curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
   -X PATCH -d '{"has_actions":true}' \
   "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO" >/dev/null \
   || { printf 'bootstrap-gitea: could not enable Actions\n' >&2; exit 1; }

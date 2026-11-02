@@ -36,15 +36,25 @@ mkdir -p ".crew/$TICKET"
 # exit code crosses the pipe through a file: POSIX sh has no pipefail.
 rc_file=$(mktemp)
 trap 'rm -f "$rc_file"' EXIT
+# A fresh record: launchpad leaves the prior one untouched when it refuses
+# before staging, and that one must not speak for this release.
+rm -f "$RELEASE_RECORD"
 verdict=$( { { make --no-print-directory release CANARY_VERSION="$CANARY_VERSION" CANARY_TAG="$canary_tag" 2>&1 1>&3; \
   printf '%s' "$?" > "$rc_file"; } | tee "$log" >&2; } 3>&1 )
-if [ "$(cat "$rc_file")" -eq 0 ]; then
-  state=held
-else
-  state=rolled-back
-fi
 # A release with no verdict line at all did not run launchpad: fail the step.
 [ -n "$verdict" ] || { printf 'step-release: release printed no verdict; see %s\n' "$log" >&2; exit 1; }
+rc=$(cat "$rc_file")
+recorded=$(jq -r '.verdict // empty' "$RELEASE_RECORD" 2>/dev/null || printf '')
+if [ "$rc" = 0 ]; then
+  state=held
+elif [ "$recorded" = rolled-back ]; then
+  state=rolled-back
+else
+  # Refused before staging (freeze, signature, no stable version) or died:
+  # nothing was rolled back, so the step failed rather than the canary.
+  printf 'step-release: release did not reach a verdict stage (%s); see %s\n' "$verdict" "$log" >&2
+  exit 1
+fi
 numbers=$(grep '^slo: ' "$log" | jq -R . | jq -cs .)
 image=$(jq -r '.image // empty' "$RELEASE_RECORD" 2>/dev/null || printf '')
 jq -cn --arg state "$state" --arg v "$CANARY_VERSION" --arg verdict "$verdict" --argjson numbers "$numbers" --arg image "$image" \

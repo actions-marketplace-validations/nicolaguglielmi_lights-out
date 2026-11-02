@@ -19,13 +19,15 @@ ref="$PLANE_HOST:5050/$repo:$tag"
 
 [ -f "$COSIGN_KEY" ] || { printf 'verify-zot: %s not found; ./go up generates it\n' "$COSIGN_KEY" >&2; exit 1; }
 
-cosign verify --key "$COSIGN_KEY" --insecure-ignore-tlog --allow-http-registry "$ref" >&2 \
-  || { printf 'verify-zot: %s does not verify\n' "$ref" >&2; exit 1; }
-
+# The digest first, then the signature on that digest: verifying the tag
+# and resolving it afterwards would leave a window for a re-push.
 digest=$(curl -fsSI --connect-timeout 1 --max-time 5 \
     -H 'Accept: application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
     "http://$PLANE_HOST:5050/v2/$repo/manifests/$tag" \
   | tr -d '\r' | awk -F': ' 'tolower($1) == "docker-content-digest" { print $2 }')
 [ -n "$digest" ] || { printf 'verify-zot: could not read the digest of %s:%s from the manifest\n' "$repo" "$tag" >&2; exit 1; }
+
+cosign verify --key "$COSIGN_KEY" --insecure-ignore-tlog --allow-http-registry "$PLANE_HOST:5050/$repo@$digest" >&2 \
+  || { printf 'verify-zot: %s (%s) does not verify\n' "$ref" "$digest" >&2; exit 1; }
 
 printf '%s@%s\n' "$repo" "$digest"

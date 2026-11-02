@@ -72,7 +72,7 @@ sh core/harness-check.sh "$crew_dir/out" "$crew_dir/workspace" "$base" \
 # Ticket 0003 (docs/adr/0021 §5): the diff must stay inside the ticket's
 # declared perimeter, checked before a PR ever exists so a bad fixture is
 # never written and the demo's own PRs are checked the same way.
-perimeter_out=$(git -C "$crew_dir/workspace" diff --name-only "$base"..HEAD \
+perimeter_out=$(git -C "$crew_dir/workspace" diff --no-renames --name-only "$base"..HEAD \
   | sh core/perimeter.sh "$crew_dir/ticket.md" 2>&1) && perimeter_rc=0 || perimeter_rc=$?
 [ "$perimeter_rc" -eq 0 ] || nogo "$perimeter_out"
 
