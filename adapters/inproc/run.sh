@@ -6,8 +6,10 @@
 # the run. The bus carries the tower's own messages back to itself in one
 # process — at L2 the same message starts a job, the machine does not
 # change. A failed step is acked too (the state stayed where it was, the
-# tower said which step) and makes this run exit 1 at the end; the loop
-# does not stop early, so a second ticket's events are still applied.
+# tower said which step and recorded the failed attempt) and makes this
+# run exit 1 at the end; the loop does not stop early, so a second
+# ticket's events are still applied. `./go resume TICKET=<id>` requests
+# the failed step again (docs/adr/0034).
 # Not a gate: stderr only, exit 0 when every step applied.
 set -eu
 : "${EVENT_BUS:?EVENT_BUS not set; run this via ./go, not directly}"
