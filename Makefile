@@ -426,12 +426,22 @@ demo-rollback: ## Release the failing default and prove the canary rolls back on
 	fi; \
 	printf 'GO: demo-rollback\n'
 
+# demo-hold rolls back its own held canary, so every rollback here goes
+# through unhold: a `held` record turns `rolled-back` (stages kept, plus
+# rolled_back_by), never left describing a canary the plane no longer
+# holds (ticket 0008).
 .PHONY: demo-hold
 demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at 25% for the human gate (docs/adr/0014)
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
 	restore() { [ -f "$$backup" ] || return 0; cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"; }; \
-	trap 'rc=$$?; restore; [ "$$rc" -eq 0 ] || sh "adapters/$(DELIVERY)/rollback.sh" >&2' EXIT; \
+	unhold() { \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2 || return 1; \
+		[ "$$(jq -r .verdict "$(RELEASE_RECORD)" 2>/dev/null)" = held ] || return 0; \
+		rec=$$(jq -c '. + {verdict: "rolled-back", held_at: null, rolled_back_by: "demo-hold"}' "$(RELEASE_RECORD)") \
+			&& printf '%s\n' "$$rec" > "$(RELEASE_RECORD)"; \
+	}; \
+	trap 'rc=$$?; restore; [ "$$rc" -eq 0 ] || unhold' EXIT; \
 	trap 'exit 130' INT TERM; \
 	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
@@ -456,8 +466,8 @@ demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at
 		printf 'NO-GO: demo-hold — %s healthz samples through Envoy did not see both versions (canary seen=%s, stable seen=%s)\n' "$$total" "$$seen_canary" "$$seen_stable"; \
 		exit 1; \
 	fi; \
-	sh adapters/$(DELIVERY)/rollback.sh; \
-	printf '[demo-hold] cleanup: rollback to 100/0 (not a verdict — the controller held at 25%%, this is hygiene for the next run)\n' >&2; \
+	unhold; \
+	printf '[demo-hold] cleanup: rollback to 100/0, record now rolled-back (not a verdict — the controller held at 25%%, this is hygiene for the next run)\n' >&2; \
 	printf 'GO: demo-hold\n'
 
 # The three targets below go through adapters/$(FLAGS)/set.sh and
