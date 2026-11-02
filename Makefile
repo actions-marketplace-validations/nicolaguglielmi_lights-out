@@ -524,6 +524,20 @@ e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify 
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
 
+# A ticket whose last step failed stays at that step's starting state
+# with nothing queued (docs/adr/0034). resume asks the tower to request
+# that step again — refused unless the last history entry is a failed
+# attempt — then runs the orchestrator until the queue is empty. The
+# document is never reset: the history keeps the failed attempt, the
+# resume and the new attempt.
+.PHONY: resume
+resume: ## Request again the step a ticket failed, keeping its history: TICKET=<id> (docs/adr/0034)
+	@sh core/tower.sh resume "$(TICKET)" || { printf 'NO-GO: resume — ticket %s was not resumed; see the [tower] line above\n' "$(TICKET)"; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: resume — a step failed again; see the [tower] lines above\n'; exit 1; }
+	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
+	printf '[resume] ticket %s is at %s\n' "$(TICKET)" "$$state" >&2
+	@printf 'GO: resume\n'
+
 .PHONY: review
 review: ## Judge an opened PR outside the tower: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021)
 	@role="$(ROLE)"; [ -n "$$role" ] || role=test-reviewer; \
