@@ -36,7 +36,7 @@ Vale per ogni gate, presente e futuro, in `ci/`, `gates/`, `verify/`:
 - La cosa più piccola che fa passare il criterio di accettazione. Nient'altro.
 - Nessuna astrazione nuova senza un ADR che la giustifichi.
 - Nessun adapter fuori dalla tabella della sezione 4 del piano.
-- Nessun settimo ruolo: il titolo del talk dice sei.
+- Nessun settimo ruolo: sei è un vincolo di scope voluto, `ci/roles.sh` lo verifica.
 - Prima di aggiungere, guarda se puoi togliere.
 
 ## Lingua

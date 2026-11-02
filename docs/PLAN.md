@@ -1,6 +1,8 @@
 # lights-out — implementation plan
 
-Piano da consegnare a Claude Code per costruire la versione Google-based della piattaforma di sviluppo agentico. Il repo ha due pubblici: chi lo clona dopo un talk e lo fa girare sul portatile, e chi lo porta su un progetto GCP vero.
+> **About this document.** This is the owner's working plan, kept in Italian as written. It started as the brief handed to Claude Code to build the repository, and it stays the brief for every milestone (`/milestone` reads it). Amendments, notes and corrections stay in place, dated, on purpose: the document is also the log of how each decision changed and why. The decisions themselves are recorded in English in [`docs/adr/`](adr/); what exists and runs today is described in the [README](../README.md) and in [`docs/reference.md`](reference.md). Where the plan names something that does not exist yet, it says so with a dated status note.
+
+Piano da consegnare a Claude Code per costruire la versione Google-based della piattaforma di sviluppo agentico. *(Stato 2026-11-02: l'identità è cambiata con ADR 0029, vedi l'emendamento in §1: il prodotto è l'harness, lo stack Google è il target cloud opzionale.)* Il repo ha due pubblici: chi lo clona dopo un talk e lo fa girare sul portatile, e chi lo porta su un progetto GCP vero.
 
 Il piano è in italiano perché lo leggi tu. **I contenuti del repo (README, commenti, commit, nomi) vanno scritti in inglese**: è pubblico e i talk sono anche in inglese.
 
@@ -94,6 +96,15 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `Charts` | `grafana`, `cloud-monitoring` | i grafici che la console mostra; la console non li ridisegna (ADR 0023) |
 | `Workload` | `app`, `workloads/minimal` | ciò su cui la piattaforma opera, scelto da `WORKLOAD=<dir>` (default `app`), non dal profilo; `workload.env`, `compose.yaml`, `/healthz` e `/metrics` su `:8000`, `flags/flags.json`, `smoke.sh`, `load.sh`, runner in-image test/mutation/SAST, `fixtures/gates/`; non nominato in `core/`, `gates/`, `verify/`, `adapters/` (`ci/app-free.sh`); verificato da `ci/workloads.sh` e `./go demo-seam` (ADR 0030) |
 
+*Stato 2026-11-02:* esistono `replay`, `gemini-cli`, `adk`, `gitea`, `file`, `pubsub-emulator`, `firestore-emulator`, `inproc`, `envoy-canary`, `prometheus`, `flagd`, `zot` e i workload `app` e `workloads/minimal`. Gli altri nomi della tabella non sono ancora scritti e sono da implementare, ciascuno nella milestone che lo porta:
+
+| Adapter | Porta | Milestone |
+|---|---|---|
+| `artifact-registry`, `cloud-deploy`, `managed-prometheus`, flagd su Cloud Run | Registry, Delivery, Metrics, Flags | M8, track cloud (il percorso di rilascio su GCP) |
+| `pubsub`, `firestore`, `github`, `github-issues`, `cloud-workflows` | EventBus, StateStore, CodeHost, Tracker, Orchestrator | M10 (la tower gira su GCP) |
+| `grafana`, `cloud-monitoring` | Charts | M11 (console) |
+| `antigravity-sdk`, `linear`, `unleash` | AgentHarness, Tracker, Flags | da assegnare: ognuno con un ADR e la sua suite di conformità |
+
 Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud Deploy ha un concetto che Envoy non ha, o lo si modella in astratto o resta dentro l'adapter.
 
 *Emendamento 2026-09-20 (ADR 0024):* la regola è provata, non solo dichiarata. `ci/vendor-free.sh` fallisce se un file di `core/` nomina un fornitore di Delivery (Envoy, Cloud Deploy, Argo), anche in un commento. Il contratto di un adapter Delivery è la suite di conformità: promuove (staging → 5% → 25% → 100%), boccia e torna indietro su verify NO-GO, rispetta il freeze, riporta lo stato (`status.sh`: versione stabile, versione canary, peso). `envoy-canary` la passa oggi; `cloud-deploy` la passa come criterio di M8; è il requisito d'ingresso per qualunque adapter futuro. Il motore di container resta una scelta dell'utente, non un adapter: podman è il riferimento, docker è supportato e provato da `./go engine-compat` (ADR 0004, ADR 0012 §4).
@@ -109,7 +120,7 @@ Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud D
 
 **Attenzione, cambiato da poco:** dal 18 giugno 2026 Google non serve più le richieste di Gemini CLI per Gemini Code Assist individuale, Google AI Pro e Ultra, e ha rimosso il "Login with Google" personale, indirizzando gli individui su Antigravity CLI. Quindi il percorso documentato per chi clona è **Gemini API key** (free tier intorno a 250 richieste al giorno, solo modelli Flash) oppure Vertex AI. Il README deve dirlo in modo esplicito, altrimenti il primo che prova si blocca sull'autenticazione e scrive una issue.
 
-**Un solo modello per tutti i ruoli, la leva è il thinking level.** Gemini 3.8 Flash (2 settembre 2026) è il modello Flash più capace, pensato per software engineering a lungo orizzonte e agenti autonomi, con finestra da 1M token e tre livelli di thinking. Consuma di proposito più token sui task lunghi, perché fa passi di ragionamento più piccoli, chiama i tool in modo iterativo e verifica il lavoro; per i task ordinari si abbassa lo sforzo di ragionamento.
+**Un solo modello per tutti i ruoli, la leva è il thinking level.** Gemini 3.8 Flash (2 settembre 2026): finestra da 1M token, tre livelli di thinking. Sui task lunghi consuma più token, quindi il thinking si fissa per ruolo e il budget di token si misura, non si stima.
 
 Quindi `thinking` diventa un campo della definizione del ruolo, accanto a budget di token, timeout e iterazioni massime:
 
@@ -122,7 +133,7 @@ Quindi `thinking` diventa un campo della definizione del ruolo, accanto a budget
 | release brief | low | formatta dati che ha già |
 | ops triage | low | volumi alti, latenza conta, è il caso d'uso citato per le pipeline di incident response |
 
-Conseguenza operativa: a L1 il free tier limita ai modelli Flash e a un tetto giornaliero di richieste, che con 3.8 Flash basta se i task del demo restano piccoli e il thinking resta basso. La demo dal palco gira a L2, dove alzi il thinking e non hai il tetto.
+Conseguenza operativa: a L1 il free tier limita ai modelli Flash e a un tetto giornaliero di richieste, che con 3.8 Flash basta se i task del demo restano piccoli e il thinking resta basso. La demo dal palco gira a L2, dove alzi il thinking e non hai il tetto. *(Stato 2026-11-02: L2 non è ancora implementato; la demo gira a L0, e a L1 con la chiave.)*
 
 *Nota 2026-09-16 (ADR 0018):* fino al secondo run reale del 16 settembre questa tabella era decorativa. Con Gemini CLI 0.59.0 il thinking per ruolo non è mai stato applicato: la CLI rimappava la richiesta a `gemini-3.5-flash` prima di consultare l'alias su cui `THINKING` viaggia, e la fixture di ticket 0001 è registrata col thinking di default. Il pin alla 0.61.0-preview.0 (ADR 0018) è il primo runtime in cui la leva è davvero collegata; i budget in `roles/dev-worker/role.env` sono stati rimisurati lì.
 
@@ -139,6 +150,8 @@ Da non confondere con il precedente: i modelli qui sotto servono a **scrivere qu
 `CLAUDE_CODE_SUBAGENT_MODEL` sovrascrive il modello di tutti i subagent: usalo come tetto di spesa quando serve, non come default.
 
 ### Antigravity
+*Stato 2026-11-02: non usato. L'adapter `antigravity-sdk` non esiste ancora (tabella in §4); la superficie umana descritta qui sotto non è nel repo.*
+
 Antigravity 2.0 (I/O 2026) è una piattaforma su cinque superfici: app desktop, CLI, SDK Python sull'harness degli agenti, Managed Agents nella Gemini API (fatturati per run, non per token) ed Enterprise Agent Platform. Dove lo usiamo:
 
 - **Superficie umana**: il Manager per orchestrare e osservare gli agenti mentre lavorano, con il repo aperto. È quello che mostri sul palco quando fai vedere i worker in parallelo.
@@ -146,6 +159,8 @@ Antigravity 2.0 (I/O 2026) è una piattaforma su cinque superfici: app desktop, 
 - **Non** come control plane e **non** nel percorso critico del repo clonabile: è in public preview, i limiti del piano gratuito sono già stati tagliati una volta, la CLI su Linux è indicata come preview e i Managed Agents si pagano a run. Va bene per la demo, non per la riproducibilità.
 
 ### Stitch
+*Stato 2026-11-02: non usato. Arriva con la console (M11); `design/` non esiste ancora.*
+
 Stitch genera UI da prompt, esporta HTML/Tailwind, React, Vue, Angular, Flutter e SwiftUI, incolla in Figma con layer e Auto Layout, e dall'aggiornamento di marzo 2026 espone un **server MCP** che si collega agli strumenti di coding. Resta però un esperimento di Google Labs, nel browser, gratuito con un tetto mensile di generazioni e senza API stabile.
 
 Quindi entra così: il server MCP di Stitch si collega all'**agente interattivo** (Antigravity o Gemini CLI in sessione), che è il design step con l'umano dentro. Il risultato viene committato come artefatto: `design/tokens.json`, gli screen esportati in Tailwind sotto `design/screens/`, e un `design/CONTRACT.md` che elenca i componenti e gli stati. Il frontend worker headless legge quegli artefatti come spec e non chiama mai Stitch. Chi clona il repo trova i design già dentro e ottiene una UI funzionante senza aprire Stitch.
@@ -393,7 +408,7 @@ Elenco delle cose che possono essere cambiate e vanno confermate sulla documenta
 - Non usare un albero di agenti come control plane di un flusso che dura giorni.
 - Non dare credenziali di produzione a un agente, a nessun livello, nemmeno a L0 per comodità.
 - Non lasciare che il verify del canary dipenda da un giudizio del modello: la decisione è numerica, il modello arriva dopo per spiegare.
-- Non aggiungere un settimo ruolo senza togliere qualcosa: il titolo del talk dice sei.
+- Non aggiungere un settimo ruolo senza togliere qualcosa: sei ruoli è un vincolo di scope voluto, e ogni ruolo in più è un altro confine di fiducia da governare. Il numero scritto nel README e nei prompt deve coincidere con `roles/`, e `ci/roles.sh` lo verifica (2026-11-02).
 - Non dare alla console una scrittura che la CLI non ha, e non farle tenere stato suo: è una vista.
 - Non scrivere un secondo adapter cloud finché il primo non ha un nightly verde e qualcuno che paga il secondo.
 - Non nominare un fornitore di Delivery in `core/`, nemmeno in un commento: `ci/vendor-free.sh` lo boccia.
