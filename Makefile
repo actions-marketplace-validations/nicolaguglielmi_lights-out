@@ -163,14 +163,19 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	printf 'GO: demo, milestone M9, %ss to rollback (budget %ss, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"
 
 .PHONY: up
+# The cosign key is generated before `compose up`: compose bind-mounts
+# ./.crew, and a rootful docker engine creates a missing mount source owned
+# by root, which the workbench (the host user under docker) then cannot
+# write the key into. GitHub's engine-compat and seam jobs failed this way
+# from M8 on (docs/adr/0025 §3).
 up: ## Start the L0 plane, wait until every adapter is ready, then publish the signed stable image (docs/adr/0012 §6, 0025 §3)
+	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
 	@$(COMPOSE) up -d --build >&2
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
 		printf 'lights-out: waiting for %s\n' "$$a" >&2; \
 		sh "adapters/$$a/ready.sh" || exit 1; \
 	done
-	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
 	@$(MAKE) --no-print-directory publish TAG=$(APP_TAG)
 	@printf 'lights-out: plane is up, app at %s\n' "$(APP_URL)" >&2
 
@@ -406,7 +411,7 @@ demo-hold: ## Same release, kill switch on: verify GO end to end, canary held at
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
 	trap 'cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"' EXIT INT TERM; \
-	$(MAKE) --no-print-directory kill-switch; \
+	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
 	printf '[demo-hold] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
 	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
@@ -608,7 +613,7 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
 	trap 'cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"' EXIT INT TERM; \
-	$(MAKE) --no-print-directory kill-switch; \
+	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
 	printf '[demo-launch] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
 	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
