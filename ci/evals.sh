@@ -6,7 +6,8 @@
 # must equal the ADR's list, always all three roles, under whatever
 # AGENT_HARNESS the profile already exported -- never set here, never
 # overridden: a replay-backed toolset check is still a toolset check;
-# (c) the replay model's own unit tests; (d) `adk eval` per role.
+# (c) the replay model's own unit tests; (d) `adk eval` per evalset,
+# each judged on its own exit status and summary.
 # ROLES=<space-separated agent dir names, e.g. "ops_triage release">
 # limits which roles actually run an eval (record-evals's one-role-at-a-
 # time use); default is every agent dir under adapters/adk/agents/ that
@@ -75,25 +76,31 @@ for role in $roles; do
   evals_dir="$agent_dir/evals"
   [ -d "$evals_dir" ] || nogo "$role has no evals/ directory (check ROLES)"
 
-  eval_log="$work/$role.log"
-  : > "$eval_log"
+  # Each evalset is judged on its own exit status and its own log, so a
+  # crash in one cannot hide behind another's summary (ticket 0010).
+  count=0
   for evalset in "$evals_dir"/*.evalset.json; do
     [ -e "$evalset" ] || continue
+    count=$((count + 1))
+    evalname=$(basename "$evalset" .evalset.json)
+    eval_log="$work/$role.$evalname.log"
     adk eval "$agent_dir" "$evalset" \
-      --config_file_path "$evals_dir/test_config.json" </dev/null >>"$eval_log" 2>&1 || true
+      --config_file_path "$evals_dir/test_config.json" </dev/null >"$eval_log" 2>&1 && rc=0 || rc=$?
+
+    # adk eval writes its result history under <agent_dir>/.adk/ (gitignored,
+    # but ci/secrets.sh scans the working tree and flags the request ids in
+    # it as secrets, verified 2026-09-16): the log above is the record kept.
+    rm -rf "$agent_dir/.adk" adapters/adk/agents/.adk
+
+    failed=$(grep -o 'Tests failed: [0-9]*' "$eval_log" | awk '{sum += $3} END{print sum+0}')
+    [ "$failed" -eq 0 ] \
+      || nogo "$role/$evalname: $failed eval case(s) failed; log on stderr" "$(cat "$eval_log")"
+    [ "$rc" -eq 0 ] \
+      || nogo "$role/$evalname: adk eval exited $rc; log on stderr" "$(cat "$eval_log")"
+    grep -q 'Tests passed:' "$eval_log" \
+      || nogo "$role/$evalname: no summary from adk eval; log on stderr" "$(cat "$eval_log")"
   done
-
-  # adk eval writes its result history under <agent_dir>/.adk/ (gitignored,
-  # but ci/secrets.sh scans the working tree and flags the request ids in
-  # it as secrets, verified 2026-09-16): the log above is the record kept.
-  rm -rf "$agent_dir/.adk" adapters/adk/agents/.adk
-
-  failed=$(grep -o 'Tests failed: [0-9]*' "$eval_log" | awk '{sum += $3} END{print sum+0}')
-  if [ "$failed" -gt 0 ]; then
-    nogo "$role: $failed eval case(s) failed; log on stderr" "$(cat "$eval_log")"
-  fi
-  grep -q 'Tests passed:' "$eval_log" \
-    || nogo "$role: no summary from adk eval; log on stderr" "$(cat "$eval_log")"
+  [ "$count" -gt 0 ] || nogo "$role: no *.evalset.json under $evals_dir"
 done
 
 go
