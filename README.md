@@ -20,7 +20,7 @@ cd lights-out
 
 `./go demo` builds the toolchain image, starts a local plane (the app, Gitea, a registry, Envoy, Prometheus, flagd and two emulators), then releases a version that fails. It clears staging, takes 5% of the traffic, fails verify, and goes back to 100/0 by itself, with no human involved. Then it runs the whole path once through the control plane: ticket → PR → gates → merge → signed canary → verify NO-GO → rollback, and audits the chain.
 
-The first run builds a 1 GB image and pulls about 800 MB of plane images. If port 8080 is taken, put `APP_PORT=9000` in `.env`. On macOS, podman runs inside `podman machine`.
+With the images already on disk the whole demo takes about 7 minutes (407 s measured on 2026-11-02, macOS, podman). The first run also builds a 1 GB image and pulls about 800 MB of plane images. If port 8080 is taken, put `APP_PORT=9000` in `.env`. On macOS, podman runs inside `podman machine`.
 
 **Shorter paths**, measured with the images already on disk:
 
