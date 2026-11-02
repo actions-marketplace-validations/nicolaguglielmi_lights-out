@@ -31,6 +31,11 @@ jobs:
       - run: ./go demo
         env:
           CONTAINER_ENGINE: docker
+      # The Gitea runner's own output, which ./go demo does not print: the
+      # e2e release step waits on the image job it runs. always(), the one
+      # status function Gitea Actions accepts (ci/gitea-compat.sh).
+      - if: always()
+        run: docker logs --tail 200 lights-out-runner-1 || true
 
   # Same shape as engine-compat: needs a real engine for the backend-test
   # image, and network for osv-scanner (docs/adr/0015 §7). GitHub-only until
