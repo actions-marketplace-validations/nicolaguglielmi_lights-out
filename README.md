@@ -10,7 +10,15 @@ lights-out is a governed-autonomy harness, not a code assistant: the decision th
 
 ## Try it
 
-You need podman (rootless), git and a POSIX shell. No account, no API key.
+You need git and a container engine. No account, no API key.
+
+| Your machine | One-time setup |
+|---|---|
+| macOS | `brew install podman`, then `podman machine init --cpus 4 --memory 6144` and `podman machine start` |
+| Linux | install podman, then `systemctl --user enable --now podman.socket` |
+| Docker instead | have the daemon running and prefix every command with `CONTAINER_ENGINE=docker` |
+
+Then:
 
 ```sh
 git clone https://github.com/nicolaguglielmi/lights-out.git
@@ -18,9 +26,11 @@ cd lights-out
 ./go demo
 ```
 
+If something is missing, `./go` stops before building anything and prints the command that fixes it.
+
 `./go demo` builds the toolchain image, starts a local plane (the app, Gitea, a registry, Envoy, Prometheus, flagd and two emulators), then releases a version that fails. It clears staging, takes 5% of the traffic, fails verify, and goes back to 100/0 by itself, with no human involved. Then it runs the whole path once through the control plane: ticket → PR → gates → merge → signed canary → verify NO-GO → rollback, and audits the chain.
 
-With the images already on disk the whole demo takes about 7 minutes (407 s measured on 2026-11-02, macOS, podman). The first run also builds a 1 GB image and pulls about 800 MB of plane images. If port 8080 is taken, put `APP_PORT=9000` in `.env`. On macOS, podman runs inside `podman machine`.
+With the images already on disk the whole demo takes about 7 minutes (407 s measured on 2026-11-02, macOS, podman). The first run also builds a 1 GB image and pulls about 800 MB of plane images. The plane uses host ports 8080, 3000, 5050, 8016, 8085, 8086, 9090 and 9901. If 8080 is taken, put `APP_PORT=9000` in `.env`; the others must be free. The podman machine above runs the demo with 4 GB of memory, with one out-of-memory failure seen there; 6 GB leaves headroom.
 
 **Shorter paths**, measured with the images already on disk:
 

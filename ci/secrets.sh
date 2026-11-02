@@ -31,14 +31,20 @@ set -eu
 name=secrets
 . ci/lib.sh
 
-if git ls-files --error-unmatch -- .crew/cosign.key >/dev/null 2>&1; then
-  nogo ".crew/cosign.key is tracked or staged; a real key must never be committed — fix .gitignore and unstage it (git rm --cached)"
-fi
-if git check-ignore -q -- .crew/cosign.key; then
-  :
-else
-  nogo ".gitignore does not ignore .crew/cosign.key; fix .gitignore before ci/gitleaks-worktree.toml's allowlist can be trusted"
-fi
+# Two allowlisted local files (ci/gitleaks-worktree.toml): the cosign key
+# ./go up generates, and the GEMINI_API_KEY line of .env, where
+# .env.example tells the user to put their key (amended 2026-11-02: that
+# line made ./go demo NO-GO for anyone who followed the example).
+for exempt in .crew/cosign.key .env; do
+  if git ls-files --error-unmatch -- "$exempt" >/dev/null 2>&1; then
+    nogo "$exempt is tracked or staged; a real secret must never be committed — fix .gitignore and unstage it (git rm --cached)"
+  fi
+  if git check-ignore -q -- "$exempt"; then
+    :
+  else
+    nogo ".gitignore does not ignore $exempt; fix .gitignore before ci/gitleaks-worktree.toml's allowlist can be trusted"
+  fi
+done
 
 if git rev-parse HEAD >/dev/null 2>&1; then
   gitleaks git --no-banner --no-color --redact . >&2 || nogo "gitleaks found a secret in git history"

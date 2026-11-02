@@ -64,14 +64,15 @@ COPY fetch.sh /usr/local/bin/fetch
 RUN chmod 0755 /usr/local/bin/fetch
 
 RUN set -eu; \
-    case "$TARGETARCH" in \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "$arch" in \
       amd64) node_arch=x64;   uv_arch=x86_64;  compose_arch=x86_64;  tf_arch=amd64; gcloud_arch=x86_64; gl_arch=x64;   al_arch=amd64; sc_arch=x86_64; osv_arch=amd64; cosign_arch=amd64; \
              NODE_SHA=$NODE_SHA256_AMD64; UV_SHA=$UV_SHA256_AMD64; COMPOSE_SHA=$COMPOSE_SHA256_AMD64; TF_SHA=$TERRAFORM_SHA256_AMD64; \
              GCLOUD_SHA=$GCLOUD_SHA256_AMD64; GL_SHA=$GITLEAKS_SHA256_AMD64; AL_SHA=$ACTIONLINT_SHA256_AMD64; SC_SHA=$SHELLCHECK_SHA256_AMD64; OSV_SHA=$OSV_SCANNER_SHA256_AMD64; COSIGN_SHA=$COSIGN_SHA256_AMD64 ;; \
       arm64) node_arch=arm64; uv_arch=aarch64; compose_arch=aarch64; tf_arch=arm64; gcloud_arch=arm;    gl_arch=arm64; al_arch=arm64; sc_arch=aarch64; osv_arch=arm64; cosign_arch=arm64; \
              NODE_SHA=$NODE_SHA256_ARM64; UV_SHA=$UV_SHA256_ARM64; COMPOSE_SHA=$COMPOSE_SHA256_ARM64; TF_SHA=$TERRAFORM_SHA256_ARM64; \
              GCLOUD_SHA=$GCLOUD_SHA256_ARM64; GL_SHA=$GITLEAKS_SHA256_ARM64; AL_SHA=$ACTIONLINT_SHA256_ARM64; SC_SHA=$SHELLCHECK_SHA256_ARM64; OSV_SHA=$OSV_SCANNER_SHA256_ARM64; COSIGN_SHA=$COSIGN_SHA256_ARM64 ;; \
-      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+      *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     cd /tmp; \
     fetch "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" "$NODE_SHA" node.tar.xz; \
