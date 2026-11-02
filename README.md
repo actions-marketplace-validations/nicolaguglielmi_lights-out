@@ -40,6 +40,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ./go demo-triage     # an alert becomes ranked hypotheses, 3 seconds, nothing to start
 ./go up              # start the local plane (about 15 s once downloaded)
 ./go demo-rollback   # just the self-rollback, about a minute
+./go board           # the pipeline explained, and live while the plane runs: localhost:8099
 ./go down            # stop everything
 ```
 

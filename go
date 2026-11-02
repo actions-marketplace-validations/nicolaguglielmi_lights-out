@@ -22,6 +22,7 @@
 #   ./go record         run a ticket for real at L1 and save the fixture: TICKET=<id>
 #   ./go triage         run the ops-triage role on an alert: ALERT=<file>
 #   ./go demo-triage    prove a fake alert becomes an incident with ranked hypotheses and a proposal
+#   ./go board          the pipeline explained, live when the plane is up, on localhost:8099
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
 #   ./go record-evals   record the ADK roles' responses at L1 (PROFILE=l1)
@@ -163,7 +164,7 @@ fi
 socket_flags=""
 host_sock_flag=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ "$(podman info --format '{{.Host.RemoteSocket.Exists}}')" = true ] \
@@ -189,13 +190,21 @@ case "$cmd" in
     host_sock_flag="-e HOST_DOCKER_SOCK=$sock" ;;
 esac
 
+# 5. The board is the one target that serves a port: on the host's
+# loopback only, BOARD_PORT to move it (docs/adr/0035). It reads the plane
+# through the Delivery port's status.sh, which needs the socket above.
+port_flags=""
+if [ "$cmd" = board ]; then
+  port_flags="-p 127.0.0.1:${BOARD_PORT:-8099}:8099 -e BOARD_PORT=${BOARD_PORT:-8099}"
+fi
+
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
 run() {
   exec "$engine" run --rm --init $tty \
     -v "$here:$here$label" -w "$here" \
     -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
     -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" \
-    $engine_flags $socket_flags $host_sock_flag \
+    $engine_flags $socket_flags $host_sock_flag $port_flags \
     "$image" "$@"
 }
 

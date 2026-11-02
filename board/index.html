@@ -1,0 +1,874 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  The flight readiness board (docs/adr/0035). One file, no build, no
+  network beyond its own server. EXPLAINER replays scripted walks through
+  the real code paths; LIVE reads /state.json from board/serve.py. The
+  tower's transition table below is checked against core/tower.sh by
+  ci/board.sh, so the explainer cannot drift from the state machine.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lights-out Board</title>
+<style>
+:root{
+  --bg:#0B1017;--bg2:#070A0E;--panel:#0F1620;--card:#111922;--line:#233040;--line2:#1F2A36;
+  --ink:#E6EDF3;--ink2:#A9B6C3;--mute:#7D8590;--dim:#4C5A68;--chip:#1B2430;
+  --blue:#58A6FF;--green:#3FB950;--red:#F85149;--amber:#E3B341;
+}
+*{box-sizing:border-box}
+html,body{margin:0;color:var(--ink);font:13px/1.5 'SF Mono','JetBrains Mono',Menlo,Consolas,monospace}
+body{background:var(--bg2);background-image:linear-gradient(var(--bg),var(--bg2));min-height:100vh}
+.wrap{max-width:1640px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--line2);padding-bottom:14px}
+h1{margin:0;font-size:26px;letter-spacing:6px;font-weight:700}
+.tag{color:var(--mute);font-size:11px;letter-spacing:2.4px;text-transform:uppercase}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+button,select{font:inherit;font-size:12px;color:var(--ink2);background:var(--chip);border:1px solid #2C3A4A;border-radius:4px;padding:6px 10px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--blue);color:var(--ink)}
+button[aria-pressed=true]{border-color:var(--blue);color:var(--ink);background:#14243a}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.mode button{min-width:110px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--mute)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim);display:inline-block}
+.dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.warn{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+.dot.off{background:var(--red)}
+.sec{margin:20px 0 8px;color:var(--blue);font-size:11px;letter-spacing:3px;text-transform:uppercase}
+.sec small{color:var(--dim);letter-spacing:.5px;text-transform:none;margin-left:10px;font-size:11px}
+.banner{font-size:11px;color:var(--mute);border:1px dashed var(--line);border-radius:4px;padding:6px 10px;margin-top:10px}
+.banner b{color:var(--ink2)}
+.diagram{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.diagram svg{display:block;width:100%;min-width:1100px;height:auto}
+.node{cursor:pointer}
+.node rect.box{fill:#0F1620;stroke:#233040;stroke-width:1.2;transition:stroke .25s,fill .25s,opacity .25s}
+.node text{pointer-events:none}
+.node .t{font-size:12px;font-weight:700;fill:var(--ink)}
+.node .s{font-size:10px;fill:var(--mute)}
+.node .s2{font-size:10px;fill:var(--dim)}
+.node .st{font-size:9px;letter-spacing:1.4px;fill:var(--dim)}
+.node:hover rect.box{stroke:var(--blue)}
+.node.go rect.box{stroke:var(--green);fill:#0F1C16}
+.node.go .st{fill:var(--green)}
+.node.nogo rect.box{stroke:var(--red);fill:#1E1012}
+.node.nogo .st{fill:var(--red)}
+.node.held rect.box{stroke:var(--amber);fill:#1A1608}
+.node.held .st{fill:var(--amber)}
+.node.skip{opacity:.28}
+.node.focus rect.box{stroke:var(--blue);stroke-width:2.2;filter:url(#glow)}
+.node.focus .st{fill:var(--blue)}
+.node.focus.go rect.box{stroke:var(--green)}.node.focus.go .st{fill:var(--green)}
+.node.focus.nogo rect.box{stroke:var(--red)}.node.focus.nogo .st{fill:var(--red)}
+.node.focus.held rect.box{stroke:var(--amber)}.node.focus.held .st{fill:var(--amber)}
+.node.human rect.box{stroke:#8A6F1E}
+.node.human .t{fill:var(--amber)}
+.light{fill:#22303d;transition:fill .25s}
+.light.go{fill:var(--green);filter:url(#glow)}
+.light.nogo{fill:var(--red);filter:url(#glow)}
+.light.run{fill:var(--blue);filter:url(#glow)}
+.lbl{font-size:9px;fill:#8FA3B8}
+.edge{stroke:#4C5A68;stroke-width:1.2;fill:none}
+.edge.roll{stroke:var(--red);stroke-dasharray:5 4;opacity:.45}
+.edge.roll.hot{opacity:1;stroke-width:2}
+.edge.loop{stroke-dasharray:3 4;opacity:.6}
+.bracket{stroke:#2C3A4A;fill:none}
+.bracket.hot{stroke:var(--blue)}
+.blabel{font-size:9px;letter-spacing:1.6px;fill:var(--dim)}
+.blabel.hot{fill:var(--blue)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+.node.focus rect.box{animation:pulse 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.node.focus rect.box{animation:none}}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-top:10px}
+.timeline{display:flex;gap:3px;flex-wrap:wrap}
+.timeline i{width:14px;height:6px;border-radius:2px;background:#22303d;cursor:pointer}
+.timeline i.done{background:#2E4257}
+.timeline i.now{background:var(--blue)}
+.say{margin-top:10px;border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:4px;background:var(--card);padding:12px 14px;min-height:76px}
+.say p{margin:0;font-size:14px;color:var(--ink);max-width:110ch}
+.say .ref{margin-top:6px;font-size:11px;color:var(--dim)}
+code{color:#C9D7E6;background:#18222e;border-radius:3px;padding:0 4px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));margin-top:12px}
+.card{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:12px 14px;min-width:0}
+.card h3{margin:0 0 10px;font-size:11px;letter-spacing:2.4px;color:var(--mute);font-weight:400;text-transform:uppercase;display:flex;justify-content:space-between;gap:8px}
+.card h3 span{letter-spacing:.5px;text-transform:none;color:var(--dim)}
+.states{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.states b{font-weight:400;font-size:10px;padding:2px 7px;border-radius:9px;border:1px solid #2C3A4A;color:var(--dim)}
+.states b.now{color:var(--ink);border-color:var(--blue);background:#14243a}
+.states b.now.bad{border-color:var(--red);background:#2a1214}
+.states b.now.amb{border-color:var(--amber);background:#2a2208}
+pre{margin:0;font-size:11.5px;line-height:1.5;color:var(--ink2);white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto}
+.k{color:#8FA3B8}.sv{color:#A5D6FF}.nv{color:#79C0FF}
+.newest{background:#14243a;display:inline-block;border-radius:3px}
+.err{color:var(--red)}
+.locks{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.locks li{display:grid;grid-template-columns:16px 1fr auto;gap:8px;align-items:start;padding:6px 8px;border:1px solid var(--line2);border-radius:4px;background:#0d141c;transition:border-color .25s,background .25s}
+.locks li .dot{margin-top:5px}
+.locks li .n{color:var(--ink);font-size:12px}
+.locks li .d{color:var(--dim);font-size:11px}
+.locks li .v{font-size:10px;letter-spacing:1.2px;color:var(--mute);text-transform:uppercase;white-space:nowrap;padding-top:2px}
+.locks li.lit{border-color:#2E4257}
+.locks li.red{border-color:#5a2226;background:#1a0f11}.locks li.red .v{color:var(--red)}
+.locks li.amb{border-color:#5a4a16;background:#17140a}.locks li.amb .v{color:var(--amber)}
+.locks li.grn .v{color:var(--green)}
+.bar{display:flex;height:26px;border-radius:4px;overflow:hidden;border:1px solid var(--line);background:#0d141c}
+.bar div{transition:width .6s ease;display:flex;align-items:center;justify-content:center;font-size:11px;white-space:nowrap;overflow:hidden}
+.bar .stable{background:#1d3b2a;color:#9be3b0}
+.bar .canary{background:#3a2f0e;color:#f2d27a}
+.legend{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:11px;color:var(--mute);flex-wrap:wrap}
+.stdout{font-size:11.5px;max-height:300px;overflow:auto;display:grid;gap:2px}
+.stdout div{white-space:pre-wrap;word-break:break-word;padding:1px 4px;border-radius:2px}
+.stdout .g{color:var(--green)}.stdout .r{color:var(--red)}.stdout .m{color:var(--dim)}
+.stdout .fresh{background:#14243a}
+.probe{font-size:11px;color:var(--mute);display:grid;gap:3px;margin-top:8px}
+.probe .err{word-break:break-word}
+aside{position:fixed;top:0;right:0;height:100%;width:min(460px,100%);background:#0c131b;border-left:1px solid var(--line);transform:translateX(105%);transition:transform .25s ease;z-index:10;padding:20px 18px;overflow:auto}
+aside.open{transform:none}
+aside h2{margin:0 0 4px;font-size:16px;letter-spacing:2px}
+aside .close{position:absolute;top:14px;right:14px}
+aside h4{margin:16px 0 6px;font-size:10px;letter-spacing:2px;color:var(--dim);font-weight:400}
+aside p{margin:0;color:var(--ink2)}
+aside ul{margin:0;padding-left:16px;color:var(--ink2)}
+.inv{columns:2 360px;column-gap:24px;margin:0;padding:0;list-style:none}
+.inv li{break-inside:avoid;padding:4px 0 4px 16px;position:relative;color:#C5D1DD}
+.inv li::before{content:"";position:absolute;left:0;top:11px;width:6px;height:6px;border-radius:50%;background:var(--green)}
+.ticketpick{display:flex;flex-wrap:wrap;gap:6px}
+.hide{display:none!important}
+.muted{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>LIGHTS-OUT</h1>
+    <div class="tag">Six agents ship it · one human clears it for launch</div>
+  </div>
+  <div class="row">
+    <div class="row mode" role="group" aria-label="Mode">
+      <button id="m-explain" aria-pressed="true">EXPLAINER</button>
+      <button id="m-live" aria-pressed="false">LIVE <span class="dot" id="live-dot"></span></button>
+    </div>
+  </div>
+</header>
+
+<div id="explain-bar">
+  <div class="sec">Scenarios <small>scripted from the code paths; versions and numbers are examples</small></div>
+  <div class="chips row" id="scenarios"></div>
+</div>
+<div id="live-bar" class="hide">
+  <div class="sec">Live plane <small id="live-sub"></small></div>
+  <div class="ticketpick" id="tickets"></div>
+  <div class="probe" id="probes"></div>
+</div>
+
+<div class="sec">Launch sequence <small>click any station for what it does, which file does it, and what it prints</small></div>
+<div class="diagram"><svg id="svg" viewBox="0 0 1600 548" role="img" aria-label="The lights-out pipeline"></svg></div>
+
+<div id="explain-controls">
+  <div class="controls">
+    <div class="row">
+      <button id="b-restart" title="Restart (Home)">⏮</button>
+      <button id="b-prev" title="Back (←)">◀</button>
+      <button id="b-play" title="Play / pause (space)">▶ play</button>
+      <button id="b-next" title="Next (→)">▶▶</button>
+      <select id="speed" aria-label="Speed"><option value="4200">slow</option><option value="2600" selected>normal</option><option value="1300">fast</option></select>
+      <span class="muted" id="counter"></span>
+    </div>
+    <div class="timeline" id="timeline"></div>
+  </div>
+</div>
+<div class="say" id="say"><p></p><div class="ref"></div></div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Tower document <span id="doc-sub"></span></h3>
+    <div class="states" id="states"></div>
+    <pre id="doc"></pre>
+  </div>
+  <div class="card">
+    <h3>Locks <span>what stops a change, and when</span></h3>
+    <ul class="locks" id="locks"></ul>
+  </div>
+  <div class="card">
+    <h3>Traffic <span>Delivery port · status.sh</span></h3>
+    <div class="bar"><div class="stable" id="bar-s"></div><div class="canary" id="bar-c"></div></div>
+    <div class="legend"><span id="leg-s"></span><span id="leg-c"></span></div>
+    <h3 style="margin-top:16px">stdout <span>one line per gate: GO or NO-GO</span></h3>
+    <div class="stdout" id="stdout"></div>
+  </div>
+</div>
+
+<div class="sec">Invariants</div>
+<ul class="inv">
+  <li>No agent holds production credentials, at any level.</li>
+  <li>The canary decision is numeric. The model explains afterwards; it does not decide.</li>
+  <li>Exit 0 with an empty artefact is a failure, not a success.</li>
+  <li>Every gate prints one line. No colour when stdout is not a TTY.</li>
+  <li>A threshold without a declared provenance is not a threshold.</li>
+  <li>Every handoff is a versioned artefact, never a conversation.</li>
+</ul>
+</div>
+
+<aside id="drawer" aria-hidden="true">
+  <button class="close" id="d-close" aria-label="Close">✕</button>
+  <h2 id="d-title"></h2>
+  <div class="muted" id="d-step"></div>
+  <h4>WHAT IT DOES</h4><p id="d-what"></p>
+  <h4>WHERE</h4><ul id="d-files"></ul>
+  <h4>WHAT IT CAN PRINT</h4><div class="stdout" id="d-lines"></div>
+  <div id="d-live-wrap" class="hide"><h4>LIVE</h4><pre id="d-live"></pre></div>
+</aside>
+
+<!-- core/tower.sh's transition table. ci/board.sh fails when it drifts. -->
+<script type="application/json" id="tower-machine">
+{
+  "precondition": {"assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "release": "merged"},
+  "next": {"pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "release"}
+}
+</script>
+<script>
+"use strict";
+const MACHINE = JSON.parse(document.getElementById("tower-machine").textContent);
+const STATES = ["opened", "pr-opened", "review", "ci-passed", "ci-failed", "merged", "held", "rolled-back"];
+const GATES = ["risk", "secrets", "deps", "sast", "test", "mutation"];
+
+// ---- the stations -------------------------------------------------------
+const R1 = 56, R2 = 310, H = 78;
+const NODES = [
+  {id:"ticket", x:20, y:R1, w:140, t:"TICKET", s:"tickets/<id>.md", s2:"criteria · perimeter", step:"open",
+   what:"A markdown file: the problem, Given/When/Then acceptance criteria and a ## Perimeter listing the globs the change may touch. Opening it writes the ticket's document in the state store at state opened and publishes assign on the event bus.",
+   files:["tickets/<id>.md","core/tower.sh open","docs/adr/0019"], lines:[]},
+  {id:"crew", x:180, y:R1, w:150, t:"CREW", s:"dev-worker role", s2:"sandbox · own token", step:"assign",
+   what:"The dev-worker role in a throwaway workspace: role prompt, thinking level, token budget, turn and time limits, and a token for that role only. At L0 the replay harness copies the answer recorded once at L1; with a key and PROFILE=l1 Gemini CLI runs live. An exit 0 with no change, or an incomplete artefact, is a failure.",
+   files:["core/crew.sh","roles/dev-worker/","core/harness-check.sh","adapters/replay, adapters/gemini-cli","docs/adr/0017"],
+   lines:["NO-GO: crew — worker produced no change or an incomplete artefact"]},
+  {id:"perimeter", x:350, y:R1, w:150, t:"PERIMETER", s:"diff ⊂ ticket globs", s2:"before any PR", step:"assign",
+   what:"Every path the worker changed must match a glob in the ticket's ## Perimeter. One path outside it, or no Perimeter section at all, and the PR is never opened.",
+   files:["core/perimeter.sh","docs/adr/0021 §5"],
+   lines:["NO-GO: crew — app/backend/meetups/auth.py is outside the ticket's declared perimeter"]},
+  {id:"pr", x:520, y:R1, w:150, t:"PULL REQUEST", s:"what · why · risk", s2:"base + head SHA", step:"assign",
+   what:"The branch is pushed to the code host (Gitea inside the plane at L0, never this repository) and the PR opened. The tower records the PR number, base and head SHA and moves to pr-opened, which requests ci.",
+   files:["core/steps/assign.sh","adapters/gitea/open-pr.sh"], lines:[]},
+  {id:"gates", x:690, y:R1, w:320, t:"GATES", s:"", s2:"", step:"ci", gates:true,
+   what:"CI checks out the PR's code but restores its judges from the base: Makefile, profiles/, gates/, ci/, core/, policy/ and the workload's contract. Then six gates run in order; the first NO-GO stops the run and posts a failure status on the PR. Mutation testing on the changed lines tells an honest test from one that passes and catches nothing. The deps gate fails only on advisories the diff introduces.",
+   files:["Makefile gates","gates/risk.sh, ci/secrets.sh, gates/deps.sh, gates/sast.sh, gates/test.sh, gates/mutation.sh","core/steps/ci.sh","docs/adr/0015, 0016, 0032, 0033"],
+   lines:["GO: gates — risk low, auto-merge","NO-GO: gates — mutation: NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"]},
+  {id:"risk", x:1030, y:R1, w:160, t:"RISK ROUTE", s:"low → auto-merge", s2:"medium/high → review", step:"ci",
+   what:"The classifier reads the diff. Migrations, auth, payments and the platform itself (gates, ci, core, roles, prompts, fixtures, workflows) are high; more than 200 changed lines is medium. Low is the only level that merges on its own; anything else goes to review.",
+   files:["core/risk.py","policy/merge.env","docs/adr/0016"], lines:["GO: risk"]},
+  {id:"review", x:1030, y:194, w:160, h:66, t:"REVIEW", s:"test-reviewer", s2:"blind second read", step:"review",
+   what:"A reading role judges the ticket and the diff, never the worker's conversation. Its verdict is the first line of final.md, APPROVED or CHANGES-REQUESTED, with a reason and the sha256 of what it read. The verdict is posted on the PR as a commit status.",
+   files:["core/steps/review.sh","roles/test-reviewer/","docs/adr/0021"], lines:[]},
+  {id:"merge", x:1210, y:R1, w:170, t:"MERGE", s:"pinned to the", s2:"head SHA CI judged", step:"merge",
+   what:"The merge names the head commit CI judged. If anything was pushed in between, the code host answers 409 and nothing merges.",
+   files:["core/steps/merge.sh","adapters/gitea/merge.sh","docs/adr/0019 (amended 2026-11-02)"], lines:[]},
+  {id:"build", x:1400, y:R1, w:180, t:"BUILD + SIGN", s:"one image, merge commit", s2:"cosign · registry", step:"release",
+   what:"The code host's image job builds one image from the merge commit, pushes it to the registry (Zot at L0) under sha-<commit> and signs it. The release step waits for that job's status before it starts launchpad.",
+   files:["adapters/zot/publish.sh","adapters/gitea/await.sh","core/steps/release.sh","docs/adr/0025"], lines:[]},
+
+  {id:"freeze", x:20, y:R2, w:150, t:"FREEZE CHECK", s:"release-freeze flag", s2:"fails closed", step:"release",
+   what:"Launchpad first rolls back to a known state and reads the stable version, then asks the Flags port for release-freeze, before anything is staged and again before every shift. On: refuse. No answer: refuse too.",
+   files:["core/launchpad.sh frozen()","adapters/flagd/evaluate.sh","./go freeze · ./go unfreeze","docs/adr/0013 §6, 0030 §5"],
+   lines:["NO-GO: launchpad — release-freeze is on","NO-GO: launchpad — cannot read release-freeze from the Flags port; refusing to release"]},
+  {id:"sign", x:190, y:R2, w:150, t:"SIGNATURE", s:"cosign verify", s2:"deploy the digest", step:"release",
+   what:"The registry adapter verifies the signature and prints the digest it verified. That digest, not the tag, is what gets deployed.",
+   files:["adapters/zot/verify.sh","docs/adr/0025"], lines:["NO-GO: launchpad — unsigned image"]},
+  {id:"staging", x:360, y:R2, w:160, t:"STAGING", s:"canary beside stable", s2:"record: in-progress", step:"release",
+   what:"The canary revision starts beside stable and must report its version on /healthz. From here the release record says in-progress until a verdict replaces it, so a run killed mid-flight never leaves an old held behind.",
+   files:["adapters/envoy-canary/deploy.sh","core/launchpad.sh","ticket 0008"], lines:["NO-GO: launchpad — staging: deploy did not become healthy → rolled back"]},
+  {id:"c5", x:540, y:R2, w:160, t:"CANARY 5%", s:"verify/slo.sh", s2:"canary vs stable", step:"release",
+   what:"Envoy sends 5% of real traffic to the canary through its admin API. After the stage window, verify/slo.sh runs the one PromQL file: error rate, p95 latency and traffic, canary against stable. The decision is a number against a threshold with a declared provenance.",
+   files:["adapters/envoy-canary/shift.sh","verify/slo.sh","verify/slo.promql","docs/adr/0013, 0014"],
+   lines:["GO: slo","NO-GO: slo — error_rate canary(0.2.0)=1.000 stable(0.1.0)=0.000 delta=1.000 max=0.010"]},
+  {id:"c25", x:720, y:R2, w:160, t:"CANARY 25%", s:"verify/slo.sh", s2:"canary vs stable", step:"release",
+   what:"Same check at 25%. A NO-GO at any stage rolls back and exits 1.",
+   files:["adapters/envoy-canary/shift.sh","verify/slo.sh"], lines:["GO: slo"]},
+  {id:"held", x:900, y:R2, w:140, t:"HELD", s:"25% · record held", s2:"waits for a human", step:"release",
+   what:"Every stage passed: the canary stays at 25% and the release record says held, with the numbers behind each stage. The tower's release step ends at held. Nothing moves further on its own.",
+   files:[".crew/release.json (RELEASE_RECORD)","core/steps/release.sh"], lines:["GO: launchpad"]},
+  {id:"human", x:1060, y:R2, w:180, t:"GO FOR LAUNCH", s:"the only human gate", s2:"silence moves nothing", step:"promote", human:true,
+   what:"./go promote checks the record is held and the plane still runs that canary at the held weight, prints the promotion brief (rendered from the record at L0 and labelled so; written by the release role from L1), then asks one question. GO shifts to 100%. NO-GO rolls back. No answer: nothing moves.",
+   files:["core/promote.sh","GO_FOR_LAUNCH=GO|NO-GO","docs/adr/0020 §4"],
+   lines:["GO: go-for-launch","NO-GO: go-for-launch — human said NO-GO","NO-GO: go-for-launch — no human answer (set GO_FOR_LAUNCH=GO or answer on the terminal); nothing moved"]},
+  {id:"full", x:1260, y:R2, w:140, t:"100%", s:"shift through", s2:"the Delivery port", step:"promote",
+   what:"The canary takes every request. At L0 the canary cluster takes 100% through Envoy; it does not become the new stable image yet.",
+   files:["adapters/envoy-canary/shift.sh 100"], lines:[]},
+  {id:"operate", x:1420, y:R2, w:160, t:"OPERATE", s:"ops-triage role", s2:"alert → new ticket", step:"triage",
+   what:"An alert becomes an incident with ranked hypotheses and a proposal, written by the ops-triage role. The kill switch turns the workload's feature flag off for every version in seconds, with no deploy.",
+   files:["core/triage.sh","roles/ops-triage/","./go demo-triage · ./go kill-switch","docs/adr/0020 §3"], lines:["GO: triage","GO: kill-switch"]},
+  {id:"rollback", x:540, y:446, w:340, h:60, t:"ROLLBACK", s:"automatic · weight 0 · canary stopped", s2:"record: rolled-back", step:"release",
+   what:"Weight back to 0 and the canary stopped, through the Delivery port. Launchpad does it on any NO-GO after staging; promote does it on a human NO-GO. No human is needed for the automatic one.",
+   files:["adapters/envoy-canary/rollback.sh","core/launchpad.sh fail_stage"], lines:["NO-GO: launchpad — 5%: error_rate canary(0.2.0)=1.000 stable(0.1.0)=0.000 delta=1.000 max=0.010 → rolled back"]},
+];
+const BYID = Object.fromEntries(NODES.map(n => [n.id, n]));
+const BRACKETS = [
+  {id:"open", x1:20, x2:160, y:R1+H+10, label:"tower: open"},
+  {id:"assign", x1:180, x2:670, y:R1+H+10, label:"tower step: assign"},
+  {id:"ci", x1:690, x2:1010, y:R1+H+10, label:"tower step: ci"},
+  {id:"merge", x1:1210, x2:1380, y:R1+H+10, label:"tower step: merge"},
+  {id:"release", x1:20, x2:1040, y:R2+H+10, label:"tower step: release — awaits the image, then runs launchpad"},
+  {id:"promote", x1:1060, x2:1400, y:R2+H+10, label:"./go promote"},
+  {id:"triage", x1:1420, x2:1580, y:R2+H+10, label:"./go triage"},
+];
+
+// ---- drawing ------------------------------------------------------------
+function el(tag, attrs, text) {
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+const svg = document.getElementById("svg");
+function draw() {
+  const defs = el("defs", {});
+  defs.innerHTML = '<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+    + '<marker id="aw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4C5A68"/></marker>'
+    + '<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#F85149"/></marker>';
+  svg.appendChild(defs);
+  svg.appendChild(el("text", {x:20, y:30, class:"blabel"}, "BUILD — the tower drives a ticket to a merged, signed image"));
+  svg.appendChild(el("text", {x:20, y:R2-18, class:"blabel"}, "RELEASE — numbers decide every stage; one human decides 100%"));
+  const mid = n => n.y + (n.h || H) / 2;
+  const line = (d, cls, red) => svg.appendChild(el("path", {d, class:"edge " + (cls || ""), "marker-end": red ? "url(#ar)" : "url(#aw)", id: cls && cls.includes("roll") ? undefined : undefined}));
+  const chain = (ids) => { for (let i = 0; i < ids.length - 1; i++) { const a = BYID[ids[i]], b = BYID[ids[i+1]]; line(`M${a.x+a.w},${mid(a)} L${b.x-2},${mid(b)}`); } };
+  chain(["ticket","crew","perimeter","pr","gates","risk","merge","build"]);
+  chain(["freeze","sign","staging","c5","c25","held","human","full","operate"]);
+  const risk = BYID.risk, rev = BYID.review, merge = BYID.merge, build = BYID.build;
+  line(`M${risk.x+80},${risk.y+H} L${rev.x+80},${rev.y-2}`);
+  line(`M${rev.x+rev.w},${mid(rev)} L${merge.x+85},${mid(rev)} L${merge.x+85},${merge.y+H+2}`);
+  line(`M${build.x+90},${build.y+H} L${build.x+90},${R2-36} L95,${R2-36} L95,${R2-2}`);
+  // rollback bus
+  const bus = 424, rb = BYID.rollback;
+  const g = el("g", {id:"rollpath"});
+  for (const id of ["staging","c5","c25","human"]) { const n = BYID[id]; g.appendChild(el("path", {d:`M${n.x+n.w/2},${n.y+H} L${n.x+n.w/2},${bus}`, class:"edge roll"})); }
+  g.appendChild(el("path", {d:`M${BYID.staging.x+80},${bus} L${BYID.human.x+90},${bus}`, class:"edge roll"}));
+  g.appendChild(el("path", {d:`M${rb.x+rb.w/2},${bus} L${rb.x+rb.w/2},${rb.y-2}`, class:"edge roll", "marker-end":"url(#ar)"}));
+  svg.appendChild(g);
+  svg.appendChild(el("text", {x:BYID.c25.x+170, y:bus+16, class:"blabel", style:"fill:#F85149"}, "NO-GO → ROLLBACK"));
+  // operate → new ticket
+  const op = BYID.operate;
+  svg.appendChild(el("path", {d:`M${op.x+80},${op.y+H} L${op.x+80},532 L8,532 L8,${mid(BYID.ticket)} L18,${mid(BYID.ticket)}`, class:"edge loop", "marker-end":"url(#aw)"}));
+  svg.appendChild(el("text", {x:op.x-150, y:526, class:"blabel"}, "incident → new ticket"));
+  for (const b of BRACKETS) {
+    const gb = el("g", {id:"br-" + b.id});
+    gb.appendChild(el("path", {d:`M${b.x1},${b.y-4} L${b.x1},${b.y} L${b.x2},${b.y} L${b.x2},${b.y-4}`, class:"bracket"}));
+    gb.appendChild(el("text", {x:b.x1, y:b.y+13, class:"blabel"}, b.label.toUpperCase()));
+    svg.appendChild(gb);
+  }
+  for (const n of NODES) {
+    const h = n.h || H;
+    const gn = el("g", {class:"node" + (n.human ? " human" : ""), id:"n-" + n.id, tabindex:"0", role:"button", "aria-label":n.t});
+    gn.appendChild(el("rect", {x:n.x, y:n.y, width:n.w, height:h, rx:4, class:"box"}));
+    gn.appendChild(el("text", {x:n.x+12, y:n.y+22, class:"t"}, n.t));
+    gn.appendChild(el("text", {x:n.x+n.w-10, y:n.y+20, class:"st", "text-anchor":"end"}, ""));
+    if (n.gates) {
+      GATES.forEach((gname, i) => {
+        const cx = n.x + 28 + i * 53;
+        gn.appendChild(el("circle", {cx, cy:n.y+44, r:5, class:"light", id:"g-" + gname}));
+        gn.appendChild(el("text", {x:cx, y:n.y+64, class:"lbl", "text-anchor":"middle"}, gname));
+      });
+    } else {
+      gn.appendChild(el("text", {x:n.x+12, y:n.y+41, class:"s"}, n.s));
+      gn.appendChild(el("text", {x:n.x+12, y:n.y+57, class:"s2"}, n.s2));
+    }
+    gn.addEventListener("click", () => openDrawer(n.id));
+    gn.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDrawer(n.id); } });
+    svg.appendChild(gn);
+  }
+}
+
+// ---- the explainer's scenarios ------------------------------------------
+// A step changes the view: n (station state: go|nogo|held|skip|idle), g
+// (gate lights), focus (stations to pulse), br (tower step bracket),
+// tower: [step, to] (validated against MACHINE), fail: [step, why],
+// resume: step, open, out (stdout lines), w / canary (traffic), lock,
+// roll (rollback path lit), say, ref.
+const T = "0042";
+const P = {
+  open: {open:true, focus:["ticket"], n:{ticket:"go"}, br:"open",
+    say:"`./go` opens ticket 0042. The tower writes one document for it in the state store, at state `opened`, and publishes `assign` on the event bus.", ref:"core/tower.sh open · docs/adr/0019"},
+  assign: {focus:["crew"], br:"assign", n:{crew:"go"},
+    say:"The dev-worker role takes the ticket in a throwaway workspace, with a token for that role only and no production credentials: a token budget, a turn limit, a timeout. At L0 it replays an answer recorded once against Gemini.", ref:"core/crew.sh · roles/dev-worker · docs/adr/0017"},
+  perimeter: {focus:["perimeter"], n:{perimeter:"go"}, lock:{perimeter:"ok"},
+    say:"Every changed path must match a glob in the ticket's `## Perimeter`. One path outside it and no PR is ever opened.", ref:"core/perimeter.sh · docs/adr/0021 §5"},
+  pr: {focus:["pr"], n:{pr:"go"}, tower:["assign","pr-opened"],
+    say:"The branch goes to the code host (a Gitea inside the plane at L0) and the PR opens. The tower records base and head SHA, moves to `pr-opened` and requests `ci`.", ref:"core/steps/assign.sh"},
+  judges: {focus:["gates"], br:"ci", g:{risk:"run"}, lock:{judges:"on"},
+    say:"CI checks out the PR's code, then puts back its judges from the base: Makefile, gates/, ci/, core/, policy/ and the workload's contract. A PR cannot edit the gates that judge it.", ref:"core/steps/ci.sh · docs/adr/0033"},
+  gates5: {focus:["gates"], g:{risk:"go",secrets:"go",deps:"go",sast:"go",test:"go",mutation:"run"}, out:["GO: risk","GO: secrets","GO: deps","GO: sast","GO: test"],
+    say:"Each gate prints exactly one line on stdout, GO or NO-GO with the reason; the tools' noise goes to stderr. The first NO-GO stops the run.", ref:"Makefile gates · ci/contract.sh"},
+  mutation: {focus:["gates"], g:{mutation:"go"}, n:{gates:"go"}, out:["GO: mutation","GO: gates — risk low, auto-merge"],
+    say:"Mutation testing flips the changed lines and reruns the tests. A test that still passes on a mutant tests nothing. The score must reach the workload's measured baseline minus 0.10.", ref:"gates/mutation.sh · docs/adr/0015 §3"},
+  riskLow: {focus:["risk"], n:{risk:"go", review:"skip"}, tower:["ci","ci-passed"],
+    say:"Risk low: no migration, auth, payments or platform path, under 200 lines. Low is the only level that merges without a second reader. State `ci-passed`, `merge` requested.", ref:"core/risk.py · policy/merge.env · docs/adr/0016"},
+  merge: {focus:["merge"], br:"merge", n:{merge:"go"}, lock:{pinned:"on"}, tower:["merge","merged"],
+    say:"The merge names the head commit CI judged. Had anyone pushed in between, the code host would answer 409 and nothing would merge.", ref:"adapters/gitea/merge.sh · docs/adr/0019"},
+  build: {focus:["build"], br:"release", n:{build:"go"}, lock:{signed:"on"},
+    say:"The `release` step waits for the image job: one image from the merge commit, pushed to the registry (Zot at L0) and signed with cosign.", ref:"core/steps/release.sh · adapters/zot/publish.sh · docs/adr/0025"},
+  freeze: {focus:["freeze"], br:"release", n:{freeze:"go"},
+    say:"Launchpad rolls back to a known state, reads the stable version, then asks the Flags port for `release-freeze`. Off: go on.", ref:"core/launchpad.sh · docs/adr/0013 §6"},
+  sign: {focus:["sign"], n:{sign:"go"},
+    say:"cosign verifies the tag and prints the digest it verified. That digest, not the tag, is what gets deployed.", ref:"adapters/zot/verify.sh"},
+  staging: {focus:["staging"], n:{staging:"go"}, w:0, canary:"0.2.0",
+    say:"The canary starts beside stable and must answer with its version. The release record now says `in-progress`, so a run killed here never leaves an old `held` behind.", ref:"adapters/envoy-canary/deploy.sh · ticket 0008"},
+  shift5: {focus:["c5"], w:5,
+    say:"5% of real traffic goes to the canary. After the stage window verify/slo.sh runs the one PromQL file: error rate, p95 latency and traffic, canary against stable.", ref:"adapters/envoy-canary/shift.sh · verify/slo.promql"},
+  go5: {focus:["c5"], n:{c5:"go"}, out:["GO: slo"],
+    say:"GO. The decision is a number against a threshold; no model decides whether a canary is healthy.", ref:"verify/slo.sh"},
+  go25: {focus:["c25"], n:{c25:"go"}, w:25, out:["GO: slo"],
+    say:"25%, verified the same way: GO.", ref:"verify/slo.sh"},
+  held: {focus:["held"], n:{held:"held"}, tower:["release","held"], lock:{human:"waiting"}, out:["GO: launchpad"],
+    say:"Every stage passed. The canary is held at 25%, the record says `held` with the numbers of each stage, and the ticket ends the tower at `held`. Nothing moves further without a human.", ref:"core/launchpad.sh · core/steps/release.sh"},
+  brief: {focus:["human"], br:"promote", n:{human:"held"},
+    say:"`./go promote` checks that the plane still runs this canary at the held weight, prints the promotion brief, then asks one question: GO or NO-GO. At L0 the brief is rendered from the record and labelled so; from L1 the release role writes it.", ref:"core/promote.sh · docs/adr/0020 §4"},
+  launch: {focus:["full"], n:{human:"go", full:"go", rollback:"skip"}, w:100, lock:{human:"go"}, out:["GO: go-for-launch"],
+    say:"GO: the canary takes every request. At L0 that is the canary cluster at 100% in Envoy; it does not become the new stable image yet.", ref:"core/promote.sh"},
+  operate: {focus:["operate"], br:"triage", n:{operate:"go"},
+    say:"From here ops-triage watches. An alert becomes an incident with ranked hypotheses and a proposal, and the proposal becomes a new ticket: the loop closes.", ref:"core/triage.sh · ./go demo-triage"},
+};
+const BUILD_LOW = [P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5, P.mutation, P.riskLow, P.merge, P.build];
+const RELEASE = [P.freeze, P.sign, P.staging, P.shift5, P.go5, P.go25, P.held];
+
+const SCENARIOS = [
+  {id:"ship", name:"Ship it", blurb:"low risk, every gate GO, a human says GO",
+   steps:[...BUILD_LOW, ...RELEASE, P.brief, P.launch, P.operate]},
+  {id:"rollback", name:"Bad canary rolls back", blurb:"what ./go demo shows",
+   steps:[...BUILD_LOW, P.freeze, P.sign, P.staging, P.shift5,
+     {focus:["c5"], n:{c5:"nogo"}, out:["NO-GO: slo — error_rate canary(0.2.0)=1.000 stable(0.1.0)=0.000 delta=1.000 max=0.010"],
+      say:"The canary fails requests that stable serves. verify says NO-GO, with the numbers that produced it.", ref:"verify/slo.sh"},
+     {focus:["rollback"], roll:true, n:{rollback:"go", c25:"skip", held:"skip", human:"skip", full:"skip"}, w:0, canary:null, tower:["release","rolled-back"],
+      out:["NO-GO: launchpad — 5%: error_rate canary(0.2.0)=1.000 stable(0.1.0)=0.000 delta=1.000 max=0.010 → rolled back"],
+      say:"Launchpad rolls back on its own: weight to 0, canary stopped, record `rolled-back`, ticket `rolled-back`. No human was involved. This is where `./go demo` ends.", ref:"core/launchpad.sh fail_stage · adapters/envoy-canary/rollback.sh"},
+     {...P.operate, say:"ops-triage turns the alert into an incident: ranked hypotheses, a proposal, a new ticket."}]},
+  {id:"fake", name:"Fake test", blurb:"tests pass, mutation catches it",
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
+     {focus:["gates"], g:{mutation:"nogo"}, n:{gates:"nogo", risk:"skip", review:"skip", merge:"skip", build:"skip"}, tower:["ci","ci-failed"],
+      out:["NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"],
+      say:"The worker's test passes and coverage would call it done. But 9 of 10 mutants survive: the test asserts nothing about the change. NO-GO, a failure status on the PR, state `ci-failed`. Nothing merges.", ref:"gates/mutation.sh · ./go demo-gates proves every gate both GO and NO-GO"}]},
+  {id:"review", name:"Risky diff", blurb:"auth touched: a second reader",
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
+     {...P.mutation, out:["GO: mutation","GO: gates — risk high, review"]},
+     {focus:["risk"], n:{risk:"held"}, tower:["ci","review"],
+      say:"The diff touches `app/backend/meetups/auth.py`: risk high. Every gate GO is not enough; the tower requests `review` instead of `merge`.", ref:"core/risk.py · policy/merge.env RISK_HIGH_AUTH"},
+     {focus:["review"], br:"ci",
+      say:"test-reviewer reads the ticket and the diff, never the worker's conversation: a blind second read. Its verdict is the first line of final.md, with a reason and the sha256 of what it read.", ref:"core/steps/review.sh · docs/adr/0021"},
+     {focus:["review"], n:{review:"go", risk:"go"}, tower:["review","ci-passed"],
+      say:"APPROVED, posted on the PR as a commit status: state `ci-passed`, `merge` requested. CHANGES-REQUESTED would have ended at `ci-failed`.", ref:"core/steps/review.sh"},
+     P.merge, P.build,
+     {focus:[], say:"From here the release is the same as any other: freeze check, signature, staging, 5%, 25%, held."}]},
+  {id:"freeze", name:"Freeze, then resume", blurb:"a lock on, a stranded ticket, resume",
+   steps:[...BUILD_LOW,
+     {focus:["freeze"], lock:{freeze:"on"}, out:["GO: freeze"],
+      say:"Someone runs `./go freeze`. release-freeze is a flag, not a deploy: it takes effect in seconds.", ref:"Makefile freeze · adapters/flagd/set.sh"},
+     {focus:["freeze"], n:{freeze:"nogo"}, out:["NO-GO: launchpad — release-freeze is on"],
+      say:"Launchpad asks the Flags port before staging anything and refuses. Had flagd not answered, it would refuse too: it fails closed.", ref:"core/launchpad.sh frozen() · docs/adr/0030 §5"},
+     {focus:["freeze"], fail:["release","step exited 1"], lock:{stranded:"on"},
+      say:"The release step reached no verdict stage, so it fails: the tower keeps the state at `merged`, appends an error entry to the history and requests nothing. The ticket is stranded on purpose: the tower has no retries and no timeouts of its own.", ref:"core/steps/release.sh · core/tower.sh"},
+     {focus:["freeze"], n:{freeze:"idle"}, lock:{freeze:"off"}, out:["GO: unfreeze"],
+      say:"`./go unfreeze`.", ref:"Makefile unfreeze"},
+     {focus:["freeze"], resume:"release", lock:{stranded:"off"},
+      say:"`./go resume TICKET=0042`. Resume is accepted only when the last history entry failed and that step starts from the current state, so it never duplicates a step still in flight. It appends a `resume` entry and publishes `release` again.", ref:"core/tower.sh resume · docs/adr/0034"},
+     ...RELEASE]},
+  {id:"human", name:"Human says no", blurb:"silence moves nothing; NO-GO rolls back",
+   steps:[...BUILD_LOW, ...RELEASE, P.brief,
+     {focus:["human"], out:["NO-GO: go-for-launch — no human answer (set GO_FOR_LAUNCH=GO or answer on the terminal); nothing moved"],
+      say:"Nobody answers: NO-GO, and nothing moves. The canary stays held at 25%. Silence never promotes.", ref:"core/promote.sh"},
+     {focus:["rollback"], roll:true, n:{human:"nogo", rollback:"go", full:"skip"}, w:0, canary:null, lock:{human:"nogo"},
+      out:["NO-GO: go-for-launch — human said NO-GO"],
+      say:"The human answers NO-GO: promote rolls the canary back through the Delivery port.", ref:"core/promote.sh · adapters/envoy-canary/rollback.sh"}]},
+  {id:"perimeter", name:"Out of bounds", blurb:"the worker edits a file the ticket did not declare",
+   steps:[P.open, {...P.assign, n:{}},
+     {focus:["perimeter"], n:{crew:"go", perimeter:"nogo", pr:"skip", gates:"skip", risk:"skip", review:"skip", merge:"skip", build:"skip"}, lock:{perimeter:"breached"},
+      out:["NO-GO: crew — app/backend/meetups/auth.py is outside the ticket's declared perimeter"],
+      say:"The worker also edited `auth.py`, which the ticket's perimeter does not list. No PR is opened: the change never reaches a reviewer.", ref:"core/perimeter.sh · core/crew.sh"},
+     {focus:["crew"], fail:["assign","step exited 1"], lock:{stranded:"on"},
+      say:"The assign step fails: the state stays `opened`, the history gets the error. Once the ticket or the worker changes, `./go resume TICKET=0042` runs assign again.", ref:"core/tower.sh · docs/adr/0034"}]},
+  {id:"kill", name:"Kill switch", blurb:"a feature off in seconds, no deploy",
+   steps:[...BUILD_LOW, ...RELEASE, P.brief, P.launch,
+     {focus:["operate"], br:"triage", say:"At 100% an alert fires on the new feature.", ref:"ops-triage"},
+     {focus:["operate"], lock:{kill:"off"}, out:["GO: kill-switch"],
+      say:"`./go kill-switch` turns the workload's feature flag off for every version through the Flags port. No deploy, no rollback: the traffic split stays, the feature is gone in seconds, and the target waits until flagd confirms it.", ref:"Makefile kill-switch · docs/adr/0013 §6, 0030 §2"},
+     {...P.operate, say:"ops-triage writes the incident with ranked hypotheses and a proposal: a new ticket, and the loop starts again."}]},
+];
+
+// Validate every scripted transition against the tower's table.
+function validate() {
+  for (const sc of SCENARIOS) {
+    let st = null;
+    sc.steps.forEach((s, i) => {
+      if (s.open) st = "opened";
+      if (s.resume && MACHINE.precondition[s.resume] !== st) console.error(`board: ${sc.id} step ${i}: resume ${s.resume} from ${st}`);
+      if (s.tower) {
+        const [step, to] = s.tower;
+        if (MACHINE.precondition[step] !== st) console.error(`board: ${sc.id} step ${i}: ${step} does not start from ${st}`);
+        st = to;
+      }
+    });
+  }
+}
+
+// ---- view state ---------------------------------------------------------
+function blank() {
+  return {nodes:{}, gates:{}, focus:[], br:null, doc:null, newest:-1, out:[], fresh:0, w:0, stable:"0.1.0", canary:null, roll:false,
+          locks:{freeze:"off", kill:"on", human:"idle", perimeter:"idle", judges:"idle", pinned:"idle", signed:"idle", stranded:"off"},
+          say:"", ref:""};
+}
+const t0 = Date.parse("2026-11-02T09:00:00Z");
+function stamp(i) { return new Date(t0 + i * 37000).toISOString().replace(".000", ""); }
+function apply(v, s, i) {
+  v.focus = s.focus || [];
+  v.br = s.br || v.br;
+  Object.assign(v.nodes, s.n || {});
+  Object.assign(v.gates, s.g || {});
+  Object.assign(v.locks, s.lock || {});
+  if (s.w != null) v.w = s.w;
+  if ("canary" in s) v.canary = s.canary;
+  v.roll = !!s.roll;
+  v.fresh = (s.out || []).length;
+  v.out = v.out.concat(s.out || []);
+  v.newest = -1;
+  if (s.open) { v.doc = {id:T, state:"opened", history:[{step:"open", state:"opened", at:stamp(i)}]}; v.newest = 0; }
+  if (s.tower) { const [step, to] = s.tower; v.doc.state = to; v.doc.history.push({step, state:to, at:stamp(i)}); v.newest = v.doc.history.length - 1; }
+  if (s.fail) { const [step, why] = s.fail; v.doc.history.push({step, state:v.doc.state, at:stamp(i), error:why}); v.newest = v.doc.history.length - 1; }
+  if (s.resume) { v.doc.history.push({step:"resume", state:v.doc.state, at:stamp(i), resumed:s.resume}); v.newest = v.doc.history.length - 1; }
+  v.say = s.say || ""; v.ref = s.ref || "";
+}
+let mode = "explain", sc = SCENARIOS[0], idx = 0, timer = null;
+function viewAt(k) {
+  const v = blank();
+  for (let i = 0; i <= k; i++) apply(v, sc.steps[i], i);
+  v.doc = v.doc && JSON.parse(JSON.stringify(v.doc));
+  return v;
+}
+
+// ---- rendering ----------------------------------------------------------
+const STATUS = {go:"GO", nogo:"NO-GO", held:"HELD", skip:"", idle:"", run:"…"};
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function ticks(s) { return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>"); }
+function render(v) {
+  for (const n of NODES) {
+    const g = document.getElementById("n-" + n.id);
+    const st = v.nodes[n.id] || "idle";
+    g.classList.remove("go","nogo","held","skip","focus");
+    if (st !== "idle") g.classList.add(st);
+    if (v.focus.includes(n.id)) g.classList.add("focus");
+    g.querySelector(".st").textContent = v.focus.includes(n.id) && st === "idle" ? "RUNNING" : (STATUS[st] || "");
+  }
+  for (const gname of GATES) {
+    const c = document.getElementById("g-" + gname);
+    c.setAttribute("class", "light " + (v.gates[gname] || ""));
+  }
+  for (const b of BRACKETS) {
+    const gb = document.getElementById("br-" + b.id);
+    const hot = v.br === b.id;
+    gb.querySelector("path").setAttribute("class", "bracket" + (hot ? " hot" : ""));
+    gb.querySelector("text").setAttribute("class", "blabel" + (hot ? " hot" : ""));
+  }
+  document.querySelectorAll("#rollpath path").forEach(p => p.classList.toggle("hot", v.roll));
+  // narration
+  const say = document.getElementById("say");
+  say.querySelector("p").innerHTML = ticks(v.say);
+  say.querySelector(".ref").textContent = v.ref;
+  say.style.borderLeftColor = v.roll || Object.values(v.nodes).includes("nogo") && v.focus.some(f => v.nodes[f] === "nogo") ? "var(--red)" : "var(--blue)";
+  // tower document
+  const cur = v.doc && v.doc.state;
+  const stranded = v.doc && v.doc.history.length && v.doc.history[v.doc.history.length - 1].error;
+  document.getElementById("states").innerHTML = STATES.map(s => {
+    let cls = s === cur ? "now" : "";
+    if (s === cur && (s === "ci-failed" || s === "rolled-back" || stranded)) cls += " bad";
+    if (s === cur && (s === "held" || s === "review")) cls += " amb";
+    return `<b class="${cls}">${s}</b>`;
+  }).join("");
+  document.getElementById("doc").innerHTML = v.doc ? docHTML(v.doc, v.newest) : '<span class="muted">no document yet: the ticket is not open</span>';
+  // locks
+  renderLocks(v);
+  // traffic
+  const w = Math.max(0, Math.min(100, v.w));
+  const bs = document.getElementById("bar-s"), bc = document.getElementById("bar-c");
+  bs.style.width = (100 - w) + "%"; bc.style.width = w + "%";
+  bs.textContent = 100 - w > 12 ? `${100 - w}%` : ""; bc.textContent = w > 4 ? `${w}%` : "";
+  if (v.stable == null) {
+    bs.style.width = "0%"; bc.style.width = "0%"; bs.textContent = bc.textContent = "";
+    document.getElementById("leg-s").textContent = "the Delivery port did not answer: no traffic shown";
+    document.getElementById("leg-c").textContent = "";
+  } else {
+    document.getElementById("leg-s").textContent = `stable ${v.stable} · ${100 - w}%`;
+    document.getElementById("leg-c").textContent = v.canary ? `canary ${v.canary} · ${w}%` : "no canary running";
+  }
+  // stdout
+  const out = document.getElementById("stdout");
+  out.innerHTML = v.out.length ? v.out.map((l, i) => {
+    const cls = l.startsWith("GO:") ? "g" : l.startsWith("NO-GO:") ? "r" : "m";
+    return `<div class="${cls}${i >= v.out.length - v.fresh ? " fresh" : ""}">${esc(l)}</div>`;
+  }).join("") : '<div class="m">nothing printed yet</div>';
+  out.scrollTop = out.scrollHeight;
+}
+function docHTML(doc, newest) {
+  const val = x => typeof x === "string" ? `<span class="sv">"${esc(x)}"</span>` : `<span class="nv">${esc(JSON.stringify(x))}</span>`;
+  const hist = (doc.history || []).map((h, i) => {
+    const body = Object.entries(h).map(([k, x]) => `<span class="k">${k}</span>: ${k === "error" ? `<span class="err">"${esc(x)}"</span>` : val(x)}`).join(", ");
+    return `    {${i === newest ? `<span class="newest">${body}</span>` : body}}`;
+  }).join(",\n");
+  const rest = Object.entries(doc).filter(([k]) => !["id","state","history"].includes(k))
+    .map(([k, x]) => `  <span class="k">${esc(k)}</span>: ${val(x)},\n`).join("");
+  return `{\n  <span class="k">id</span>: ${val(doc.id)},\n  <span class="k">state</span>: ${val(doc.state)},\n${rest}  <span class="k">history</span>: [\n${hist}\n  ]\n}`;
+}
+const LOCKS = [
+  {id:"freeze", n:"release-freeze", d:"flag · launchpad refuses to deploy or shift; no answer refuses too",
+   map:{off:["","off"], on:["red","ON · refusing"], unknown:["red","no answer · refusing"]}},
+  {id:"human", n:"go-for-launch", d:"the one human gate before 100%",
+   map:{idle:["","idle"], waiting:["amb","waiting for a human"], go:["grn","GO"], nogo:["red","NO-GO"], stale:["red","record ≠ plane"]}},
+  {id:"perimeter", n:"ticket perimeter", d:"the diff must stay inside the ticket's ## Perimeter",
+   map:{idle:["","—"], ok:["grn","inside"], breached:["red","breached"]}},
+  {id:"judges", n:"judges from the base", d:"a PR is judged by the base's gates and policy",
+   map:{idle:["","always"], on:["grn","applied"]}},
+  {id:"pinned", n:"merge pinned to judged head", d:"a push after CI makes the merge fail (409)",
+   map:{idle:["","always"], on:["grn","applied"]}},
+  {id:"signed", n:"signed image only", d:"cosign; the verified digest is what runs",
+   map:{idle:["","always"], on:["grn","verified"]}},
+  {id:"stranded", n:"one step at a time", d:"a failed step strands the ticket; only resume re-requests it",
+   map:{off:["","none stranded"], on:["red","stranded · resume"]}},
+  {id:"kill", n:"kill switch", d:"the workload's feature flag, off for every version, no deploy",
+   map:{on:["","feature on"], off:["red","feature OFF"], unknown:["","no answer"], none:["","no canary"]}},
+];
+function renderLocks(v) {
+  document.getElementById("locks").innerHTML = LOCKS.map(L => {
+    const val = v.locks[L.id];
+    const [cls, txt] = L.map[val] || ["", val || "—"];
+    const dot = cls === "red" ? "off" : cls === "amb" ? "warn" : cls === "grn" ? "on" : "";
+    const extra = L.id === "perimeter" && v.perimeterGlobs ? ` <span class="muted">(${esc(v.perimeterGlobs.join(", "))})</span>` : "";
+    return `<li class="${cls}${val && val !== "idle" && val !== "off" ? " lit" : ""}"><span class="dot ${dot}"></span><div><div class="n">${L.n}${extra}</div><div class="d">${L.d}</div></div><span class="v">${esc(txt)}</span></li>`;
+  }).join("");
+}
+
+// ---- explainer controls -------------------------------------------------
+function show() {
+  const v = viewAt(idx);
+  render(v);
+  document.getElementById("counter").textContent = `${idx + 1} / ${sc.steps.length}`;
+  document.getElementById("timeline").innerHTML = sc.steps.map((_, i) => `<i class="${i < idx ? "done" : i === idx ? "now" : ""}" data-i="${i}" title="step ${i + 1}"></i>`).join("");
+  document.getElementById("b-prev").disabled = idx === 0;
+  document.getElementById("b-next").disabled = idx === sc.steps.length - 1;
+  document.getElementById("doc-sub").textContent = "example ticket " + T;
+}
+function pick(id) {
+  sc = SCENARIOS.find(s => s.id === id) || SCENARIOS[0];
+  idx = 0; stop();
+  document.querySelectorAll("#scenarios button").forEach(b => b.setAttribute("aria-pressed", b.dataset.id === sc.id));
+  try { localStorage.setItem("board.scenario", sc.id); } catch (e) {}
+  show();
+}
+function step(d) { idx = Math.max(0, Math.min(sc.steps.length - 1, idx + d)); show(); }
+function stop() { clearInterval(timer); timer = null; document.getElementById("b-play").textContent = "▶ play"; }
+function play() {
+  if (timer) return stop();
+  if (idx === sc.steps.length - 1) idx = -1, step(1);
+  document.getElementById("b-play").textContent = "❚❚ pause";
+  timer = setInterval(() => { if (idx >= sc.steps.length - 1) return stop(); step(1); }, +document.getElementById("speed").value);
+}
+function setupExplainer() {
+  document.getElementById("scenarios").innerHTML = SCENARIOS.map(s =>
+    `<button data-id="${s.id}" aria-pressed="false" title="${esc(s.blurb)}">${esc(s.name)} <span class="muted">· ${esc(s.blurb)}</span></button>`).join("");
+  document.querySelectorAll("#scenarios button").forEach(b => b.addEventListener("click", () => pick(b.dataset.id)));
+  document.getElementById("b-prev").onclick = () => { stop(); step(-1); };
+  document.getElementById("b-next").onclick = () => { stop(); step(1); };
+  document.getElementById("b-restart").onclick = () => { stop(); idx = 0; show(); };
+  document.getElementById("b-play").onclick = play;
+  document.getElementById("speed").onchange = () => { if (timer) { stop(); play(); } };
+  document.getElementById("timeline").addEventListener("click", e => { if (e.target.dataset.i) { stop(); idx = +e.target.dataset.i; show(); } });
+  document.addEventListener("keydown", e => {
+    if (mode !== "explain" || e.target.closest("select")) return;
+    if (e.key === "ArrowRight") { stop(); step(1); }
+    else if (e.key === "ArrowLeft") { stop(); step(-1); }
+    else if (e.key === "Home") { stop(); idx = 0; show(); }
+    else if (e.key === " " && !e.target.closest("button,[role=button]")) { e.preventDefault(); play(); }
+    else if (e.key === "Escape") closeDrawer();
+  });
+  let saved = null;
+  try { saved = localStorage.getItem("board.scenario"); } catch (e) {}
+  pick(saved || "ship");
+}
+
+// ---- live ---------------------------------------------------------------
+let live = null, liveTicket = null, liveTimer = null;
+async function poll() {
+  try {
+    const r = await fetch("state.json", {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    live = await r.json();
+  } catch (e) {
+    live = {unreachable: location.protocol === "file:" ? "opened as a file: no board server. Run ./go board for the live view." : "board server not answering: " + e.message};
+  }
+  const dot = document.getElementById("live-dot");
+  dot.className = "dot " + (live.unreachable || live.error ? "off" : live.delivery && live.delivery.ok ? "on" : "warn");
+  if (mode === "live") renderLive();
+}
+const STAGE_NODE = {5:"c5", 25:"c25"};
+function liveView() {
+  const v = blank();
+  v.locks = {freeze:"unknown", kill:"unknown", human:"idle", perimeter:"idle", judges:"idle", pinned:"idle", signed:"idle", stranded:"off"};
+  v.say = ""; v.ref = ""; v.stable = null;
+  if (!live || live.unreachable || live.error) {
+    v.say = live ? (live.unreachable || live.error) : "waiting for the first probe round";
+    return v;
+  }
+  const tk = live.tickets.ok ? live.tickets.value : [];
+  // tower document → build row
+  const lastAt = t => { const h = t.doc.history || []; return h.length ? h[h.length - 1].at : ""; };
+  const sorted = [...tk].sort((a, b) => lastAt(b).localeCompare(lastAt(a)));
+  if (!liveTicket || !tk.find(t => t.id === liveTicket)) liveTicket = sorted[0] && sorted[0].id;
+  const t = tk.find(x => x.id === liveTicket);
+  if (t) {
+    const d = t.doc; v.doc = d; v.newest = (d.history || []).length - 1;
+    v.perimeterGlobs = t.perimeter;
+    const h = d.history || [];
+    const lastErr = h.length && h[h.length - 1].error ? h[h.length - 1] : null;
+    if (h.some(x => x.error) || lastErr) v.locks.stranded = lastErr ? "on" : "off";
+    const st = d.state;
+    v.nodes.ticket = "go";
+    const after = ["pr-opened","review","ci-passed","ci-failed","merged","held","rolled-back"];
+    if (after.includes(st)) Object.assign(v.nodes, {crew:"go", perimeter:"go", pr:"go"}), v.locks.perimeter = "ok";
+    if (st === "opened") { v.focus = ["crew"]; v.br = "assign"; if (lastErr) v.nodes.crew = "nogo"; }
+    if (st === "pr-opened") { v.focus = ["gates"]; v.br = "ci"; if (lastErr) v.nodes.gates = "nogo"; }
+    if (d.ci) {
+      const failed = d.ci.failed;
+      let hit = false;
+      for (const g of GATES) { if (failed === g) { v.gates[g] = "nogo"; hit = true; } else if (!hit) v.gates[g] = "go"; }
+      v.nodes.gates = d.ci.verdict === "GO" ? "go" : "nogo";
+      v.locks.judges = "on";
+      if (d.ci.line) v.out.push(d.ci.line);
+    }
+    if (st === "review") { v.nodes.risk = "held"; v.focus = ["review"]; v.br = "ci"; }
+    if (d.review) { v.nodes.review = d.review.verdict === "approved" ? "go" : "nogo"; v.out.push(`review ${d.review.role}: ${d.review.verdict} — ${d.review.reason || ""}`.trim()); }
+    if (["ci-passed","merged","held","rolled-back"].includes(st)) v.nodes.risk = "go";
+    if (st === "ci-passed") { v.focus = ["merge"]; v.br = "merge"; if (lastErr) v.nodes.merge = "nogo"; }
+    if (st === "ci-failed") { v.nodes.merge = "skip"; v.nodes.build = "skip"; }
+    if (["merged","held","rolled-back"].includes(st)) { v.nodes.merge = "go"; v.locks.pinned = "on"; }
+    if (st === "merged") { v.focus = ["build"]; v.br = "release"; if (lastErr) v.nodes.build = "nogo"; }
+    if (["held","rolled-back"].includes(st)) { v.nodes.build = "go"; v.locks.signed = "on"; }
+    if (d.release && d.release.verdict) v.out.push(d.release.verdict);
+    document.getElementById("doc-sub").textContent = t.title;
+  } else {
+    document.getElementById("doc-sub").textContent = live.tickets.ok ? "no ticket opened by the tower yet (./go e2e opens one)" : "state store not answering";
+  }
+  // release record + plane → release row
+  const rec = live.record.ok ? live.record.value : null;
+  const plane = live.delivery.ok ? live.delivery.value : null;
+  if (plane) { v.w = plane.canary ? plane.weight : 0; v.stable = plane.stable; v.canary = plane.canary; }
+  if (rec) {
+    Object.assign(v.nodes, {freeze:"go", sign: rec.image ? "go" : "idle", staging: rec.image ? "go" : "idle"});
+    for (const s of rec.stages || []) {
+      const id = STAGE_NODE[s.pct];
+      if (id) v.nodes[id] = String(s.verdict).startsWith("GO") ? "go" : "nogo";
+      v.out.push(s.verdict); (s.numbers || []).forEach(x => v.out.push(x));
+    }
+    if (rec.verdict === "held") {
+      v.nodes.held = "held";
+      const same = plane && plane.canary === rec.version && plane.weight === rec.held_at;
+      v.locks.human = same ? "waiting" : "stale";
+      v.focus = ["human"];
+    }
+    if (rec.verdict === "rolled-back") { v.nodes.rollback = "go"; v.roll = true; Object.assign(v.nodes, {held:"skip", human:"skip", full:"skip"}); }
+    if (rec.verdict === "in-progress") v.focus = [!plane || !plane.canary ? "staging" : plane.weight >= 25 ? "c25" : plane.weight > 0 ? "c5" : "staging"];
+    if (rec.promoted) { Object.assign(v.nodes, {held:"held", human:"go", full:"go"}); v.locks.human = "go"; v.focus = []; }
+    const shown = (rec.verdict || "?") + (rec.promoted ? ", promoted" : "");
+    v.say = `Release record (${live.record.at}): ${rec.version} over stable ${rec.stable}, ${shown}. ` +
+      (plane ? `The plane runs stable ${plane.stable}${plane.canary ? `, canary ${plane.canary} at ${plane.weight}%` : ", no canary"}.` : "The Delivery port did not answer.");
+    v.ref = "The release row is the record on disk and the plane now, not necessarily the selected ticket's run (./go demo-rollback releases without a ticket).";
+  } else {
+    v.say = plane ? `The plane runs stable ${plane.stable}, no release record yet. Try ./go demo-rollback or ./go demo-hold in another terminal and watch.` : "No release record and no plane: run ./go up.";
+  }
+  if (live.freeze.ok) v.locks.freeze = live.freeze.value === "true" ? "on" : live.freeze.value === "false" ? "off" : "unknown";
+  const ks = live.kill_switch;
+  if (!plane || !plane.canary) v.locks.kill = "none";
+  else if (ks.canary && ks.canary.ok) v.locks.kill = ks.canary.value === "true" ? "on" : "off";
+  if (live.freeze.ok && live.freeze.value === "true") v.nodes.freeze = "nogo";
+  return v;
+}
+function renderLive() {
+  const v = liveView();
+  render(v);
+  const sub = document.getElementById("live-sub");
+  const probes = document.getElementById("probes");
+  const tickets = document.getElementById("tickets");
+  if (!live || live.unreachable || live.error) {
+    sub.textContent = ""; tickets.innerHTML = "";
+    probes.innerHTML = `<span class="err">${esc(v.say)}</span>`;
+    return;
+  }
+  sub.textContent = `${live.level.toUpperCase()} · workload ${live.workload} · read ${live.at} · ` + Object.entries(live.adapters).map(([k, x]) => `${k.toLowerCase()}=${x}`).join(" ");
+  const tk = live.tickets.ok ? live.tickets.value : [];
+  tickets.innerHTML = tk.map(t => `<button data-id="${t.id}" aria-pressed="${t.id === liveTicket}">${esc(t.id)} <span class="muted">· ${esc(t.doc.state)}</span></button>`).join("");
+  tickets.querySelectorAll("button").forEach(b => b.onclick = () => { liveTicket = b.dataset.id; renderLive(); });
+  const rows = [["state store", live.tickets], ["delivery", live.delivery], ["release-freeze", live.freeze], ["release record", live.record]];
+  probes.innerHTML = rows.filter(([, p]) => !p.ok).map(([n, p]) => `<div><span class="err">✕ ${n}:</span> ${esc(p.error)}</div>`).join("")
+    || '<div>every probe answered</div>';
+}
+function setMode(m) {
+  mode = m;
+  document.getElementById("m-explain").setAttribute("aria-pressed", m === "explain");
+  document.getElementById("m-live").setAttribute("aria-pressed", m === "live");
+  document.getElementById("explain-bar").classList.toggle("hide", m !== "explain");
+  document.getElementById("explain-controls").classList.toggle("hide", m !== "explain");
+  document.getElementById("live-bar").classList.toggle("hide", m !== "live");
+  if (m === "live") { stop(); renderLive(); } else show();
+  try { localStorage.setItem("board.mode", m); } catch (e) {}
+}
+
+// ---- drawer -------------------------------------------------------------
+let drawerNode = null;
+function openDrawer(id) {
+  const n = BYID[id]; drawerNode = id;
+  document.getElementById("d-title").textContent = n.t;
+  document.getElementById("d-step").textContent = n.step === "promote" ? "./go promote" : n.step === "triage" ? "./go triage" : n.step === "open" ? "tower: open" : "tower step: " + n.step;
+  document.getElementById("d-what").textContent = n.what;
+  document.getElementById("d-files").innerHTML = n.files.map(f => `<li><code>${esc(f)}</code></li>`).join("");
+  document.getElementById("d-lines").innerHTML = n.lines.length ? n.lines.map(l => `<div class="${l.startsWith("GO:") ? "g" : "r"}">${esc(l)}</div>`).join("") : '<div class="m">no verdict line of its own</div>';
+  const lw = document.getElementById("d-live-wrap");
+  const detail = mode === "live" && live && !live.unreachable ? liveDetail(id) : null;
+  lw.classList.toggle("hide", !detail);
+  if (detail) document.getElementById("d-live").textContent = detail;
+  const d = document.getElementById("drawer");
+  d.classList.add("open"); d.setAttribute("aria-hidden", "false");
+  document.getElementById("d-close").focus();
+}
+function liveDetail(id) {
+  const rec = live.record && live.record.ok ? live.record.value : null;
+  if ((id === "c5" || id === "c25") && rec) {
+    const s = (rec.stages || []).find(x => STAGE_NODE[x.pct] === id);
+    return s ? [s.verdict, ...(s.numbers || [])].join("\n") : "this stage has not run in the current record";
+  }
+  if (id === "human" && rec && rec.verdict === "held" && live.brief.ok) return `brief written ${live.brief.at}\n\n${live.brief.value}`;
+  if (["held","human","full","rollback","staging","sign"].includes(id) && rec) return JSON.stringify(rec, null, 2);
+  if (id === "freeze") return live.freeze.ok ? `release-freeze = ${live.freeze.value}` : `no answer: ${live.freeze.error}`;
+  if (id === "operate") { const k = live.kill_switch; return `${k.flag}: canary ${k.canary ? (k.canary.ok ? k.canary.value : k.canary.error) : "—"}, stable ${k.stable ? (k.stable.ok ? k.stable.value : k.stable.error) : "—"}`; }
+  const t = live.tickets.ok && live.tickets.value.find(x => x.id === liveTicket);
+  if (t) return JSON.stringify(t.doc, null, 2);
+  return null;
+}
+function closeDrawer() {
+  const d = document.getElementById("drawer");
+  if (!d.classList.contains("open")) return;
+  d.classList.remove("open"); d.setAttribute("aria-hidden", "true");
+  const n = drawerNode && document.getElementById("n-" + drawerNode);
+  if (n) n.focus();
+}
+document.getElementById("d-close").onclick = closeDrawer;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+
+// ---- start --------------------------------------------------------------
+draw();
+validate();
+setupExplainer();
+document.getElementById("m-explain").onclick = () => setMode("explain");
+document.getElementById("m-live").onclick = () => setMode("live");
+poll();
+liveTimer = setInterval(poll, 2000);
+let savedMode = null;
+try { savedMode = localStorage.getItem("board.mode"); } catch (e) {}
+if (savedMode === "live") setMode("live");
+</script>
+</body>
+</html>
