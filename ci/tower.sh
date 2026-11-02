@@ -7,12 +7,14 @@
 # file-backed stubs for the StateStore, EventBus and CodeHost ports plus a
 # TOWER_STEPS directory of stub steps — except `merge`, which is the real
 # core/steps/merge.sh over the stub CodeHost, because the crash case (§9 d)
-# is about that seam. Written from the ADR, not from the scripts.
+# is about that seam. Case (g) runs the real core/steps/ci.sh on a real git
+# range: a PR is judged by the base's gates, policy and perimeter, not by
+# its own (docs/adr/0033). Written from the ADRs, not from the scripts.
 set -eu
 name=tower
 . ci/lib.sh
 
-for f in core/tower.sh core/audit.sh core/steps/merge.sh adapters/inproc/run.sh; do
+for f in core/tower.sh core/audit.sh core/steps/merge.sh core/steps/ci.sh adapters/inproc/run.sh; do
   [ -f "$f" ] || nogo "$f not found"
 done
 
@@ -330,5 +332,105 @@ if [ -z "$mismatch" ]; then
 fi
 
 cd "$repo"
-[ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0019 or 0034"
+
+# (h) docs/adr/0033, ticket 0007: the real core/steps/ci.sh on a real git
+# range, a stub CodeHost and a stub Tracker. The base is this checkout's
+# own judges, with GATES narrowed to risk (the one gate that routes; the
+# other five need an engine or the network). The PR only loosens
+# policy/merge.env so that every level auto-merges.
+#   h1: the ticket's perimeter holds the diff. The PR's own policy would
+#       auto-merge it; the CI step must classify it high (platform) with the
+#       base's policy and send it to review.
+#   h2: the same diff under a ticket whose perimeter does not hold it:
+#       ci-failed, NO-GO on the perimeter, no gate run, whoever wrote it.
+if [ -z "$mismatch" ]; then
+  g="$root/g"
+  mkdir -p "$g/host/gates" "$g/host/ci" "$g/host/core/steps" "$g/host/policy" "$g/host/app" "$g/tickets"
+  sed 's/^GATES := .*/GATES := risk/' Makefile > "$g/host/Makefile"
+  cp -R profiles "$g/host/profiles"
+  cp app/workload.env "$g/host/app/workload.env"
+  cp gates/risk.sh "$g/host/gates/"
+  cp ci/lib.sh "$g/host/ci/"
+  cp core/risk.py core/perimeter.sh "$g/host/core/"
+  cp core/steps/ci.sh "$g/host/core/steps/"
+  cp policy/merge.env "$g/host/policy/"
+  (
+    export GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@localhost GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@localhost
+    cd "$g/host"
+    git init -q -b main . && git add -A && git -c commit.gpgsign=false commit -q -m base
+    sed 's/^RISK_AUTO_MERGE_LEVELS=.*/RISK_AUTO_MERGE_LEVELS=low:medium:high/' policy/merge.env > policy/merge.env.new
+    mv policy/merge.env.new policy/merge.env
+    git checkout -q -b ticket/0001 && git -c commit.gpgsign=false commit -q -am 'every level auto-merges'
+    git branch ticket/0002
+  ) >"$log" 2>&1 || fail_case g-setup "could not build the host repo"
+fi
+if [ -z "$mismatch" ]; then
+  base_sha=$(git -C "$g/host" rev-parse main)
+  head_sha=$(git -C "$g/host" rev-parse ticket/0001)
+  # The PR would route itself if its own policy judged it: without this
+  # the case could pass for the wrong reason.
+  git -C "$g/host" show "$head_sha:policy/merge.env" > "$g/pr-merge.env"
+  own=$(git -C "$g/host" diff --no-renames --numstat "$base_sha" "$head_sha" \
+    | python3 core/risk.py --policy "$g/pr-merge.env" | jq -r .decision)
+  [ "$own" = auto-merge ] || fail_case g-premise "the PR's own policy says $own, want auto-merge"
+  git clone -q "$g/host" "$g/tower" >"$log" 2>&1 || fail_case g-setup "could not clone the host repo"
+fi
+if [ -z "$mismatch" ]; then
+  mkdir -p "$g/tower/adapters/stub-codehost" "$g/tower/adapters/stub-tracker"
+  cat > "$g/tower/adapters/stub-codehost/clone-url.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
+printf '%s\n' "$d/host"
+STUB
+  cat > "$g/tower/adapters/stub-codehost/status.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
+printf '%s %s\n' "$1" "$2" >> "$d/status.log"
+STUB
+  cat > "$g/tower/adapters/stub-tracker/get.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
+cat "$d/tickets/$1.md"
+STUB
+  cat > "$g/tickets/0001.md" <<'TICKET'
+# 0001 - loosen the merge policy
+
+## Perimeter
+
+- `policy/merge.env`
+TICKET
+  cat > "$g/tickets/0002.md" <<'TICKET'
+# 0002 - docs only
+
+## Perimeter
+
+- `docs/*`
+TICKET
+  step_ci() {  # TICKET: runs the real CI step from the tower clone, JSON on stdout
+    (cd "$g/tower" && TICKET=$1 PR_NUMBER=1 BASE_SHA=$base_sha HEAD_SHA=$head_sha \
+      CODE_HOST=stub-codehost TRACKER=stub-tracker WORKLOAD=app GATES_OUT=.gates-out \
+      sh core/steps/ci.sh) 2>"$log"
+  }
+  got=$(step_ci 0001) || fail_case h1 "the CI step exited $?"
+  [ "$(printf '%s' "$got" | jq -r '.state + " " + .ci.verdict + " " + .ci.risk_level + " " + .ci.decision')" = "review GO high review" ] \
+    || fail_case h1 "a PR loosening policy/merge.env: $got (want review GO high review)"
+  [ "$(cat "$g/status.log")" = "$head_sha success" ] || fail_case h1 "status posted: $(cat "$g/status.log")"
+fi
+if [ -z "$mismatch" ]; then
+  rm -f "$g/status.log"
+  got=$(step_ci 0002) || fail_case h2 "the CI step exited $?"
+  [ "$(printf '%s' "$got" | jq -r '.state + " " + .ci.verdict + " " + .ci.failed')" = "ci-failed NO-GO perimeter" ] \
+    || fail_case h2 "a PR outside its ticket's perimeter: $got (want ci-failed NO-GO perimeter)"
+  case "$(printf '%s' "$got" | jq -r .ci.line)" in
+    "NO-GO: perimeter — policy/merge.env is outside"*) : ;;
+    *) fail_case h2 "line does not name the file: $(printf '%s' "$got" | jq -r .ci.line)" ;;
+  esac
+  ! grep -q '^risk: ' "$log" || fail_case h2 "a gate ran on a diff outside the perimeter"
+  [ "$(cat "$g/status.log")" = "$head_sha failure" ] || fail_case h2 "status posted: $(cat "$g/status.log")"
+fi
+
+[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0019, 0033 or 0034"
 go
