@@ -14,6 +14,8 @@ name=contract
 
 esc=$(printf '\033')
 bad=""
+stdout_file=$(mktemp)
+trap 'rm -f "$stdout_file"' EXIT
 
 files=""
 seen=""
@@ -37,10 +39,12 @@ done
 for f in $files; do
   gate=$(basename "$f" .sh)
 
-  # stdout only, exit code preserved; `|| true` keeps set -e out of the way.
-  out=$(sh "$f" 2>/dev/null) && rc=0 || rc=$?
-
-  lines=$(printf '%s' "$out" | awk 'END{print NR}')
+  # stdout only, exit code preserved without tripping set -e.
+  # Counted from a file, not from $(...), which strips trailing newlines and
+  # would let a blank line after the verdict pass (ticket 0010).
+  sh "$f" >"$stdout_file" 2>/dev/null && rc=0 || rc=$?
+  lines=$(awk 'END{print NR}' "$stdout_file")
+  out=$(cat "$stdout_file")
   if [ "$lines" -ne 1 ]; then
     bad="$bad $gate(lines=$lines)"
     printf '%s: stdout has %s lines, want 1:\n%s\n' "$gate" "$lines" "$out" >&2
