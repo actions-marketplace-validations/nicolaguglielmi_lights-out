@@ -3,6 +3,7 @@
 - Status: accepted (amends ADR 0003 [the `100%` stub is removed; `demo-launch` is not a stage]; ADR 0013 §4 and ADR 0014 §1 [launchpad writes `RELEASE_RECORD`; the held line names `./go promote`]; ADR 0017 §1 [a second artefact contract on the same verb], §7 [the per-role `HARNESS` override now exists; `product`, `release`, `ops-triage` get `prompt.md`; `architect`, `test-reviewer` ROLE.md say M8]; ADR 0019 §8 [review roles, ticket 0003 and the budget records move to M8]; ADR 0004 [the workbench image carries a Python venv and its tag covers `uv.lock`]; amended by ADR 0021 [§9's "not built at M9" list, now built at M9: review roles with prompts, review step in the tower, perimeter rule for tickets])
 - Date: 2026-09-16
 - Milestone: M7
+- Amended 2026-11-02 (ticket 0008): §4's record `verdict` gains `in-progress`, written by launchpad just before the deploy and replaced by `held` or `rolled-back` on every exit after it, so a run killed mid-flight never leaves the previous run's `held` on disk. `demo-hold` turns its own `held` record `rolled-back` (plus `rolled_back_by`) when it rolls back. `core/promote.sh` refuses a `held` record unless the Delivery port's `status.sh` (ADR 0026 §2) reports the record's `version` as the canary at `held_at`, naming what the plane has instead: the record is what launchpad decided, the plane is what a GO would promote.
 
 ## Context
 

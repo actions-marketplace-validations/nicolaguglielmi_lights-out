@@ -11,9 +11,11 @@
 # pass holds the canary at 25%, waiting for go-for-launch (core/
 # promote.sh, docs/adr/0020 §4), and exits 0. Either way the decision and
 # the numbers that produced it are written to RELEASE_RECORD, the file
-# promote reads. Generates no traffic itself: production has real
-# traffic, the Makefile `release` target starts the workload's `load.sh`
-# beside this at L0 (docs/adr/0030 §3).
+# promote reads; from the deploy on, the record says `in-progress` until a
+# verdict replaces it, so a run killed mid-flight never leaves the prior
+# run's `held` behind (ticket 0008). Generates no traffic itself:
+# production has real traffic, the Makefile `release` target starts the
+# workload's `load.sh` beside this at L0 (docs/adr/0030 §3).
 #
 # Not scanned by ci/contract.sh (core/, not ci/ gates/ verify/), but reuses
 # ci/lib.sh's go/nogo for the same GO:/NO-GO: line shape.
@@ -44,9 +46,12 @@ rollback() {
 # The release record (docs/adr/0020 §4, amended 0025 §7): version, stable,
 # the verified image (empty until the signature check below passes), one
 # entry per verified stage with its verdict and the `slo:` lines behind
-# it, and the outcome. Built up as stages pass; written on every exit
-# path below except a pre-staging refusal (freeze, signature), which
-# leaves the prior run's record on disk untouched (docs/adr/0026 §6 case 3).
+# it, and the outcome: `held`, `rolled-back`, or `in-progress` — written
+# just before the deploy and replaced by one of the other two on every
+# exit path after it, so `in-progress` on disk means a run died before
+# its verdict (ticket 0008). A pre-staging refusal (freeze, signature)
+# leaves the prior run's record on disk untouched (docs/adr/0026 §6 case
+# 3); core/promote.sh checks any `held` record against the plane.
 stages='[]'
 image=""
 record() {
@@ -92,6 +97,7 @@ fi
 # exit 1. cosign's own reason streams to stderr from verify.sh itself.
 image=$(sh "adapters/$REGISTRY/verify.sh" "$CANARY_TAG") || nogo "unsigned image"
 
+record in-progress
 printf '[launchpad] staging: deploying %s at %s (stable is %s)\n' "$CANARY_VERSION" "$image" "$stable_version" >&2
 sh "$delivery/deploy.sh" "$CANARY_VERSION" "$image" >&2 || fail_stage staging "deploy did not become healthy"
 
