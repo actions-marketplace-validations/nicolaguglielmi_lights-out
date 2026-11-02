@@ -179,7 +179,7 @@ up: ## Start the L0 plane, wait until every adapter is ready, then publish the s
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
 		printf 'lights-out: waiting for %s\n' "$$a" >&2; \
-		sh "adapters/$$a/ready.sh" || exit 1; \
+		sh "adapters/$$a/ready.sh" || { $(COMPOSE) ps -a >&2; exit 1; }; \
 	done
 	@$(MAKE) --no-print-directory publish TAG=$(APP_TAG)
 	@printf 'lights-out: plane is up, app at http://localhost:%s\n' "$(APP_PORT)" >&2
