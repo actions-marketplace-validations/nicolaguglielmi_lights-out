@@ -73,6 +73,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go kill-switch     # turn off waitlist for all versions (manual flag edit)
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
 ./go unfreeze        # re-enable launchpad after freeze
+./go board           # the pipeline explained, live while the plane runs, on localhost:8099 (BOARD_PORT to move it)
 ./go help            # list all targets
 ./go shell           # interactive shell inside workbench
 ./go clean           # remove the workbench image
@@ -216,7 +217,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, promote, record-evals, kill-switch, freeze, unfreeze, e2e
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, promote, record-evals, kill-switch, freeze, unfreeze, e2e, board
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -224,6 +225,10 @@ lights-out/
   workbench/
     Containerfile           # the toolchain: make, gcloud, terraform, tools
     fetch.sh                # script for verifying downloads
+
+  board/
+    index.html              # the board: scripted scenarios, live view (ADR 0035)
+    serve.py                # serves it and /state.json, read through the port verbs
 
   core/
     launchpad.sh            # release controller: stages, verify gates, automatic rollback

@@ -128,7 +128,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -183,6 +183,10 @@ up: ## Start the L0 plane, wait until every adapter is ready, then publish the s
 	done
 	@$(MAKE) --no-print-directory publish TAG=$(APP_TAG)
 	@printf 'lights-out: plane is up, app at http://localhost:%s\n' "$(APP_PORT)" >&2
+
+.PHONY: board
+board: ## The flight readiness board on localhost:8099: the pipeline explained, and the live plane when it is up (docs/adr/0035)
+	@python3 board/serve.py
 
 .PHONY: publish
 publish: ## Build, push and sign the image at TAG (docs/adr/0025 §1-§3)
