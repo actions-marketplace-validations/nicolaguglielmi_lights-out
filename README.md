@@ -2,9 +2,38 @@
 
 Six agents ship it. One human turns the lights back on.
 
-Let agents work on a codebase you do not trust. Six agent roles take a ticket to production; every change passes numeric gates, stays inside the perimeter the ticket declares, and rolls itself back when the canary's numbers say so. At every step, a gate answers GO or NO-GO. The last gate is human: the flight readiness poll before the canary goes to 100%.
+**Autonomous agents take a ticket to production on a codebase you do not trust. Numeric gates decide, the ticket's perimeter holds, a failing canary rolls itself back, and one human approves the last step.**
+
+Six agent roles take a ticket to production; every change passes numeric gates, stays inside the perimeter the ticket declares, and rolls itself back when the canary's numbers say so. At every step, a gate answers GO or NO-GO. The last gate is human: the flight readiness poll before the canary goes to 100%.
 
 lights-out is a governed-autonomy harness, not a code assistant: the decision that matters is never the model's (ADR 0029). It runs complete on a laptop with no account and no API key; Google Cloud is the optional target of the L2/L3 profiles.
+
+## Try it
+
+You need podman (rootless), git and a POSIX shell. No account, no API key.
+
+```sh
+git clone https://github.com/nicolaguglielmi/lights-out.git
+cd lights-out
+./go demo
+```
+
+`./go demo` builds the toolchain image, starts a local plane (the app, Gitea, a registry, Envoy, Prometheus, flagd and two emulators), then releases a version that fails. It clears staging, takes 5% of the traffic, fails verify, and goes back to 100/0 by itself, with no human involved. Then it runs the whole path once through the control plane: ticket → PR → gates → merge → signed canary → verify NO-GO → rollback, and audits the chain.
+
+The first run builds a 1 GB image and pulls about 800 MB of plane images. If port 8080 is taken, put `APP_PORT=9000` in `.env`. On macOS, podman runs inside `podman machine`.
+
+**Shorter paths**, measured with the images already on disk:
+
+| Command | What you see | Time |
+|---|---|---|
+| `./go demo-triage` | A fake alert becomes an incident with ranked hypotheses and a proposal; no plane needed | 3 s |
+| `./go up` then `./go demo-rollback` | The failing canary rolls itself back | 14 s + 63 s |
+
+## Use it on your own codebase
+
+Your code goes behind the same port the bundled app uses: a directory, a seven-key contract, the gates and the rollback for free. [docs/use-on-your-repo.md](docs/use-on-your-repo.md) walks through it and says what is not proven yet.
+
+Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). What comes next: [ROADMAP.md](ROADMAP.md).
 
 ## Status
 
@@ -43,21 +72,11 @@ Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the
 
 Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset.
 
-## Quick start
-
-Prerequisites: podman (rootless), git, a POSIX shell. Nothing else.
+## Commands
 
 On macOS, podman runs inside `podman machine`, a VM. The docker CLI is compatible but not the documented path; use `CONTAINER_ENGINE=docker` if needed.
 
 If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free port) in `.env`: the app then answers at `http://localhost:9000`, and every command follows it.
-
-```sh
-git clone <this repository>
-cd lights-out
-./go demo
-```
-
-Then explore:
 
 ```sh
 ./go up              # start the L0 plane and wait for it
@@ -344,6 +363,7 @@ lights-out/
 ## Docs
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — the port/adapter pattern, how levels compose
+- [docs/use-on-your-repo.md](docs/use-on-your-repo.md) — put your own codebase behind the gates and the rollback
 - [docs/adr/](docs/adr/) — architecture decision records
 - [PLAN.md](docs/PLAN.md) — the working plan (Italian)
 - [app/README.md](app/README.md) — the target application: routes, auth, migrations, metrics, flags
