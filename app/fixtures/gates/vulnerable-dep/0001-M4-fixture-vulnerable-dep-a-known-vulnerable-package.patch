@@ -1,4 +1,4 @@
-From 1f8f20107d4dba37486e2f699d9c2c8434e28e8a Mon Sep 17 00:00:00 2001
+From d03e70e113989394fa7efc77f11aa988406ef0ef Mon Sep 17 00:00:00 2001
 From: Nicola <45848139+nicolaguglielmi@users.noreply.github.com>
 Date: Tue, 15 Sep 2026 00:10:17 +0200
 Subject: [PATCH] =?UTF-8?q?[M4]=20fixture:=20vulnerable-dep=20=E2=80=94=20?=
@@ -22,11 +22,11 @@ Claude-Session: https://claude.ai/code/session_01SyvjibsMaMMeqKhNxadYFz
  1 file changed, 6 insertions(+)
 
 diff --git a/app/frontend/package-lock.json b/app/frontend/package-lock.json
-index 06ca8ef..39cfb51 100644
+index 7e74b6e..c77cdc6 100644
 --- a/app/frontend/package-lock.json
 +++ b/app/frontend/package-lock.json
 @@ -19,6 +19,12 @@
-         "vite": "8.3.0"
+         "vite": "8.3.3"
        }
      },
 +    "node_modules/lodash": {
@@ -36,8 +36,8 @@ index 06ca8ef..39cfb51 100644
 +      "license": "MIT"
 +    },
      "node_modules/@oxc-project/types": {
-       "version": "0.149.0",
-       "resolved": "https://registry.npmjs.org/@oxc-project/types/-/types-0.149.0.tgz",
+       "version": "0.151.0",
+       "resolved": "https://registry.npmjs.org/@oxc-project/types/-/types-0.151.0.tgz",
 -- 
-2.50.1 (Apple Git-155)
+2.54.0 (Apple Git-157)
 
