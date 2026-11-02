@@ -37,7 +37,10 @@ if [ "${LIGHTS_OUT_WORKBENCH:-}" = "1" ]; then
 fi
 
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+# Host-side scripts (ci/engine-compat.sh) source ci/lib.sh by relative path:
+# run from the repository root wherever ./go was called from.
+cd "$here" || exit 1
 containerfile="$here/workbench/Containerfile"
 # One tag per revision of the image's inputs: the Containerfile and the
 # Python lock it installs (docs/adr/0020 §5).
@@ -69,6 +72,25 @@ if [ "$cmd" = clean ]; then
   exit 0
 fi
 
+# 1.2. The engine must answer before anything is built: a stopped podman
+# machine or docker daemon otherwise surfaces minutes later as an unrelated
+# NO-GO.
+if ! "$engine" info >/dev/null 2>&1; then
+  case "$engine:$(uname -s)" in
+    podman:Darwin|podman:MINGW*|podman:MSYS*)
+      if [ -z "$(podman machine list --format '{{.Name}}' --noheading 2>/dev/null)" ]; then
+        die "podman has no machine yet. Create and start one (4 CPUs and 6 GB of memory are comfortable for the plane):
+  podman machine init --cpus 4 --memory 6144
+  podman machine start"
+      fi
+      die "podman machine is not running. Start it: podman machine start" ;;
+    podman:*)
+      die "podman does not answer ('podman info' fails). Check your podman installation, then retry." ;;
+    *)
+      die "$engine does not answer ('$engine info' fails). Start the $engine daemon (Docker Desktop on macOS), then retry." ;;
+  esac
+fi
+
 # 1.5. docs/adr/0025, amended 2026-09-20: verified live, not assumed.
 # Rootless podman, unlike docker, does not treat localhost:5050 (Zot) as a
 # plain-HTTP registry without configuration — `docker-compose push` fails
@@ -86,7 +108,11 @@ if [ "$engine" = podman ] && [ "$cmd" = up ]; then
 location = "localhost:5050"
 insecure = true
 EOF
-  machine=$(podman machine list --format '{{.Name}}' --noheading 2>/dev/null | head -1 | sed 's/\*$//')
+  # The default machine (podman marks it with a trailing *), else the first.
+  machines=$(podman machine list --format '{{.Name}}' --noheading 2>/dev/null)
+  machine=$(printf '%s\n' "$machines" | grep '\*$' | head -1)
+  [ -n "$machine" ] || machine=$(printf '%s\n' "$machines" | head -1)
+  machine=${machine%\*}
   if [ -n "$machine" ]; then
     if ! podman machine ssh "$machine" -- test -f "$reg_conf" 2>/dev/null; then
       podman machine ssh "$machine" -- sudo tee "$reg_conf" >/dev/null < "$reg_tmp" \
@@ -139,6 +165,8 @@ case "$cmd" in
   up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|e2e|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
+      [ "$(podman info --format '{{.Host.RemoteSocket.Exists}}')" = true ] \
+        || die "podman's API socket $sock does not exist. Enable it: systemctl --user enable --now podman.socket"
       [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
     else
       sock=${DOCKER_HOST:-}; sock=${sock#unix://}
