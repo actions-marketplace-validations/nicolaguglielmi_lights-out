@@ -12,6 +12,10 @@ shift or rollback. A probe that cannot read answers {"ok": false,
 "error": <the adapter's own last stderr line>}, never a default value.
 One background loop refreshes the snapshot every BOARD_POLL_S seconds, so
 any number of open tabs cost the plane one probe round.
+
+BOARD_STATIC=1 serves the page alone, for hosting the explainer where no
+plane runs (board/Dockerfile, Cloud Run): no probe ever starts and
+/state.json answers 404, which the page reads as "no live view here".
 """
 import json
 import os
@@ -28,6 +32,7 @@ PAGE = ROOT / "board" / "index.html"
 # about 1 s with the plane up (two `compose exec` in status.sh); 2 s keeps
 # a canary shift visible within one beat of a stage without a busy loop.
 POLL_S = float(os.environ.get("BOARD_POLL_S", "2"))
+STATIC = os.environ.get("BOARD_STATIC") == "1"
 
 
 def run(*argv, timeout=15):
@@ -158,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path in ("/", "/index.html"):
             body, kind = PAGE.read_bytes(), "text/html; charset=utf-8"
-        elif path == "/state.json":
+        elif path == "/state.json" and not STATIC:
             snap = state["snapshot"] or {"error": "board: first probe round still running"}
             body, kind = json.dumps(snap).encode(), "application/json"
         else:
@@ -176,11 +181,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    listen = int(os.environ.get("BOARD_LISTEN", "8099"))
+    # Cloud Run names the port in PORT; ./go board publishes 8099.
+    listen = int(os.environ.get("BOARD_LISTEN") or os.environ.get("PORT") or "8099")
     shown = os.environ.get("BOARD_PORT", str(listen))
-    threading.Thread(target=refresh, daemon=True).start()
+    if not STATIC:
+        threading.Thread(target=refresh, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", listen), Handler)
-    print(f"board: http://localhost:{shown}  (Ctrl-C to stop; read-only)", file=sys.stderr)
+    print(f"board: http://localhost:{shown}  ({'explainer only' if STATIC else 'read-only'}; Ctrl-C to stop)", file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -12,6 +12,8 @@
 #      the plane.
 #   c. board/serve.py calls no adapter verb but get, evaluate and status.
 #   d. GET / serves the page, GET /state.json serves JSON.
+#   e. With BOARD_STATIC=1 (§6) GET / serves the page and GET /state.json
+#      answers 404, so a hosted copy offers no live view.
 set -eu
 name=board
 . ci/lib.sh
@@ -85,5 +87,21 @@ done
 grep -q 'id="tower-machine"' "$tmp/page" || nogo "GET / did not serve board/index.html"
 curl -fsS "http://127.0.0.1:$port/state.json" | jq -e 'type == "object"' >/dev/null \
   || nogo "GET /state.json did not serve a JSON object"
+
+kill "$pid" 2>/dev/null || true
+
+# e.
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+BOARD_STATIC=1 PORT="$port" python3 board/serve.py 2>"$tmp/static.log" &
+pid=$!
+i=0
+until curl -fsS -o "$tmp/page" "http://127.0.0.1:$port/" 2>/dev/null; do
+  i=$((i + 1))
+  [ "$i" -lt 50 ] || nogo "board/serve.py with BOARD_STATIC=1 did not answer on :$port" "$(cat "$tmp/static.log")"
+  sleep 0.2
+done
+grep -q 'id="tower-machine"' "$tmp/page" || nogo "BOARD_STATIC=1: GET / did not serve board/index.html"
+code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/state.json")
+[ "$code" = 404 ] || nogo "BOARD_STATIC=1: GET /state.json answered $code, want 404"
 
 go

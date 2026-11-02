@@ -772,6 +772,9 @@ let live = null, liveTicket = null, liveTimer = null;
 async function poll() {
   try {
     const r = await fetch("state.json", {cache:"no-store"});
+    // 404: a server with no plane behind it (BOARD_STATIC=1, ADR 0035):
+    // the explainer is the whole page, and LIVE is not offered at all.
+    if (r.status === 404) return staticBoard();
     if (!r.ok) throw new Error("HTTP " + r.status);
     live = await r.json();
   } catch (e) {
@@ -780,6 +783,17 @@ async function poll() {
   const dot = document.getElementById("live-dot");
   dot.className = "dot " + (live.unreachable || live.error ? "off" : live.delivery && live.delivery.ok ? "on" : "warn");
   if (mode === "live") renderLive();
+}
+function staticBoard() {
+  clearInterval(liveTimer);
+  document.getElementById("m-live").classList.add("hide");
+  document.getElementById("m-explain").classList.add("hide");
+  if (mode === "live") setMode("explain");
+  TOUR[0].sel = TOUR[TOUR.length - 1].sel = "header";
+  TOUR[0].title = "Scripted walks";
+  TOUR[0].text = "These are scripted walks through the real code paths, with example versions and numbers. Run ./go board on a machine with the plane up and a LIVE mode appears beside this one, reading the plane through the same port verbs the tower uses.";
+  TOUR[TOUR.length - 1].text = "Clone the repository and run ./go demo: the same rollback, on your own laptop, with no account and no key. Then ./go board shows it live.";
+  document.getElementById("tour-btn").setAttribute("title", "A one-minute guided tour of the board");
 }
 const STAGE_NODE = {5:"c5", 25:"c25"};
 function liveView() {
