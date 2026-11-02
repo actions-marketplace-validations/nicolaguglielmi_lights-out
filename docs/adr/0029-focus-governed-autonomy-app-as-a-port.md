@@ -4,6 +4,7 @@
 - Date: 2026-09-23
 - Milestone: plan amendment before M12
 - Amended 2026-09-23 (owner): decision 6's ecosystem is Python (Django allowed). The three listed below conflated the thesis with language independence, which needs a per-workload worker image; the worker already carries Python 3.13 and every Python gate runner. Language independence follows the first client's language (plan §14).
+- Amended 2026-11-02 (owner): decisions 4 and 6 — see "Amendment 2026-11-02" at the end. The goal order becomes visibility first (talks, GitHub stars), a company second if a co-founder or funder appears, revenue third; the paid engagement leaves the sequence; contributions come under the DCO.
 
 ## Context
 
@@ -162,3 +163,51 @@ Nothing changes for the cloner: podman, git, a shell, `./go demo`, no
 key. M12 is accepted only if `./go demo` at L0 prints the same verdict
 within the same 900 s budget. The legacy experiment and any engagement
 run outside the demo path by construction. Passes.
+
+## Amendment 2026-11-02
+
+**Context.** On 2026-11-02 the owner weighed five business models for
+the repository: free with no revenue, free plus services (this ADR's
+decision 6), open core, a hosted tower, and free with indirect revenue.
+The owner set the order of goals: material and reach for talks first; a
+company second, only if a co-founder or a funder appears; revenue third.
+The time available is 5–15 hours a week, and the owner will take
+consulting work on a real codebase when it is asked for. A survey of
+open-source guardrails for coding agents on the same day found projects
+that block commands or check pull requests, and none that carries a
+change through canary to an automatic rollback with an audit chain.
+
+**Decision.**
+
+1. **Visibility first.** The repository is free, Apache 2.0, with no
+   paid tier. Its job is to be tried, starred and talked about. Revenue
+   is indirect: talks, training, and engagements that arrive on their
+   own. An engagement is a design partner — a real codebase and evidence
+   that the problem exists — not a step the sequence waits for.
+2. **Decision 6's sequence changes.** The contributor surface, a README
+   that splits a zero-friction quickstart from a deep dive on a real
+   repository, then M13, then the public legacy experiment, then the
+   launch built on it. "Then the first paid engagement" is removed. M11
+   (console) still follows the experiment, now because it is what a talk
+   and a README can show. An agent-agnostic packaging of the gates
+   (usable beside Claude Code, Codex or Copilot) is the candidate for a
+   second launch; it needs its own ADR, since plan §4's adapter table
+   does not list it.
+3. **Contributions come under the Developer Certificate of Origin.**
+   Every commit carries `Signed-off-by:`; there is no CLA. Apache 2.0
+   §5 already licenses a contribution under the project's licence, and a
+   later company can sell services or hosting on top of Apache 2.0
+   without relicensing, which is the one thing a CLA would buy.
+
+**Alternatives rejected.** *Open core*: the gates, the perimeter and the
+audit chain are the trust artefact; putting any of them behind a paywall
+removes the reason to try the harness. *A hosted tower*: a multi-tenant
+service with no user yet, against the local-first rule (ADR 0022) and
+the owner's available time. *Services as the goal* (decision 6 as
+written): at 5–15 hours a week, finding clients and building the harness
+compete for the same hours. *A CLA*: it buys relicensing, which this
+decision does not need, at the cost of contributor friction.
+
+**Consequences.** Plan §14's sequence is rewritten and a visibility plan
+is added to it. CONTRIBUTING.md states the DCO. The golden rule is
+unchanged and becomes the launch's first promise.
