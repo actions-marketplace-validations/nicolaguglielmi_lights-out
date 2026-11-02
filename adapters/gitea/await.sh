@@ -20,7 +20,7 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 i=0
 state=""
 while [ "$i" -lt "$AWAIT_TIMEOUT" ]; do
-  state=$(curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" \
+  state=$(curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" \
       "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/commits/$sha/statuses" 2>/dev/null \
     | jq -r --arg c "$context" '[.[] | select(.context == $c)] | .[0].status // empty')
   case "$state" in

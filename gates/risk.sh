@@ -21,7 +21,7 @@ policy=policy/merge.env
 out_dir=${GATES_OUT:-.gates-out}
 mkdir -p "$out_dir"
 
-git diff --numstat "$base" "$head" | python3 core/risk.py --policy "$policy" > "$out_dir/risk.json" \
+git diff --no-renames --numstat "$base" "$head" | python3 core/risk.py --policy "$policy" > "$out_dir/risk.json" \
   || nogo "core/risk.py could not classify the range $base..$head"
 
 summary=$(python3 - "$out_dir/risk.json" <<'PY'

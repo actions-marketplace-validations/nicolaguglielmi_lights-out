@@ -19,6 +19,6 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 
 payload=$(jq -cn --arg s "$state" --arg c "$context" --arg d "$description" \
   '{state: $s, context: $c, description: $d}')
-curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
+curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
   -d "$payload" "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/statuses/$sha" >/dev/null \
   || { printf 'status-gitea: POST status %s on %s failed\n' "$state" "$sha" >&2; exit 1; }

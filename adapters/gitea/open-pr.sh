@@ -18,7 +18,7 @@ title=$(jq -r '.title // ""' "$pr_json")
 body=$(jq -r '.body // ""' "$pr_json")
 [ -n "$title" ] || { printf 'open-pr-gitea: %s has no title\n' "$pr_json" >&2; exit 1; }
 
-existing=$(curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" \
+existing=$(curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" \
     "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/pulls?state=open&limit=50" \
   | jq -r --arg h "$branch" '.[] | select(.head.ref == $h) | .number' | head -n1) || existing=""
 
@@ -27,7 +27,7 @@ if [ -n "$existing" ]; then
 else
   payload=$(jq -n --arg title "$title" --arg body "$body" --arg head "$branch" --arg base main \
     '{title: $title, body: $body, head: $head, base: $base}')
-  resp=$(curl -fsS -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
+  resp=$(curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
       -d "$payload" "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/pulls") \
     || { printf 'open-pr-gitea: create PR failed\n' >&2; exit 1; }
   number=$(printf '%s' "$resp" | jq -r '.number // empty')

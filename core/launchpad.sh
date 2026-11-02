@@ -75,8 +75,10 @@ frozen() {
 # was killed mid-flight.
 rollback
 
-stable_version=$(curl -fsS --connect-timeout 1 --max-time 3 "$APP_URL/healthz" | jq -r .version) \
+healthz=$(curl -fsS --connect-timeout 1 --max-time 3 "$APP_URL/healthz") \
   || nogo "could not read the stable version from $APP_URL/healthz; run ./go up"
+stable_version=$(printf '%s' "$healthz" | jq -er .version) \
+  || nogo "$APP_URL/healthz answered without a version"
 export STABLE_VERSION="$stable_version"
 export CANARY_VERSION
 

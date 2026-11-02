@@ -71,7 +71,7 @@ for line in diff.splitlines():
 groups = [f"{path}={','.join(ranges)}" for path, ranges in sorted(file_ranges.items())]
 print(" ".join(groups))
 PY
-)
+) || nogo "could not read the diff for $base..$head"
 
 if [ -z "$mutation_lines" ]; then
   printf 'mutation: 0 mutants on changed lines in %s..%s; GO by absence of subject, nothing ran\n' "$base" "$head" >&2
@@ -155,7 +155,8 @@ if total == 0:
 if score is not None and score >= threshold:
     sys.exit(0)
 
-print(f"{killed}/{total} mutants on changed lines killed ({score:.3f} < {threshold:.3f}); survivors on stderr")
+shown = "none" if score is None else f"{score:.3f}"
+print(f"{killed}/{total} mutants on changed lines killed ({shown} < {threshold:.3f}); survivors on stderr")
 sys.exit(1)
 PY
 ) && ok=1 || ok=0

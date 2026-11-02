@@ -19,7 +19,8 @@ go() {
 
 # nogo REASON [DETAILS...]: one contract line on stdout, details on stderr.
 nogo() {
-  reason=$1
+  # A reason built from a tool's output can span lines; the contract is one.
+  reason=$(printf '%s' "$1" | tr '\n' ' ')
   shift
   printf 'NO-GO: %s — %s\n' "$name" "$reason"
   for line in "$@"; do
