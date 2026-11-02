@@ -434,6 +434,8 @@ Due righe decidono. La fragilità al modello: tutto quello che il repo ha già s
 
 Direzione B, open. Apache 2.0 invariata: l'harness è l'artefatto di fiducia, un CTO lascia agenti autonomi sul suo monolite solo perché può leggere i gate. I ricavi vengono dal lavoro consegnato con l'harness — engagement di modernizzazione — non dalla licenza. La fabbrica (A) diventa un progetto separato, privato, che consuma lights-out solo attraverso interfacce pubbliche, e parte solo dopo che lights-out ha un consumatore diverso dal suo autore.
 
+*Emendamento 2026-11-02, decisione dell'owner (ADR 0029, "Amendment 2026-11-02"):* l'ordine degli obiettivi è **visibilità** (talk, stelle su GitHub), poi **un'azienda** se arriva un co-founder o un finanziatore, poi **ricavi**. Il repo resta gratuito, Apache 2.0, senza tier a pagamento; i ricavi sono indiretti (talk, formazione, engagement che arrivano da soli). Un engagement è un design partner, non un passo della sequenza. I contributi entrano con il DCO (`Signed-off-by:`), senza CLA. Tempo disponibile: 5–15 ore a settimana.
+
 **Regola di confine.** "Un cliente con una sola istanza ne ha bisogno?" → lights-out. "Ha senso solo per chi gestisce molti engagement?" → il progetto consumatore. Sei ruoli, ops continuo, console per istanza → qui. Intervista, PoC, proposta, portfolio → là. Se il consumatore ha bisogno di un hook che qui manca, l'hook entra qui, aperto, come porta.
 
 ### La sequenza
@@ -442,8 +444,8 @@ Direzione B, open. Apache 2.0 invariata: l'harness è l'artefatto di fiducia, un
    **M13 — prompt neutro e report** (§7), subito dopo: l'esperimento non parte senza.
 2. **L'esperimento pubblico.** lights-out puntato su un repo legacy open source noto, in un ecosistema con un mutation tool serio (Java/PIT, .NET o JavaScript/Stryker), su un lotto di ticket meccanici — upgrade di dipendenza, dead code, test su codice non testato, migrazione di API deprecate. Catena di audit pubblicata, fixture replayabili, ispezionabile senza chiave. **Criterio di uscita:** se almeno due ticket su tre non producono una PR mergiabile senza che un umano tocchi il codice, la tesi dell'harness è più debole del previsto e A non si costruisce sopra.
    *Emendamento 2026-09-23, decisione dell'owner:* **Python** (anche un'app Django, se il candidato lo richiede). Java, .NET e JS mescolavano due domande — la tesi (gli agenti fanno modernizzazione meccanica sotto i gate?) e l'indipendenza dal linguaggio — e la seconda costa lavoro di piattaforma (un'immagine worker per workload: il worker ha solo Python 3.13 e Node 24). In Python l'harness ha già tutto: cosmic-ray e il runner in-image, il gate line-scoped, bandit, osv-scanner, la toolchain nel worker. L'esperimento misura solo la tesi; l'indipendenza dal linguaggio arriva dopo, sul linguaggio del primo cliente. Da verificare sul primo ticket: il tempo di cosmic-ray sul legacy (792 s per 205 mutanti sul meetup) e una versione di Python diversa da 3.13, se il candidato la richiede.
-3. **Il primo engagement pagato.** È questa la validazione: l'esperimento dice se l'harness funziona, l'engagement dice se qualcuno paga.
-4. **M11 — console**, anticipata: il cliente vuole vedere la sua catena di audit e premere lui go-for-launch.
+3. ~~Il primo engagement pagato.~~ *Tolto il 2026-11-02:* il lancio pubblico costruito sull'esperimento prende il suo posto (§15). Un engagement che arriva si accetta come design partner, senza che la sequenza lo aspetti.
+4. **M11 — console**, dopo l'esperimento: è quello che un talk e un README possono mostrare, e quello che un design partner vuole vedere.
 5. **Il consumatore A**, se il punto 2 ha tenuto. Il loop di affinamento va progettato prima di scriverlo.
 6. Track cloud di M8 e M10 quando qualcuno li paga.
 
@@ -452,3 +454,56 @@ Direzione B, open. Apache 2.0 invariata: l'harness è l'artefatto di fiducia, un
 Subito dopo il seam, un pomeriggio e non una milestone: `CONTRIBUTING.md`; una `ROADMAP.md` in inglese derivata da questo documento (che resta il documento di lavoro, in italiano); la suite di conformità come asticella di accettazione per adapter e gate pack contribuiti (lo schema di ADR 0026 esteso oltre Delivery); e la regola di §11 estesa: un adapter contribuito senza un nightly e un maintainer è un debito, non un regalo. Quello che il repo ha già e va solo dichiarato: il contratto dei gate come regola di contribuzione (`ci/contract.sh`), `RISK_HIGH_PLATFORM` (una PR che tocca la piattaforma non si auto-mergia), e L0 senza chiave come onboarding.
 
 Il repo su GitHub è privato al 2026-09-23; la pubblicazione è un atto dell'owner, dopo il seam e la superficie per i contributor.
+
+## 15. Il piano di visibilità
+
+*Aggiunto 2026-11-02 (ADR 0029, "Amendment 2026-11-02").* L'obiettivo primo è che lights-out venga provato, stellato e raccontato. Il budget è 5–15 ore a settimana: ogni voce qui sotto deve stare in quel budget o non entra.
+
+### Cosa si misura
+
+Stelle, clonazioni e visitatori unici (GitHub Insights → Traffic), issue aperte da esterni, contributor esterni, inviti a talk, richieste di consulenza in entrata. I numeri obiettivo li fissa l'owner prima del lancio, non dopo: un obiettivo scelto a posteriori non misura niente. Lo stesso vale per i segnali che fanno cercare attivamente un co-founder.
+
+### Il messaggio
+
+Una frase sola, ripetuta ovunque: *agenti autonomi che portano un cambiamento fino in produzione su un codebase di cui nessuno si fida — gate numerici, perimetro dichiarato, rollback automatico, un solo umano prima del 100%.* Il gancio che nessun altro mostra (ricerca del 2026-11-02: i guardrail open source per agenti si fermano al comando o alla PR) è **il rollback automatico di un cambiamento scritto da un agente**. Quella è l'immagine del README, la GIF, la prima slide.
+
+Non si dice "super", non si dice "human in the loop" (lo dicono tutti): si dice *un* umano, *un* gate.
+
+### Fase 0 — Pronto da pubblicare (settimane 1–3)
+
+- README: headline, quickstart senza attriti, percorso breve con tempi misurati, rimando alla guida "su un repo vero" (`docs/use-on-your-repo.md`), che dichiara cosa non è ancora provato.
+- `CONTRIBUTING.md` (DCO), `ROADMAP.md` in inglese, `SECURITY.md` (un harness che maneggia chiavi e codice altrui ne ha bisogno).
+- Una registrazione di terminale del rollback (canary al 5%, verify NO-GO, ritorno a 100/0 da solo), da tenere sotto i 60 secondi, in testa al README.
+- GitHub: descrizione, topic (`ai-agents`, `coding-agents`, `guardrails`, `canary`, `progressive-delivery`, `platform-engineering`, `devsecops`, `gemini`, `adk`), immagine di anteprima social, Discussions attive, 5–8 issue marcate `good first issue` scritte da ticket veri, una release `v0.1.0` con note.
+- **Soft launch** su 10–20 persone fidate (colleghi, community italiane): l'unica domanda è "`./go demo` è arrivato in fondo sulla tua macchina?". Ogni attrito trovato qui si corregge prima del lancio pubblico. La pubblicazione del repo resta un atto dell'owner.
+
+### Fase 1 — L'esperimento in pubblico (mesi 1–3)
+
+M13, poi l'esperimento legacy di §14. Si costruisce in pubblico: un post breve a settimana (LinkedIn, X/Bluesky) con il diario dei ticket — GO o NO-GO, e perché. Costa poco, accumula pubblico prima del lancio e produce il materiale dell'articolo. I NO-GO si pubblicano come i GO: la credibilità di un harness di fiducia viene da lì.
+
+### Fase 2 — Il lancio (dopo l'esperimento)
+
+- Un articolo lungo in inglese con i numeri veri, fallimenti compresi: "abbiamo lasciato agenti autonomi a modernizzare <repo> sotto gate numerici". Sul blog dell'owner, ripreso su dev.to e Medium.
+- Show HN, un solo colpo: martedì–giovedì, mattina US, con il link al repo e l'articolo. Reddit dove l'autopromozione è ammessa e pertinente (r/devops, r/Python per l'esperimento in Python). Lobsters se arriva un invito.
+- Newsletter a cui si sottopone un link: Python Weekly, PyCoder's Weekly, DevOps Weekly, Console.dev, TLDR, Changelog News.
+- Awesome list pertinenti, una PR ciascuna, solo dove il progetto entra davvero (agenti, platform engineering, DevSecOps, Gemini/ADK).
+- Talk: le CFP si inviano durante la fase 1, con l'esperimento come storia. PyCon Italia (esperimento in Python), Codemotion, DevFest e community Google Developer (ADK, Gemini, profili L2/L3 su GCP), PlatformCon, meetup locali. Il repo è costruito per il palco: la demo dal vivo è il rollback.
+
+### Fase 3 — Il secondo lancio
+
+Il pacchetto dei gate indipendente dall'agente (usabile accanto a Claude Code, Codex, Copilot), con la sua ADR: il marketplace delle GitHub Action è un canale di scoperta a sé. Poi M11, la console: una catena di audit visibile vale più di un paragrafo di README.
+
+### Il ritmo settimanale
+
+Su 10 ore: 6–7 di prodotto, 2 di contenuti (il post settimanale, le CFP), 1 di community (issue e PR esterne con risposta entro 48 ore — un primo contributor ignorato non torna).
+
+### Rischi
+
+- **Quickstart rotto il giorno del lancio.** Si mitiga con il soft launch e con `./go demo` verde su Linux e macOS prima di ogni annuncio.
+- **Promettere più di quanto gira.** Ogni livello non provato resta dichiarato come tale (regola "niente mock nascosti"); la guida "su un repo vero" dice cosa non è ancora stato provato.
+- **Runtime solo Gemini davanti a un pubblico che usa soprattutto Claude Code e Codex.** Si risponde con la fase 3, non riscrivendo i ruoli.
+- **La demo completa dura minuti, non secondi.** Il README offre prima il percorso breve.
+
+### Cosa non fare
+
+Comprare stelle o scambiarle. Spammare awesome list. Lanciare su HN prima dell'esperimento: il primo giudizio è quello che resta. Aprire canali (Discord, Slack) che con 10 ore a settimana non si possono presidiare: bastano le Discussions.
