@@ -111,6 +111,10 @@ jobs:
       - run: ./go demo-launch
         env:
           CONTAINER_ENGINE: docker
+      # Envoy has failed to answer here on some cold runners and not others;
+      # its log and the backend's are the evidence.
+      - if: always()
+        run: docker logs --tail 80 lights-out-envoy-1 || true; docker logs --tail 80 lights-out-backend-1 || true
 
   # The Workload port's own acceptance (docs/adr/0030 §7): down, up, smoke,
   # verify, demo-rollback, demo-gates, down against workloads/minimal/
