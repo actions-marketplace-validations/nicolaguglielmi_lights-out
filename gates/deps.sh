@@ -1,23 +1,20 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# gates-deps: dependency scan, docs/adr/0015 §5. `osv-scanner` over every
-# lockfile the workload names (WORKLOAD_LOCKFILES, colon-separated,
-# docs/adr/0030 §2 -- the app's today are backend and frontend, dev tools
-# included: they run in the build-and-test chain, docs/adr/0015 §1),
-# against the live OSV database at api.osv.dev. No engine, network only, so
-# this runs in plain workbench — no compose project, no socket. Exit 1 from osv-scanner
-# (vulnerabilities found) is NO-GO with the tool's own findings passed
-# through on stderr; any other non-zero exit (a network failure, most
-# often) is also NO-GO, with the tool's own error — never a silent GO: a
-# scanner that cannot reach its database has not cleared the PR.
+# gates-deps: dependency scan, docs/adr/0015 §5 as amended by docs/adr/0032.
+# `osv-scanner` over every lockfile the workload names (WORKLOAD_LOCKFILES,
+# colon-separated, docs/adr/0030 §2 -- dev tools included: they run in the
+# build-and-test chain, docs/adr/0015 §1), against the live OSV database at
+# api.osv.dev. No engine, network only, so this runs in plain workbench.
 #
-# Determinism caveat: the lockfiles are pinned but the advisory database is
-# not, so the same commit can go from GO to NO-GO overnight with no code
-# change here. The fix, when that happens for real, is a dependency
-# version bump or — when a bump is not this gate's call to make — an
-# `osv-scanner.toml` `[[IgnoredVulns]]` entry at the repo root naming the
-# advisory `id` and a `reason`.
+# The verdict is on the diff (docs/adr/0032): each lockfile is scanned at
+# the merge-base and at HEAD, a finding is the tuple (ecosystem, package,
+# advisory id), and only a tuple HEAD has and the base does not is NO-GO.
+# Advisories already in the base are inherited debt: counted and listed on
+# stderr every run, never gating. A lockfile absent at the base is judged
+# whole. Any osv-scanner exit other than 0 (clean) or 1 (findings), on
+# either scan -- a network failure, most often -- is NO-GO with the tool's
+# own error: a scanner that cannot reach its database has not cleared the PR.
 set -eu
 name=deps
 . ci/lib.sh
@@ -46,15 +43,69 @@ for entry in "$@"; do
   count=$((count + 1))
 done
 
-printf 'deps: scanning %s lockfile(s): %s\n' "$count" "$lockfiles" >&2
+printf 'deps: scanning %s lockfile(s) at %s and at the base %s: %s\n' \
+  "$count" "$head" "$base" "$lockfiles" >&2
 
-set --
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/base"
+
+# scan <out-json> <lockfile>...: osv-scanner's JSON on <out-json>, its own
+# messages on stderr; exits 0 or 1 as the tool does, NO-GO on anything else.
+scan() {
+  scan_out=$1
+  shift
+  [ "$#" -gt 0 ] || { printf '{"results":[]}\n' > "$scan_out"; return 0; }
+  scan_args=""
+  for f in "$@"; do
+    scan_args="$scan_args -L $f"
+  done
+  # shellcheck disable=SC2086 # -L <path> pairs, no spaces in paths
+  osv-scanner scan source --format json $scan_args > "$scan_out" 2> "$scan_out.err" && rc=0 || rc=$?
+  case "$rc" in
+    0|1) : ;;
+    *) cat "$scan_out.err" >&2; nogo "osv-scanner exited $rc; error on stderr" ;;
+  esac
+}
+
+# tuples <json>: one sorted "ecosystem package id" line per finding.
+tuples() {
+  jq -r '.results[]?.packages[]? | .package as $p
+         | .vulnerabilities[]? | "\($p.ecosystem) \($p.name) \(.id)"' "$1" \
+    | sort -u
+}
+
+base_files=""
 for path in $lockfiles; do
-  set -- "$@" -L "$path"
+  if git cat-file -e "$base:$path" 2>/dev/null; then
+    mkdir -p "$tmp/base/$(dirname "$path")"
+    git show "$base:$path" > "$tmp/base/$path"
+    base_files="${base_files:+$base_files }$tmp/base/$path"
+  else
+    printf 'deps: %s is new at HEAD, judged whole\n' "$path" >&2
+  fi
 done
 
-out=$(osv-scanner scan source "$@" 2>&1) && rc=0 || rc=$?
-printf '%s\n' "$out" >&2
+# shellcheck disable=SC2086 # space-separated path lists, no spaces in paths
+scan "$tmp/head.json" $lockfiles
+# shellcheck disable=SC2086
+scan "$tmp/base.json" $base_files
+
+tuples "$tmp/head.json" > "$tmp/head.txt"
+tuples "$tmp/base.json" > "$tmp/base.txt"
+comm -13 "$tmp/base.txt" "$tmp/head.txt" > "$tmp/new.txt"
+comm -12 "$tmp/base.txt" "$tmp/head.txt" > "$tmp/inherited.txt"
+new=$(wc -l < "$tmp/new.txt" | tr -d ' ')
+inherited=$(wc -l < "$tmp/inherited.txt" | tr -d ' ')
+
+if [ "$inherited" -gt 0 ]; then
+  printf 'deps: %s advisory finding(s) inherited from the base, not gating (docs/adr/0032):\n' "$inherited" >&2
+  sed 's/^/  /' "$tmp/inherited.txt" >&2
+fi
+if [ "$new" -gt 0 ]; then
+  printf 'deps: %s advisory finding(s) introduced by this diff:\n' "$new" >&2
+  sed 's/^/  /' "$tmp/new.txt" >&2
+fi
 
 json_list=""
 for path in $lockfiles; do
@@ -62,12 +113,9 @@ for path in $lockfiles; do
 done
 
 verdict=GO
-[ "$rc" -eq 0 ] || verdict=NO-GO
-printf '{"lockfiles":[%s],"exit_code":%s,"verdict":"%s"}\n' \
-  "$json_list" "$rc" "$verdict" > "$gates_out/deps.json"
+[ "$new" -eq 0 ] || verdict=NO-GO
+printf '{"lockfiles":[%s],"new":%s,"inherited":%s,"verdict":"%s"}\n' \
+  "$json_list" "$new" "$inherited" "$verdict" > "$gates_out/deps.json"
 
-case "$rc" in
-  0) go ;;
-  1) nogo "osv-scanner found a vulnerability; findings on stderr" ;;
-  *) nogo "osv-scanner exited $rc; error on stderr" ;;
-esac
+[ "$new" -eq 0 ] || nogo "this diff introduces $new advisory finding(s); list on stderr"
+go
