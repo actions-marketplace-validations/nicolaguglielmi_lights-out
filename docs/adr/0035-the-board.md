@@ -1,6 +1,6 @@
 # ADR 0035 — `./go board`: one page that explains the pipeline and, when the plane is up, shows it live, read-only
 
-- Status: accepted
+- Status: accepted; amended 2026-11-02 (§6: the explainer hosted alone)
 - Date: 2026-11-02
 - Milestone: before the public launch (visibility plan, plan §15)
 
@@ -44,6 +44,14 @@ way to watch a release move through it.
    `compose exec`, as promote does) and publishes it on the host's
    loopback only, `127.0.0.1:8099`; `BOARD_PORT` moves it.
 
+6. **The explainer hosted alone** *(amended 2026-11-02)*. With
+   `BOARD_STATIC=1` the server starts no probe and answers 404 on
+   `/state.json`; the page reads that 404 as "no plane here" and does not
+   offer LIVE at all, so a hosted copy never shows a plane it cannot see.
+   `board/Dockerfile` packages it for Cloud Run (it reads `PORT`); it is
+   named Dockerfile because `gcloud run deploy --source` builds only a file
+   with that name. Deploying it is the owner's act.
+
 ## Alternatives rejected
 
 - **Grafana in compose.** It would show Prometheus, not the tower's
@@ -56,6 +64,8 @@ way to watch a release move through it.
 - **Reading Envoy, flagd and Firestore directly from the browser.** Vendor
   URLs in the page, CORS on each, and a second reading of the plane that
   could disagree with the one the tower and promote use.
+- **A separate static build of the page for hosting.** Two pages to keep
+  in step; one page that drops LIVE on a 404 needs none.
 - **A purely static diagram.** It shows the flow but not the locks
   changing state, and nothing of a real release.
 
