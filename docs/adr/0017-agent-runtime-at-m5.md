@@ -436,7 +436,7 @@ next attempt, detailed in HANDOFF, not repeated here.
    every hook call, pointing into the CLI's own `~/.gemini/tmp/...`
    recording file, and `guard.sh`'s original `[.. | strings]` joined
    that in with `tool_input`, so the rule matched unconditionally.
-   Fixed by scoping the join to `.tool_input` (commit `46ee945`); attempt
+   Fixed by scoping the join to `.tool_input` (commit `617046c`); attempt
    4 onward shows real ALLOW/DENY discrimination in `hooks.log`.
 3. **Corrected twice against real transcripts, not guessed a third
    time.** The static correction (no `response` field on `result`; flat
@@ -446,7 +446,7 @@ next attempt, detailed in HANDOFF, not repeated here.
    session (the first live version) produced a soup of "I will… I
    have…" planning narration as the "PR title," not a real one (attempt
    4). Fixed by taking only assistant message content strictly *after*
-   the last `tool_use`/`tool_result` event (commit `9c54d90`); attempt 6's
+   the last `tool_use`/`tool_result` event (commit `9b70b64`); attempt 6's
    `pr.json` is a clean, real title and body. Turn count is still not
    reported anywhere in the stream; the `role:"user"`-count proxy reports
    `1` for every headless run (there is exactly one user message per
@@ -470,7 +470,7 @@ next attempt, detailed in HANDOFF, not repeated here.
    repo-create `curl -fsS` discarded the body and the HTTP code together
    on the expected, idempotent 409, misread as a hard failure — `-f`
    dropped, the code read from `-w` and branched on directly (commit
-   `8c042c1`).
+   `3a06909`).
 7. **Confirmed clean**, `./go ci-secrets` green with attempt 6's real
    `transcript.jsonl` (38,926 bytes) committed under `fixtures/`.
 8. **Not hit, six real calls in under two hours on the same key**: no
@@ -494,4 +494,4 @@ next attempt, detailed in HANDOFF, not repeated here.
     that real work was briefly, silently discarded — caught by
     inspecting the still-dirty workspace directly, fixed by committing
     first, always, with a WIP placeholder message amended to the real
-    one if a response does arrive (commit `2f26996`).
+    one if a response does arrive (commit `d2198a4`).
