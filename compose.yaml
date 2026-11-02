@@ -150,6 +150,13 @@ services:
       # mounted below, read-only: the job signs with the same key
       # core/launchpad.sh already has the public half of (docs/adr/0025 §2).
       COSIGN_KEY: /crew/cosign.key
+    # A job reaches Gitea, Zot and the app at host.containers.internal, the
+    # name the signature's reference carries. podman provides it in every
+    # container; docker only when asked, as ./go asks for workbench. Same
+    # address under podman (192.168.127.254 on podman machine, checked
+    # 2026-11-02), so this only changes docker.
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     volumes:
       - ${HOST_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
       - ./.crew:/crew:ro
