@@ -123,10 +123,11 @@ Three facts shape the answer:
    `adapters/`: they reach the attached repository only through
    `WORKLOAD` and `WORKLOAD_CONTRACT`.
 8. **At L0 an attached repository has no recordings.** `fixtures/` holds
-   this checkout's runs on its own tickets. `core/crew.sh` refuses first
-   thing: `NO-GO: crew — <workload> is attached and L0 has no recordings
-   of it to replay; run the crew at L1: PROFILE=l1 and GEMINI_API_KEY in
-   .env (see .env.example)`. Nothing is bootstrapped or cloned before it.
+   this checkout's runs on its own tickets. `core/crew.sh` refuses as soon
+   as it knows the role's harness: `NO-GO: crew — the attached repository
+   <its origin> has no recordings to replay at L0; run the crew at L1:
+   PROFILE=l1 and GEMINI_API_KEY in .env (see .env.example)`. Nothing is
+   bootstrapped or cloned before it.
 9. **The code host holds the workload's repository.** Gitea's repository
    is `lights-out/workload`. Bootstrap pushes the workload repository's
    `HEAD`, and leaves Actions off for an attached one: its workflows were
@@ -200,7 +201,9 @@ Three facts shape the answer:
 - A multi-ticket batch at L1 on an attached repository loses merges it did
   not fetch before the next assign. That is L0 Gitea's mirror semantics
   (ADR 0017 §5), unchanged; durable code-host state is outside M13.
-- `ci/tower.sh` case (h) adds `app/policy.env` to the base it builds.
+- `ci/tower.sh` case (h) copies `core/policy.py` into the base it builds
+  and passes `WORKLOAD_CONTRACT`; the CI step leaves out of its restore a
+  judge neither side has (that base has no `app/policy.env`).
   `core/tests/test_risk.py` takes its path lists from a stated policy,
   since the platform's are empty.
 - Expect merge conflicts in `go` and the `Makefile` with the unmerged
