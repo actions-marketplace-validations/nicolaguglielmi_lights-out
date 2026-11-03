@@ -65,7 +65,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 
 ## Next
 
-- [Use it on your own codebase](docs/use-on-your-repo.md)
+- [Use it on your own codebase](docs/use-on-your-repo.md): `./go attach <path>` points this clone at your repository, no fork
 - [How it works, every command, every level](docs/reference.md)
 - [Architecture](docs/ARCHITECTURE.md) and [decisions](docs/adr/)
 - [Contributing](CONTRIBUTING.md) and [roadmap](ROADMAP.md)
