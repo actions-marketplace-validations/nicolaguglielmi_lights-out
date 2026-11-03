@@ -1,0 +1,6 @@
+{
+  "hand_written": true,
+  "model": null,
+  "attempt": 1,
+  "note": "Written by hand to prove the rework loop at L0 (docs/adr/0038 §10): the committed fake-test change, which the mutation gate rejects. No model produced this patch."
+}
