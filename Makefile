@@ -210,7 +210,9 @@ verify: ## Check verify/slo.promql against the live app (M1: metric shape only, 
 
 # Each gate's own stdout line is the verdict; a gate's stderr (compose
 # builds, pytest, bandit, cosmic-ray) streams straight through, live, never
-# captured here. `gates` writes $(GATES_OUT)/verdict.env in the exact shape
+# captured here. A NO-GO's own details (nogo's DETAILS lines, e.g. the
+# surviving mutants) also land in $(GATES_OUT)/<gate>.details, which the CI
+# step hands to the rework loop (docs/adr/0038 §5). `gates` writes $(GATES_OUT)/verdict.env in the exact shape
 # gates/fixtures/*/expect uses, so demo-gates can diff the two instead of
 # re-parsing anything (docs/adr/0015 §2, §6).
 .PHONY: gates
@@ -219,7 +221,7 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 	@failed=""; failreason=""; \
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
-		out=$$(BASE="$(BASE)" HEAD="$(HEAD)" sh "$$script"); \
+		out=$$(BASE="$(BASE)" HEAD="$(HEAD)" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
 		case "$$out" in \
 			"GO: $$g") ;; \
 			*) failed=$$g; failreason=$$out; break ;; \
