@@ -59,5 +59,6 @@ effective_policy() {
   [ -n "${WORKLOAD_CONTRACT:-}" ] || nogo "WORKLOAD_CONTRACT is not set; run this via ./go, not directly"
   policy_reason=$(python3 core/policy.py --platform policy/merge.env \
     --workload-env "$WORKLOAD_CONTRACT/workload.env" \
-    --overrides "$WORKLOAD_CONTRACT/policy.env" --out "$1") || nogo "$policy_reason"
+    --overrides "$WORKLOAD_CONTRACT/policy.env" --out "$1") \
+    || nogo "${policy_reason:-core/policy.py failed without a reason; see stderr}"
 }

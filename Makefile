@@ -97,7 +97,7 @@ export ENVOY_ADMIN_URL
 # verified digest); the one here only keeps `docker-compose config -q`
 # (ci-compose) clean with no release in flight, the same reason
 # compose.yaml's own CANARY_VERSION default exists.
-APP_TAG ?= sha-$(shell git -C '$(WORKLOAD)' rev-parse HEAD)
+APP_TAG ?= sha-$(shell git -C '$(WORKLOAD)' rev-parse HEAD 2>/dev/null)
 export APP_TAG
 CANARY_TAG ?= $(APP_TAG)
 export CANARY_TAG
@@ -150,7 +150,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board roles contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board roles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
