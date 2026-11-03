@@ -1,0 +1,110 @@
+From d6694e734c62a527f5159d4f725ca4af194dc09a Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Tue, 3 Nov 2026 13:16:21 +0100
+Subject: [PATCH] Treat a 404 from the geocoder as no result
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+geocoder_client.geocode() only handled a status >= 500, so the fake's
+404 for an unknown venue crashed on response.json() and POST
+/api/meetups answered 500. A 404 now returns (None, None): the meetup is
+created with 201 and null coordinates, as a real Nominatim's 200 [].
+The contract gets a 404 example; test_meetups.py posts an unknown venue
+and asserts the 201 and the null coordinates.
+
+Hand-written L0 fixture for ticket 0013's attempt 1 (docs/adr/0038 §10):
+the committed fake-test change. No model wrote it.
+---
+ app/README.md                          |  2 +-
+ app/backend/meetups/geocoder_client.py |  5 +++++
+ app/backend/tests/test_meetups.py      | 20 ++++++++++++++++++++
+ app/contracts/geocoder/examples.json   | 13 +++++++++++++
+ 4 files changed, 39 insertions(+), 1 deletion(-)
+
+diff --git a/app/README.md b/app/README.md
+index 6dbef50..8e66058 100644
+--- a/app/README.md
++++ b/app/README.md
+@@ -22,7 +22,7 @@ Signup creates a `users(id, email unique, password_hash)` row. Passwords are has
+ 
+ ## External dependency: geocoder
+ 
+-The `POST /api/meetups` route geocodes the venue name through `GET {GEOCODER_URL}/search?q=<venue>&format=jsonv2&limit=1` and stores `venue_lat`/`venue_lon`. Empty result yields both `null`, timeout or 5xx yields 502 with `{"detail":"geocoder unavailable"}`. The shape is Nominatim-compatible. When a venue is not in the contract, the fake geocoder returns 404 and the backend answers 500, not 502.
++The `POST /api/meetups` route geocodes the venue name through `GET {GEOCODER_URL}/search?q=<venue>&format=jsonv2&limit=1` and stores `venue_lat`/`venue_lon`. Empty result yields both `null`, timeout or 5xx yields 502 with `{"detail":"geocoder unavailable"}`. The shape is Nominatim-compatible. A 404 (unknown venue) is treated the same as an empty result — `venue_lat`/`venue_lon` both `null`, `201` — mirroring how a real Nominatim answers an unknown place with `200 []` (ticket 0001).
+ 
+ At L0, the fake geocoder is a Python stdlib `http.server` in compose, no dependencies. The contract is `app/contracts/geocoder/examples.json`: a list of `{request: {q}, response: {status, body}}` pairs, the executable spec for what the app can call. Both the fake and the client (backend) are tested against it.
+ 
+diff --git a/app/backend/meetups/geocoder_client.py b/app/backend/meetups/geocoder_client.py
+index e9256e9..635f8c6 100644
+--- a/app/backend/meetups/geocoder_client.py
++++ b/app/backend/meetups/geocoder_client.py
+@@ -23,6 +23,11 @@ def geocode(venue: str) -> tuple[float | None, float | None]:
+         raise GeocoderUnavailable(str(exc)) from exc
+     if response.status_code >= 500:
+         raise GeocoderUnavailable(f"status {response.status_code}")
++    if response.status_code == 404:
++        # Unknown venue (ticket 0001): the fake, like a real Nominatim
++        # answering with 200 [], means "no result", not "dependency
++        # broken". Treated exactly like an empty result list below.
++        return None, None
+     results = response.json()
+     if not results:
+         return None, None
+diff --git a/app/backend/tests/test_meetups.py b/app/backend/tests/test_meetups.py
+index c0abc84..951fd36 100644
+--- a/app/backend/tests/test_meetups.py
++++ b/app/backend/tests/test_meetups.py
+@@ -50,6 +50,26 @@ def test_get_unknown_meetup_is_404(client):
+     assert resp.status_code == 404
+ 
+ 
++def test_unknown_venue_returns_201_with_null_coordinates(client, geocoder_server):
++    # Ticket 0013: an unknown venue means the meetup is still created, with
++    # null coordinates.
++    token = _signup_and_login(client, "unknown-venue@example.com")
++    create = client.post(
++        "/api/meetups",
++        json={
++            "title": "Somewhere else",
++            "starts_at": "2026-03-01T18:00:00Z",
++            "venue": "Nowhere, Atlantis",
++            "capacity": 5,
++        },
++        headers=_auth(token),
++    )
++    assert create.status_code == 201
++    body = create.json()
++    assert body["venue_lat"] is None
++    assert body["venue_lon"] is None
++
++
+ def test_capacity_full_is_409_when_flag_off(client, geocoder_server):
+     owner_token = _signup_and_login(client, "owner@example.com")
+     create = client.post(
+diff --git a/app/contracts/geocoder/examples.json b/app/contracts/geocoder/examples.json
+index 78944dd..7567682 100644
+--- a/app/contracts/geocoder/examples.json
++++ b/app/contracts/geocoder/examples.json
+@@ -31,5 +31,18 @@
+       "status": 200,
+       "body": []
+     }
++  },
++  {
++    "request": { "q": "Unknown Venue, Nowhere" },
++    "response": {
++      "status": 404,
++      "body": [
++        {
++          "lat": "0.0",
++          "lon": "0.0",
++          "display_name": "trap: a 404 must short-circuit before the body is ever read"
++        }
++      ]
++    }
+   }
+ ]
+-- 
+2.54.0 (Apple Git-157)
+
