@@ -15,7 +15,12 @@
 #
 #   git -C <workspace> diff --name-only <base>..HEAD \
 #     | sh core/perimeter.sh <ticket-file>
-set -eu
+#
+# set -f: `for glob in $globs` must split on newlines without expanding
+# each glob against the caller's directory first (crew runs from the repo
+# root), or a declared glob that already matches files on disk turns into
+# that list of files and refuses a new path it should accept.
+set -euf
 
 ticket=${1:?usage: core/perimeter.sh <ticket-file>}
 [ -f "$ticket" ] || { printf 'no such ticket file: %s\n' "$ticket" >&2; exit 1; }
