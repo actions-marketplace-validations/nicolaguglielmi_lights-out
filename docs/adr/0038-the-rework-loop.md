@@ -128,7 +128,7 @@ separates the one-line reason from the details, which go to stderr only.
 - **`./go resume` as the loop.** A human per attempt, and resume carries no
   verdict: it requests the same step from the same input.
 - **A fresh workspace from the base every attempt.** The verdict names
-  lines (`geocoder_client.py:27`) the worker could no longer see, and the
+  lines (`geocoder_client.py:26`) the worker could no longer see, and the
   diff the reviewer judged would vanish rather than be fixed.
 - **A new harness variable for the verdict.** `TICKET_FILE` already is the
   instruction; a second input would change the port for every adapter.
