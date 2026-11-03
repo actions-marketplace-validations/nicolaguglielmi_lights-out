@@ -93,11 +93,11 @@ else
     # The platform's judges are this checkout's: no PR to another
     # repository can carry them.
     gates_dir=$tmp/gates-out
-    out=$(make --no-print-directory gates WORKLOAD="$wt" GATES_OUT="$gates_dir" BASE="$BASE_SHA" HEAD="$HEAD_SHA") || true
+    out=$(make --no-print-directory gates WORKLOAD="$wt" GATES_OUT="$gates_dir" BASE="$BASE_SHA" HEAD="$HEAD_SHA" TOOLCHAIN_ISOLATE=1) || true
     cp "$gates_dir/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
   else
     gates_dir=$wt/$GATES_OUT
-    out=$( (cd "$wt" && make --no-print-directory gates BASE="$BASE_SHA" HEAD="$HEAD_SHA") ) || true
+    out=$( (cd "$wt" && make --no-print-directory gates BASE="$BASE_SHA" HEAD="$HEAD_SHA" TOOLCHAIN_ISOLATE=1) ) || true
     cp "$gates_dir/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
   fi
 fi

@@ -11,15 +11,16 @@
 # every target `make help` lists (the ci/readme.sh derivation), plus the
 # bare entrypoints "make" and "./go" on their own — a prompt has no
 # business naming either; and the hand list of tools the gates invoke —
-# osv-scanner, gitleaks, cosmic-ray, tests/mutation, tests/sast. That list
-# is not mechanically derivable ("which executable a gate invokes"), so
-# this script self-checks it instead: a NO-GO here if a listed tool is no
-# longer named by any gates/*.sh or ci/secrets.sh means the list drifted
-# one way (a removed tool); a new tool not on the list is the
-# gate-writer's job to add by hand, named below. bandit itself dropped off
-# this list at docs/adr/0030 (§5 and its Consequences): it moved inside the
-# workload's own tests/sast/run.sh, which gates/sast.sh merely invokes by
-# path now, so no gates/*.sh or ci/secrets.sh literally names it any more.
+# osv-scanner, gitleaks, cosmic-ray, bandit, stryker, eslint,
+# tests/mutation, tests/sast. That list is not mechanically derivable
+# ("which executable a gate invokes"), so this script self-checks it
+# instead: a NO-GO here if a listed tool is no longer named by any
+# gates/*.sh, ci/secrets.sh, stacks/*/runners/* (the runners ./go init
+# hands a repository, docs/adr/0042 §6, where bandit, cosmic-ray, stryker
+# and eslint live since the gates read a command's line, never a tool) or
+# an in-repo workload's workload.env (whose *_CMD names its own runners)
+# means the list drifted one way (a removed tool); a new tool not on the
+# list is the gate-writer's job to add by hand, named below.
 # Before ever reading roles/, the checker proves itself on two planted
 # files.
 set -eu
@@ -29,13 +30,13 @@ name=prompts
 [ -d roles ] || nogo "roles/ not found"
 
 # --- the hand list; keep in sync with gates/*.sh and ci/secrets.sh by hand ---
-hand_tools="osv-scanner gitleaks cosmic-ray tests/mutation tests/sast"
+hand_tools="osv-scanner gitleaks cosmic-ray bandit stryker eslint tests/mutation tests/sast"
 
 drift=""
 for t in $hand_tools; do
-  grep -qrl -- "$t" gates/*.sh ci/secrets.sh 2>/dev/null || drift="$drift $t"
+  grep -qrl -- "$t" gates/*.sh ci/secrets.sh stacks/*/runners/* */workload.env workloads/*/.lights-out/workload.env 2>/dev/null || drift="$drift $t"
 done
-[ -z "$drift" ] || nogo "hand tool list names a tool no gates/*.sh or ci/secrets.sh invokes any more (drift; add the replacement by hand):$drift"
+[ -z "$drift" ] || nogo "hand tool list names a tool no gates/*.sh, ci/secrets.sh, stacks/*/runners/* or workload.env invokes any more (drift; add the replacement by hand):$drift"
 
 # --- gates/*.sh basenames, except "test" (the role's own acceptance vocabulary) ---
 gate_basenames=""

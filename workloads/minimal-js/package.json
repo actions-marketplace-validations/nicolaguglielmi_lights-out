@@ -1,0 +1,15 @@
+{
+  "name": "minimal-js",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The smallest javascript repository the lights-out gates run on (docs/adr/0042 §9): a module, its tests on node's own runner, no dependencies.",
+  "type": "module",
+  "main": "src/calc.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "Apache-2.0"
+}

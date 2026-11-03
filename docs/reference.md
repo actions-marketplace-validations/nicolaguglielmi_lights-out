@@ -4,7 +4,7 @@ Everything the [README](../README.md) leaves out: what runs at each milestone, e
 
 ## Status
 
-Milestone M12 closed (the Workload port, ADR 0030). Next is the legacy-repo experiment of plan §14. What runs today:
+Milestone M20 closed (gates anywhere, ADR 0042). Next, in plan §16's order: M21 (GitHub as code host), M22 (ops without the plane), M23 (the packaged command). What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -24,6 +24,7 @@ Milestone M12 closed (the Workload port, ADR 0030). Next is the legacy-repo expe
 | seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
 | attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0037); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
 | rework | M15 | ✓ a gates NO-GO or a CHANGES-REQUESTED review goes back to dev-worker with the verdict, up to four attempts (`policy/rework.env`), then `needs-human`; `./go demo-rework` on ticket 0013's hand-written attempts (ADR 0038) |
+| gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
 
 | | |
 |---|---|
@@ -62,6 +63,9 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go demo-seam       # attach workloads/minimal as a repository of its own and run the plane on it
 ./go attach <path>   # make a repository of yours the workload (its .lights-out/ is the contract)
 ./go detach          # back to the bundled app
+./go init [<path>]   # draft the gates half of .lights-out/ in .attached/ (attaches <path> first); the baseline is measured (ADR 0042 §6)
+./go gates           # judge a range: BASE=<ref> HEAD=<ref>, default the last commit; no plane, no engine socket on the workbench toolchain (ADR 0042 §4-§5)
+./go demo-init       # prove attach, init and gates on workloads/minimal and workloads/minimal-js without the plane, timed against 300 s (ADR 0042 §10)
 ./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
 ./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
@@ -80,7 +84,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go promote         # go-for-launch: the brief, then GO_FOR_LAUNCH=GO|NO-GO (or the terminal), then 100% or rollback
 ./go demo-launch     # prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
 ./go record-evals    # record the ADK roles' responses at L1 (PROFILE=l1)
-./go mutation-baseline # measure baseline mutation score on the whole package
+./go mutation-baseline # whole-scope mutation score of the workload, where its TOOLCHAIN_IMAGE says (ADR 0042 §6)
 ./go kill-switch     # turn off waitlist for all versions (manual flag edit)
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
 ./go unfreeze        # re-enable launchpad after freeze
@@ -129,7 +133,7 @@ Test and verify commands:
 
 ## PR gates
 
-Six gates run in order on a git range (two commits or more, measured by `git merge-base`), with both verdicts proven by committed fixture patches. Run with `./go demo-gates` on the six fixtures, or `./go gates BASE=<ref> HEAD=<ref>` on your own range.
+Six gates run in order on a git range (the merge-base of `BASE` and `HEAD`, or the last commit when no range is given; a root commit's base is the empty tree, ADR 0042 §5), with both verdicts proven by committed fixture patches. Run with `./go demo-gates` on the six fixtures, or `./go gates BASE=<ref> HEAD=<ref>` on your own range.
 
 **Order:** risk (rules-based classification from path and size), secrets (gitleaks history and working tree), deps (osv-scanner on both lockfiles, a time bomb by design), SAST (bandit on the active workload's `WORKLOAD_MUTATION_SCOPE`), test (pytest, one failing assertion proves it works), mutation (cosmic-ray on changed lines, scored against a measured baseline).
 
@@ -198,7 +202,7 @@ Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env`
 
 ### Engine socket
 
-Targets `up`, `down`, `test`, `demo`, `demo-rollback`, `demo-seam`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images.
+Targets `up`, `down`, `test`, `demo`, `demo-rollback`, `demo-seam`, `e2e`, and `shell` mount the engine's API socket into workbench, which gives the container full control of the engine. It can start privileged containers, read any volume, and delete images. For `gates`, `init`, `mutation-baseline` and `demo-init` the socket is optional (ADR 0042 §4): mounted when it exists, and a toolchain other than `workbench` answers NO-GO naming it when it does not.
 
 The `ci` target never gets the socket. `engine-compat` is the one gate that runs on the host itself, before workbench starts: `./go engine-compat` and `./go demo` both begin with `ci/engine-compat.sh`.
 
@@ -320,7 +324,9 @@ lights-out/
   workloads/                # other workloads behind the Workload port
     minimal/                 # a second minimal workload (no database, no frontend; proves the seam)
       fixtures/gates/        # gate fixture for this workload (at least one required)
+    minimal-js/              # a second workload, javascript, gates half only: the gates on a repository with no plane (ADR 0042 §9)
 
+  stacks/                   # the gate runners ./go init copies into a repository, one directory per stack, each with its lockfile (ADR 0042 §7)
   compose.yaml               # the L0 plane: workload + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
 
   adapters/                 # one directory per adapter named in profiles/*.env

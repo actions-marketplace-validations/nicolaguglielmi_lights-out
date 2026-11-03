@@ -7,16 +7,22 @@
 # workloads/*/workload.env -- is checked against the Workload port
 # (docs/adr/0030 §2-3), independent of whichever WORKLOAD the enclosing
 # `make` invocation itself selected:
-#   (a) workload.env defines exactly the seven keys, no more, no fewer --
+#   (a) workload.env defines exactly the eleven keys, no more, no fewer --
 #       an extra one could silently override DELIVERY or a `?=` default
-#       (docs/adr/0030 §4's trap);
-#   (b) `docker-compose config`, with that workload's own compose.yaml
-#       merged in explicitly (-f, not the ambient COMPOSE_FILE, which
-#       reflects only the enclosing make's own WORKLOAD) and WORKLOAD set
-#       for interpolation, shows the three fixed services with their
-#       profiles and images (docs/adr/0030 §3);
-#   (c) that workload's flags/flags.json defines release-freeze and its
-#       own WORKLOAD_KILL_SWITCH;
+#       (docs/adr/0030 §4's trap); the four runner keys (docs/adr/0042
+#       §1-§2) are non-empty commands with no `$` or `#` (make's include
+#       would expand the one and cut at the other) and a TOOLCHAIN_IMAGE
+#       of a known form: workbench, compose:<service>, an image reference;
+#   (b) when the contract has a compose.yaml -- the plane half, required
+#       only to run the plane (docs/adr/0042 §7) -- `docker-compose
+#       config`, with that compose.yaml merged in explicitly (-f, not the
+#       ambient COMPOSE_FILE, which reflects only the enclosing make's own
+#       WORKLOAD) and WORKLOAD set for interpolation, shows the three fixed
+#       services with their profiles and images (docs/adr/0030 §3), and a
+#       compose: toolchain names one of them with profile test; a contract
+#       without compose.yaml may not use the compose form;
+#   (c) with the plane half, that workload's flags/flags.json defines
+#       release-freeze and its own WORKLOAD_KILL_SWITCH;
 #   (d) its worker.md, the dev-worker's brief, has `## Scope` and
 #       `## Tests` (docs/adr/0037 §6);
 #   (e) its policy.env, if any, passes core/policy.py: known keys, valid
@@ -40,7 +46,7 @@ err_log=$(mktemp)
 policy_out=$(mktemp)
 trap 'rm -f "$err_log" "$policy_out"' EXIT
 
-expected_keys='CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT'
+expected_keys='CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT TOOLCHAIN_IMAGE TEST_CMD SAST_CMD MUTATION_CMD'
 
 # "<workload dir>:<contract dir>" pairs; no path here holds a colon.
 pairs=""
@@ -65,11 +71,13 @@ for pair in $pairs; do
   f="$cd_/workload.env"
   [ -f "$f" ] || nogo "$f does not exist"
 
-  # (a) exactly the seven keys. workload.env is "profile syntax" (its own
-  # header): KEY=VALUE, one per line, no quotes, no inline comments -- a
-  # comment line is dropped whole, never a suffix, so a naive substring
-  # search on the raw text would be wrong here.
+  # (a) exactly the eleven keys. workload.env is "profile syntax" (its own
+  # header): KEY=VALUE, one per line, no inline comments -- a comment line
+  # is dropped whole, never a suffix, so a naive substring search on the
+  # raw text would be wrong here. A command may hold spaces and quotes
+  # (make keeps them, core/policy.py matches KEY=VALUE), never `$` or `#`.
   reason=$(python3 - "$f" "$expected_keys" <<'PY'
+import re
 import sys
 
 path, expected_s = sys.argv[1], sys.argv[2]
@@ -79,14 +87,38 @@ with open(path) as fh:
     raw_lines = [ln.strip() for ln in fh]
 
 keys = []
+values = {}
 for ln in raw_lines:
     if not ln or ln.startswith("#"):
         continue
-    key, sep, _ = ln.partition("=")
+    key, sep, value = ln.partition("=")
     if not sep:
         print(f"{path}: not KEY=VALUE: {ln!r}")
         sys.exit(1)
     keys.append(key)
+    values[key] = value
+
+for key in ("TEST_CMD", "SAST_CMD", "MUTATION_CMD"):
+    value = values.get(key, "")
+    if key in values and not value:
+        print(f"{path}: {key} is empty; every toolchain gate needs its command (docs/adr/0042 §1)")
+        sys.exit(1)
+    if "$" in value or "#" in value:
+        print(f"{path}: {key} holds a `$` or `#`, which make's include would expand or cut (docs/adr/0042 §1)")
+        sys.exit(1)
+
+image = values.get("TOOLCHAIN_IMAGE", "")
+if "TOOLCHAIN_IMAGE" in values:
+    image_re = re.compile(r"^[a-z0-9]([a-z0-9._/-]*[a-z0-9])?(:[A-Za-z0-9._-]+)?(@sha256:[0-9a-f]{64})?$")
+    if image == "workbench":
+        pass
+    elif image.startswith("compose:"):
+        if not re.match(r"^compose:[A-Za-z0-9_.-]+$", image):
+            print(f"{path}: TOOLCHAIN_IMAGE={image!r} is not compose:<service> (docs/adr/0042 §2)")
+            sys.exit(1)
+    elif not image_re.match(image):
+        print(f"{path}: TOOLCHAIN_IMAGE={image!r} is none of workbench, compose:<service> or an image reference (docs/adr/0042 §2)")
+        sys.exit(1)
 
 seen = set()
 dupes = sorted({k for k in keys if k in seen or seen.add(k)})
@@ -103,11 +135,20 @@ if extra or missing:
         bits.append("extra: " + ", ".join(extra))
     if missing:
         bits.append("missing: " + ", ".join(missing))
-    print(f"{path} must define exactly the seven docs/adr/0030 §2 keys ({'; '.join(bits)})")
+    print(f"{path} must define exactly the eleven docs/adr/0030 §2 and 0042 §1 keys ({'; '.join(bits)})")
     sys.exit(1)
 PY
   ) && ok=1 || ok=0
   [ "$ok" -eq 1 ] || nogo "$reason"
+
+  toolchain=$(grep -v '^[[:space:]]*#' "$f" | sed -n 's/^TOOLCHAIN_IMAGE=//p')
+  if [ ! -f "$cd_/compose.yaml" ]; then
+    # No plane half (docs/adr/0042 §7): the gates half is all there is,
+    # and a compose: toolchain would name a service that does not exist.
+    case "$toolchain" in
+      compose:*) nogo "$f: TOOLCHAIN_IMAGE=$toolchain needs $cd_/compose.yaml, which does not exist (docs/adr/0042 §7)" ;;
+    esac
+  else
 
   # (b) the merged project, with this workload's compose.yaml explicit,
   # shows the three fixed services (docs/adr/0030 §3). --profile canary
@@ -127,11 +168,11 @@ PY
     nogo "docker-compose config failed for WORKLOAD=$wd; see stderr"
   fi
 
-  reason=$(python3 - "$wd" "$config_json" <<'PY'
+  reason=$(python3 - "$wd" "$config_json" "$toolchain" <<'PY'
 import json
 import sys
 
-wd, config_json = sys.argv[1], sys.argv[2]
+wd, config_json, toolchain = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
     data = json.loads(config_json)
 except ValueError as exc:
@@ -166,6 +207,15 @@ if "build" in services["backend-canary"]:
 if not services["backend-canary"].get("image"):
     print(f"{wd}: service backend-canary has no image")
     sys.exit(1)
+
+if toolchain.startswith("compose:"):
+    svc = toolchain[len("compose:"):]
+    if svc not in services:
+        print(f"{wd}: TOOLCHAIN_IMAGE={toolchain} names a service the merged project does not define (docs/adr/0042 §2)")
+        sys.exit(1)
+    if (services[svc].get("profiles") or []) != ["test"]:
+        print(f"{wd}: TOOLCHAIN_IMAGE={toolchain}: service {svc} must have exactly the profile test (docs/adr/0042 §2)")
+        sys.exit(1)
 PY
   ) && ok=1 || ok=0
   [ "$ok" -eq 1 ] || nogo "$reason"
@@ -199,6 +249,8 @@ if missing:
 PY
   ) && ok=1 || ok=0
   [ "$ok" -eq 1 ] || nogo "$reason"
+
+  fi
 
   # (d) the brief, with the two sections the dev-worker's prompt points at.
   brief="$cd_/worker.md"

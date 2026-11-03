@@ -1,13 +1,17 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# gates-mutation: docs/adr/0015 §3. Cosmic-ray over the lines the range
-# BASE..HEAD added or changed under the workload's own mutation scope
-# ($WORKLOAD/$WORKLOAD_MUTATION_SCOPE, docs/adr/0030 §2). require_range must
-# be the first thing that can fail: it is what a cold ci/contract.sh run
-# sees (no BASE/HEAD, no plane), and it is what keeps this gate instant
+# gates-mutation: docs/adr/0015 §3. The workload's MUTATION_CMD over the
+# lines the range BASE..HEAD added or changed under the workload's own
+# mutation scope ($WORKLOAD/$WORKLOAD_MUTATION_SCOPE, docs/adr/0030 §2),
+# run where its TOOLCHAIN_IMAGE says (docs/adr/0042 §1-§2,
+# core/toolchain.sh). The gate reads a score, never a tool: cosmic-ray for
+# the bundled app, Stryker for a javascript workload, any runner that
+# honours the line (MUTATION_LINES in, one JSON line out). require_range
+# must be the first thing that can fail: it is what a cold ci/contract.sh
+# run sees (no BASE/HEAD, no plane), and it is what keeps this gate instant
 # whenever there is no range to judge. Nothing before it may touch git or
-# docker-compose.
+# the engine.
 #
 # Line scope cannot see deletions: a PR that only deletes lines the suite
 # never exercised passes this gate untouched; gates/test.sh is what would
@@ -16,12 +20,15 @@ set -eu
 name=mutation
 . ci/lib.sh
 require_range
+. core/toolchain.sh
 
 gates_out=${GATES_OUT:-.gates-out}
 mkdir -p "$gates_out"
 
 [ -n "${WORKLOAD_MUTATION_SCOPE:-}" ] || nogo "WORKLOAD_MUTATION_SCOPE is empty"
 [ -e "$WORKLOAD/$WORKLOAD_MUTATION_SCOPE" ] || nogo "$WORKLOAD/$WORKLOAD_MUTATION_SCOPE does not exist"
+[ -n "${MUTATION_CMD:-}" ] || nogo "MUTATION_CMD is empty (docs/adr/0042 §1)"
+toolchain_preflight
 
 # Parse the range's hunks under the workload's mutation scope into
 # "<module-relative-path>=<start>-<end>,..." groups, space-separated (the
@@ -82,7 +89,7 @@ PY
 if [ -z "$mutation_lines" ]; then
   printf 'mutation: 0 mutants on changed lines in %s..%s; GO by absence of subject, nothing ran\n' "$base" "$head" >&2
   printf '{"total": 0, "score": null}\n' > "$gates_out/mutation.json"
-  go
+  go_with "in $toolchain_where, nothing ran"
 fi
 
 # MUTATION_BASELINE (measured, the workload's workload.env, docs/adr/0030
@@ -93,40 +100,32 @@ MUTATION_BASELINE=$(sed -n 's/^MUTATION_BASELINE=//p' "$gates_out/effective-poli
 MUTATION_MARGIN=$(sed -n 's/^MUTATION_MARGIN=//p' "$gates_out/effective-policy.env")
 [ -n "$MUTATION_BASELINE" ] || nogo "MUTATION_BASELINE is empty"
 
-# A project name of our own (docs/adr/0015 §2 shared interface, docs/adr/0017
-# §11), via -p rather than a written .env: this worktree's backend-test/
-# postgres never collide with another job's or a running plane's, and the
-# user's own .env (where an L1 GEMINI_API_KEY lives) is never touched.
 log=$(mktemp)
-# `run --rm` only removes the backend-test container; the postgres it
-# depends on keeps running under -p lo-mutation on every exit path (go,
-# or any nogo below) unless this trap tears it down too.
-trap 'docker-compose -p lo-mutation --profile test down -v >&2; rm -f "$log"' EXIT
+trap 'rm -f "$log"' EXIT
 
-# Built separately from run, below: `run --build`'s own image-build log
-# goes to *its* stdout (confirmed empirically -- not stderr, contrary to
-# what the classic, non-Buildkit builder's docs might suggest), which would
-# otherwise land inside $result and break the one-JSON-line contract.
-docker-compose -p lo-mutation --profile test build backend-test >&2 \
-  || nogo "backend-test image build failed; see stderr"
-
+# Tool noise (the engine, the mutation tool, the suite inside each mutant
+# run) always on stderr, GO or NO-GO.
 set +e
-result=$(docker-compose -p lo-mutation --profile test run --rm -T \
-  -e MUTATION_LINES="$mutation_lines" \
-  backend-test sh tests/mutation/run.sh 2>"$log" </dev/null)
+result=$(MUTATION_LINES="$mutation_lines" run_in_toolchain "$MUTATION_CMD" 2>"$log")
 rc=$?
 set -e
 
-# Tool noise (compose, cosmic-ray, pytest inside each mutant run) always on
-# stderr, GO or NO-GO.
 cat "$log" >&2
 
+# The runner's line is the last non-empty one on stdout (docs/adr/0042
+# §1): what a command puts before it -- an `npm ci` ahead of the runner,
+# say -- is not the score.
+result=$(printf '%s\n' "$result" | grep -v '^[[:space:]]*$' | tail -1) || result=""
+
+if [ "$rc" -eq 125 ]; then
+  nogo "in $toolchain_where: the toolchain itself failed before the mutation run; see stderr"
+fi
 if [ "$rc" -ne 0 ]; then
-  nogo "mutation run failed before scoring (baseline or tooling error); see stderr"
+  nogo "in $toolchain_where: mutation run failed before scoring (baseline or tooling error); see stderr"
 fi
 
-# score.py (tests/mutation/score.py) tags every survivor line "SURVIVOR
-# file:line operator" on stderr; lift them out for nogo's DETAILS.
+# The runner tags every survivor line "SURVIVOR file:line operator" on
+# stderr (docs/adr/0042 §1); lift them out for nogo's DETAILS.
 survivors=$(grep '^SURVIVOR ' "$log" | sed 's/^SURVIVOR //') || survivors=""
 
 reason=$(python3 - "$gates_out/mutation.json" "$MUTATION_BASELINE" "$MUTATION_MARGIN" "$base" "$head" "$result" <<'PY'
@@ -153,7 +152,7 @@ score = data.get("score")
 if total == 0:
     print(
         f"mutation: 0 mutants on changed lines in {base}..{head} after running "
-        "cosmic-ray; GO by absence of subject",
+        "the mutation command; GO by absence of subject",
         file=sys.stderr,
     )
     sys.exit(0)
@@ -176,7 +175,7 @@ if [ "$ok" -ne 1 ]; then
   set -- $survivors
   set +f
   IFS=$old_ifs
-  nogo "$reason" "$@"
+  nogo "in $toolchain_where: $reason" "$@"
 fi
 
-go
+go_with "in $toolchain_where"
