@@ -35,5 +35,5 @@ regexes = ['''^GEMINI_API_KEY=''']
 regexTarget = "line"
 
 [[allowlists]]
-description = "the clone ./go attach makes of a user's repository (docs/adr/0036 §3); gitignored, never committed, and scanned as that repository by the secrets gate on its own ranges"
+description = "the clone ./go attach makes of a user's repository (docs/adr/0037 §3); gitignored, never committed, and scanned as that repository by the secrets gate on its own ranges"
 paths = ['''^\.attached/''']

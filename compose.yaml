@@ -4,7 +4,7 @@
 # of which workload is selected. The workload's own services (docs/adr/
 # 0030) live in its contract's compose.yaml, merged in by the Makefile
 # (COMPOSE_FILE=compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml, docs/adr/
-# 0036 §2) — this file never names one. Vendor config lives in adapters/<name>/ and is copied into
+# 0037 §2) — this file never names one. Vendor config lives in adapters/<name>/ and is copied into
 # images at build; the only bind mount is the workload's flags/ directory
 # into flagd. Run through ./go: WORKBENCH_IMAGE is set there and the
 # runner image is built from it.

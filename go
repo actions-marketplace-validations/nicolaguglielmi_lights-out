@@ -58,7 +58,7 @@ LIGHTS_OUT_T0=$(date +%s)
 
 die() { printf 'go: %s\n' "$*" >&2; exit 1; }
 
-# Attach (docs/adr/0036 §1): on the host, with git only, because the
+# Attach (docs/adr/0037 §1): on the host, with git only, because the
 # user's repository may be anywhere the workbench cannot see. It is cloned
 # here, at the Makefile's ATTACHED, and only ever read; the contract check
 # then runs in workbench, as `make attached`.

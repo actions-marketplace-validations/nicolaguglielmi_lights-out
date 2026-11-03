@@ -1,6 +1,6 @@
 # Brief for the dev-worker: the bundled app
 
-The workload's half of the dev-worker's instructions (docs/adr/0036 §6):
+The workload's half of the dev-worker's instructions (docs/adr/0037 §6):
 where its code is and how its tests run. The role's own prompt,
 `roles/dev-worker/prompt.md`, names no workload.
 

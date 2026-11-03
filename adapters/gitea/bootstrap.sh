@@ -4,7 +4,7 @@
 # bootstrap-gitea: creates the admin user, the lights-out/workload repo
 # with Actions on, and force-pushes the workload repository's HEAD to its
 # main branch (docs/adr/0017 §5): this checkout's for a bundled workload,
-# the attached clone's otherwise (docs/adr/0036 §9). Idempotent: safe on every `assign`, because
+# the attached clone's otherwise (docs/adr/0037 §9). Idempotent: safe on every `assign`, because
 # Gitea holds no persistent volume (docs/adr/0012) and starts empty on
 # every `./go up`. Actions were off through M7 — a job nobody consulted
 # was noise, not proof — and turn on at M8 (docs/adr/0025 §4): the runner
@@ -44,7 +44,7 @@ case "$code" in
 esac
 
 # 3. Actions on (docs/adr/0025 §4): the runner's first job needs them.
-# Off for an attached repository (docs/adr/0036 §9): its workflows were
+# Off for an attached repository (docs/adr/0037 §9): its workflows were
 # written for its own CI, not for this runner, which holds the engine
 # socket; ADR 0015 §7's conditions hold for this checkout's workflow only.
 actions=true

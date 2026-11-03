@@ -19,7 +19,7 @@ out_dir=${GATES_OUT:-.gates-out}
 mkdir -p "$out_dir"
 
 # The base's policy/merge.env and the workload's policy.env, merged
-# (docs/adr/0036 §5); the diff is the workload repository's (§3).
+# (docs/adr/0037 §5); the diff is the workload repository's (§3).
 policy="$out_dir/effective-policy.env"
 effective_policy "$policy"
 

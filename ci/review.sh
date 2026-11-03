@@ -90,7 +90,7 @@ EOF
 chmod +x "$root/adapters/replay/run.sh"
 
 # --- git needs $root itself to be a repo: review.sh's `git fetch` runs in
-# the workload's repository (docs/adr/0036 §3), which the cases below make
+# the workload's repository (docs/adr/0037 §3), which the cases below make
 # $root itself with WORKLOAD=. after they cd there. ---
 git init -q "$root"
 

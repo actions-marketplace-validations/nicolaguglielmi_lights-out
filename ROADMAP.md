@@ -24,7 +24,7 @@ wins when the two disagree. Decisions behind each step are in
    quickstart and a guide for using lights-out on your own codebase.
 2. **M13 — attach.** `./go attach <path>` points a plain clone at a
    repository of yours: its `.lights-out/` holds the contract, a brief for
-   the dev-worker and its own thresholds (ADR 0036). Then M14 (other
+   the dev-worker and its own thresholds (ADR 0037). Then M14 (other
    stacks), M15 (the rework loop), M16 (the agent network), M17 (the
    dashboard).
 3. **The public legacy experiment.** lights-out pointed at a known

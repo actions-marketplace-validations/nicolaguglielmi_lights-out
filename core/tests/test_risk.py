@@ -4,7 +4,7 @@ The policy values are read from the real policy/merge.env (not hardcoded),
 so these tests and the policy file cannot drift apart: a change to a glob
 or the size threshold is exercised here on the next run, not silently
 missed by a stale copy. The three workload path lists are the exception:
-the platform's are empty (docs/adr/0036 §5), so the tests state a
+the platform's are empty (docs/adr/0037 §5), so the tests state a
 workload's.
 """
 
@@ -24,7 +24,7 @@ class ClassifyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.policy = parse_policy(POLICY_PATH.read_text())
-        # The platform's three path lists are empty since docs/adr/0036 §5:
+        # The platform's three path lists are empty since docs/adr/0037 §5:
         # a workload states them in its own policy.env. These stand for one.
         for key in ("RISK_HIGH_MIGRATIONS", "RISK_HIGH_AUTH", "RISK_HIGH_PAYMENTS"):
             assert cls.policy[key] == "", f"policy/merge.env names a workload path in {key}"

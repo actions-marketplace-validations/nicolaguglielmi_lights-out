@@ -37,7 +37,7 @@ fi
 # The two deltas, compared as plain deltas (canary - stable), not ratios:
 # a ratio would divide by a stable error rate of zero. Their defaults and
 # provenance are in policy/merge.env since 2026-11-03; a workload's
-# policy.env may override them (docs/adr/0036 §5).
+# policy.env may override them (docs/adr/0037 §5).
 policy=$(mktemp)
 trap 'rm -f "$policy"' EXIT
 effective_policy "$policy"
