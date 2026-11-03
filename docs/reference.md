@@ -21,7 +21,8 @@ Milestone M12 closed (the Workload port, ADR 0030). Next is the legacy-repo expe
 | ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.9.1; adk eval in ci; replay at L0 |
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
 | review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |
-| seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`); `workloads/minimal/` proves the seam; `./go demo-seam` runs it |
+| seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
+| attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0036); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
 
 | | |
 |---|---|
@@ -53,7 +54,9 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go test            # run backend tests
 ./go verify          # check the metric shape
 ./go demo-rollback   # release the failing version and prove automatic rollback
-./go demo-seam       # run the Workload port acceptance test on workloads/minimal
+./go demo-seam       # attach workloads/minimal as a repository of its own and run the plane on it
+./go attach <path>   # make a repository of yours the workload (its .lights-out/ is the contract)
+./go detach          # back to the bundled app
 ./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
 ./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
@@ -140,10 +143,10 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 | Envoy admin | 9901 | Runtime config: `GET /runtime` reads weights, `POST /runtime_modify` shifts traffic between stable and canary |
 | backend | implicit | Stable revision, answering at port 8000 inside compose |
 | backend-canary | implicit | Canary revision (started on-demand by deploy, same image as backend); answering at port 8000 inside compose |
-| Gitea | 3000 | Rootless, sqlite; bootstrap creates a fixed admin user (`lights-out` / `lights-out-local-not-a-secret`) and a public `lights-out/lights-out` repo with Actions disabled; the runner registers on start in host mode |
+| Gitea | 3000 | Rootless, sqlite; bootstrap creates a fixed admin user (`lights-out` / `lights-out-local-not-a-secret`) and a public `lights-out/workload` repo holding the workload's repository (this checkout, or the attached one; Actions on only for this checkout); the runner registers on start in host mode |
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by the `service_version` label reached via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
-| flagd | 8016 | OFREP; serves the active workload's `flags/flags.json` (`$WORKLOAD/flags/flags.json`, bind-mounted dynamically); edit the file and the flag flips within seconds |
+| flagd | 8016 | OFREP; serves the active workload's `flags/flags.json` (`$WORKLOAD_CONTRACT/flags/flags.json`, bind-mounted dynamically); edit the file and the flag flips within seconds |
 | Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
 | Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
 
@@ -157,7 +160,7 @@ At L0 the canary revision reuses the same image as stable, with the `waitlist` f
 
 `core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable.
 
-The controller itself generates no load; the Makefile starts the active workload's `load.sh` (`$(WORKLOAD)/load.sh`, default `app/load.sh`) beside it, stopping when the controller exits.
+The controller itself generates no load; the Makefile starts the active workload's `load.sh` (`$(WORKLOAD_CONTRACT)/load.sh`, default `app/load.sh`) beside it, stopping when the controller exits.
 
 At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERSION`). Three proof commands demonstrate the flow:
 
@@ -175,7 +178,9 @@ At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERS
 
 ## The Workload port
 
-A workload is any directory that owns a `workload.env` file and provides the services and scripts the platform expects. The app and `workloads/minimal/` are two implementations; `WORKLOAD=<path>` (default `app`) selects which one runs. The contract is declared in ADR 0030: seven environment variables (e.g., `CANARY_VERSION`, `WORKLOAD_KILL_SWITCH`, `WORKLOAD_MUTATION_SCOPE`), three compose services (`backend`, `backend-canary`, `backend-test`), health and metrics endpoints on `:8000`, one flag file, `smoke.sh` and `load.sh`, in-image test runners (`tests/mutation/run.sh`, `tests/sast/run.sh`), and gate fixtures. Every gate and control system reads these values instead of naming the app, verified by `ci/app-free.sh`. `./go demo-seam` (like `demo-rollback` and `demo-launch`, outside the main `demo`) runs the acceptance test with `WORKLOAD=workloads/minimal` to prove the seam is real: two distinct workloads, same platform.
+A workload is any directory that owns a `workload.env` file and provides the services and scripts the platform expects. The app and `workloads/minimal/` are two implementations; `WORKLOAD=<path>` (default `app`) selects which one runs. The contract is declared in ADR 0030: seven environment variables (e.g., `CANARY_VERSION`, `WORKLOAD_KILL_SWITCH`, `WORKLOAD_MUTATION_SCOPE`), three compose services (`backend`, `backend-canary`, `backend-test`), health and metrics endpoints on `:8000`, one flag file, `smoke.sh` and `load.sh`, in-image test runners (`tests/mutation/run.sh`, `tests/sast/run.sh`), and gate fixtures. Every gate and control system reads these values instead of naming the app, verified by `ci/app-free.sh`. `./go demo-seam` (like `demo-rollback` and `demo-launch`, outside the main `demo`) proves the seam is real: two distinct workloads, same platform.
+
+A workload can also live in a repository of its own (ADR 0036). `./go attach <path>` clones it into `.attached/`, which becomes the default `WORKLOAD` until `./go detach`. Its contract is in `.lights-out/` at its root and nowhere else: the files above plus `worker.md` (the dev-worker's brief), an optional `policy.env` (nine overridable thresholds, each with a provenance line, read by `core/policy.py`) and optional `tickets/`. The gates diff its history, Gitea mirrors it, and a PR is judged by its base's `policy.env`. `workloads/minimal/` is laid out this way; `./go demo-seam` copies it into a fresh repository and attaches it. [Use it on your own codebase](use-on-your-repo.md) is the walkthrough.
 
 ## How it runs
 
