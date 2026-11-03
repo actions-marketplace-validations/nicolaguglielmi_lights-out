@@ -2,28 +2,46 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ci-tower: proves core/tower.sh, adapters/inproc/run.sh and core/audit.sh
-# (docs/adr/0019 §1, §2, §6, §9; docs/adr/0034) on stub adapters, cold: no plane, no
-# engine, milliseconds. The ci/harness.sh shape. A temp root holds
-# file-backed stubs for the StateStore, EventBus and CodeHost ports plus a
-# TOWER_STEPS directory of stub steps — except `merge`, which is the real
-# core/steps/merge.sh over the stub CodeHost, because the crash case (§9 d)
-# is about that seam. Case (g) runs the real core/steps/ci.sh on a real git
-# range: a PR is judged by the base's gates, policy and perimeter, not by
-# its own (docs/adr/0033). Written from the ADRs, not from the scripts.
+# (docs/adr/0019 §1, §2, §6, §9; docs/adr/0034; docs/adr/0038) on stub
+# adapters, cold: no plane, no engine, milliseconds. The ci/harness.sh
+# shape. A temp root holds file-backed stubs for the StateStore, EventBus
+# and CodeHost ports plus a TOWER_STEPS directory of stub steps — except
+# `merge`, which is the real core/steps/merge.sh over the stub CodeHost,
+# because the crash case (§9 d) is about that seam, and `rework`, the real
+# core/steps/rework.sh with the real policy/rework.env, because the rework
+# loop and its cap (docs/adr/0038 §2, §3) are what cases (i) to (l) prove.
+# The root's core/ is linked file by file so that core/crew.sh, the one
+# thing rework.sh calls that needs a harness, can be a stub. Case (h) runs
+# the real core/steps/ci.sh on a real git range: a PR is judged by the
+# base's gates, policy and perimeter, not by its own (docs/adr/0033).
+# Written from the ADRs, not from the scripts.
 set -eu
 name=tower
 . ci/lib.sh
 
-for f in core/tower.sh core/audit.sh core/steps/merge.sh core/steps/ci.sh adapters/inproc/run.sh; do
+for f in core/tower.sh core/audit.sh core/steps/merge.sh core/steps/ci.sh core/steps/rework.sh \
+  policy/rework.env adapters/inproc/run.sh; do
   [ -f "$f" ] || nogo "$f not found"
 done
+
+# The cap the loop is held to (docs/adr/0038 §3), read from the policy and
+# never written down here.
+# shellcheck disable=SC1090,SC1091 # the repo's own policy file
+max=$(. ./policy/rework.env && printf '%s' "${REWORK_MAX_ATTEMPTS:-}")
+case "$max" in
+  ''|*[!0-9]*|0|1) nogo "policy/rework.env: REWORK_MAX_ATTEMPTS is '$max'; the loop cases need an integer of at least 2" ;;
+esac
 
 repo=$(pwd)
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/adapters/stub-state" "$root/adapters/stub-bus" "$root/adapters/stub-codehost" \
-  "$root/steps" "$root/state" "$root/bus" "$root/world"
-ln -s "$repo/core" "$root/core"
+  "$root/steps" "$root/state" "$root/bus" "$root/world" "$root/core"
+# core/ file by file: everything is the repo's own except crew.sh (below).
+for f in "$repo"/core/*; do
+  [ "$(basename "$f")" = crew.sh ] || ln -s "$f" "$root/core/$(basename "$f")"
+done
+ln -s "$repo/policy" "$root/policy"
 ln -s "$repo/ci" "$root/ci"
 ln -s "$repo/adapters/inproc" "$root/adapters/inproc"
 
@@ -97,35 +115,59 @@ fi
 jq -r '"\(.merge_sha) \(.head_sha)"' "$f"
 STUB
 
-# --- stub steps; `merge` is the real one ---
+# --- stub steps; `merge` and `rework` are the real ones ---
+# assign opens the PR at head1 and sets attempt 1 (docs/adr/0038 §9).
 cat > "$root/steps/assign.sh" <<'STUB'
 #!/bin/sh
 set -eu
 d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 printf 'assign\n' >> "$d/effects.log"
-printf '%s\n' '{"state":"pr-opened","pr":{"number":1,"url":"stub://pr/1","base_sha":"base","head_sha":"head1"},"task":{"role":"dev-worker","harness":"stub","model":null},"spec":{"sha256":"abc","title":"0001 — stub ticket"}}'
+printf '%s\n' '{"state":"pr-opened","attempt":1,"pr":{"number":1,"url":"stub://pr/1","base_sha":"base","head_sha":"head1"},"task":{"role":"dev-worker","harness":"stub","model":null},"spec":{"sha256":"abc","title":"0001 — stub ticket"}}'
 STUB
+# ci judges the head the tower hands it (HEAD_SHA, from the document), never
+# a fixed one. STUB_CI: pass | review | fail (every attempt) | fail-once
+# (NO-GO on attempt 1, GO after) | crash. A NO-GO carries the line and the
+# details array the real step records (docs/adr/0038 §5). A GO carries
+# neither, so a field left over from an earlier attempt would show.
 cat > "$root/steps/ci.sh" <<'STUB'
 #!/bin/sh
 set -eu
 d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 printf 'ci\n' >> "$d/effects.log"
-case "${STUB_CI:-pass}" in
-  pass) printf '%s\n' '{"state":"ci-passed","ci":{"verdict":"GO","risk_level":"low","decision":"auto-merge","head_sha":"head1"}}' ;;
-  review) printf '%s\n' '{"state":"review","ci":{"verdict":"GO","risk_level":"high","decision":"review","head_sha":"head1"}}' ;;
-  fail) printf '%s\n' '{"state":"ci-failed","ci":{"verdict":"NO-GO","failed":"test","risk_level":"low","decision":"auto-merge","head_sha":"head1"}}' ;;
-  crash) exit 1 ;;
+mode=${STUB_CI:-pass}
+[ "$mode" != crash ] || exit 1
+if [ "$mode" = fail-once ]; then
+  if [ "$(jq -r '.attempt // 1' "$DOC_FILE")" -eq 1 ]; then mode=fail; else mode=pass; fi
+fi
+case "$mode" in
+  pass) jq -cn --arg h "$HEAD_SHA" '{state: "ci-passed", ci: {verdict: "GO", risk_level: "low", decision: "auto-merge", head_sha: $h}}' ;;
+  review) jq -cn --arg h "$HEAD_SHA" '{state: "review", ci: {verdict: "GO", risk_level: "high", decision: "review", head_sha: $h}}' ;;
+  fail) jq -cn --arg h "$HEAD_SHA" '{state: "ci-failed", ci: {verdict: "NO-GO", failed: "mutation", risk_level: "low", decision: "auto-merge", head_sha: $h,
+    line: "NO-GO: mutation — 2 mutants survived in \($h)",
+    details: ["app/meetups.py:27 swap-comparison", "app/meetups.py:31 drop-return"]}}' ;;
 esac
 STUB
+# review: STUB_REVIEW: approve | reject (every attempt) | reject-once
+# (attempt 1) | crash. The reason names the head it judged and runs to
+# several lines. Like the real reviewer it leaves a transcript behind, with
+# a marker nothing downstream may repeat (docs/adr/0038 §4).
 cat > "$root/steps/review.sh" <<'STUB'
 #!/bin/sh
 set -eu
 d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 printf 'review\n' >> "$d/effects.log"
-case "${STUB_REVIEW:-approve}" in
-  approve) printf '%s\n' '{"state":"ci-passed","review":{"role":"test-reviewer","verdict":"approved","reason":"stub approved"}}' ;;
-  reject) printf '%s\n' '{"state":"ci-failed","review":{"role":"test-reviewer","verdict":"changes-requested","reason":"stub rejected"}}' ;;
-  crash) exit 1 ;;
+mode=${STUB_REVIEW:-approve}
+[ "$mode" != crash ] || exit 1
+if [ "$mode" = reject-once ]; then
+  if [ "$(jq -r '.attempt // 1' "$DOC_FILE")" -eq 1 ]; then mode=reject; else mode=approve; fi
+fi
+mkdir -p "$d/.crew/$TICKET/review/out"
+printf '{"role":"assistant","text":"TRANSCRIPT-MARKER-5c1e reasoning about %s"}\n' "$HEAD_SHA" \
+  > "$d/.crew/$TICKET/review/out/transcript.jsonl"
+case "$mode" in
+  approve) jq -cn --arg h "$HEAD_SHA" '{state: "ci-passed", review: {role: "test-reviewer", verdict: "approved", reason: "stub approved \($h)"}}' ;;
+  reject) jq -cn --arg h "$HEAD_SHA" '{state: "ci-failed", review: {role: "test-reviewer", verdict: "changes-requested",
+    reason: "stub rejected \($h)\nreviewer point one: the empty-venue branch has no test\nreviewer point two: the loop in meetups.py never ends"}}' ;;
 esac
 STUB
 cat > "$root/steps/release.sh" <<'STUB'
@@ -136,17 +178,55 @@ printf 'release\n' >> "$d/effects.log"
 printf '%s\n' '{"state":"rolled-back","release":{"version":"0.2.0-waitlist","verdict":"NO-GO: launchpad — 5%: stub","numbers":["slo: stub"],"image":"stub"}}'
 STUB
 ln -s "$repo/core/steps/merge.sh" "$root/steps/merge.sh"
+ln -s "$repo/core/steps/rework.sh" "$root/steps/rework.sh"
+
+# --- stub crew: what rework.sh calls as `sh core/crew.sh`, cwd = the root,
+# with TICKET, ROLE, ATTEMPT, REWORK_FILE and REWORK_HEAD. It stands in for
+# the harness and the code host's push, and keeps the real crew's contract
+# (docs/adr/0038 §4, §7): it refuses unless REWORK_HEAD is the head the code
+# host holds (the judged one), it "pushes" a new head, head<ATTEMPT>, into
+# the same PR, and it writes pr-opened.env and out/run.json where rework.sh
+# reads them. It copies the worker's input aside, since rework.sh deletes
+# it. STUB_CREW=fail makes it fail, as a harness that changes nothing does.
+cat > "$root/core/crew.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+: "${TICKET:?}" "${ATTEMPT:?}" "${REWORK_FILE:?}" "${REWORK_HEAD:?}"
+printf 'crew %s\n' "$ATTEMPT" >> "$d/effects.log"
+cp "$REWORK_FILE" "$d/rework-input-$ATTEMPT.md"
+[ "${STUB_CREW:-ok}" != fail ] || { printf 'stub crew: told to fail\n' >&2; exit 1; }
+host=$(jq -r .head_sha "$d/world/pr-1.json")
+[ "$host" = "$REWORK_HEAD" ] || {
+  printf 'stub crew: ticket/%s on the code host is %s, the judged head was %s\n' "$TICKET" "$host" "$REWORK_HEAD" >&2
+  exit 1
+}
+head="head$ATTEMPT"
+jq -c --arg h "$head" '.head_sha = $h' "$d/world/pr-1.json" > "$d/world/pr-1.json.new"
+mv "$d/world/pr-1.json.new" "$d/world/pr-1.json"
+rm -rf "${d:?}/.crew/$TICKET"
+mkdir -p "$d/.crew/$TICKET/out"
+printf 'PR_NUMBER=1\nPR_URL=stub://pr/1\nBASE_SHA=base\nHEAD_SHA=%s\n' "$head" > "$d/.crew/$TICKET/pr-opened.env"
+printf '%s\n' '{"harness":"stub","model":null}' > "$d/.crew/$TICKET/out/run.json"
+printf 'GO: crew\n'
+STUB
 
 export STATE_STORE=stub-state EVENT_BUS=stub-bus CODE_HOST=stub-codehost TOWER_STEPS="$root/steps"
 cd "$root"
 
 reset() {
-  rm -f state/* bus/* bus/.seq world/* effects.log
+  rm -rf state/* bus/* bus/.seq world/* effects.log .crew rework-input-*.md
   printf '%s\n' '{"number":1,"state":"open","merged":false,"head_sha":"head1","merge_sha":null}' > world/pr-1.json
 }
 effects() { cat effects.log 2>/dev/null | tr '\n' ',' ; }
 doc() { cat "state/tickets.0001.json"; }
 queue() { find bus -name '*.msg' | wc -l | tr -d ' '; }
+# count REGEX: how many effects match REGEX (anchored by the caller).
+count() { awk -v p="$1" '$0 ~ p { n++ } END { print n + 0 }' effects.log; }
+# trail: the history as step[!]>state@attempt, "!" marking a failed attempt
+# (docs/adr/0034 §1) and "-" an entry written before the document had an
+# attempt (docs/adr/0038 §9).
+trail() { doc | jq -r '[.history[] | "\(.step)\(if .error then "!" else "" end)>\(.state)@\(.attempt // "-")"] | join(",")'; }
 log="$root/run.log"
 mismatch=""
 fail_case() {
@@ -166,24 +246,21 @@ if [ -z "$mismatch" ]; then
   [ "$(queue)" = 0 ] || fail_case a-queue "queue not empty after the run"
   [ "$(doc | jq '.history | length')" = 5 ] || fail_case a-history "history has $(doc | jq '.history | length') entries, want 5"
   [ "$(doc | jq -r .merge.sha)" = merge-of-head1 ] || fail_case a-merge "merge.sha not recorded from the code host"
+  # docs/adr/0038 golden-rule check: a ticket the gates pass first time
+  # never takes the rework lines; every entry after assign carries attempt 1.
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-passed@1,merge>merged@1,release>rolled-back@1" ] \
+    || fail_case a-trail "history: $(trail)"
+  [ "$(doc | jq '(.rework // []) | length')" = 0 ] || fail_case a-trail "a first-time GO left a rework record"
 fi
-# (a') ci-failed (a gate's own NO-GO) is terminal: no merge, nothing
-# published.
-if [ -z "$mismatch" ]; then
-  reset
-  if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=fail sh adapters/inproc/run.sh 2>"$log"; then
-    fail_case a-fail "run failed"
-  fi
-  [ "$(doc | jq -r .state)" = ci-failed ] || fail_case a-fail "state $(doc | jq -r .state), want ci-failed"
-  [ "$(effects)" = "assign,ci," ] || fail_case a-fail "effects: $(effects)"
-  [ "$(queue)" = 0 ] || fail_case a-fail "an event was published after a terminal state"
-fi
+# (a') used to prove ci-failed terminal. It no longer is (docs/adr/0038 §1):
+# a gate's NO-GO requests rework, and what stops a ticket is the cap, cases
+# (i) to (l) below.
 
 # (a'') review (docs/adr/0021 §1): a GO+review PR reaches the review step,
 # whose own verdict decides ci-passed or ci-failed — never review itself,
 # which is no longer terminal. approve continues on to merge/release
-# exactly like the golden path (a); reject is terminal, same as a gate's
-# NO-GO.
+# exactly like the golden path (a); a rejection is the rework loop's, cases
+# (j) and (k') below (docs/adr/0038 §1: ci-failed requests rework).
 if [ -z "$mismatch" ]; then
   reset
   if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=review STUB_REVIEW=approve sh adapters/inproc/run.sh 2>"$log"; then
@@ -193,15 +270,6 @@ if [ -z "$mismatch" ]; then
   [ "$(effects)" = "assign,ci,review,merge performed 1,release," ] || fail_case a-review-approve "effects: $(effects)"
   [ "$(queue)" = 0 ] || fail_case a-review-approve "queue not empty after the run"
   [ "$(doc | jq -r .review.verdict)" = approved ] || fail_case a-review-approve "review.verdict not recorded"
-fi
-if [ -z "$mismatch" ]; then
-  reset
-  if ! sh core/tower.sh open 0001 2>"$log" || ! STUB_CI=review STUB_REVIEW=reject sh adapters/inproc/run.sh 2>"$log"; then
-    fail_case a-review-reject "run failed"
-  fi
-  [ "$(doc | jq -r .state)" = ci-failed ] || fail_case a-review-reject "state $(doc | jq -r .state), want ci-failed"
-  [ "$(effects)" = "assign,ci,review," ] || fail_case a-review-reject "effects: $(effects)"
-  [ "$(queue)" = 0 ] || fail_case a-review-reject "an event was published after ci-failed"
 fi
 
 # (b) the same event twice: applied once.
@@ -315,20 +383,198 @@ if [ -z "$mismatch" ]; then
 fi
 # (g') resume refuses a ticket that is not stranded: one whose last
 # history entry did not fail, mid-flight (assign queued) or terminal.
+expect_refused() {  # NAME: resume must exit non-zero, say why, change and publish nothing
+  before=$(doc) || fail_case "$1" "no document"
+  queued=$(queue)
+  if sh core/tower.sh resume 0001 2>"$log"; then fail_case "$1" "resume of a ticket that is not stranded exited 0"; fi
+  grep -q 'not stranded' "$log" || fail_case "$1" "no 'not stranded' line on the refusal"
+  [ "$(doc)" = "$before" ] || fail_case "$1" "a refused resume changed the document"
+  [ "$(queue)" = "$queued" ] || fail_case "$1" "a refused resume published an event"
+}
 if [ -z "$mismatch" ]; then
-  expect_refused() {  # NAME: resume must exit non-zero, say why, change and publish nothing
-    before=$(doc) || fail_case "$1" "no document"
-    queued=$(queue)
-    if sh core/tower.sh resume 0001 2>"$log"; then fail_case "$1" "resume of a ticket that is not stranded exited 0"; fi
-    grep -q 'not stranded' "$log" || fail_case "$1" "no 'not stranded' line on the refusal"
-    [ "$(doc)" = "$before" ] || fail_case "$1" "a refused resume changed the document"
-    [ "$(queue)" = "$queued" ] || fail_case "$1" "a refused resume published an event"
-  }
   reset
   sh core/tower.sh open 0001 2>"$log" || fail_case g-refuse-open "open exited $?"
   expect_refused g-refuse-in-flight
   sh adapters/inproc/run.sh 2>"$log" || fail_case g-refuse-terminal "run exited $?"
   expect_refused g-refuse-terminal
+fi
+
+# The rework loop (docs/adr/0038). `ci-failed` — the gates or the reviewer
+# rejected this head — requests `rework`; the real core/steps/rework.sh runs
+# the stub crew for the next attempt; `needs-human` is where the cap stops
+# a ticket. These cases come after (g') because they use its helpers; (h)
+# needs the repo as cwd and so stays last.
+line1='NO-GO: mutation — 2 mutants survived in head1'
+detail1='app/meetups.py:27 swap-comparison'
+detail2='app/meetups.py:31 drop-return'
+has() { grep -qF -- "$2" "$1"; }  # FILE TEXT: does FILE contain TEXT
+audit_go() {  # NAME: the audit must accept the record as it stands
+  out=$(audit) || true
+  [ "$out" = "GO: audit" ] || fail_case "$1" "audit: $out"
+}
+reworked() {  # ENV...: open the ticket and run the loop to the end, with ENV set
+  sh core/tower.sh open 0001 2>"$log" && env "$@" sh adapters/inproc/run.sh 2>"$log"
+}
+
+# (i) the condition loop (§1, §2, §4, §9): the gates NO-GO the first head,
+# the tower sends it back to the worker with the verdict, the second head
+# passes, and the ticket goes on to merge and release as in (a).
+if [ -z "$mismatch" ]; then
+  reset
+  reworked STUB_CI=fail-once || fail_case i "run failed"
+  [ "$(doc | jq -r .state)" = rolled-back ] || fail_case i-final "final state $(doc | jq -r .state), want rolled-back"
+  [ "$(effects)" = "assign,ci,crew 2,ci,merge performed 1,release," ] || fail_case i-effects "effects: $(effects)"
+  [ "$(queue)" = 0 ] || fail_case i-queue "queue not empty after the run"
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework>pr-opened@2,ci>ci-passed@2,merge>merged@2,release>rolled-back@2" ] \
+    || fail_case i-trail "history: $(trail)"
+  # What survives of the rejected attempt: one entry, with the gate's own words.
+  [ "$(doc | jq '.rework | length')" = 1 ] || fail_case i-rework "rework has $(doc | jq '.rework | length') entries, want 1"
+  [ "$(doc | jq -r '.rework[0] | "\(.attempt) \(.judge) \(.head_sha) \(.line)"')" = "1 gates head1 $line1" ] \
+    || fail_case i-rework "rework[0]: $(doc | jq -c '.rework[0]')"
+  [ "$(doc | jq -c '.rework[0].details')" = "[\"$detail1\",\"$detail2\"]" ] \
+    || fail_case i-rework "rework[0].details: $(doc | jq -c '.rework[0].details')"
+  [ -n "$(doc | jq -r '.rework[0].at // empty')" ] || fail_case i-rework "rework[0] has no time"
+  # What the worker was given for attempt 2: the verdict, in the gate's words.
+  for want in "$line1" "$detail1" "$detail2"; do
+    has rework-input-2.md "$want" || fail_case i-input "the worker's attempt-2 input lacks: $want"
+  done
+  # ci and review describe attempt 2 only: nothing of the NO-GO is left on them.
+  [ "$(doc | jq -r '"\(.attempt) \(.pr.head_sha) \(.ci.verdict) \(.ci.head_sha)"')" = "2 head2 GO head2" ] \
+    || fail_case i-attempt "attempt, head and verdict: $(doc | jq -c '[.attempt, .pr.head_sha, .ci]')"
+  [ "$(doc | jq -r '"\(.ci.failed) \(.ci.line) \(.ci.details) \(.review)"')" = "null null null null" ] \
+    || fail_case i-attempt "ci or review still carry attempt 1: $(doc | jq -c '[.ci, .review]')"
+  [ "$(doc | jq -r '"\(.merge.sha) \(.merge.head_sha)"')" = "merge-of-head2 head2" ] \
+    || fail_case i-merge "merged $(doc | jq -c .merge), want the head attempt 2 produced"
+  audit_go i-audit
+fi
+
+# (j) the review loop (§2, §4): the reviewer rejects the first head, the
+# worker gets the reviewer's reason — and never the reviewer's transcript —
+# the second head is approved, and the ticket goes on.
+if [ -z "$mismatch" ]; then
+  reset
+  reworked STUB_CI=review STUB_REVIEW=reject-once || fail_case j "run failed"
+  [ "$(doc | jq -r .state)" = rolled-back ] || fail_case j-final "final state $(doc | jq -r .state), want rolled-back"
+  [ "$(effects)" = "assign,ci,review,crew 2,ci,review,merge performed 1,release," ] || fail_case j-effects "effects: $(effects)"
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>review@1,review>ci-failed@1,rework>pr-opened@2,ci>review@2,review>ci-passed@2,merge>merged@2,release>rolled-back@2" ] \
+    || fail_case j-trail "history: $(trail)"
+  [ "$(doc | jq '.rework | length')" = 1 ] || fail_case j-rework "rework has $(doc | jq '.rework | length') entries, want 1"
+  [ "$(doc | jq -r '.rework[0] | "\(.attempt) \(.judge) \(.head_sha)"')" = "1 review head1" ] \
+    || fail_case j-rework "rework[0]: $(doc | jq -c '.rework[0]')"
+  for want in 'reviewer point one: the empty-venue branch has no test' 'reviewer point two: the loop in meetups.py never ends'; do
+    has rework-input-2.md "$want" || fail_case j-input "the worker's attempt-2 input lacks the reviewer's reason: $want"
+  done
+  grep -qi 'changes-requested' rework-input-2.md || fail_case j-input "the worker's input does not say the reviewer asked for changes"
+  # The premise of the next line: the reviewer did leave a transcript.
+  has .crew/0001/review/out/transcript.jsonl TRANSCRIPT-MARKER || fail_case j-premise "the stub reviewer left no transcript marker"
+  ! has rework-input-2.md TRANSCRIPT-MARKER || fail_case j-input "the reviewer's transcript reached the worker"
+  [ "$(doc | jq -r '"\(.attempt) \(.ci.head_sha) \(.review.verdict)"')" = "2 head2 approved" ] \
+    || fail_case j-attempt "attempt, head, verdict: $(doc | jq -c '[.attempt, .ci.head_sha, .review.verdict]')"
+  [ "$(doc | jq -r .review.reason)" = "stub approved head2" ] \
+    || fail_case j-attempt "review still carries attempt 1: $(doc | jq -r .review.reason)"
+  audit_go j-audit
+fi
+
+# (k) the cap (§2, §3): gates that never pass stop the ticket at needs-human
+# after REWORK_MAX_ATTEMPTS attempts — the number read from the policy — and
+# nothing is merged, queued or resumable; the audit reads it as a stopped PR.
+if [ -z "$mismatch" ]; then
+  reset
+  reworked STUB_CI=fail || fail_case k "run failed"
+  [ "$(doc | jq -r .state)" = needs-human ] || fail_case k-final "final state $(doc | jq -r .state), want needs-human"
+  [ "$(count '^ci$')" = "$max" ] || fail_case k-ci "ci ran $(count '^ci$') times, want $max"
+  [ "$(count '^crew ')" = "$((max - 1))" ] || fail_case k-crew "crew ran $(count '^crew ') times, want $((max - 1))"
+  [ "$(doc | jq -r .attempt)" = "$max" ] || fail_case k-attempt "attempt $(doc | jq -r .attempt), want $max"
+  [ "$(doc | jq '.rework | length')" = "$max" ] || fail_case k-rework "rework has $(doc | jq '.rework | length') entries, want $max"
+  [ "$(doc | jq -c '[.rework[].attempt]')" = "$(jq -cn --argjson m "$max" '[range(1; $m + 1)]')" ] \
+    || fail_case k-rework "rework attempts: $(doc | jq -c '[.rework[].attempt]')"
+  [ "$(doc | jq -c '[.rework[].judge] | unique')" = '["gates"]' ] || fail_case k-rework "judges: $(doc | jq -c '[.rework[].judge]')"
+  [ "$(doc | jq -r '.rework[-1].head_sha')" = "head$max" ] || fail_case k-rework "the last rejected head is $(doc | jq -r '.rework[-1].head_sha')"
+  [ "$(queue)" = 0 ] || fail_case k-queue "an event was published after needs-human"
+  [ "$(count '^merge|^release')" = 0 ] || fail_case k-merge "a capped ticket was merged or released: $(effects)"
+  [ "$(jq -r .merged world/pr-1.json)" = false ] || fail_case k-merge "the code host says the PR is merged"
+  [ "$(doc | jq -r '.merge // "none"')" = none ] || fail_case k-merge "the document records a merge"
+  # The worker is given the previous verdict, not the earlier ones (§4).
+  n=2
+  while [ "$n" -le "$max" ]; do
+    has "rework-input-$n.md" "survived in head$((n - 1))" || fail_case k-input "attempt $n's input lacks the previous verdict"
+    if [ "$n" -ge 3 ]; then
+      ! has "rework-input-$n.md" "survived in head$((n - 2))" || fail_case k-input "attempt $n's input carries an earlier verdict"
+    fi
+    n=$((n + 1))
+  done
+  [ ! -e "rework-input-$((max + 1)).md" ] || fail_case k-crew "a worker input for attempt $((max + 1)) exists"
+  expect_refused k-resume
+  audit_go k-audit
+fi
+
+# (k') the same cap through a reviewer that always rejects: every judge is
+# the reviewer, and the record still audits.
+if [ -z "$mismatch" ]; then
+  reset
+  reworked STUB_CI=review STUB_REVIEW=reject || fail_case "k'" "run failed"
+  [ "$(doc | jq -r .state)" = needs-human ] || fail_case "k'-final" "final state $(doc | jq -r .state), want needs-human"
+  [ "$(count '^ci$')" = "$max" ] || fail_case "k'-ci" "ci ran $(count '^ci$') times, want $max"
+  [ "$(count '^review$')" = "$max" ] || fail_case "k'-review" "review ran $(count '^review$') times, want $max"
+  [ "$(count '^crew ')" = "$((max - 1))" ] || fail_case "k'-crew" "crew ran $(count '^crew ') times, want $((max - 1))"
+  [ "$(doc | jq '.rework | length')" = "$max" ] || fail_case "k'-rework" "rework has $(doc | jq '.rework | length') entries, want $max"
+  [ "$(doc | jq -c '[.rework[].judge] | unique')" = '["review"]' ] || fail_case "k'-rework" "judges: $(doc | jq -c '[.rework[].judge]')"
+  [ "$(queue)" = 0 ] || fail_case "k'-queue" "an event was published after needs-human"
+  [ "$(count '^merge|^release')" = 0 ] || fail_case "k'-merge" "a capped ticket was merged or released: $(effects)"
+  n=2
+  while [ "$n" -le "$max" ]; do
+    has "rework-input-$n.md" "stub rejected head$((n - 1))" || fail_case "k'-input" "attempt $n's input lacks the reviewer's reason"
+    ! has "rework-input-$n.md" TRANSCRIPT-MARKER || fail_case "k'-input" "the reviewer's transcript reached the worker at attempt $n"
+    n=$((n + 1))
+  done
+  expect_refused "k'-resume"
+  audit_go "k'-audit"
+fi
+
+# (l) a rework step that fails is not an attempt (§7, docs/adr/0034): the
+# crew fails, the ticket waits at ci-failed with one `error` entry and the
+# same attempt number, nothing queued; resume requests rework again, and
+# only the verdict that follows advances the count.
+if [ -z "$mismatch" ]; then
+  reset
+  if reworked STUB_CI=fail-once STUB_CREW=fail; then fail_case l "a run whose rework step failed exited 0"; fi
+  [ "$(doc | jq -r .state)" = ci-failed ] || fail_case l-stranded "state $(doc | jq -r .state), want ci-failed"
+  [ "$(doc | jq -r .attempt)" = 1 ] || fail_case l-stranded "attempt $(doc | jq -r .attempt), want 1"
+  [ "$(doc | jq '[.history[] | select(.error)] | length')" = 1 ] \
+    || fail_case l-stranded "$(doc | jq '[.history[] | select(.error)] | length') error entries, want 1"
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework!>ci-failed@1" ] || fail_case l-stranded "history: $(trail)"
+  [ "$(doc | jq '(.rework // []) | length')" = 0 ] || fail_case l-stranded "a failed rework step left a verdict on the record"
+  [ "$(doc | jq -r .pr.head_sha)" = head1 ] || fail_case l-stranded "pr.head_sha moved to $(doc | jq -r .pr.head_sha)"
+  [ "$(queue)" = 0 ] || fail_case l-stranded "a failed rework step published an event"
+  [ "$(effects)" = "assign,ci,crew 2," ] || fail_case l-stranded "effects: $(effects)"
+  if [ -z "$mismatch" ]; then
+    sh core/tower.sh resume 0001 2>"$log" || fail_case l-resume "resume of a stranded rework exited $?"
+    [ "$(queue)" = 1 ] || fail_case l-resume "resume queued $(queue) events, want 1"
+    [ "$(cat bus/*.msg | jq -r .step)" = rework ] || fail_case l-resume "resume requested $(cat bus/*.msg | jq -r .step), want rework"
+    STUB_CI=fail-once sh adapters/inproc/run.sh 2>"$log" || fail_case l-resume "the resumed run exited $?"
+    [ "$(doc | jq -r .state)" = rolled-back ] || fail_case l-resume "final state $(doc | jq -r .state), want rolled-back"
+    [ "$(effects)" = "assign,ci,crew 2,crew 2,ci,merge performed 1,release," ] || fail_case l-resume "effects: $(effects)"
+    [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework!>ci-failed@1,resume>ci-failed@1,rework>pr-opened@2,ci>ci-passed@2,merge>merged@2,release>rolled-back@2" ] \
+      || fail_case l-resume "history: $(trail)"
+    [ "$(doc | jq -r '"\(.rework | length) \(.rework[0].attempt)"')" = "1 1" ] \
+      || fail_case l-resume "rework after the resume: $(doc | jq -c .rework)"
+    audit_go l-audit
+  fi
+fi
+# (l') the stub crew's refusal is live, so the cases above mean something: a
+# head that moved on the code host since the verdict is refused by the crew
+# (§4), and that is a failed step like any other.
+if [ -z "$mismatch" ]; then
+  reset
+  sh core/tower.sh open 0001 2>"$log" || fail_case "l'" "open exited $?"
+  sh core/tower.sh step 0001 assign 2>"$log" || fail_case "l'" "assign exited $?"
+  STUB_CI=fail sh core/tower.sh step 0001 ci 2>"$log" || fail_case "l'" "ci exited $?"
+  [ "$(doc | jq -r .state)" = ci-failed ] || fail_case "l'" "state $(doc | jq -r .state), want ci-failed"
+  rm -f bus/*.msg
+  jq '.head_sha = "moved"' world/pr-1.json > world/pr-1.json.new && mv world/pr-1.json.new world/pr-1.json
+  if sh core/tower.sh step 0001 rework 2>"$log"; then fail_case "l'" "a rework of a head that is no longer the host's exited 0"; fi
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework!>ci-failed@1" ] || fail_case "l'" "history: $(trail)"
+  [ "$(jq -r .head_sha world/pr-1.json)" = moved ] || fail_case "l'" "the refused rework pushed a head"
 fi
 
 cd "$repo"
@@ -432,5 +678,5 @@ if [ -z "$mismatch" ]; then
   [ "$(cat "$g/status.log")" = "$head_sha failure" ] || fail_case h2 "status posted: $(cat "$g/status.log")"
 fi
 
-[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0019, 0033 or 0034"
+[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0019, 0033, 0034 or 0038"
 go
