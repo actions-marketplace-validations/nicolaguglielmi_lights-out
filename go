@@ -165,7 +165,7 @@ fi
 socket_flags=""
 host_sock_flag=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ "$(podman info --format '{{.Host.RemoteSocket.Exists}}')" = true ] \
