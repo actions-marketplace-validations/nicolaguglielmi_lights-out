@@ -17,22 +17,25 @@ wins when the two disagree. Decisions behind each step are in
 | M8, local part | Release images built, signed and verified before they take traffic |
 | M9 | The review step for medium- and high-risk PRs; ticket perimeters |
 | M12 | The Workload port: the platform operates on any workload, not only the bundled app |
+| M13 | Attach: `./go attach <path>` points a plain clone at your repository; its `.lights-out/` holds the contract, the dev-worker's brief and your thresholds (ADR 0037) |
+| M15 | The rework loop: a gates NO-GO or a review asking for changes goes back to the dev-worker with the verdict, up to four attempts, then a human (ADR 0038) |
+| Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
 
-1. **Contributor surface and README.** This file, CONTRIBUTING.md, a
-   quickstart and a guide for using lights-out on your own codebase.
-2. **M13 — attach.** `./go attach <path>` points a plain clone at a
-   repository of yours: its `.lights-out/` holds the contract, a brief for
-   the dev-worker and its own thresholds (ADR 0037). Then M14 (other
-   stacks), M15 (the rework loop), M16 (the agent network), M17 (the
-   dashboard).
-3. **The public legacy experiment.** lights-out pointed at a known
+1. **M14 — other stacks.** The dev-worker on your repository's own
+   toolchain instead of Python 3.13 and Node 24, with one stack beyond
+   Python proven end to end.
+2. **M16 — the agent network**, reviewed and decided: who splits a
+   ticket between workers, from the six roles there are.
+3. **The public legacy experiment.** lights-out attached to a known
    open-source Python codebase, on a batch of mechanical tickets
    (dependency upgrades, dead code, tests for untested code, deprecated
    APIs). The audit chain is published and the runs are replayable
    without a key. It fails if fewer than two tickets in three produce a
    mergeable PR with no human touching the code.
+4. **M17 — the dashboard.** The board grows into the view of every
+   ticket, attempt, worker and threshold you changed.
 
 ## Later
 
@@ -40,8 +43,6 @@ wins when the two disagree. Decisions behind each step are in
   browser.
 - **Gates for any agent.** The gates packaged to run beside Claude Code,
   Codex or Copilot. It needs its own ADR first.
-- **Language independence**, for the language of the first adopter who
-  needs it.
 
 ## When someone needs it
 
