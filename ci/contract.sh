@@ -3,8 +3,9 @@
 #
 # ci-contract: meta-gate. Runs every other gate with stdout captured and
 # stderr discarded, and fails unless each one honours the output contract in
-# ci/lib.sh: exactly one stdout line, "GO: <name>" with exit 0 or
-# "NO-GO: <name> — <reason>" with exit 1, no ANSI escape sequences. The gate's
+# ci/lib.sh: exactly one stdout line, "GO: <name>" (optionally followed by
+# " — <detail>", docs/adr/0042 §3) with exit 0 or "NO-GO: <name> — <reason>"
+# with exit 1, no ANSI escape sequences. The gate's
 # own verdict does not matter here, only its shape. Scans ci/, gates/ and
 # verify/ (docs/adr/0011 §4), skipping directories that do not exist yet;
 # gate basenames must be unique across the three. It also checks the lib's
@@ -59,7 +60,7 @@ for f in $files; do
   esac
 
   case "$out" in
-    "GO: $gate")
+    "GO: $gate"|"GO: $gate — "?*)
       [ "$rc" -eq 0 ] || { bad="$bad $gate(GO,exit=$rc)"; printf '%s: GO with exit %s\n' "$gate" "$rc" >&2; } ;;
     "NO-GO: $gate — "?*)
       [ "$rc" -eq 1 ] || { bad="$bad $gate(NO-GO,exit=$rc)"; printf '%s: NO-GO with exit %s\n' "$gate" "$rc" >&2; } ;;

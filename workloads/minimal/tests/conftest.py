@@ -21,6 +21,11 @@ _flag_tmp_dir = tempfile.mkdtemp(prefix="outage-flag-")
 OUTAGE_FLAG_FILE = Path(_flag_tmp_dir) / "flags.json"
 shutil.copy(_REAL_FLAGS_FILE, OUTAGE_FLAG_FILE)
 
+# The metric shape the port asks for (docs/adr/0030 §3, the stable HTTP
+# semconv) is opted into by the Containerfile's environment; the suite
+# runs outside that image too (`./go init`, the workbench, docs/adr/0042
+# §2), so it states the same requirement itself, before the app loads.
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
 os.environ["FLAGD_RESOLVER"] = "file"
 os.environ["FLAGD_OFFLINE_FLAG_SOURCE_PATH"] = str(OUTAGE_FLAG_FILE)
 # openfeature-provider-flagd 0.5.2 reuses FLAGD_DEADLINE_MS (not

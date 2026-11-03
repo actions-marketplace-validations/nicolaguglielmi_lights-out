@@ -15,9 +15,11 @@
 # too: the workload's layout is in its brief, worker.md. And an attached
 # repository is reached only through WORKLOAD and WORKLOAD_CONTRACT, so
 # neither its clone's location (.attached, the Makefile's and ./go's) nor
-# its contract directory (.lights-out) is spelt here. core/attach.sh is the
-# one exception to the second: it refuses a repository without a contract
-# before any make runs to compute one.
+# its contract directory (.lights-out) is spelt here. core/attach.sh,
+# core/init.py, core/init.sh and init's unit tests are the exceptions to
+# the second: attach looks for a contract before any make runs to compute
+# one, and init writes one (docs/adr/0042 §6), so both must know where it
+# lives.
 set -eu
 name=app-free
 . ci/lib.sh
@@ -35,7 +37,7 @@ hits=$(grep -rniE "$words" core gates verify adapters roles/dev-worker \
 contract_hits=$(grep -rnE '\.lights-out' core gates verify adapters roles/dev-worker \
   --include='*.sh' --include='*.py' --include='*.md' --include='*.promql' \
   --include='*.yaml' --include='*.yml' \
-  --exclude-dir=__pycache__ --exclude-dir=.pytest_cache | grep -v '^core/attach\.sh:' || true)
+  --exclude-dir=__pycache__ --exclude-dir=.pytest_cache | grep -Ev '^core/(attach\.sh|init\.py|init\.sh|tests/test_init\.py):' || true)
 
 [ -z "$hits" ] || nogo "core/, gates/, verify/, adapters/ or roles/dev-worker/ names a workload" "$hits"
 [ -z "$contract_hits" ] || nogo "core/, gates/, verify/, adapters/ or roles/dev-worker/ spells the contract directory instead of WORKLOAD_CONTRACT" "$contract_hits"
