@@ -578,7 +578,9 @@ Comprare stelle o scambiarle. Spammare awesome list. Lanciare su HN prima dell'e
 
 Ogni milestone ha una ADR prima del codice, lascia `./go ci` e `./go demo` verdi, e dichiara a L0 cosa replaya. Le stime sono settimane a 5–15 ore (stima mia, non misura). M18 e M20 toccano file diversi (tranne `Makefile`, README e questo piano) e possono andare in parallelo in due sessioni in worktree, con il merge alla fine; M19 dipende da M18; M21, M22 e M23 dipendono da M20.
 
-### M18 — Il modello è una scelta (ADR 0039)
+### M18 — Il modello è una scelta (ADR 0040)
+
+*Nota 2026-11-03:* la ADR 0039 era già presa dal runner Gitea lo stesso giorno; M18 è ADR 0040 e i numeri successivi di §16 slittano di uno (M19 → 0041, M20 → 0042, M21 → 0043, M22 → 0044, M23 → 0045).
 
 - `MODEL_PROVIDER` ∈ {`gemini`, `anthropic`, `openai`} e `MODEL` (l'id esatto, pinnato) nel profilo, sovrascrivibili da `.env`; `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` in `.env.example`, valori finti. L0 resta `replay`, senza provider.
 - `THINKING` del ruolo mappato per fornitore dentro l'adapter, mai nel ruolo: `thinkingLevel` per Gemini, il livello di ragionamento per Claude e per OpenAI, con la mappa in un file solo per adapter (`adapters/<harness>/thinking.env`), ogni riga con la fonte verificata il giorno in cui si scrive.
@@ -586,9 +588,11 @@ Ogni milestone ha una ADR prima del codice, lascia `./go ci` e `./go demo` verdi
 - `run.json` di ogni harness riporta `provider` e `model` serviti, non richiesti (la lezione di ADR 0018).
 - `ci/model-free.sh`: nessun id di modello in `core/`, `gates/`, `verify/`, `roles/`; solo in `profiles/` e `adapters/`.
 - *Da verificare prima di scrivere:* che ADK 2.9.1 esponga `LiteLlm` e passi il livello di ragionamento a Claude e OpenAI (le pagine lette il 2026-11-03 non sono versionate per la 2.x); la versione di LiteLLM da pinnare in `workbench/pyproject.toml`; gli id correnti dei modelli dei tre fornitori.
-- **Fatto quando:** `./go ci` ha `model-free`; `./go demo` è verde a L0 senza chiave; `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic` registra almeno un ruolo ADK con un modello non Gemini e `./go demo-triage` lo replaya a L0 con `provider` nel run.json; lo stesso con `openai`. Stima: 2–3 settimane.
+- **Fatto quando:** `./go ci` ha `model-free`; `./go demo` è verde a L0 senza chiave; `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` registra almeno un ruolo ADK con un modello non Gemini e `./go demo-triage` lo replaya a L0 con `provider` nel run.json; lo stesso con `openai` e `MODEL=gpt-6.1-sol`. Stima: 2–3 settimane.
 
-### M19 — Harness `claude-code` e `codex` (ADR 0040)
+*Stato 2026-11-03 (sessione M18):* fatto tranne la registrazione non-Gemini. `MODEL_PROVIDER`/`MODEL` nei profili e in `.env`; mappa del thinking in `adapters/adk/thinking.env` e `adapters/gemini-cli/thinking.env` con la fonte per riga; i ruoli ADK scelgono Claude e OpenAI con `LiteLlm` (`reasoning_effort`, senza planner, che `LiteLlm` 2.9.1 ignora) e Gemini col modello e il planner di ADK; `run.json` riporta `provider` e il modello servito; `ci/model-free.sh` in `./go ci`; `litellm==1.106.6` nel workbench (+190 MB di immagine). Il percorso `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` è implementato e documentato, non eseguito: la registrazione con una chiave non Gemini resta all'owner.
+
+### M19 — Harness `claude-code` e `codex` (ADR 0041)
 
 - Due adapter `AgentHarness` nuovi, una cartella ciascuno come `gemini-cli`: la CLI del fornitore pinnata da `package-lock.json` dentro un container, una sessione headless per run, lo stesso contratto di artefatti (`OUT/patch`, `pr.json`, `final.md`, `run.json`, `hooks.log`), l'adapter committa e non il modello (ADR 0017 §1).
 - **Suite di conformità dell'harness**, `gates/harness-conformance.sh`, sul modello di ADR 0026: su un ticket stub, l'adapter produce patch e `pr.json`; un `git push` dal modello è negato e loggato; la lettura di `.env` e dei file di chiave è negata; `MAX_TURNS`, `TIMEOUT_S` e `TOKEN_BUDGET` fermano il run; `run.json` dice il modello servito; nessuna chiave negli artefatti. `gemini-cli` la passa per primo; è il requisito d'ingresso per ogni harness, contribuito compreso.
@@ -596,7 +600,7 @@ Ogni milestone ha una ADR prima del codice, lascia `./go ci` e `./go demo` verdi
 - *Da verificare prima di scrivere:* che gli hook `PreToolUse` di Claude Code scattino in modalità `-p` e che l'exit code distingua budget esaurito da errore (fonti di comunità in disaccordo, 2026-11-03); gli eventi JSON di `codex exec --json` e le sue modalità sandbox; che entrambe le CLI accettino la chiave da variabile d'ambiente senza login interattivo.
 - **Fatto quando:** `./go harness-conformance` è `GO` per `gemini-cli`, `claude-code` e `codex`; `./go record TICKET=0001 PROFILE=l1 AGENT_HARNESS=claude-code` produce una PR che passa `./go gates`, e lo stesso con `codex`; le due registrazioni entrano in `fixtures/` con `provider`; `./go demo` è verde a L0. Stima: 3–4 settimane.
 
-### M20 — Gate ovunque: `./go init` e i gate senza piano (ADR 0041)
+### M20 — Gate ovunque: `./go init` e i gate senza piano (ADR 0042)
 
 Assorbe la metà "toolchain" di M14.
 
@@ -606,7 +610,7 @@ Assorbe la metà "toolchain" di M14.
 - **Secondo stack**: JavaScript con Stryker come runner di mutation, provato su un repo di esempio attaccabile; il gate di mutation legge uno score, non un tool.
 - **Fatto quando:** da un clone pulito, su `workloads/minimal` come repo a sé e senza `./go up`: `./go attach`, `./go init`, `./go gates` → `GO` in meno di 300 s (misurati nel report); lo stesso su un repo JavaScript di esempio; `./go demo-gates` e `./go demo-seam` invariati; `ci/workloads.sh` controlla le chiavi nuove. Stima: 3–4 settimane.
 
-### M21 — GitHub come code host e il rilascio di un repo attaccato (ADR 0042)
+### M21 — GitHub come code host e il rilascio di un repo attaccato (ADR 0043)
 
 Assorbe la metà "rilascio" di M14.
 
@@ -615,14 +619,14 @@ Assorbe la metà "rilascio" di M14.
 - L0 resta Gitea: nessuna API GitHub registrata, nessun finto GitHub. Un nightly su GitHub Actions contro un repository usa e getta dell'owner prova l'adapter a L1 (§11, "un adapter senza nightly è un debito").
 - **Fatto quando:** `./go e2e CODE_HOST=github PROFILE=l1` su un repo attaccato apre la PR su GitHub, la mergia dopo `GO: gates`, costruisce e rilascia il merge sul piano locale fino al rollback; il nightly è verde; `./go demo` invariato. Stima: 3 settimane.
 
-### M22 — Ops senza piano: incidente in entrata, post mortem in uscita (ADR 0043)
+### M22 — Ops senza piano: incidente in entrata, post mortem in uscita (ADR 0044)
 
 - Il ruolo ops-triage accetta, oltre all'alert JSON, un **incidente**: alert, record di release, estratto dei log e l'intervallo di tempo. Guadagna lo strumento `file_postmortem` (cronologia ancorata alla catena di audit, cause contribuenti, azioni correttive) accanto a `file_incident` e alle proposte; ogni azione correttiva diventa un ticket nel `Tracker`, che rientra nella tower come qualunque ticket: così il loop si chiude.
 - `./go postmortem INCIDENT=<file>` scrive `.crew/postmortem/<nome>/postmortem.md` e i ticket; `NO-GO` se la cronologia non è ancorata a release e PR reali della catena di audit o se un'azione non ha un ticket.
 - **La porta `Metrics` si generalizza**: l'adapter `promql` interroga `METRICS_URL`, qualunque endpoint compatibile Prometheus (Prometheus, Mimir, VictoriaMetrics, Managed Prometheus); `verify/slo.promql` resta un file solo; l'adapter `prometheus` del piano diventa il caso `METRICS_URL=http://prometheus:9090`. Così `./go verify` giudica le metriche vere dell'utente senza il piano.
 - **Fatto quando:** `./go demo-postmortem` a L0, senza chiave, replaya un incidente registrato dal record di release vero di `demo-rollback` e stampa `GO: demo-postmortem` con un ticket di fix in `tickets/`; `./go verify METRICS_URL=…` contro il Prometheus del piano dà lo stesso verdetto di oggi; i ruoli restano sei. Stima: 3 settimane.
 
-### M23 — Il comando unico e il pacchetto (ADR 0044)
+### M23 — Il comando unico e il pacchetto (ADR 0045)
 
 - Un'immagine pubblicata (`ghcr.io/nicolaguglielmi/lights-out`) e un wrapper `lights-out` di poche righe che fa quello che `./go` fa dal clone: `lights-out init`, `lights-out gates`, `lights-out triage`, `lights-out postmortem` su qualunque repo, senza clonare lights-out. Il piano completo resta `git clone && ./go demo`.
 - Una GitHub Action `lights-out gates` che posta la riga `GO`/`NO-GO` come check sulla PR; una ricetta documentata per chiamare `lights-out gates` da un hook di Claude Code, Codex o Gemini CLI prima del commit.

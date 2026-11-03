@@ -2,6 +2,7 @@
   "input": "{\n  \"chain\": {\n    \"merge\": \"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4\",\n    \"pr\": 2,\n    \"ticket\": \"0001\"\n  },\n  \"headline\": \"canary 0.2.0-waitlist: error_rate 100% at 5%\",\n  \"stable\": \"0.1.0-m2\",\n  \"stage\": {\n    \"numbers\": [\n      \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n      \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000\",\n      \"slo: latency_p95 canary(0.2.0-waitlist)=0.043 stable(0.1.0-m2)=0.024\"\n    ],\n    \"pct\": 5,\n    \"verdict\": \"NO-GO: launchpad \\u2014 5%: error_rate 1.000 exceeds the SLO \\u2192 rolled back\"\n  },\n  \"version\": \"0.2.0-waitlist\"\n}",
   "instruction_sha256": "5fd0ef02c52b3d47ca18e15cb32ad77f822f8ca40f41b19430e6def0164d14a3",
   "model": "gemini-3.8-flash",
+  "provider": "gemini",
   "recorded_at": "2026-09-16T14:47:25Z",
   "responses": [
     {

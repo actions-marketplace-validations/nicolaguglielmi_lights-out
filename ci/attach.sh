@@ -51,7 +51,8 @@ commit() { git -c commit.gpgsign=false commit -q "$@"; }
 # it. WORKLOAD itself is unset (ATTACHED or the caller names it), ATTACHED
 # is a temp path, and no MAKEFLAGS of the enclosing make reaches a nested one.
 as_ci() {
-  env -u WORKLOAD -u MAKEFLAGS -u MFLAGS -u MAKELEVEL -u HARNESS -u GEMINI_API_KEY \
+  env -u WORKLOAD -u MAKEFLAGS -u MFLAGS -u MAKELEVEL -u HARNESS \
+    -u GEMINI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u MODEL_PROVIDER -u MODEL \
     WORKLOAD_CONTRACT=app WORKLOAD_ATTACHED= COMPOSE_FILE=compose.yaml:app/compose.yaml \
     FLAGS_FILE=app/flags/flags.json TICKETS_DIR=tickets CANARY_VERSION=0.0.0-environment \
     ATTACHED="$t/never-attached" "$@"
@@ -319,7 +320,7 @@ if [ -z "$mismatch" ]; then
   [ "$rc" -eq 1 ] || fail_case e "core/crew.sh exited $rc, want 1: $out"
   [ "$(awk 'END{print NR}' "$t/crew.out")" -eq 1 ] || fail_case e "stdout is not one line: $out"
   case "$out" in "NO-GO: crew — "*) : ;; *) fail_case e "core/crew.sh said: $out (want NO-GO: crew — ...)" ;; esac
-  for word in attached L1 GEMINI_API_KEY; do
+  for word in attached L1 MODEL_PROVIDER; do
     case "$out" in *"$word"*) : ;; *) fail_case e "the refusal does not mention $word: $out" ;; esac
   done
   [ ! -e "$t/crew/.crew" ] || fail_case e "core/crew.sh prepared $t/crew/.crew before refusing"
