@@ -16,6 +16,7 @@
 #   ./go demo-seam      prove attach and the Workload port on workloads/minimal as its own repository
 #   ./go attach <path>  make a repository of yours, with a .lights-out/ contract, the workload
 #   ./go detach         drop the attached repository; the workload is app/ again
+#   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
@@ -187,7 +188,7 @@ fi
 socket_flags=""
 host_sock_flag=""
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board|demo-rework)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board|demo-rework)
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
       [ "$(podman info --format '{{.Host.RemoteSocket.Exists}}')" = true ] \

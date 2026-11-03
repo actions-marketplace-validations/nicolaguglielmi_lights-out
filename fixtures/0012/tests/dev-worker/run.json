@@ -1,0 +1,6 @@
+{
+  "hand_written": true,
+  "model": null,
+  "member": "tests",
+  "note": "Written by hand to prove the network governance at L0 (docs/adr/0036 §7). No model produced this patch; a recorded run replaces it (docs/plans/agentic-network.md, step 5)."
+}

@@ -41,7 +41,8 @@ fi
 # shellcheck disable=SC1090,SC1091 # role.env's path is built from $ROLE
 . "roles/$ROLE/role.env"
 # A role may name its own harness (docs/adr/0020 §1); the profile's is the default.
-harness=${HARNESS:-$AGENT_HARNESS}
+# CREW_HARNESS, read here only, picks one for this run (docs/adr/0036 §5).
+harness=${CREW_HARNESS:-${HARNESS:-$AGENT_HARNESS}}
 
 # docs/adr/0037 §8: fixtures/ holds this checkout's runs on its own
 # tickets. An attached repository has none, so at L0 there is nothing to

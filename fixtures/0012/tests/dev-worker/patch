@@ -1,0 +1,67 @@
+From 4ebf595625bbf7974dff882d98f1bef85b225c73 Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Tue, 3 Nov 2026 06:23:54 +0100
+Subject: [PATCH] Test that a meetup capacity below one is refused
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Written from ticket 0012's acceptance criteria alone, through the HTTP
+API: capacity 0 and -1 answer 422 and list nothing; capacity 1 answers
+201 with capacity 1.
+
+Hand-written L0 fixture for ticket 0012's tests member (docs/adr/0036
+§7): no model wrote this change.
+---
+ app/backend/tests/test_meetup_capacity.py | 39 +++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+ create mode 100644 app/backend/tests/test_meetup_capacity.py
+
+diff --git a/app/backend/tests/test_meetup_capacity.py b/app/backend/tests/test_meetup_capacity.py
+new file mode 100644
+index 0000000..516e76b
+--- /dev/null
++++ b/app/backend/tests/test_meetup_capacity.py
+@@ -0,0 +1,39 @@
++"""Ticket 0012, from its acceptance criteria: a meetup's capacity is at
++least one; anything lower is refused with 422 and creates nothing.
++"""
++
++import pytest
++
++
++def _token(client, email):
++    client.post("/api/signup", json={"email": email, "password": "hunter2"})
++    login = client.post("/api/login", json={"email": email, "password": "hunter2"})
++    return login.json()["token"]
++
++
++def _create(client, token, capacity):
++    return client.post(
++        "/api/meetups",
++        json={
++            "title": "Capacity check",
++            "starts_at": "2026-03-01T18:00:00Z",
++            "venue": "Roma, Colosseo",
++            "capacity": capacity,
++        },
++        headers={"Authorization": f"Bearer {token}"},
++    )
++
++
++@pytest.mark.parametrize("capacity", [0, -1])
++def test_capacity_below_one_is_422_and_creates_nothing(client, geocoder_server, capacity):
++    token = _token(client, f"low{capacity}@example.com")
++    resp = _create(client, token, capacity)
++    assert resp.status_code == 422
++    assert client.get("/api/meetups").json() == []
++
++
++def test_capacity_of_one_is_accepted(client, geocoder_server):
++    token = _token(client, "one@example.com")
++    resp = _create(client, token, 1)
++    assert resp.status_code == 201
++    assert resp.json()["capacity"] == 1
+-- 
+2.54.0 (Apple Git-157)
+

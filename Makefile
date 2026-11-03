@@ -150,7 +150,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board roles contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free hooks harness network tower perimeter review prompts evals promote board roles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -572,6 +572,30 @@ e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify 
 	fi
 	@$(MAKE) --no-print-directory audit TICKET="$(TICKET)" >&2 || { printf 'NO-GO: e2e — audit did not pass\n'; exit 1; }
 	@printf 'GO: e2e\n'
+
+# The network (docs/adr/0036): ticket 0012's two members, `impl` and
+# `tests`, through the same golden path as e2e, then the facts only a
+# network run has. At L0 the members replay hand-written fixtures, and
+# this target says so on stderr; the tower records model null. Not in
+# demo's fixed list (docs/adr/0003).
+.PHONY: demo-network
+demo-network: ## Prove a network of members on ticket 0012: one PR, gated, merged, canary rolled back, audited (docs/adr/0036)
+	@$(MAKE) --no-print-directory e2e TICKET=0012 CREW_HARNESS=network >&2 \
+		|| { printf 'NO-GO: demo-network — the tower did not carry ticket 0012 from network to rollback\n'; exit 1; }
+	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets 0012) || { printf 'NO-GO: demo-network — no document for ticket 0012\n'; exit 1; }; \
+	run=.crew/0012/out/run.json; \
+	harness=$$(printf '%s' "$$doc" | jq -r '.task.harness'); \
+	[ "$$harness" = network ] || { printf 'NO-GO: demo-network — task.harness is %s, want network\n' "$$harness"; exit 1; }; \
+	members=$$(jq -r '[.members[].id] | join(",")' "$$run" 2>/dev/null); \
+	[ "$$members" = impl,tests ] || { printf 'NO-GO: demo-network — run.json members are [%s], want impl,tests\n' "$$members"; exit 1; }; \
+	base=$$(printf '%s' "$$doc" | jq -r .pr.base_sha); head=$$(printf '%s' "$$doc" | jq -r .pr.head_sha); \
+	commits=$$(git -C .crew/0012/workspace rev-list --count "$$base..$$head" 2>/dev/null) || commits=0; \
+	[ "$$commits" -eq 2 ] || { printf 'NO-GO: demo-network — the PR holds %s commits, want one per member\n' "$$commits"; exit 1; }; \
+	ci=$$(printf '%s' "$$doc" | jq -r '"\(.ci.verdict)/\(.ci.risk_level)/\(.ci.decision)"'); \
+	[ "$$ci" = GO/low/auto-merge ] || { printf 'NO-GO: demo-network — gates %s, want GO/low/auto-merge\n' "$$ci"; exit 1; }; \
+	hand=$$(jq -r '[.members[] | select(.run.recorded.hand_written == true) | .id] | join(",")' "$$run"); \
+	[ -z "$$hand" ] || printf '[demo-network] members %s replayed hand-written fixtures: no model ran (docs/adr/0036 §7)\n' "$$hand" >&2; \
+	printf 'GO: demo-network\n'
 
 .PHONY: audit
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
