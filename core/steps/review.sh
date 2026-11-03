@@ -12,8 +12,9 @@
 # `architect` runs through the same script (docs/adr/0021 §4) but nothing
 # in the tower calls it. The harness's final message decides the state:
 # APPROVED reaches ci-passed (merge's own precondition, unchanged), and
-# CHANGES-REQUESTED reaches ci-failed (already terminal) — nothing else
-# is a valid verdict, and there is no default. Called by the tower
+# CHANGES-REQUESTED reaches ci-failed, from which the tower sends the
+# reason back to the worker (core/steps/rework.sh, docs/adr/0038) —
+# nothing else is a valid verdict, and there is no default. Called by the tower
 # (PR_NUMBER, BASE_SHA, HEAD_SHA from the document) and by the Makefile's
 # `review` target (from .crew/<id>/pr-opened.env): one code path for both,
 # ci.sh's own precedent.
@@ -61,10 +62,12 @@ sh "adapters/$TRACKER/get.sh" "$TICKET" > "$review_dir/ticket.md" \
 # The input document (docs/adr/0021 §2, §3): ticket text, then the diff.
 # Not the risk verdict — that would invite a review of the size number
 # instead of the code, and the risk verdict has already done its job by
-# routing the PR here. No commit sha in this text, on purpose: a replay
-# reapplies the recorded patch with `git am`, which mints a fresh commit
-# (new hash, new timestamp) for byte-identical content every time, so a
-# sha embedded here would make input_matches_recorded false on every
+# routing the PR here — nor an earlier attempt's verdict: the reviewer
+# reads the ticket and the diff, every attempt (docs/adr/0038 §4). No
+# commit sha in this text, on purpose: a replay reapplies the recorded
+# patch with `git am`, which mints a fresh commit (new hash, new
+# timestamp) for byte-identical content every time, so a sha embedded
+# here would make input_matches_recorded false on every
 # ordinary replay — a constant false positive, not a drift signal.
 {
   cat "$review_dir/ticket.md"
@@ -84,7 +87,10 @@ input_sha256=$(sha256sum "$review_dir/input.md" | cut -d' ' -f1)
 # `git am` it onto a workspace that already had it, refusing every time.
 mkdir -p "$review_dir/out"
 review_head=$(git -C "$review_dir/workspace" rev-parse HEAD)
-ROLE="$ROLE" TICKET="$TICKET" WORKSPACE="$review_dir/workspace" BASE="$review_head" \
+# The attempt under review (docs/adr/0038 §8): replay keys its verdict on it.
+attempt=1
+[ -z "${DOC_FILE:-}" ] || attempt=$(jq -r '.attempt // 1' "$DOC_FILE")
+ROLE="$ROLE" TICKET="$TICKET" ATTEMPT="$attempt" WORKSPACE="$review_dir/workspace" BASE="$review_head" \
 OUT="$review_dir/out" TICKET_FILE="$review_dir/input.md" \
 THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
   sh "adapters/$harness/run.sh" >&2 \

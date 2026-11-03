@@ -5,7 +5,8 @@
 # the record: the PR, the range, which harness and model produced it, and
 # the spec as the harness read it (sha256 and first line of the ticket
 # text). Re-runnable: crew.sh wipes .crew/<ticket> and reclones. Prints
-# the fields to merge into the document; next state pr-opened.
+# the fields to merge into the document; next state pr-opened, attempt 1
+# (core/steps/rework.sh counts the next ones, docs/adr/0038).
 set -eu
 : "${TICKET:?TICKET not set}"
 : "${ROLE:=dev-worker}"
@@ -24,7 +25,7 @@ spec_title=$(head -n1 "$crew_dir/ticket.md" | sed 's/^# *//')
 jq -cn --arg n "$PR_NUMBER" --arg url "$PR_URL" --arg base "$BASE_SHA" --arg head "$HEAD_SHA" \
   --arg harness "$harness" --arg model "$model" --arg role "$ROLE" \
   --arg sha "$spec_sha" --arg title "$spec_title" \
-  '{state: "pr-opened",
+  '{state: "pr-opened", attempt: 1,
     pr: {number: ($n | tonumber), url: $url, base_sha: $base, head_sha: $head},
     task: {role: $role, harness: $harness, model: (if $model == "null" then null else $model end)},
     spec: {sha256: $sha, title: $title}}'

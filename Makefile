@@ -232,7 +232,9 @@ verify: ## Check verify/slo.promql against the live app (M1: metric shape only, 
 
 # Each gate's own stdout line is the verdict; a gate's stderr (compose
 # builds, pytest, bandit, cosmic-ray) streams straight through, live, never
-# captured here. `gates` writes $(GATES_OUT)/verdict.env in the exact shape
+# captured here. A NO-GO's own details (nogo's DETAILS lines, e.g. the
+# surviving mutants) also land in $(GATES_OUT)/<gate>.details, which the CI
+# step hands to the rework loop (docs/adr/0038 §5). `gates` writes $(GATES_OUT)/verdict.env in the exact shape
 # gates/fixtures/*/expect uses, so demo-gates can diff the two instead of
 # re-parsing anything (docs/adr/0015 §2, §6).
 .PHONY: gates
@@ -241,7 +243,7 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 	@failed=""; failreason=""; \
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
-		out=$$(BASE="$(BASE)" HEAD="$(HEAD)" sh "$$script"); \
+		out=$$(BASE="$(BASE)" HEAD="$(HEAD)" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
 		case "$$out" in \
 			"GO: $$g") ;; \
 			*) failed=$$g; failreason=$$out; break ;; \
@@ -589,6 +591,40 @@ resume: ## Request again the step a ticket failed, keeping its history: TICKET=<
 	printf '[resume] ticket %s is at %s\n' "$(TICKET)" "$$state" >&2
 	@printf 'GO: resume\n'
 
+# The rework loop live at L0 (docs/adr/0038 §10). Ticket 0013's attempt 1
+# is the committed fake-test change, NO-GO at mutation; the tower sends the
+# verdict back to the worker, attempt 2 answers it, GO, merge, and the
+# release rolls back as in e2e: after merge nothing loops. Both attempts
+# are hand-written fixtures (README, "What is real"); the gates, the tower
+# and the loop are real. The assertions read the document and the input
+# the worker was actually given, not a log line.
+.PHONY: demo-rework
+demo-rework: TICKET := 0013
+demo-rework: ## Prove the rework loop: ticket 0013 NO-GO at the gates, reworked with the verdict, GO and merged (docs/adr/0038)
+	@$(MAKE) --no-print-directory up
+	@printf '[demo-rework] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
+	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: demo-rework — could not reset the document\n'; exit 1; }
+	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: demo-rework — could not open ticket %s\n' "$(TICKET)"; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: demo-rework — a step failed; see the [tower] lines above\n'; exit 1; }
+	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)") || { printf 'NO-GO: demo-rework — no document for ticket %s\n' "$(TICKET)"; exit 1; }; \
+	trail=$$(printf '%s' "$$doc" | jq -r '[.history[] | "\(.step):\(.state):\(.attempt // "-")"] | join(" ")'); \
+	want='open:opened:- assign:pr-opened:1 ci:ci-failed:1 rework:pr-opened:2 ci:ci-passed:2 merge:merged:2 release:rolled-back:2'; \
+	[ "$$trail" = "$$want" ] || { printf 'NO-GO: demo-rework — history is %s, want %s\n' "$$trail" "$$want"; exit 1; }; \
+	line=$$(printf '%s' "$$doc" | jq -r '.rework[0].line // empty'); \
+	case "$$line" in "NO-GO: gates — mutation"*) : ;; \
+		*) printf 'NO-GO: demo-rework — attempt 1 was not sent back by the mutation gate: %s\n' "$${line:-no rework entry}"; exit 1 ;; esac; \
+	input=".crew/$(TICKET)/input.md"; \
+	grep -qF -- "$$line" "$$input" || { printf 'NO-GO: demo-rework — %s does not carry attempt 1'"'"'s verdict\n' "$$input"; exit 1; }; \
+	details=$$(printf '%s' "$$doc" | jq -r '.rework[0].details[]'); \
+	[ -n "$$details" ] || { printf 'NO-GO: demo-rework — attempt 1'"'"'s verdict has no gate details\n'; exit 1; }; \
+	printf '%s\n' "$$details" | while IFS= read -r d; do grep -qF -- "$$d" "$$input" || exit 1; done \
+		|| { printf 'NO-GO: demo-rework — %s does not carry the gate'"'"'s details\n' "$$input"; exit 1; }; \
+	printf '[demo-rework] attempt 1: %s\n' "$$line" >&2; \
+	printf '%s\n' "$$details" | sed 's/^/[demo-rework]   /' >&2; \
+	printf '[demo-rework] attempt 2: %s\n' "$$(printf '%s' "$$doc" | jq -r .ci.line)" >&2
+	@$(MAKE) --no-print-directory audit TICKET="$(TICKET)" >&2 || { printf 'NO-GO: demo-rework — audit did not pass\n'; exit 1; }
+	@printf 'GO: demo-rework\n'
+
 .PHONY: review
 review: ## Judge an opened PR outside the tower: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021)
 	@role="$(ROLE)"; [ -n "$$role" ] || role=test-reviewer; \
@@ -621,7 +657,8 @@ demo-review: ## Prove a medium/high-risk PR goes through the review step to a tr
 			*) printf 'NO-GO: demo-review — approved but state is %s, expected past ci-passed\n' "$$state"; exit 1 ;; \
 		esac ;; \
 		changes-requested) \
-			[ "$$state" = ci-failed ] || { printf 'NO-GO: demo-review — changes-requested but state is %s, expected ci-failed\n' "$$state"; exit 1; }; \
+			case "$$state" in ci-failed|needs-human) : ;; \
+				*) printf 'NO-GO: demo-review — changes-requested but state is %s, expected ci-failed or needs-human (docs/adr/0038)\n' "$$state"; exit 1 ;; esac; \
 			merge_sha=$$(printf '%s' "$$doc" | jq -r '.merge.sha // empty'); \
 			[ -z "$$merge_sha" ] || { printf 'NO-GO: demo-review — changes-requested but merge.sha is %s\n' "$$merge_sha"; exit 1; } ;; \
 		*) printf 'NO-GO: demo-review — unexpected verdict %s\n' "$$verdict"; exit 1 ;; \

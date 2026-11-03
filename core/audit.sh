@@ -40,14 +40,14 @@ case "$state" in
   merged|rolled-back|held) need .merge.sha; need .merge.head_sha; need .ci.verdict ;;
 esac
 case "$state" in
-  ci-passed|review|ci-failed|merged|rolled-back|held) need .ci.verdict; need .ci.head_sha ;;
+  ci-passed|review|ci-failed|needs-human|merged|rolled-back|held) need .ci.verdict; need .ci.head_sha ;;
 esac
 # A reviewed merge with no review on the record is exactly what an audit
 # exists to catch (docs/adr/0021 §9): "review" alone means the step has
 # not run yet (nothing to need); any state past it must carry a verdict.
 decision=$(f .ci.decision)
 case "$state" in
-  ci-passed|ci-failed|merged|rolled-back|held)
+  ci-passed|ci-failed|needs-human|merged|rolled-back|held)
     [ "$decision" != review ] || { need .review.verdict; need .review.reason; } ;;
 esac
 case "$state" in
@@ -96,6 +96,8 @@ esac
     "$(f .pr.number)" "$(f .pr.url)" "$(f .ci.verdict)" "$(f .ci.risk_level)" "$decision" "$pr_head"
   review_verdict=$(f .review.verdict)
   [ -z "$review_verdict" ] || printf '  ← review %s (%s): %s\n' "$(f .review.role)" "$review_verdict" "$(f .review.reason)"
+  # Each attempt the judges sent back (docs/adr/0038 §9), newest first.
+  printf '%s' "$doc" | jq -r '(.rework // []) | reverse[] | "  ← rework attempt \(.attempt) (head \(.head_sha)), \(.judge): \(.line)"'
   printf '  ← ticket %s (%s, harness %s, model %s)\n' \
     "$TICKET" "$(f .task.role)" "$(f .task.harness)" "$(printf '%s' "$doc" | jq -r '.task.model // "none"')"
   printf '  ← spec   sha256:%s "%s"\n' "$(f .spec.sha256)" "$(f .spec.title)"

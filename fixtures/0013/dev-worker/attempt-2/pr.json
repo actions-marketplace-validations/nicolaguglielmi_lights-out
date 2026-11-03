@@ -1,0 +1,4 @@
+{
+  "title": "Post the venue the contract answers 404 for",
+  "body": "The unknown-venue test posted \"Nowhere, Atlantis\", the contract's\nexisting 200 [] example, so it passed with or without the 404 branch: the\nmutants on geocoder_client.py's new lines survived. It now posts\n\"Unknown Venue, Nowhere\", the example this change adds, whose 404 body is\na trap a client that reads it would turn into coordinates.\n\nHand-written L0 fixture for ticket 0013's attempt 2 (docs/adr/0038 §10):\nthe answer to attempt 1's mutation verdict. No model wrote this change."
+}

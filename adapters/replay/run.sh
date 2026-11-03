@@ -12,17 +12,22 @@
 # own head, so `format-patch` there is empty by construction, docs/adr/
 # 0021 §2's fix) is copied as-is, nothing applied. `-s`, not `-f`: an
 # empty `patch` file (every run gets one, even a reading role's) must not
-# route here. Adapter convention (docs/adr/0012 §6): not a gate, silent
+# route here. Attempt n > 1 of a rework (docs/adr/0038 §8) replays
+# fixtures/<ticket>/<role>/attempt-<n>/, applied on the head the previous
+# attempt left. Adapter convention (docs/adr/0012 §6): not a gate, silent
 # on success, one stderr line and exit 1 on failure.
 set -eu
 : "${ROLE:?ROLE not set}"
 : "${TICKET:?TICKET not set}"
 : "${WORKSPACE:?WORKSPACE not set}"
 : "${OUT:?OUT not set}"
+: "${ATTEMPT:=1}"
 
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-fixture="$here/fixtures/$TICKET/$ROLE"
+rel="$TICKET/$ROLE"
+[ "$ATTEMPT" -le 1 ] || rel="$rel/attempt-$ATTEMPT"
+fixture="$here/fixtures/$rel"
 
 mkdir -p "$OUT"
 
@@ -37,16 +42,16 @@ elif [ -s "$fixture/patch" ] && [ -f "$fixture/pr.json" ]; then
   if ! git -C "$WORKSPACE" -c user.name=lights-out-crew -c user.email=crew@lights-out.invalid \
       am "$fixture/patch" >&2; then
     git -C "$WORKSPACE" am --abort >&2 || true
-    printf 'harness-replay: fixtures/%s/%s/patch does not apply to this workspace\n' "$TICKET" "$ROLE" >&2
+    printf 'harness-replay: fixtures/%s/patch does not apply to this workspace\n' "$rel" >&2
     exit 1
   fi
 else
-  printf 'harness-replay: no recorded fixture at fixtures/%s/%s; record one with ./go record TICKET=%s PROFILE=l1\n' \
-    "$TICKET" "$ROLE" "$TICKET" >&2
+  printf 'harness-replay: no recorded fixture at fixtures/%s; record one with ./go record TICKET=%s PROFILE=l1\n' \
+    "$rel" "$TICKET" >&2
   exit 1
 fi
 
 recorded='{}'
 [ -f "$fixture/run.json" ] && recorded=$(cat "$fixture/run.json")
-jq -n --argjson recorded "$recorded" --arg source "fixtures/$TICKET/$ROLE" \
+jq -n --argjson recorded "$recorded" --arg source "fixtures/$rel" \
   '{harness: "replay", model: null, source: $source, recorded: $recorded}' > "$OUT/run.json"
