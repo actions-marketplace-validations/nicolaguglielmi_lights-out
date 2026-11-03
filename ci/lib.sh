@@ -35,6 +35,8 @@ nogo() {
 # keeps every gates/*.sh instant with no range and no plane. Otherwise sets
 # $base to the merge-base of BASE and HEAD (the PR's own changes, as a code
 # host would show them) and $head to HEAD, for the caller to diff against.
+# The range is the workload's repository's: this one for a bundled
+# workload, the attached repository's otherwise (docs/adr/0036 §3).
 # Not called by sourcing ci/lib.sh: only gates that need a range call it.
 require_range() {
   base_ref=${BASE:-}
@@ -42,8 +44,20 @@ require_range() {
   if [ -z "$base_ref" ] || [ -z "$head_ref" ]; then
     nogo "BASE and HEAD must both be set"
   fi
-  base=$(git merge-base "$base_ref" "$head_ref" 2>&1) \
+  base=$(git -C "${WORKLOAD:-.}" merge-base "$base_ref" "$head_ref" 2>&1) \
     || nogo "git merge-base $base_ref $head_ref failed" "$base"
   # shellcheck disable=SC2034 # head is consumed by the sourcing gate
   head=$head_ref
+}
+
+# effective_policy FILE: policy/merge.env with the workload's own
+# policy.env over it (docs/adr/0036 §5), written to FILE by core/policy.py,
+# the one reader of either. NO-GO naming the key on an unknown key, a
+# malformed value or a missing provenance; an override looser than the
+# platform default is reported on stderr and applied.
+effective_policy() {
+  [ -n "${WORKLOAD_CONTRACT:-}" ] || nogo "WORKLOAD_CONTRACT is not set; run this via ./go, not directly"
+  policy_reason=$(python3 core/policy.py --platform policy/merge.env \
+    --workload-env "$WORKLOAD_CONTRACT/workload.env" \
+    --overrides "$WORKLOAD_CONTRACT/policy.env" --out "$1") || nogo "$policy_reason"
 }
