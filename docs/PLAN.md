@@ -335,6 +335,17 @@ L'app bersaglio smette di essere cablata nella piattaforma. Una porta per il wor
 Prima di scrivere: un ADR corto per il report e la persistenza.
 **Fatto quando:** `./go ci` verde con `app-free` esteso a `roles/`; `./go demo` identico entro il budget, con le fixture 0001/0005 ri-registrate (`input_matches_recorded: true`); `./go report` su `./go e2e` produce il resoconto del ticket 0001 con numeri che coincidono con quelli di `./go audit`; e dopo `./go down` + `./go up` il report si rigenera identico.
 
+### M15 — Il loop di rework
+*Aggiunta 2026-11-03, decisione dell'owner (sequenza M13 attach, M14 stack, M15 rework, M16 rete di agenti, M17 dashboard; le sezioni M13 e M14 arrivano con le loro sessioni).* Oggi un NO-GO prima del merge chiude il ticket: un gate in NO-GO porta la tower in `ci-failed`, terminale; una review che non approva è un verdetto, mai un giro di modifiche. M15 aggiunge due dei cinque loop: il **loop di condizione** (l'uscita la giudica qualcuno che non è chi ha fatto il lavoro: i gate) e il **loop di review** (review → si risponde a ogni rilievo → si ripusha). Tutti e due governati dall'harness, tutti e due solo prima del merge. Dopo il merge non cambia niente: un canary che fallisce torna indietro da solo, e il GO/NO-GO umano prima del 100% resta l'unico gate umano.
+- Dopo un NO-GO di un gate o una review con CHANGES-REQUESTED, il dev-worker riparte sullo stesso ticket, con lo stesso perimetro, dalla propria PR, e riceve come input il verdetto precedente: la riga NO-GO più i dettagli del gate (per esempio i mutanti sopravvissuti), oppure i rilievi del reviewer. Mai la conversazione sua o dei reviewer; i reviewer continuano a leggere solo ticket e diff.
+- Nessun settimo ruolo: il rework è uno step della tower, non un ruolo (`ci/roles.sh`).
+- Tentativi limitati da un numero con provenienza, scritto nell'ADR. Al limite il ticket finisce in uno stato che dice chiaramente che serve una persona. Mai un loop silenzioso.
+- Stesse regole a ogni tentativo: policy e gate della base (ticket 0007), stesso controllo di perimetro, stesso risk routing. Un tentativo che allenta un test o un gate lo prendono la mutation e i path di rischio di piattaforma, non la fiducia.
+- Ogni tentativo resta nella storia della tower (verdetto, numero del tentativo, timestamp); la board lo mostra, con la tabella `tower-machine` allineata e uno scenario "NO-GO, rework, GO".
+- A L0 le risposte dei tentativi 1 e 2 possono essere fixture scritte a mano, dichiarate come tali nel README; gate, tower e loop sono veri. Nessun token Gemini senza chiedere.
+Prima di scrivere: ADR 0038.
+**Fatto quando:** `./go demo-rework` a L0, senza chiave, stampa `GO: demo-rework`: un ticket va in NO-GO al tentativo 1, torna al worker con il verdetto, passa in GO al tentativo 2 e viene mergiato, con la catena di `./go audit` verde; `./go ci-tower` dimostra che un ticket che non passa mai si ferma al limite in `needs-human`; `./go ci` è verde; `./go demo` arriva ancora al rollback automatico del canary a L0, senza API key, entro 900 s (secondi misurati nel report).
+
 ---
 
 ## 8. Il golden path
