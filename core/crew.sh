@@ -31,7 +31,8 @@ fi
 # shellcheck disable=SC1090,SC1091 # role.env's path is built from $ROLE
 . "roles/$ROLE/role.env"
 # A role may name its own harness (docs/adr/0020 §1); the profile's is the default.
-harness=${HARNESS:-$AGENT_HARNESS}
+# CREW_HARNESS, read here only, picks one for this run (docs/adr/0036 §5).
+harness=${CREW_HARNESS:-${HARNESS:-$AGENT_HARNESS}}
 
 here=$(pwd)
 crew_dir="$here/.crew/$TICKET"
