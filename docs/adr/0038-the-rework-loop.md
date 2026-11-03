@@ -61,7 +61,8 @@ separates the one-line reason from the details, which go to stderr only.
    attempts per day — against an external constraint, the Gemini API free
    tier's 250 requests per day at `MAX_TURNS=60` (4 × 60 = 240 ≤ 250). Four
    full-budget attempts of one ticket fit one day's quota; a fifth could
-   not run the same day anyway. Context, not source: at M9 the two blind
+   not run the same day anyway. The owner confirmed four for this loop on
+   2026-11-03. Context, not source: at M9 the two blind
    `record` runs took 4 (ticket 0001) and 6 (ticket 0005) live attempts
    with no verdict to read. The policy is read from the tower's own
    checkout, never from the PR, and `policy/*` is already a platform path
