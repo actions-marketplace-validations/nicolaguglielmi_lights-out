@@ -149,9 +149,16 @@ class SelectModelTest(unittest.TestCase):
         self.assertIsInstance(got, replay.ReplayLlm)
 
     def test_a_real_harness_with_no_key_raises_no_key(self):
+        # docs/adr/0040 §1: a live run names its provider and model; the
+        # placeholder key of the chosen provider is still refused.
         with mock.patch.dict(
             os.environ,
-            {"AGENT_HARNESS": "gemini-cli", "GEMINI_API_KEY": "replace-me"},
+            {
+                "AGENT_HARNESS": "gemini-cli",
+                "MODEL_PROVIDER": "gemini",
+                "MODEL": "gemini-3.8-flash",
+                "GEMINI_API_KEY": "replace-me",
+            },
         ):
             with self.assertRaises(model.NoKey):
                 model.select_model("ops-triage", "low")

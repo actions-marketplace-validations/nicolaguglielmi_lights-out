@@ -2,6 +2,7 @@
   "input": "# 0005 \u2014 Add a waiting list when a meetup is full\n\n- Status: open\n- Labels: app/backend, feature\n- Found: 2026-09-16, a member asked to be notified when a full meetup frees a seat\n\n## Problem\n\nA meetup with `capacity` already reached refuses every further signup\nwith a flat 409. Members who wanted in have no way to be notified if a\nspot opens up later, so they give up and go elsewhere. We want a\nwaiting list: once a meetup is full, further signups join a queue\ninstead of being rejected outright, and when a confirmed attendee\ncancels, the first person on the queue takes their seat.",
   "instruction_sha256": "35ae93ea67b426af244cc1ce57823c190df4f8346803e0f1d36390d313cc129f",
   "model": "gemini-3.8-flash",
+  "provider": "gemini",
   "recorded_at": "2026-09-16T14:50:50Z",
   "responses": [
     {

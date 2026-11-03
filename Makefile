@@ -150,7 +150,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free hooks harness network tower perimeter review prompts evals promote board roles contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free model-free hooks harness network tower perimeter review prompts evals promote board roles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -857,9 +857,13 @@ delivery-conformance: ## Six-case Delivery/Flags conformance suite, real release
 # while the eval runs; a role whose eval fails has its new recordings
 # moved to .crew/adk/<role>/ for study, never committed. Refuses at L0
 # (recording a replay is circular, the `record` precedent) and refuses a
-# fixture that contains the key.
+# fixture that contains a key: each of the three provider keys that is
+# set and not the placeholder (docs/adr/0040 §7; an empty key would match
+# every file). MODEL_PROVIDER and MODEL come from the profile, .env or
+# the command line: `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic
+# MODEL=claude-sonnet-5-5` records the ADK roles on Claude.
 .PHONY: record-evals
-record-evals: ## Record the ADK roles' responses at L1 and keep them only if the eval passes: [ROLES="ops_triage release"] (docs/adr/0020 §2)
+record-evals: ## Record the ADK roles' responses at L1 and keep them only if the eval passes: [ROLES="ops_triage release"] [MODEL_PROVIDER=… MODEL=…] (docs/adr/0020 §2, 0040 §7)
 	@if [ "$(AGENT_HARNESS)" = "replay" ]; then \
 		printf 'NO-GO: record-evals — recording a replay is circular; PROFILE=l1\n'; exit 1; \
 	fi
@@ -870,9 +874,12 @@ record-evals: ## Record the ADK roles' responses at L1 and keep them only if the
 		before=$$(mktemp); ls fixtures/adk/$$role 2>/dev/null | sort > "$$before"; \
 		out=$$(ADK_RECORD=1 ROLES="$$r" sh ci/evals.sh) || true; \
 		printf '[record-evals] %s: %s\n' "$$role" "$$out" >&2; \
-		if grep -rq -- "$$GEMINI_API_KEY" fixtures/adk/$$role 2>/dev/null; then \
-			rm -rf fixtures/adk/$$role; printf 'NO-GO: record-evals — the key appeared in a %s recording; deleted\n' "$$role"; exit 1; \
-		fi; \
+		for key in "$$GEMINI_API_KEY" "$$ANTHROPIC_API_KEY" "$$OPENAI_API_KEY"; do \
+			[ -n "$$key" ] && [ "$$key" != replace-me ] || continue; \
+			if grep -rq -- "$$key" fixtures/adk/$$role 2>/dev/null; then \
+				rm -rf fixtures/adk/$$role; printf 'NO-GO: record-evals — a key appeared in a %s recording; deleted\n' "$$role"; exit 1; \
+			fi; \
+		done; \
 		case "$$out" in \
 			"GO: evals") ;; \
 			*) mkdir -p .crew/adk/$$role; \
