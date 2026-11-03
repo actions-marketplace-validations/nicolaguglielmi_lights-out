@@ -7,7 +7,7 @@
 # cleanly is still GO: risk is a routing decision (auto-merge vs review),
 # not a pass/fail judgement, and `make gates` reads `decision`, not this
 # exit code, to tell the two apart. NO-GO here means "could not classify":
-# no range, no policy file, or core/risk.py itself failing on a malformed
+# no range, a policy core/policy.py refuses, or core/risk.py failing on a malformed
 # diff -- should not happen with real git output, but handled defensively,
 # not assumed away.
 set -eu
@@ -15,13 +15,15 @@ name=risk
 . ci/lib.sh
 require_range
 
-policy=policy/merge.env
-[ -f "$policy" ] || nogo "$policy not found"
-
 out_dir=${GATES_OUT:-.gates-out}
 mkdir -p "$out_dir"
 
-git diff --no-renames --numstat "$base" "$head" | python3 core/risk.py --policy "$policy" > "$out_dir/risk.json" \
+# The base's policy/merge.env and the workload's policy.env, merged
+# (docs/adr/0037 §5); the diff is the workload repository's (§3).
+policy="$out_dir/effective-policy.env"
+effective_policy "$policy"
+
+git -C "$WORKLOAD" diff --no-renames --numstat "$base" "$head" | python3 core/risk.py --policy "$policy" > "$out_dir/risk.json" \
   || nogo "core/risk.py could not classify the range $base..$head"
 
 summary=$(python3 - "$out_dir/risk.json" <<'PY'

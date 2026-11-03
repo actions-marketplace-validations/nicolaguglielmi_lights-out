@@ -26,11 +26,15 @@ trap 'rm -f "$tmp"' EXIT
   for d in gates verify e2e; do
     [ -d "$d" ] && find "$d" -type f -name '*.sh'
   done
+  # A workload laid out to be attached keeps these in .lights-out/
+  # (docs/adr/0037 §2).
   for w in app workloads/*; do
     [ -d "$w" ] || continue
-    [ -f "$w/smoke.sh" ] && printf '%s\n' "$w/smoke.sh"
-    [ -f "$w/load.sh" ] && printf '%s\n' "$w/load.sh"
-    [ -f "$w/crew-prepare.sh" ] && printf '%s\n' "$w/crew-prepare.sh"
+    for c in "$w" "$w/.lights-out"; do
+      [ -f "$c/smoke.sh" ] && printf '%s\n' "$c/smoke.sh"
+      [ -f "$c/load.sh" ] && printf '%s\n' "$c/load.sh"
+      [ -f "$c/crew-prepare.sh" ] && printf '%s\n' "$c/crew-prepare.sh"
+    done
     find "$w" \( -path '*/tests/mutation/run.sh' -o -path '*/tests/sast/run.sh' \) -type f
   done
   true

@@ -3,7 +3,9 @@
 The policy values are read from the real policy/merge.env (not hardcoded),
 so these tests and the policy file cannot drift apart: a change to a glob
 or the size threshold is exercised here on the next run, not silently
-missed by a stale copy.
+missed by a stale copy. The three workload path lists are the exception:
+the platform's are empty (docs/adr/0037 §5), so the tests state a
+workload's.
 """
 
 import subprocess
@@ -22,11 +24,18 @@ class ClassifyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.policy = parse_policy(POLICY_PATH.read_text())
+        # The platform's three path lists are empty since docs/adr/0037 §5:
+        # a workload states them in its own policy.env. These stand for one.
+        for key in ("RISK_HIGH_MIGRATIONS", "RISK_HIGH_AUTH", "RISK_HIGH_PAYMENTS"):
+            assert cls.policy[key] == "", f"policy/merge.env names a workload path in {key}"
+        cls.policy["RISK_HIGH_MIGRATIONS"] = "svc/migrations/*"
+        cls.policy["RISK_HIGH_AUTH"] = "svc/auth.py"
+        cls.policy["RISK_HIGH_PAYMENTS"] = "svc/payments*.py:svc/billing*.py"
         cls.threshold = int(cls.policy["RISK_SIZE_MEDIUM_LINES"])
 
     def test_migration_path_is_high(self):
         # Plan §7 done-when: a PR touching a migration is high risk. The
-        # path is derived from the real policy glob, not hardcoded, so
+        # path is derived from the policy glob, not hardcoded, so
         # this file names no workload itself (docs/adr/0030 §5) -- it
         # proves the classifier honours whatever policy/merge.env says,
         # not a copy of today's app's paths.

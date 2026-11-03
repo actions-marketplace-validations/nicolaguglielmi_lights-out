@@ -2,9 +2,9 @@
 #
 # The plane (docs/adr/0010, 0012): everything the platform runs regardless
 # of which workload is selected. The workload's own services (docs/adr/
-# 0030) live in $(WORKLOAD)/compose.yaml, merged in by the Makefile
-# (COMPOSE_FILE=compose.yaml:$(WORKLOAD)/compose.yaml) — this file never
-# names one. Vendor config lives in adapters/<name>/ and is copied into
+# 0030) live in its contract's compose.yaml, merged in by the Makefile
+# (COMPOSE_FILE=compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml, docs/adr/
+# 0037 §2) — this file never names one. Vendor config lives in adapters/<name>/ and is copied into
 # images at build; the only bind mount is the workload's flags/ directory
 # into flagd. Run through ./go: WORKBENCH_IMAGE is set there and the
 # runner image is built from it.
@@ -84,7 +84,7 @@ services:
     image: ghcr.io/open-feature/flagd:v0.16.3@sha256:a11ae82ec6e40e89edae4327392a1e4ffc03e211f1b724879bb35b2e4f271bb3
     command: ["start", "--uri", "file:/flags/flags.json"]
     volumes:
-      - ./${WORKLOAD}/flags:/flags:ro
+      - ./${WORKLOAD_CONTRACT:?set by the Makefile}/flags:/flags:ro
     security_opt:
       - label=disable
     ports:

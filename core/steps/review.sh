@@ -37,9 +37,9 @@ harness=${HARNESS:-$AGENT_HARNESS}
 
 branch="ticket/$TICKET"
 clone_url=$(sh "adapters/$CODE_HOST/clone-url.sh")
-git fetch -q "$clone_url" "$branch" \
+git -C "${WORKLOAD:-.}" fetch -q "$clone_url" "$branch" \
   || { printf 'step-review: could not fetch %s from %s\n' "$branch" "$CODE_HOST" >&2; exit 1; }
-fetched=$(git rev-parse FETCH_HEAD)
+fetched=$(git -C "${WORKLOAD:-.}" rev-parse FETCH_HEAD)
 [ "$fetched" = "$HEAD_SHA" ] \
   || { printf 'step-review: %s on %s is %s, the PR was opened at %s\n' "$branch" "$CODE_HOST" "$fetched" "$HEAD_SHA" >&2; exit 1; }
 

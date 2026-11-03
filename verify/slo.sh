@@ -34,12 +34,15 @@ fi
 
 : "${METRICS_QUERY:=adapters/${METRICS:-prometheus}/query.sh}"
 
-# Both provenance: decision, docs/adr/0013 §5 — deliberately loose at L0/M3;
-# M8 replaces them with numbers measured at L2. Compared as plain deltas
-# (canary - stable), not ratios: a ratio would divide by a stable error
-# rate of zero.
-: "${ERROR_RATE_MAX_DELTA:=0.01}"
-: "${LATENCY_P95_MAX_DELTA:=0.25}"
+# The two deltas, compared as plain deltas (canary - stable), not ratios:
+# a ratio would divide by a stable error rate of zero. Their defaults and
+# provenance are in policy/merge.env since 2026-11-03; a workload's
+# policy.env may override them (docs/adr/0037 §5).
+policy=$(mktemp)
+trap 'rm -f "$policy"' EXIT
+effective_policy "$policy"
+ERROR_RATE_MAX_DELTA=$(sed -n 's/^ERROR_RATE_MAX_DELTA=//p' "$policy")
+LATENCY_P95_MAX_DELTA=$(sed -n 's/^LATENCY_P95_MAX_DELTA=//p' "$policy")
 
 promql=verify/slo.promql
 [ -f "$promql" ] || nogo "$promql not found"
