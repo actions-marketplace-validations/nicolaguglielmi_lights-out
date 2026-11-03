@@ -8,9 +8,10 @@
 # fixture's own path list, frozen here rather than read live: `record`
 # re-recording ticket 0001 under a fixed perimeter is the whole point of
 # this rule, so a live read would break this exact case the day the fix
-# lands — which it now has), a ticket with no `## Perimeter` section, and
-# a backtick-wrapped glob. Written from the ADR's own repro command, not
-# from reading the awk.
+# lands — which it now has), a ticket with no `## Perimeter` section, a
+# backtick-wrapped glob, and a declared glob that already matches files in
+# the caller's directory still accepting a new path. Written from the
+# ADR's own repro command, not from reading the awk.
 set -eu
 name=perimeter
 . ci/lib.sh
@@ -115,6 +116,34 @@ EOF
     [ -s "$work/backtick.out" ] && mismatch="backtick(unexpected stdout)"
     [ -s "$work/backtick.err" ] && mismatch="backtick(unexpected stderr)"
   fi
+fi
+
+# (e) a glob is a pattern over the changed paths, never over the files
+# that happen to sit in the caller's directory: with `src/test_a_*.py`
+# declared and `src/test_a_old.py` already on disk where the check runs
+# (crew runs it from the repo root), a new `src/test_a_new.py` is inside
+# the perimeter too.
+if [ -z "$mismatch" ]; then
+  mkdir -p "$work/tree/src"
+  : > "$work/tree/src/test_a_old.py"
+  cat > "$work/existing.md" <<'EOF'
+# Ticket 9997 — a glob that already matches files on disk
+
+## Perimeter
+
+- `src/test_a_*.py`
+EOF
+  printf '%s\n' 'src/test_a_old.py' 'src/test_a_new.py' > "$work/existing.paths"
+  abs_check=$(pwd)/$check
+  rc=0
+  (cd "$work/tree" && sh "$abs_check" "$work/existing.md") <"$work/existing.paths" \
+    >"$work/existing.out" 2>"$work/existing.err" || rc=$?
+  if [ "$rc" != 0 ]; then
+    printf 'ci-perimeter: existing: want exit 0, got %s\n' "$rc" >&2
+    cat "$work/existing.err" >&2
+    mismatch="existing(want exit 0, got $rc)"
+  fi
+  [ -z "$mismatch" ] && [ -s "$work/existing.err" ] && mismatch="existing(unexpected stderr)"
 fi
 
 [ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0021 §5"
