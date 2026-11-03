@@ -1,0 +1,4 @@
+{
+  "title": "Test that a meetup capacity below one is refused",
+  "body": "Written from ticket 0012's acceptance criteria alone, through the HTTP\nAPI: capacity 0 and -1 answer 422 and list nothing; capacity 1 answers\n201 with capacity 1.\n\nHand-written L0 fixture for ticket 0012's tests member (docs/adr/0036\n§7): no model wrote this change."
+}

@@ -14,6 +14,7 @@
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
 #   ./go demo-seam      prove the Workload port on a second, minimal workload
+#   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>

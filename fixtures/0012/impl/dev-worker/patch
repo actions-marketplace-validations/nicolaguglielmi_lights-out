@@ -1,0 +1,59 @@
+From 9178f5260f0ad49728864ab7759ecc324f934ac6 Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Tue, 3 Nov 2026 06:23:54 +0100
+Subject: [PATCH] Refuse a meetup capacity below one with 422
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+POST /api/meetups validated capacity only as an integer, so 0 or a
+negative number created a meetup that answered 409 "meetup is full" to
+its first registration. MeetupCreateRequest now requires capacity >= 1;
+FastAPI answers 422 before anything is created. The README row for the
+route says so.
+
+Hand-written L0 fixture for ticket 0012's impl member (docs/adr/0036 §7):
+no model wrote this change.
+---
+ app/README.md              | 2 +-
+ app/backend/meetups/app.py | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/app/README.md b/app/README.md
+index 6dbef50..f55fcae 100644
+--- a/app/README.md
++++ b/app/README.md
+@@ -9,7 +9,7 @@ FastAPI backend + Postgres + React frontend. Demonstrates the core platform feat
+ | `POST /api/signup` | no | `{email,password}` → 201; 409 if email exists |
+ | `POST /api/login` | no | → `{token}`; 401 on bad credentials |
+ | `GET /api/meetups`, `GET /api/meetups/{id}` | no | list / one, with `venue_lat`/`venue_lon` |
+-| `POST /api/meetups` | bearer | `{title,starts_at,venue,capacity}` → 201; geocodes `venue` |
++| `POST /api/meetups` | bearer | `{title,starts_at,venue,capacity}` → 201; geocodes `venue`; `capacity` below 1 → 422 |
+ | `POST /api/meetups/{id}/registrations` | bearer | 201; 409 when full and flag `waitlist` off; 501 when full and flag on |
+ | `GET /healthz` | no | `{"status":"ok","version":APP_VERSION}` after `SELECT 1`; 503 otherwise |
+ | `GET /metrics` | no | Prometheus text |
+diff --git a/app/backend/meetups/app.py b/app/backend/meetups/app.py
+index 0dd05bc..7e3a482 100644
+--- a/app/backend/meetups/app.py
++++ b/app/backend/meetups/app.py
+@@ -6,7 +6,7 @@ import psycopg
+ from fastapi import Depends, FastAPI, HTTPException, Response
+ from fastapi.staticfiles import StaticFiles
+ from psycopg import errors as pg_errors
+-from pydantic import BaseModel
++from pydantic import BaseModel, Field
+ 
+ from meetups.auth import current_user_id, hash_password, issue_session, verify_password
+ from meetups.db import get_db
+@@ -35,7 +35,7 @@ class MeetupCreateRequest(BaseModel):
+     title: str
+     starts_at: str
+     venue: str
+-    capacity: int
++    capacity: int = Field(ge=1)
+ 
+ 
+ def _meetup_row(row: tuple) -> dict:
+-- 
+2.54.0 (Apple Git-157)
+
