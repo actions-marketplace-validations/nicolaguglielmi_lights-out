@@ -26,6 +26,9 @@
 # stranded when its last history entry failed; resume appends {step:
 # "resume", resumed: <step>} and publishes that step again. Anything
 # else is refused, so resume never duplicates a step still in flight.
+# Every history entry also carries the document's `attempt` once it has
+# one (docs/adr/0038 §9): a NO-GO before merge reaches `ci-failed`, which
+# requests `rework` until policy/rework.env's cap, then `needs-human`.
 set -eu
 
 : "${STATE_STORE:?STATE_STORE not set; run this via ./go, not directly}"
@@ -41,11 +44,13 @@ usage='usage: tower.sh open <ticket> | step <ticket> <step> | resume <ticket>'
 store() { sh "adapters/$STATE_STORE/$1.sh" "$collection" "$ticket"; }
 publish() { sh "adapters/$EVENT_BUS/publish.sh" "$(jq -cn --arg t "$ticket" --arg s "$1" '{ticket: $t, step: $s}')"; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+# jq: {attempt: n} when the document has one, {} before assign sets it.
+attempt='def attempt: if .attempt then {attempt: .attempt} else {} end;'
 # record_failure STEP STATE WHY: append the failed attempt to $doc's
 # history and write it; the state does not move.
 record_failure() {
   printf '%s' "$doc" | jq -c --arg step "$1" --arg state "$2" --arg why "$3" --arg at "$(now)" \
-    '.history += [{step: $step, state: $state, at: $at, error: $why}]' | store put \
+    "$attempt"' .history += [{step: $step, state: $state, at: $at} + attempt + {error: $why}]' | store put \
     || printf '[tower] %s: could not record the failed %s either\n' "$ticket" "$1" >&2
   printf '[tower] %s: resume with ./go resume TICKET=%s\n' "$ticket" "$ticket" >&2
 }
@@ -60,6 +65,7 @@ precondition() {
     review) printf 'review' ;;
     merge) printf 'ci-passed' ;;
     release) printf 'merged' ;;
+    rework) printf 'ci-failed' ;;
     *) return 1 ;;
   esac
 }
@@ -69,6 +75,7 @@ next() {
     review) printf 'review' ;;
     ci-passed) printf 'merge' ;;
     merged) printf 'release' ;;
+    ci-failed) printf 'rework' ;;
     *) : ;;
   esac
 }
@@ -112,7 +119,7 @@ case "$cmd" in
     }
 
     updated=$(printf '%s' "$doc" | jq -c --argjson r "$result" --arg step "$step" --arg at "$(now)" \
-      '. * $r | .history += [{step: $step, state: $r.state, at: $at}]')
+      "$attempt"' . * $r | .history += [{step: $step, state: $r.state, at: $at} + attempt]')
     printf '%s\n' "$updated" | store put \
       || { printf '[tower] %s: could not write the document after %s\n' "$ticket" "$step" >&2; exit 1; }
     printf '[tower] %s: %s → %s\n' "$ticket" "$step" "$new_state" >&2
@@ -145,7 +152,7 @@ case "$cmd" in
     # must not have its write overwritten by this one. A failed publish
     # records itself, so the ticket stays resumable.
     doc=$(printf '%s' "$doc" | jq -c --arg step "$step" --arg state "$have" --arg at "$(now)" \
-      '.history += [{step: "resume", state: $state, at: $at, resumed: $step}]')
+      "$attempt"' .history += [{step: "resume", state: $state, at: $at} + attempt + {resumed: $step}]')
     printf '%s\n' "$doc" | store put \
       || { printf '[tower] %s: could not record the resume; nothing requested\n' "$ticket" >&2; exit 1; }
     publish "$step" || {

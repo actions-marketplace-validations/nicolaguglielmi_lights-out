@@ -17,7 +17,9 @@ go() {
   exit 0
 }
 
-# nogo REASON [DETAILS...]: one contract line on stdout, details on stderr.
+# nogo REASON [DETAILS...]: one contract line on stdout, details on stderr,
+# and also in the file $NOGO_DETAILS names when a caller sets it (`make
+# gates` does, for the rework loop's verdict: docs/adr/0038 §5).
 nogo() {
   # A reason built from a tool's output can span lines; the contract is one.
   reason=$(printf '%s' "$1" | tr '\n' ' ')
@@ -26,6 +28,9 @@ nogo() {
   for line in "$@"; do
     printf '%s\n' "$line" >&2
   done
+  if [ -n "${NOGO_DETAILS:-}" ] && [ $# -gt 0 ]; then
+    printf '%s\n' "$@" > "$NOGO_DETAILS" || :
+  fi
   exit 1
 }
 

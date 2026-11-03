@@ -23,6 +23,7 @@ Milestone M12 closed (the Workload port, ADR 0030). Next is the legacy-repo expe
 | review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |
 | seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
 | attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0037); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
+| rework | M15 | ✓ a gates NO-GO or a CHANGES-REQUESTED review goes back to dev-worker with the verdict, up to four attempts (`policy/rework.env`), then `needs-human`; `./go demo-rework` on ticket 0013's hand-written attempts (ADR 0038) |
 
 | | |
 |---|---|
@@ -35,6 +36,8 @@ The PR gates (`./go demo-gates`) run on six committed fixture patches and prove 
 ## Control plane
 
 The tower (`core/tower.sh`) is a state machine over a JSON document per ticket in the state store, driven by step events on the event bus, with the `inproc` orchestrator pulling one event at a time. `./go e2e` runs it end to end and `./go audit TICKET=<id>` rebuilds the chain deploy → merge → PR → ticket → spec from the document and cross-checks it against the code host: a record that says merged while the PR is open is a NO-GO.
+
+Before merge, a NO-GO is not the end (ADR 0038). A gates NO-GO or a review's CHANGES-REQUESTED puts the ticket at `ci-failed`, which requests `rework`: dev-worker runs again on the same ticket, from its own PR head, with the ticket followed by the verdict as its input (the NO-GO line and the gate's own details, such as surviving mutants, or the reviewer's reason; never a transcript). The new head goes through the same `ci` step and, if routed, the same review. Each history entry carries its attempt number and the document's `rework` list keeps every rejected attempt's verdict. At `REWORK_MAX_ATTEMPTS` (`policy/rework.env`, four) the ticket stops at `needs-human`. After merge nothing loops: a failing canary rolls back.
 
 Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the six gates run by the tower on the PR head (with the base's gates, Makefile and policy, and the ticket's perimeter checked again, ADR 0033) and posted as the `gates` commit status on the PR, not a Gitea Actions job — the runner's first job, from M8, is the release image build on `main`; the PR-gates job itself moves to the milestone that runs the tower on GCP. The canary the tower releases after the merge is a real build of the merge commit, signed by the `Registry` port and verified by the launchpad before it takes any traffic — `./go audit` prints the verified digest, not a placeholder. The bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
 
@@ -61,6 +64,8 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
 ./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 ./go audit           # rebuild the chain from a ticket's state: ./go audit TICKET=0001
+./go resume          # request again the step a ticket failed, history kept: TICKET=<id>
+./go demo-rework     # prove a NO-GO goes back to the worker with its verdict, then GO and merged (ticket 0013)
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]

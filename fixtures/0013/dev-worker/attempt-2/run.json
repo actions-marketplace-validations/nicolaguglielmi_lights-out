@@ -1,0 +1,6 @@
+{
+  "hand_written": true,
+  "model": null,
+  "attempt": 2,
+  "note": "Written by hand to prove the rework loop at L0 (docs/adr/0038 §10): the change a worker reading attempt 1's verdict would make. No model produced this patch; a recorded rework at L1 replaces it when the owner decides to spend the tokens."
+}
