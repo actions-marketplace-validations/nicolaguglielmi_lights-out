@@ -90,7 +90,8 @@ EOF
 chmod +x "$root/adapters/replay/run.sh"
 
 # --- git needs $root itself to be a repo: review.sh's `git fetch` runs in
-# the caller's cwd, which is $root when the case below cd's there. ---
+# the workload's repository (docs/adr/0037 §3), which the cases below make
+# $root itself with WORKLOAD=. after they cd there. ---
 git init -q "$root"
 
 work=$(mktemp -d)
@@ -108,7 +109,7 @@ run_review() {
   rc=0
   ( cd "$root" && \
     env TICKET=review-test PR_NUMBER=1 BASE_SHA="$base_sha" HEAD_SHA="$head" \
-      CODE_HOST=stub-codehost TRACKER=stub-tracker ROLE=test-reviewer "$@" \
+      CODE_HOST=stub-codehost TRACKER=stub-tracker ROLE=test-reviewer WORKLOAD=. "$@" \
       sh "$repo/core/steps/review.sh" \
   ) >"$work/$case_name.out" 2>"$work/$case_name.err" || rc=$?
   if [ "$rc" != "$want_rc" ]; then

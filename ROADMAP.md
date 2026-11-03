@@ -22,8 +22,11 @@ wins when the two disagree. Decisions behind each step are in
 
 1. **Contributor surface and README.** This file, CONTRIBUTING.md, a
    quickstart and a guide for using lights-out on your own codebase.
-2. **M13 — ready for the experiment.** A workload-neutral dev-worker
-   prompt, `./go report`, tower records that survive a restart (ADR 0031).
+2. **M13 — attach.** `./go attach <path>` points a plain clone at a
+   repository of yours: its `.lights-out/` holds the contract, a brief for
+   the dev-worker and its own thresholds (ADR 0037). Then M14 (other
+   stacks), M15 (the rework loop), M16 (the agent network), M17 (the
+   dashboard).
 3. **The public legacy experiment.** lights-out pointed at a known
    open-source Python codebase, on a batch of mechanical tickets
    (dependency upgrades, dead code, tests for untested code, deprecated

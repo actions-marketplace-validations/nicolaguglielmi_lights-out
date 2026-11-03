@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 # flag file must already exist, before any test module imports `minimal.app`
 # -- conftest.py is always imported first. The copy is writable so a test
 # flipping `outage` never touches the committed file.
-_REAL_FLAGS_FILE = Path(__file__).resolve().parent.parent / "flags" / "flags.json"
+_REAL_FLAGS_FILE = Path(__file__).resolve().parent.parent / ".lights-out" / "flags" / "flags.json"
 _flag_tmp_dir = tempfile.mkdtemp(prefix="outage-flag-")
 OUTAGE_FLAG_FILE = Path(_flag_tmp_dir) / "flags.json"
 shutil.copy(_REAL_FLAGS_FILE, OUTAGE_FLAG_FILE)

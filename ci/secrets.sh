@@ -31,11 +31,24 @@ set -eu
 name=secrets
 . ci/lib.sh
 
-# Two allowlisted local files (ci/gitleaks-worktree.toml): the cosign key
-# ./go up generates, and the GEMINI_API_KEY line of .env, where
-# .env.example tells the user to put their key (amended 2026-11-02: that
-# line made ./go demo NO-GO for anyone who followed the example).
-for exempt in .crew/cosign.key .env; do
+# As a PR gate on an attached repository's range (docs/adr/0037 §3): that
+# repository is scanned, its history and its tree, with no allowlist. The
+# exemptions below are this checkout's local files, not its.
+if [ -n "${WORKLOAD_ATTACHED:-}" ] && [ -n "${BASE:-}" ] && [ -n "${HEAD:-}" ]; then
+  gitleaks git --no-banner --no-color --redact "$WORKLOAD" >&2 \
+    || nogo "gitleaks found a secret in the attached repository's history"
+  gitleaks dir --no-banner --no-color --redact "$WORKLOAD" >&2 \
+    || nogo "gitleaks found a secret in the attached repository's tree"
+  go
+fi
+
+# Three allowlisted local paths (ci/gitleaks-worktree.toml): the cosign key
+# ./go up generates; the GEMINI_API_KEY line of .env, where .env.example
+# tells the user to put their key (amended 2026-11-02: that line made
+# ./go demo NO-GO for anyone who followed the example); and .attached/,
+# the clone of a user's repository (docs/adr/0037 §3), whose content its
+# own range gate scans above, not this checkout's self-check.
+for exempt in .crew/cosign.key .env .attached; do
   if git ls-files --error-unmatch -- "$exempt" >/dev/null 2>&1; then
     nogo "$exempt is tracked or staged; a real secret must never be committed — fix .gitignore and unstage it (git rm --cached)"
   fi

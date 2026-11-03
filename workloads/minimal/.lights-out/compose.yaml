@@ -1,16 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# This instance's compose services (docs/adr/0030 §3, §6): merged after
-# the root compose.yaml, the same way app/compose.yaml is. No database, no
-# frontend, no gemini-cli fragment (its tests need nothing beyond what the
-# root file already gives the worker). The image name stays
-# lights-out-backend, the same as every other workload's: one plane runs
-# one workload at a time, so one name serves (docs/adr/0030 §3).
+# This repository's compose services (docs/adr/0030 §3, §6): merged after
+# lights-out's root compose.yaml. Paths resolve from the lights-out
+# checkout, where this repository is not at a path it can know: its root
+# is ${WORKLOAD} (docs/adr/0037 §2). No database, no frontend, no
+# gemini-cli fragment (its tests need nothing beyond what the root file
+# already gives the worker). The image name stays lights-out-backend, the
+# same as every other workload's: one plane runs one workload at a time,
+# so one name serves (docs/adr/0030 §3).
 services:
   backend:
     image: localhost:5050/lights-out-backend:${APP_TAG:-latest}
     build:
-      context: ./workloads/minimal
+      context: ${WORKLOAD}
       dockerfile: Containerfile
       target: runtime
     depends_on:
@@ -36,7 +38,7 @@ services:
 
   backend-test:
     build:
-      context: ./workloads/minimal
+      context: ${WORKLOAD}
       dockerfile: Containerfile
       target: test
     profiles: ["test"]

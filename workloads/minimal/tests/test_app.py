@@ -22,7 +22,7 @@ def _set_default_variant(variant: str) -> None:
     if variant == "off":
         FLAG_FILE.write_text(_COMMITTED_FLAGS_TEXT)
         return
-    # The committed targeting rule (workloads/minimal/flags/flags.json)
+    # The committed targeting rule (.lights-out/flags/flags.json)
     # resolves to a variant name for every context, so flagd never falls
     # through to defaultVariant while it is present. Drop it so
     # defaultVariant governs again.

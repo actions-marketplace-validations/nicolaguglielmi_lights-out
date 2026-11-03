@@ -11,19 +11,39 @@ include profiles/$(PROFILE).env
 -include .env
 
 # The Workload port (docs/adr/0030 §1): a workload is a directory: not the
-# profile's choice, the same at every level. include stops make, naming
-# the file, if it is missing. COMPOSE_FILE merges the workload's compose
-# file after the plane's; both are := and exported, never ?=, because
-# demo-seam re-enters make with a different WORKLOAD and export is what
-# hands the parent's values down to that recursive call.
-WORKLOAD ?= app
-include $(WORKLOAD)/workload.env
+# profile's choice, the same at every level. ./go attach <path> clones a
+# repository of the user's into ATTACHED (docs/adr/0037 §1); while that
+# holds a clone, it is the workload. ./go knows the same path.
+ATTACHED ?= .attached
+WORKLOAD ?= $(if $(wildcard $(ATTACHED)/.git),$(ATTACHED),app)
+# A workload in a git repository other than this one is attached: its
+# contract is in its .lights-out/ and nowhere else, no fallback. One inside
+# this repository keeps it in its own directory, as app/ does (docs/adr/0037
+# §2). Every read of the contract goes through WORKLOAD_CONTRACT. include
+# stops make, naming the file, if it is missing.
+WORKLOAD_REPO := $(shell git -C '$(WORKLOAD)' rev-parse --show-toplevel 2>/dev/null)
+ifeq ($(WORKLOAD_REPO),$(shell git rev-parse --show-toplevel 2>/dev/null))
+WORKLOAD_CONTRACT := $(WORKLOAD)
+WORKLOAD_ATTACHED :=
+else
+WORKLOAD_CONTRACT := $(WORKLOAD)/.lights-out
+WORKLOAD_ATTACHED := 1
+endif
+include $(WORKLOAD_CONTRACT)/workload.env
 export
 
-COMPOSE_FILE := compose.yaml:$(WORKLOAD)/compose.yaml
+# COMPOSE_FILE merges the workload's compose file after the plane's; these
+# are := and exported, never ?=, because demo-seam and demo-gates re-enter
+# make with a different WORKLOAD and export is what hands the parent's
+# values down to that recursive call.
+COMPOSE_FILE := compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml
 export COMPOSE_FILE
-FLAGS_FILE := $(WORKLOAD)/flags/flags.json
+FLAGS_FILE := $(WORKLOAD_CONTRACT)/flags/flags.json
 export FLAGS_FILE
+# The file Tracker's directory (docs/adr/0037 §2): this checkout's tickets/
+# for a bundled workload, the attached repository's own otherwise.
+TICKETS_DIR := $(if $(WORKLOAD_ATTACHED),$(WORKLOAD_CONTRACT)/tickets,tickets)
+export TICKETS_DIR
 
 # docker-compose over the podman socket builds through the classic /build
 # API; pinning this avoids compose spawning a buildkitd container
@@ -77,7 +97,7 @@ export ENVOY_ADMIN_URL
 # verified digest); the one here only keeps `docker-compose config -q`
 # (ci-compose) clean with no release in flight, the same reason
 # compose.yaml's own CANARY_VERSION default exists.
-APP_TAG ?= sha-$(shell git rev-parse HEAD)
+APP_TAG ?= sha-$(shell git -C '$(WORKLOAD)' rev-parse HEAD 2>/dev/null)
 export APP_TAG
 CANARY_TAG ?= $(APP_TAG)
 export CANARY_TAG
@@ -123,12 +143,14 @@ help: ## List the targets
 	@printf 'lights-out  (profile: %s)\n\n' "$(PROFILE)"
 	@awk 'BEGIN{FS=":.*## "} /^[a-z][a-z0-9-]*:.*## /{printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
-	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
+	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
+		attach "clone a repository with a .lights-out/ contract and make it the workload: ./go attach <path> (docs/adr/0037)" \
+		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board roles contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free hooks harness tower perimeter review prompts evals promote board roles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -193,8 +215,8 @@ publish: ## Build, push and sign the image at TAG (docs/adr/0025 §1-§3)
 	@sh "adapters/$(REGISTRY)/publish.sh" "$(TAG)"
 
 .PHONY: smoke
-smoke: ## Run the workload's happy path through Envoy (<workload>/smoke.sh)
-	@sh "$(WORKLOAD)/smoke.sh"
+smoke: ## Run the workload's happy path through Envoy (its contract's smoke.sh)
+	@sh "$(WORKLOAD_CONTRACT)/smoke.sh"
 
 .PHONY: down
 down: ## Stop the app, including a held canary revision if one is running
@@ -251,22 +273,30 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 # once in a build log (docs/adr/0015 §6; the demo-hold lesson, docs/adr/0014:
 # a verify wired to always pass -- or fail -- would pass its own demo too).
 # Each fixture is a real commit applied by `git am` in its own throwaway
-# worktree off HEAD, judged as the range HEAD..<applied>, then discarded.
+# worktree off the workload repository's HEAD, judged as the range
+# HEAD..<applied>, then discarded. A bundled workload's worktree carries
+# this checkout, so make runs inside it, as before; an attached one's
+# carries only the target, so make runs here with WORKLOAD pointing at it
+# (docs/adr/0037 §4).
 .PHONY: demo-gates
 demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/adr/0015 §6)
-	@git worktree prune
-	@main_sha=$$(git rev-parse HEAD); \
-	if [ -n "$$(git status --porcelain -- gates ci verify policy core Makefile)" ]; then \
+	@git -C "$(WORKLOAD)" worktree prune
+	@main_sha=$$(git -C "$(WORKLOAD)" rev-parse HEAD); \
+	if [ -z "$(WORKLOAD_ATTACHED)" ] && [ -n "$$(git status --porcelain -- gates ci verify policy core Makefile)" ]; then \
 		printf '[demo-gates] note: uncommitted edits under gates/, ci/, verify/, policy/, core/ or the Makefile are not judged here; the fixtures run against HEAD\n' >&2; \
 	fi; \
 	tmp1=$$(mktemp); tmp2=$$(mktemp); wtd=""; wt=""; \
-	drop_wt() { [ -z "$$wt" ] || git worktree remove --force "$$wt" >/dev/null 2>&1 || :; [ -z "$$wtd" ] || rm -rf "$$wtd"; wt=""; wtd=""; }; \
+	drop_wt() { [ -z "$$wt" ] || git -C "$(WORKLOAD)" worktree remove --force "$$wt" >/dev/null 2>&1 || :; [ -z "$$wtd" ] || rm -rf "$$wtd"; wt=""; wtd=""; }; \
 	trap 'drop_wt; rm -f "$$tmp1" "$$tmp2"' EXIT; \
 	trap 'exit 130' INT TERM; \
-	for f in "$(WORKLOAD)/fixtures/gates"/*/; do \
+	found=0; \
+	for f in "$(WORKLOAD_CONTRACT)/fixtures/gates"/*/; do \
+		[ -d "$$f" ] || continue; \
+		found=$$((found + 1)); \
 		name=$$(basename "$$f"); \
+		f=$$(CDPATH= cd -- "$$f" && pwd)/; \
 		wtd=$$(mktemp -d); wt=$$wtd/wt; \
-		err=$$(git worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
+		err=$$(git -C "$(WORKLOAD)" worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
 			printf 'NO-GO: demo-gates — %s: git worktree add failed: %s\n' "$$name" "$$err"; exit 1; \
 		}; \
 		if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
@@ -277,13 +307,19 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 			exit 1; \
 		fi; \
 		head_sha=$$(git -C "$$wt" rev-parse HEAD); \
-		out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
+		if [ -n "$(WORKLOAD_ATTACHED)" ]; then \
+			verdict="$$wtd/gates-out/verdict.env"; \
+			out=$$($(MAKE) --no-print-directory gates WORKLOAD="$$wt" GATES_OUT="$$wtd/gates-out" BASE="$$main_sha" HEAD="$$head_sha"); \
+		else \
+			verdict="$$wt/$(GATES_OUT)/verdict.env"; \
+			out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
+		fi; \
 		printf '[demo-gates] %s: %s\n' "$$name" "$$out" >&2; \
-		sort "$$wt/$(GATES_OUT)/verdict.env" > "$$tmp1" 2>/dev/null || : > "$$tmp1"; \
+		sort "$$verdict" > "$$tmp1" 2>/dev/null || : > "$$tmp1"; \
 		sort "$$f/expect" > "$$tmp2"; \
 		if ! diff -q "$$tmp1" "$$tmp2" >/dev/null 2>&1; then \
 			printf '[demo-gates] %s: verdict mismatch\n  got:  %s\n  want: %s\n' "$$name" \
-				"$$(tr '\n' ' ' < "$$wt/$(GATES_OUT)/verdict.env" 2>/dev/null || echo '(no verdict.env)')" \
+				"$$(tr '\n' ' ' < "$$verdict" 2>/dev/null || echo '(no verdict.env)')" \
 				"$$(tr '\n' ' ' < "$$f/expect")" >&2; \
 			drop_wt; \
 			printf 'NO-GO: demo-gates — %s does not match expect\n' "$$name"; \
@@ -291,6 +327,7 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 		fi; \
 		drop_wt; \
 	done; \
+	[ "$$found" -gt 0 ] || { printf 'NO-GO: demo-gates — no fixture in %s/fixtures/gates/\n' "$(WORKLOAD_CONTRACT)"; exit 1; }; \
 	printf 'GO: demo-gates\n'
 
 .PHONY: assign
@@ -390,7 +427,7 @@ mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's prov
 
 .PHONY: release
 release: ## Deploy CANARY_VERSION at CANARY_TAG and run the controller through staging, 5%, 25% (docs/adr/0013 §4, 0025 §6)
-	@sh "$(WORKLOAD)/load.sh" & \
+	@sh "$(WORKLOAD_CONTRACT)/load.sh" & \
 	load_pid=$$!; \
 	CANARY_VERSION="$(CANARY_VERSION)" CANARY_TAG="$(CANARY_TAG)" STAGE_SECONDS="$(STAGE_SECONDS)" sh core/launchpad.sh; \
 	rc=$$?; \
@@ -689,33 +726,59 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-launch — Envoy reports weights.canary=%s after the un-promote, want 0\n' "$$canary_w"; exit 1; }; \
 	printf 'GO: demo-launch\n'
 
-# The M12 acceptance command (docs/adr/0030 §7), outside `./go demo` (ADR
-# 0003): the Workload port exercised on a second, deliberately minimal
-# workload, forced regardless of the ambient WORKLOAD (the plain command
-# takes no argument). demo-rollback already proves a canary rolls back on
-# *some* NO-GO; this additionally proves the failing stage is specifically
-# an error_rate NO-GO — "no traffic" would also make demo-rollback pass
-# (the ADR 0014 lesson) but would mean the two workloads' metrics were
-# never actually compared. --remove-orphans on both `down` calls: a later
-# `up` must not re-mount an anonymous volume Prometheus already wrote
-# into, or verify could join the two workloads' backend:8000 series
-# (docs.docker.com, verified 2026-09-23).
+# The M12 acceptance command (docs/adr/0030 §7), made M13's (docs/adr/0037
+# §10), outside `./go demo` (ADR 0003): workloads/minimal copied into a
+# fresh git repository outside this checkout, attached the way a user
+# attaches theirs, and run through the same steps. demo-rollback already
+# proves a canary rolls back on *some* NO-GO; this additionally proves the
+# failing stage is specifically an error_rate NO-GO — "no traffic" would
+# also make demo-rollback pass (the ADR 0014 lesson) but would mean the two
+# versions' metrics were never actually compared. --remove-orphans on both
+# `down` calls: a later `up` must not re-mount an anonymous volume
+# Prometheus already wrote into, or verify could join two workloads'
+# backend:8000 series (docs.docker.com, verified 2026-09-23). WORKLOAD is
+# passed down explicitly, and the image tags dropped from the environment:
+# this make computed them from this checkout before the clone existed, and
+# export would hand those values to every child.
 .PHONY: demo-seam
-demo-seam: ## Prove the Workload port on a second, minimal workload (docs/adr/0030 §7)
+demo-seam: ## Prove attach and the Workload port on workloads/minimal, as a repository of its own (docs/adr/0030 §7, 0037 §10)
+	@if [ -e "$(ATTACHED)" ]; then \
+		printf 'NO-GO: demo-seam — %s is attached at %s; demo-seam attaches its own repository there: ./go detach first\n' \
+			"$$(git -C "$(ATTACHED)" remote get-url origin 2>/dev/null || echo 'a repository')" "$(ATTACHED)"; \
+		exit 1; \
+	fi
 	@rm -f "$(RELEASE_RECORD)"
-	@$(MAKE) --no-print-directory down WORKLOAD=workloads/minimal
-	@$(MAKE) --no-print-directory up WORKLOAD=workloads/minimal
-	@$(MAKE) --no-print-directory smoke WORKLOAD=workloads/minimal
-	@$(MAKE) --no-print-directory verify WORKLOAD=workloads/minimal
-	@$(MAKE) --no-print-directory demo-rollback WORKLOAD=workloads/minimal
-	@$(MAKE) --no-print-directory demo-gates WORKLOAD=workloads/minimal
-	@verdict=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
+	@src=$$(mktemp -d); \
+	trap 'rm -rf "$$src" "$(ATTACHED)"' EXIT; \
+	trap 'exit 130' INT TERM; \
+	cp -R workloads/minimal/. "$$src/" && \
+	git -C "$$src" init -q -b main && git -C "$$src" add -A && \
+	git -C "$$src" -c user.name=lights-out-demo -c user.email=demo@lights-out.invalid -c commit.gpgsign=false \
+		commit -q -m 'workloads/minimal, as a repository of its own' || { printf 'NO-GO: demo-seam — could not make a repository of workloads/minimal\n'; exit 1; }; \
+	printf '[demo-seam] workloads/minimal is now the repository %s, outside this checkout\n' "$$src" >&2; \
+	sh core/attach.sh "$$src" "$(ATTACHED)" || { printf 'NO-GO: demo-seam — attach refused %s\n' "$$src"; exit 1; }; \
+	for step in attached down up smoke verify demo-rollback demo-gates; do \
+		env -u APP_TAG -u CANARY_TAG -u CANARY_IMAGE \
+			$(MAKE) --no-print-directory "$$step" WORKLOAD="$(ATTACHED)" || { printf 'NO-GO: demo-seam — %s failed on the attached repository\n' "$$step"; exit 1; }; \
+	done; \
+	verdict=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
 	case "$$verdict" in \
 		"NO-GO: slo — error_rate "*) : ;; \
 		*) printf 'NO-GO: demo-seam — last release stage was [%s], want an error_rate NO-GO\n' "$$verdict"; exit 1 ;; \
-	esac
-	@$(MAKE) --no-print-directory down WORKLOAD=workloads/minimal
-	@printf 'GO: demo-seam\n'
+	esac; \
+	$(MAKE) --no-print-directory down WORKLOAD="$(ATTACHED)" || exit 1; \
+	printf 'GO: demo-seam\n'
+
+# What `./go attach <path>` runs once the clone exists (docs/adr/0037 §1,
+# §7): the attached repository's contract, checked the way ci/workloads.sh
+# checks the ones in this checkout.
+.PHONY: attached
+attached: ## Check the attached repository's .lights-out/ contract (docs/adr/0037 §7)
+	@[ -n "$(WORKLOAD_ATTACHED)" ] || { printf 'NO-GO: attached — WORKLOAD=%s is not an attached repository; ./go attach <path> first\n' "$(WORKLOAD)"; exit 1; }
+	@out=$$(sh ci/workloads.sh "$(WORKLOAD)") || { printf 'NO-GO: attached — %s\n' "$${out#NO-GO: workloads — }"; exit 1; }; \
+	printf 'GO: attached — %s at %s, contract in %s\n' \
+		"$$(git -C "$(WORKLOAD)" remote get-url origin 2>/dev/null || echo "$(WORKLOAD)")" \
+		"$$(git -C "$(WORKLOAD)" rev-parse --short HEAD)" "$(WORKLOAD_CONTRACT)"
 
 # The M8 acceptance command (docs/adr/0026 §4): the suite refuses to run by
 # accident (ci/contract.sh's cold run of every gates/*.sh sees CONFORMANCE

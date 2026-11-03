@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Build context is ./workloads/minimal (docs/adr/0010, 0030). Classic
+# Build context is this repository's root (docs/adr/0010, 0030, 0037 §10). Classic
 # syntax only: no RUN --mount, no heredocs — DOCKER_BUILDKIT=0 builds this
 # (docs/adr/0010). Same Python digest and uv version as app/backend/
 # Containerfile (docs/adr/0030 §6). Stages: runtime (ships) -> test (adds
@@ -16,7 +16,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
 COPY minimal ./minimal
-COPY flags/flags.json ./flags/flags.json
+COPY .lights-out/flags/flags.json ./.lights-out/flags/flags.json
 EXPOSE 8000
 CMD ["uvicorn", "minimal.app:app", "--host", "0.0.0.0", "--port", "8000"]
 

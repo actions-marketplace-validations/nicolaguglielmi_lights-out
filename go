@@ -13,7 +13,9 @@
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
-#   ./go demo-seam      prove the Workload port on a second, minimal workload
+#   ./go demo-seam      prove attach and the Workload port on workloads/minimal as its own repository
+#   ./go attach <path>  make a repository of yours, with a .lights-out/ contract, the workload
+#   ./go detach         drop the attached repository; the workload is app/ again
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
@@ -55,6 +57,26 @@ cmd="${1:-help}"
 LIGHTS_OUT_T0=$(date +%s)
 
 die() { printf 'go: %s\n' "$*" >&2; exit 1; }
+
+# Attach (docs/adr/0037 §1): on the host, with git only, because the
+# user's repository may be anywhere the workbench cannot see. It is cloned
+# here, at the Makefile's ATTACHED, and only ever read; the contract check
+# then runs in workbench, as `make attached`.
+attached="$here/.attached"
+case "$cmd" in
+  attach)
+    [ $# -eq 1 ] || die "usage: ./go attach <path to a git repository with a .lights-out/ directory>"
+    sh "$here/core/attach.sh" "$1" "$attached" || exit 1
+    shift
+    cmd=attached ;;
+  detach)
+    rm -rf "$attached"
+    printf 'go: detached; the workload is app/ again (run ./go down first if the plane still serves the attached one)\n' >&2
+    exit 0 ;;
+  demo)
+    [ ! -e "$attached" ] || die "a repository is attached ($(git -C "$attached" remote get-url origin 2>/dev/null || echo "$attached")); ./go demo runs the bundled app: ./go detach first, then ./go attach again"
+    ;;
+esac
 
 # 1. Pick the engine: CONTAINER_ENGINE, then podman, then docker.
 if [ -n "${CONTAINER_ENGINE:-}" ]; then
