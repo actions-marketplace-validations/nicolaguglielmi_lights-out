@@ -351,7 +351,7 @@ if [ -z "$mismatch" ]; then
   cp app/workload.env "$g/host/app/workload.env"
   cp gates/risk.sh "$g/host/gates/"
   cp ci/lib.sh "$g/host/ci/"
-  cp core/risk.py core/perimeter.sh "$g/host/core/"
+  cp core/risk.py core/policy.py core/perimeter.sh "$g/host/core/"
   cp core/steps/ci.sh "$g/host/core/steps/"
   cp policy/merge.env "$g/host/policy/"
   (
@@ -411,7 +411,7 @@ TICKET
 TICKET
   step_ci() {  # TICKET: runs the real CI step from the tower clone, JSON on stdout
     (cd "$g/tower" && TICKET=$1 PR_NUMBER=1 BASE_SHA=$base_sha HEAD_SHA=$head_sha \
-      CODE_HOST=stub-codehost TRACKER=stub-tracker WORKLOAD=app GATES_OUT=.gates-out \
+      CODE_HOST=stub-codehost TRACKER=stub-tracker WORKLOAD=app WORKLOAD_CONTRACT=app WORKLOAD_ATTACHED='' GATES_OUT=.gates-out \
       sh core/steps/ci.sh) 2>"$log"
   }
   got=$(step_ci 0001) || fail_case h1 "the CI step exited $?"
