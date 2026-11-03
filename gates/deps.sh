@@ -34,13 +34,17 @@ set +f
 IFS=$old_ifs
 
 lockfiles=""
+entries=""
 count=0
 for entry in "$@"; do
   [ -n "$entry" ] || nogo "WORKLOAD_LOCKFILES names an empty entry"
   path="$WORKLOAD/$entry"
-  git cat-file -e "$head:$path" 2>/dev/null \
+  # <rev>:./<path> is relative to git -C's directory: the workload's place
+  # in its repository, whichever repository that is (docs/adr/0036 §3).
+  git -C "$WORKLOAD" cat-file -e "$head:./$entry" 2>/dev/null \
     || nogo "$path is not tracked at $head (from WORKLOAD_LOCKFILES)"
   lockfiles="${lockfiles:+$lockfiles }$path"
+  entries="${entries:+$entries }$entry"
   count=$((count + 1))
 done
 
@@ -83,16 +87,16 @@ tuples() {
 # range it was given, whatever the working tree holds.
 base_files=""
 head_files=""
-for path in $lockfiles; do
-  mkdir -p "$tmp/head/$(dirname "$path")"
-  git show "$head:$path" > "$tmp/head/$path"
-  head_files="${head_files:+$head_files }$tmp/head/$path"
-  if git cat-file -e "$base:$path" 2>/dev/null; then
-    mkdir -p "$tmp/base/$(dirname "$path")"
-    git show "$base:$path" > "$tmp/base/$path"
-    base_files="${base_files:+$base_files }$tmp/base/$path"
+for entry in $entries; do
+  mkdir -p "$tmp/head/$(dirname "$entry")"
+  git -C "$WORKLOAD" show "$head:./$entry" > "$tmp/head/$entry"
+  head_files="${head_files:+$head_files }$tmp/head/$entry"
+  if git -C "$WORKLOAD" cat-file -e "$base:./$entry" 2>/dev/null; then
+    mkdir -p "$tmp/base/$(dirname "$entry")"
+    git -C "$WORKLOAD" show "$base:./$entry" > "$tmp/base/$entry"
+    base_files="${base_files:+$base_files }$tmp/base/$entry"
   else
-    printf 'deps: %s is new at HEAD, judged whole\n' "$path" >&2
+    printf 'deps: %s is new at HEAD, judged whole\n' "$WORKLOAD/$entry" >&2
   fi
 done
 

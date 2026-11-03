@@ -1,9 +1,10 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# bootstrap-gitea: creates the admin user, the lights-out/lights-out repo
-# with Actions on, and force-pushes this checkout's HEAD to its main
-# branch (docs/adr/0017 §5). Idempotent: safe on every `assign`, because
+# bootstrap-gitea: creates the admin user, the lights-out/workload repo
+# with Actions on, and force-pushes the workload repository's HEAD to its
+# main branch (docs/adr/0017 §5): this checkout's for a bundled workload,
+# the attached clone's otherwise (docs/adr/0036 §9). Idempotent: safe on every `assign`, because
 # Gitea holds no persistent volume (docs/adr/0012) and starts empty on
 # every `./go up`. Actions were off through M7 — a job nobody consulted
 # was noise, not proof — and turn on at M8 (docs/adr/0025 §4): the runner
@@ -43,14 +44,20 @@ case "$code" in
 esac
 
 # 3. Actions on (docs/adr/0025 §4): the runner's first job needs them.
+# Off for an attached repository (docs/adr/0036 §9): its workflows were
+# written for its own CI, not for this runner, which holds the engine
+# socket; ADR 0015 §7's conditions hold for this checkout's workflow only.
+actions=true
+[ -z "${WORKLOAD_ATTACHED:-}" ] || actions=false
 curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
-  -X PATCH -d '{"has_actions":true}' \
+  -X PATCH -d "{\"has_actions\":$actions}" \
   "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO" >/dev/null \
-  || { printf 'bootstrap-gitea: could not enable Actions\n' >&2; exit 1; }
+  || { printf 'bootstrap-gitea: could not set Actions to %s\n' "$actions" >&2; exit 1; }
 
-# 4. Mirror this checkout's HEAD onto Gitea's main. Force: the L0 repo is a
-# mirror of the local clone, not a place to keep hand-made history.
-git -C "$here" push --force "$GITEA_PUSH_URL" HEAD:refs/heads/main >&2 \
+# 4. Mirror the workload repository's HEAD onto Gitea's main. Force: the
+# L0 repo is a mirror of the local clone, not a place to keep hand-made
+# history; merged changes are fetched from it before the next assign.
+git -C "${WORKLOAD:-$here}" push --force "$GITEA_PUSH_URL" HEAD:refs/heads/main >&2 \
   || { printf 'bootstrap-gitea: push to main failed\n' >&2; exit 1; }
 
 # 5. Wait until Gitea has processed that push. The repo is created empty
