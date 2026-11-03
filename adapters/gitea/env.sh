@@ -11,7 +11,7 @@
 : "${PLANE_HOST:=host.containers.internal}"
 GITEA_OWNER=lights-out
 # The workload's repository: this checkout for the bundled app, the
-# attached one otherwise (docs/adr/0036 §9).
+# attached one otherwise (docs/adr/0037 §9).
 GITEA_REPO=workload
 GITEA_USER=lights-out
 GITEA_PASSWORD=lights-out-local-not-a-secret

@@ -31,7 +31,7 @@ set -eu
 name=secrets
 . ci/lib.sh
 
-# As a PR gate on an attached repository's range (docs/adr/0036 §3): that
+# As a PR gate on an attached repository's range (docs/adr/0037 §3): that
 # repository is scanned, its history and its tree, with no allowlist. The
 # exemptions below are this checkout's local files, not its.
 if [ -n "${WORKLOAD_ATTACHED:-}" ] && [ -n "${BASE:-}" ] && [ -n "${HEAD:-}" ]; then
@@ -46,7 +46,7 @@ fi
 # ./go up generates; the GEMINI_API_KEY line of .env, where .env.example
 # tells the user to put their key (amended 2026-11-02: that line made
 # ./go demo NO-GO for anyone who followed the example); and .attached/,
-# the clone of a user's repository (docs/adr/0036 §3), whose content its
+# the clone of a user's repository (docs/adr/0037 §3), whose content its
 # own range gate scans above, not this checkout's self-check.
 for exempt in .crew/cosign.key .env .attached; do
   if git ls-files --error-unmatch -- "$exempt" >/dev/null 2>&1; then

@@ -1,6 +1,6 @@
 # Brief for the dev-worker: the minimal repository
 
-What this repository tells the lights-out dev-worker (docs/adr/0036 §6):
+What this repository tells the lights-out dev-worker (docs/adr/0037 §6):
 where its code is and how its tests run.
 
 ## Scope

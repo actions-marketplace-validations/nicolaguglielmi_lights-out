@@ -116,10 +116,10 @@ jobs:
       - if: always()
         run: docker logs --tail 80 lights-out-envoy-1 || true; docker logs --tail 80 lights-out-backend-1 || true
 
-  # The Workload port's own acceptance (docs/adr/0030 §7): down, up, smoke,
-  # verify, demo-rollback, demo-gates, down against workloads/minimal/
-  # instead of app/, proving the seam by swapping which directory is
-  # selected. Same shape as launch: needs the plane, GitHub-only until M5
+  # The Workload port's own acceptance (docs/adr/0030 §7), and attach's
+  # since M13 (docs/adr/0037 §10): workloads/minimal/ copied into a fresh
+  # git repository, attached, then down, up, smoke, verify, demo-rollback,
+  # demo-gates, down on it instead of app/. Same shape as launch: needs the plane, GitHub-only until M5
   # decides the Gitea runner's own engine access (docs/adr/0012
   # consequences).
   seam:

@@ -18,14 +18,14 @@
 #   (c) that workload's flags/flags.json defines release-freeze and its
 #       own WORKLOAD_KILL_SWITCH;
 #   (d) its worker.md, the dev-worker's brief, has `## Scope` and
-#       `## Tests` (docs/adr/0036 §6);
+#       `## Tests` (docs/adr/0037 §6);
 #   (e) its policy.env, if any, passes core/policy.py: known keys, valid
-#       values, a provenance line over each (docs/adr/0036 §5).
+#       values, a provenance line over each (docs/adr/0037 §5).
 # The contract is the workload's directory for one inside this checkout
 # (app/), and its .lights-out/ for a repository laid out to be attached:
 # workloads/*/ here, or the attached clone itself, named as the one
 # argument by `make attached`, which exports its WORKLOAD_CONTRACT
-# (docs/adr/0036 §2, §7).
+# (docs/adr/0037 §2, §7).
 # `docker-compose config` only renders the merged project; it needs no
 # engine socket (ci/compose.sh's own rationale, docs/adr/0012), only the
 # WORKBENCH_IMAGE precondition every other compose call in this repo has

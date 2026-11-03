@@ -9,7 +9,7 @@ a plain clone of lights-out; your repository gets one directory,
 
 | | Status |
 |---|---|
-| A repository outside the lights-out checkout, attached, end to end (up, smoke, verify, rollback, gates) | Proven: `./go demo-seam` copies `workloads/minimal/` into a new repository and attaches it (ADR 0036) |
+| A repository outside the lights-out checkout, attached, end to end (up, smoke, verify, rollback, gates) | Proven: `./go demo-seam` copies `workloads/minimal/` into a new repository and attaches it (ADR 0037) |
 | The platform reads only your `.lights-out/`, and never names your repository | Proven: `ci/attach.sh` and `ci/app-free.sh` run in `./go ci` |
 | A PR is judged by your base branch's policy, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |

@@ -1,4 +1,4 @@
-"""The effective merge and verify policy (docs/adr/0036 §5): stdlib only.
+"""The effective merge and verify policy (docs/adr/0037 §5): stdlib only.
 
 Platform defaults (policy/merge.env), then the workload's measured
 MUTATION_BASELINE (its workload.env), then the workload's optional
@@ -193,7 +193,7 @@ def main(argv):
     for report in reports:
         print(f"policy: {args.overrides}: {report}", file=sys.stderr)
     with open(args.out, "w") as fh:
-        fh.write("# The effective policy, written by core/policy.py (docs/adr/0036 §5).\n")
+        fh.write("# The effective policy, written by core/policy.py (docs/adr/0037 §5).\n")
         for key, value in policy.items():
             fh.write(f"{key}={value}\n")
     return 0

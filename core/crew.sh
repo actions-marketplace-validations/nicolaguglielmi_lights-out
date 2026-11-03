@@ -6,7 +6,7 @@
 # profile names, plus core/harness-check.sh's harness-independent success
 # check (docs/adr/0017 §1 owner addition: exit 0 alone is not success). No
 # Gitea word appears below, and one Gemini word: the key a user needs at L1
-# (docs/adr/0036 §8). The model never holds a credential:
+# (docs/adr/0037 §8). The model never holds a credential:
 # bootstrap and push run here, in workbench, with the authenticated URL
 # passed as a command argument, never written to a .git/config.
 #
@@ -34,17 +34,17 @@ fi
 # A role may name its own harness (docs/adr/0020 §1); the profile's is the default.
 harness=${HARNESS:-$AGENT_HARNESS}
 
-# docs/adr/0036 §8: fixtures/ holds this checkout's runs on its own
+# docs/adr/0037 §8: fixtures/ holds this checkout's runs on its own
 # tickets. An attached repository has none, so at L0 there is nothing to
 # replay: say so before anything is bootstrapped, never a fake success.
 if [ -n "${WORKLOAD_ATTACHED:-}" ] && [ "$harness" = replay ]; then
   nogo "the attached repository $(git -C "$WORKLOAD" remote get-url origin 2>/dev/null || printf '%s' "$WORKLOAD") has no recordings to replay at L0; run the crew at L1: PROFILE=l1 and GEMINI_API_KEY in .env (see .env.example)"
 fi
 : "${WORKLOAD_CONTRACT:?WORKLOAD_CONTRACT not set; run this via ./go, not directly}"
-# The workload's brief for the dev-worker (docs/adr/0036 §6): where its
+# The workload's brief for the dev-worker (docs/adr/0037 §6): where its
 # code is and how its tests run. Checked before any work starts.
 brief="$WORKLOAD_CONTRACT/worker.md"
-[ -f "$brief" ] || nogo "$brief is missing; the worker would start from no brief (docs/adr/0036 §6)"
+[ -f "$brief" ] || nogo "$brief is missing; the worker would start from no brief (docs/adr/0037 §6)"
 
 here=$(pwd)
 crew_dir="$here/.crew/$TICKET"
@@ -69,7 +69,7 @@ if [ -f "$WORKLOAD_CONTRACT/crew-prepare.sh" ]; then
   sh "$WORKLOAD_CONTRACT/crew-prepare.sh" "$crew_dir/workspace"
 fi
 
-# The harness's input (docs/adr/0036 §6, review's precedent in ADR 0021
+# The harness's input (docs/adr/0037 §6, review's precedent in ADR 0021
 # §3): the ticket, then the workload's brief. ticket.md stays the ticket
 # alone, for the perimeter check below.
 {

@@ -1,4 +1,4 @@
-"""Tests for core/policy.py, written from docs/adr/0036 §5 and the CLI contract
+"""Tests for core/policy.py, written from docs/adr/0037 §5 and the CLI contract
 (--platform, --workload-env, --overrides, --out), never from the implementation.
 
 Every test writes its own platform-defaults file in a temp dir instead of

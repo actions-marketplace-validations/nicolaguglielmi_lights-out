@@ -22,7 +22,7 @@ Milestone M12 closed (the Workload port, ADR 0030). Next is the legacy-repo expe
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
 | review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |
 | seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
-| attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0036); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
+| attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0037); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
 
 | | |
 |---|---|
@@ -180,7 +180,7 @@ At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERS
 
 A workload is any directory that owns a `workload.env` file and provides the services and scripts the platform expects. The app and `workloads/minimal/` are two implementations; `WORKLOAD=<path>` (default `app`) selects which one runs. The contract is declared in ADR 0030: seven environment variables (e.g., `CANARY_VERSION`, `WORKLOAD_KILL_SWITCH`, `WORKLOAD_MUTATION_SCOPE`), three compose services (`backend`, `backend-canary`, `backend-test`), health and metrics endpoints on `:8000`, one flag file, `smoke.sh` and `load.sh`, in-image test runners (`tests/mutation/run.sh`, `tests/sast/run.sh`), and gate fixtures. Every gate and control system reads these values instead of naming the app, verified by `ci/app-free.sh`. `./go demo-seam` (like `demo-rollback` and `demo-launch`, outside the main `demo`) proves the seam is real: two distinct workloads, same platform.
 
-A workload can also live in a repository of its own (ADR 0036). `./go attach <path>` clones it into `.attached/`, which becomes the default `WORKLOAD` until `./go detach`. Its contract is in `.lights-out/` at its root and nowhere else: the files above plus `worker.md` (the dev-worker's brief), an optional `policy.env` (nine overridable thresholds, each with a provenance line, read by `core/policy.py`) and optional `tickets/`. The gates diff its history, Gitea mirrors it, and a PR is judged by its base's `policy.env`. `workloads/minimal/` is laid out this way; `./go demo-seam` copies it into a fresh repository and attaches it. [Use it on your own codebase](use-on-your-repo.md) is the walkthrough.
+A workload can also live in a repository of its own (ADR 0037). `./go attach <path>` clones it into `.attached/`, which becomes the default `WORKLOAD` until `./go detach`. Its contract is in `.lights-out/` at its root and nowhere else: the files above plus `worker.md` (the dev-worker's brief), an optional `policy.env` (nine overridable thresholds, each with a provenance line, read by `core/policy.py`) and optional `tickets/`. The gates diff its history, Gitea mirrors it, and a PR is judged by its base's `policy.env`. `workloads/minimal/` is laid out this way; `./go demo-seam` copies it into a fresh repository and attaches it. [Use it on your own codebase](use-on-your-repo.md) is the walkthrough.
 
 ## How it runs
 

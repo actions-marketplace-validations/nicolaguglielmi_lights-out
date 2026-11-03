@@ -18,7 +18,7 @@
 # holds the PR's head, but the Makefile and what it includes, gates/,
 # ci/, core/ and policy/ are the base's; the ticket comes from the
 # Tracker and the perimeter check from this checkout, never from the PR.
-# An attached repository's PR (docs/adr/0036 §4) cannot carry this
+# An attached repository's PR (docs/adr/0037 §4) cannot carry this
 # checkout's judges at all: only its contract's workload.env and
 # policy.env come from its base, and the gates run from here.
 set -eu
@@ -34,7 +34,7 @@ set -eu
 
 branch="ticket/$TICKET"
 clone_url=$(sh "adapters/$CODE_HOST/clone-url.sh")
-# Every git call below is in the workload's repository (docs/adr/0036 §3).
+# Every git call below is in the workload's repository (docs/adr/0037 §3).
 git -C "$WORKLOAD" fetch -q "$clone_url" "$branch" \
   || { printf 'step-ci: could not fetch %s from %s\n' "$branch" "$CODE_HOST" >&2; exit 1; }
 fetched=$(git -C "$WORKLOAD" rev-parse FETCH_HEAD)

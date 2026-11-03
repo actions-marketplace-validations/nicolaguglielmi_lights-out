@@ -12,13 +12,13 @@ include profiles/$(PROFILE).env
 
 # The Workload port (docs/adr/0030 §1): a workload is a directory: not the
 # profile's choice, the same at every level. ./go attach <path> clones a
-# repository of the user's into ATTACHED (docs/adr/0036 §1); while that
+# repository of the user's into ATTACHED (docs/adr/0037 §1); while that
 # holds a clone, it is the workload. ./go knows the same path.
 ATTACHED ?= .attached
 WORKLOAD ?= $(if $(wildcard $(ATTACHED)/.git),$(ATTACHED),app)
 # A workload in a git repository other than this one is attached: its
 # contract is in its .lights-out/ and nowhere else, no fallback. One inside
-# this repository keeps it in its own directory, as app/ does (docs/adr/0036
+# this repository keeps it in its own directory, as app/ does (docs/adr/0037
 # §2). Every read of the contract goes through WORKLOAD_CONTRACT. include
 # stops make, naming the file, if it is missing.
 WORKLOAD_REPO := $(shell git -C '$(WORKLOAD)' rev-parse --show-toplevel 2>/dev/null)
@@ -40,7 +40,7 @@ COMPOSE_FILE := compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml
 export COMPOSE_FILE
 FLAGS_FILE := $(WORKLOAD_CONTRACT)/flags/flags.json
 export FLAGS_FILE
-# The file Tracker's directory (docs/adr/0036 §2): this checkout's tickets/
+# The file Tracker's directory (docs/adr/0037 §2): this checkout's tickets/
 # for a bundled workload, the attached repository's own otherwise.
 TICKETS_DIR := $(if $(WORKLOAD_ATTACHED),$(WORKLOAD_CONTRACT)/tickets,tickets)
 export TICKETS_DIR
@@ -145,7 +145,7 @@ help: ## List the targets
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
 	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
-		attach "clone a repository with a .lights-out/ contract and make it the workload: ./go attach <path> (docs/adr/0036)" \
+		attach "clone a repository with a .lights-out/ contract and make it the workload: ./go attach <path> (docs/adr/0037)" \
 		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
@@ -277,7 +277,7 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 # HEAD..<applied>, then discarded. A bundled workload's worktree carries
 # this checkout, so make runs inside it, as before; an attached one's
 # carries only the target, so make runs here with WORKLOAD pointing at it
-# (docs/adr/0036 §4).
+# (docs/adr/0037 §4).
 .PHONY: demo-gates
 demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/adr/0015 §6)
 	@git -C "$(WORKLOAD)" worktree prune
@@ -726,7 +726,7 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-launch — Envoy reports weights.canary=%s after the un-promote, want 0\n' "$$canary_w"; exit 1; }; \
 	printf 'GO: demo-launch\n'
 
-# The M12 acceptance command (docs/adr/0030 §7), made M13's (docs/adr/0036
+# The M12 acceptance command (docs/adr/0030 §7), made M13's (docs/adr/0037
 # §10), outside `./go demo` (ADR 0003): workloads/minimal copied into a
 # fresh git repository outside this checkout, attached the way a user
 # attaches theirs, and run through the same steps. demo-rollback already
@@ -737,10 +737,11 @@ demo-launch: ## Prove go-for-launch: held canary, brief, GO → 100%, then the u
 # `down` calls: a later `up` must not re-mount an anonymous volume
 # Prometheus already wrote into, or verify could join two workloads'
 # backend:8000 series (docs.docker.com, verified 2026-09-23). WORKLOAD is
-# passed down explicitly: this make computed its own before the clone
-# existed, and export hands that value to every child.
+# passed down explicitly, and the image tags dropped from the environment:
+# this make computed them from this checkout before the clone existed, and
+# export would hand those values to every child.
 .PHONY: demo-seam
-demo-seam: ## Prove attach and the Workload port on workloads/minimal, as a repository of its own (docs/adr/0030 §7, 0036 §10)
+demo-seam: ## Prove attach and the Workload port on workloads/minimal, as a repository of its own (docs/adr/0030 §7, 0037 §10)
 	@if [ -e "$(ATTACHED)" ]; then \
 		printf 'NO-GO: demo-seam — %s is attached at %s; demo-seam attaches its own repository there: ./go detach first\n' \
 			"$$(git -C "$(ATTACHED)" remote get-url origin 2>/dev/null || echo 'a repository')" "$(ATTACHED)"; \
@@ -757,7 +758,8 @@ demo-seam: ## Prove attach and the Workload port on workloads/minimal, as a repo
 	printf '[demo-seam] workloads/minimal is now the repository %s, outside this checkout\n' "$$src" >&2; \
 	sh core/attach.sh "$$src" "$(ATTACHED)" || { printf 'NO-GO: demo-seam — attach refused %s\n' "$$src"; exit 1; }; \
 	for step in attached down up smoke verify demo-rollback demo-gates; do \
-		$(MAKE) --no-print-directory "$$step" WORKLOAD="$(ATTACHED)" || { printf 'NO-GO: demo-seam — %s failed on the attached repository\n' "$$step"; exit 1; }; \
+		env -u APP_TAG -u CANARY_TAG -u CANARY_IMAGE \
+			$(MAKE) --no-print-directory "$$step" WORKLOAD="$(ATTACHED)" || { printf 'NO-GO: demo-seam — %s failed on the attached repository\n' "$$step"; exit 1; }; \
 	done; \
 	verdict=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
 	case "$$verdict" in \
@@ -767,11 +769,11 @@ demo-seam: ## Prove attach and the Workload port on workloads/minimal, as a repo
 	$(MAKE) --no-print-directory down WORKLOAD="$(ATTACHED)" || exit 1; \
 	printf 'GO: demo-seam\n'
 
-# What `./go attach <path>` runs once the clone exists (docs/adr/0036 §1,
+# What `./go attach <path>` runs once the clone exists (docs/adr/0037 §1,
 # §7): the attached repository's contract, checked the way ci/workloads.sh
 # checks the ones in this checkout.
 .PHONY: attached
-attached: ## Check the attached repository's .lights-out/ contract (docs/adr/0036 §7)
+attached: ## Check the attached repository's .lights-out/ contract (docs/adr/0037 §7)
 	@[ -n "$(WORKLOAD_ATTACHED)" ] || { printf 'NO-GO: attached — WORKLOAD=%s is not an attached repository; ./go attach <path> first\n' "$(WORKLOAD)"; exit 1; }
 	@out=$$(sh ci/workloads.sh "$(WORKLOAD)") || { printf 'NO-GO: attached — %s\n' "$${out#NO-GO: workloads — }"; exit 1; }; \
 	printf 'GO: attached — %s at %s, contract in %s\n' \

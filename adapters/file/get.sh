@@ -9,7 +9,7 @@ set -eu
 id=${1:?usage: get.sh <ticket-id>}
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-# TICKETS_DIR (docs/adr/0036 §2): the Makefile's, relative to the
+# TICKETS_DIR (docs/adr/0037 §2): the Makefile's, relative to the
 # checkout; tickets/ when nothing sets it.
 dir=${TICKETS_DIR:-tickets}
 case "$dir" in

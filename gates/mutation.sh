@@ -32,7 +32,7 @@ mkdir -p "$gates_out"
 # mutate.
 # The diff is the workload repository's, its paths relative to that
 # repository's root: the workload's own place in it (its directory for a
-# bundled workload, nothing for an attached repository, docs/adr/0036 §3)
+# bundled workload, nothing for an attached repository, docs/adr/0037 §3)
 # is what --show-prefix gives.
 workload_prefix=$(git -C "$WORKLOAD" rev-parse --show-prefix) \
   || nogo "$WORKLOAD is not inside a git repository"
@@ -87,7 +87,7 @@ fi
 
 # MUTATION_BASELINE (measured, the workload's workload.env, docs/adr/0030
 # §2) and MUTATION_MARGIN (a decision, policy/merge.env, docs/adr/0015 §3),
-# either overridden by the workload's policy.env (docs/adr/0036 §5).
+# either overridden by the workload's policy.env (docs/adr/0037 §5).
 effective_policy "$gates_out/effective-policy.env"
 MUTATION_BASELINE=$(sed -n 's/^MUTATION_BASELINE=//p' "$gates_out/effective-policy.env")
 MUTATION_MARGIN=$(sed -n 's/^MUTATION_MARGIN=//p' "$gates_out/effective-policy.env")

@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# core-attach (docs/adr/0036 §1): clones a repository of the user's into
+# core-attach (docs/adr/0037 §1): clones a repository of the user's into
 # <dest>, the directory the Makefile then selects as the workload. Runs on
 # the host under `./go attach`, with git and sh only, and inside workbench
 # under demo-seam. The source is only read: every worktree and fetch the

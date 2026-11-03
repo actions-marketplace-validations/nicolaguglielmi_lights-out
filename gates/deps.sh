@@ -40,7 +40,7 @@ for entry in "$@"; do
   [ -n "$entry" ] || nogo "WORKLOAD_LOCKFILES names an empty entry"
   path="$WORKLOAD/$entry"
   # <rev>:./<path> is relative to git -C's directory: the workload's place
-  # in its repository, whichever repository that is (docs/adr/0036 §3).
+  # in its repository, whichever repository that is (docs/adr/0037 §3).
   git -C "$WORKLOAD" cat-file -e "$head:./$entry" 2>/dev/null \
     || nogo "$path is not tracked at $head (from WORKLOAD_LOCKFILES)"
   lockfiles="${lockfiles:+$lockfiles }$path"

@@ -36,7 +36,7 @@ nogo() {
 # $base to the merge-base of BASE and HEAD (the PR's own changes, as a code
 # host would show them) and $head to HEAD, for the caller to diff against.
 # The range is the workload's repository's: this one for a bundled
-# workload, the attached repository's otherwise (docs/adr/0036 §3).
+# workload, the attached repository's otherwise (docs/adr/0037 §3).
 # Not called by sourcing ci/lib.sh: only gates that need a range call it.
 require_range() {
   base_ref=${BASE:-}
@@ -51,7 +51,7 @@ require_range() {
 }
 
 # effective_policy FILE: policy/merge.env with the workload's own
-# policy.env over it (docs/adr/0036 §5), written to FILE by core/policy.py,
+# policy.env over it (docs/adr/0037 §5), written to FILE by core/policy.py,
 # the one reader of either. NO-GO naming the key on an unknown key, a
 # malformed value or a missing provenance; an override looser than the
 # platform default is reported on stderr and applied.

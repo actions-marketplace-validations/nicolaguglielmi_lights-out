@@ -27,7 +27,7 @@ trap 'rm -f "$tmp"' EXIT
     [ -d "$d" ] && find "$d" -type f -name '*.sh'
   done
   # A workload laid out to be attached keeps these in .lights-out/
-  # (docs/adr/0036 §2).
+  # (docs/adr/0037 §2).
   for w in app workloads/*; do
     [ -d "$w" ] || continue
     for c in "$w" "$w/.lights-out"; do

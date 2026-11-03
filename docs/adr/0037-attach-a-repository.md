@@ -1,4 +1,4 @@
-# ADR 0036 — Attach: `./go attach <path>` clones a repository of the user's into `.attached/`, which becomes the workload; an attached workload's contract lives in its `.lights-out/` and nowhere else, its thresholds in `.lights-out/policy.env`, and its brief for the dev-worker in `.lights-out/worker.md`
+# ADR 0037 — Attach: `./go attach <path>` clones a repository of the user's into `.attached/`, which becomes the workload; an attached workload's contract lives in its `.lights-out/` and nowhere else, its thresholds in `.lights-out/policy.env`, and its brief for the dev-worker in `.lights-out/worker.md`
 
 - Status: accepted (amends ADR 0030 §1 [a workload may be a repository of its own], §3 [the port gains `worker.md`, an optional `policy.env` and, attached, `tickets/`], §4 [`.lights-out/*`, `*policy.env` and `*worker.md` are platform-risk], §5 [`app-free` scans `roles/dev-worker` and bans the attach location], §7 [`demo-seam` attaches `workloads/minimal`]; ADR 0033 §1 [the judges of an attached PR]; ADR 0017 §4 and §5 [crew hands the harness ticket plus brief; Gitea mirrors the workload's repository]; ADR 0016 §6 [platform defaults in one file, workload paths out of it]; ADR 0013 §5 [the SLO deltas move to `policy/merge.env`]; takes ADR 0031 §1–§2's `worker.md` and leaves the rest of that draft open)
 - Date: 2026-11-03
@@ -19,7 +19,10 @@ Three facts shape the answer:
 - **The workbench sees one directory.** `./go` mounts the checkout at its
   own path, nothing else. The engine resolves compose bind mounts (flagd's
   flag directory) on its own host: on macOS that is the podman machine,
-  which shares `$HOME` by default and not, for example, `/tmp`.
+  which shares `/Users`, `/private` and `/var/folders` (the owner's
+  machine, checked 2026-11-03), not `/Volumes` or `/opt`. Git worktrees
+  show the same limit from the other side: a worktree's `.git` points at
+  the main repository, outside the mount, and git fails inside workbench.
 - **Thresholds are in three places.** `policy/merge.env` (margin, size,
   auto-merge levels, and three path lists that name the app),
   `verify/slo.sh` (two deltas as shell defaults), `workload.env`
@@ -147,9 +150,10 @@ Three facts shape the answer:
 ## Alternatives rejected
 
 - **Mount the user's path into the workbench.** A path outside the podman
-  machine's shares (`/tmp` on macOS) breaks flagd's bind mount; worktrees
-  and fetches would write into the user's `.git`; every `./go` run would
-  need the path.
+  machine's shares (an external disk under `/Volumes`) breaks flagd's bind
+  mount; a repository that is itself a git worktree would not resolve;
+  worktrees and fetches would write into the user's `.git`; every `./go`
+  run would need the path.
 - **The clone under `.crew/`.** The worker container mounts `.crew/`
   read-write; a model could rewrite what the next bootstrap pushes as the
   base.

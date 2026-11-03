@@ -11,7 +11,7 @@
 # word list is docs/adr/0030 §5's; grown when a workload gains a new name
 # to hide, never shrunk.
 #
-# docs/adr/0036 §6-§7 grew it twice. The dev-worker's prompt is scanned
+# docs/adr/0037 §6-§7 grew it twice. The dev-worker's prompt is scanned
 # too: the workload's layout is in its brief, worker.md. And an attached
 # repository is reached only through WORKLOAD and WORKLOAD_CONTRACT, so
 # neither its clone's location (.attached, the Makefile's and ./go's) nor
