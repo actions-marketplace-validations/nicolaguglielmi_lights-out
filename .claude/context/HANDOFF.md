@@ -35,7 +35,7 @@ By hand, from the clone, against a repository in the scratchpad: `./go attach <p
 ## Found (contradicts the plan or the brief)
 
 1. `./go` cannot drive git from a git worktree: the workbench mounts only the worktree, whose `.git` points outside it. Every session under `.claude/worktrees/` needs a full clone to run plane targets (M15 found the same). Not fixed: a candidate is mounting `git rev-parse --git-common-dir` when it lies outside the checkout.
-2. All sessions share one podman machine and one compose project (`name: lights-out`). This session's first `demo-seam` (about 15:35 CET) ran `down` on a plane another session had up: its `podman ps` came too early. The parent session then set the rule (check by label, down after each run, M13 first). Separately, at 15:40:12 CET every container on the machine was removed, other projects' stopped ones included; this session's logs show only `lights-out-*` removals. Volumes and images are intact.
+2. All sessions share one podman machine and one compose project (`name: lights-out`). This session's first `demo-seam` (about 15:35 CET) ran `down` on a plane another session had up: its `podman ps` came too early. The parent session then set the rule (check by label, down after each run, M13 first). Separately, at 15:40:12 CET every stopped container on the machine was removed, other projects' included; this session's logs show only `lights-out-*` removals. Volumes and images are intact.
 3. The podman machine shares `/Users`, `/private` and `/var/folders`, not only `$HOME`; ADR 0037's context says so.
 4. ADR 0036 is taken by the unmerged `agentic-network` branch; this one is 0037 (M15 took 0038).
 

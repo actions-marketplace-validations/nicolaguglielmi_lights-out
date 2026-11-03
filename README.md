@@ -65,9 +65,25 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 - **Your engine:** for plane commands, `./go` hands its toolchain container your engine's socket, which means full control of the engine. Run it where that is acceptable.
 - **Cloud:** Google Cloud profiles are designed, not yet run.
 
+## On your own codebase
+
+```sh
+./go attach ~/code/your-repo   # your repository gets one directory, .lights-out/; lights-out never writes to it
+```
+
+What works today, and what does not yet:
+
+- **Works:** the plane, the six gates, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
+- **Needs a Gemini API key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0. The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
+- **Python 3.13 and Node 24 only.** That is the dev-worker's toolchain; other stacks are the next milestone.
+- **Stops at release at L1.** A merged change is not yet built and released from your repository.
+- **Local only.** Merges land on the plane's Gitea and you `git fetch` them back. No pull requests on GitHub yet, and no deploy to your production.
+- **Not yet proven** on a codebase that was not written for lights-out.
+
+[The guide](docs/use-on-your-repo.md) says what `.lights-out/` holds, how to measure your mutation baseline and how to write tickets.
+
 ## Next
 
-- [Use it on your own codebase](docs/use-on-your-repo.md): `./go attach <path>` points this clone at your repository, no fork
 - [How it works, every command, every level](docs/reference.md)
 - [Architecture](docs/ARCHITECTURE.md) and [decisions](docs/adr/)
 - [Contributing](CONTRIBUTING.md) and [roadmap](ROADMAP.md)
