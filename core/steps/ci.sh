@@ -60,8 +60,8 @@ if [ "$perimeter_rc" -ne 0 ]; then
   printf '%s\n' "$perimeter" > "$details_file"
   printf 'GATES=NO-GO\nFAILED=perimeter\nRISK_LEVEL=unknown\nRISK_DECISION=unknown\n' > "$GATES_OUT/verdict.env"
 else
-  git worktree add --detach "$wt" FETCH_HEAD >/dev/null 2>&1 \
-    || { printf 'step-ci: git worktree add failed\n' >&2; exit 1; }
+  err=$(git worktree add --detach "$wt" FETCH_HEAD 2>&1 >/dev/null) \
+    || { printf 'step-ci: git worktree add failed: %s\n' "$err" >&2; exit 1; }
   # docs/adr/0033 §1: the code under test is the PR's; what judges it is
   # the base's. restore is no-overlay: a judge the PR adds is removed too.
   judges="Makefile profiles gates ci core policy $WORKLOAD/workload.env"

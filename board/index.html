@@ -258,14 +258,14 @@ pre{margin:0;font-size:11.5px;line-height:1.5;color:var(--ink2);white-space:pre-
 <!-- core/tower.sh's transition table. ci/board.sh fails when it drifts. -->
 <script type="application/json" id="tower-machine">
 {
-  "precondition": {"assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "release": "merged"},
-  "next": {"pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "release"}
+  "precondition": {"assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "release": "merged", "rework": "ci-failed"},
+  "next": {"pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "release", "ci-failed": "rework"}
 }
 </script>
 <script>
 "use strict";
 const MACHINE = JSON.parse(document.getElementById("tower-machine").textContent);
-const STATES = ["opened", "pr-opened", "review", "ci-passed", "ci-failed", "merged", "held", "rolled-back"];
+const STATES = ["opened", "pr-opened", "review", "ci-passed", "ci-failed", "needs-human", "merged", "held", "rolled-back"];
 const GATES = ["risk", "secrets", "deps", "sast", "test", "mutation"];
 
 // ---- the stations -------------------------------------------------------
@@ -339,7 +339,7 @@ const NODES = [
 const BYID = Object.fromEntries(NODES.map(n => [n.id, n]));
 const BRACKETS = [
   {id:"open", x1:20, x2:160, y:R1+H+10, label:"tower: open"},
-  {id:"assign", x1:180, x2:670, y:R1+H+10, label:"tower step: assign"},
+  {id:"assign", x1:180, x2:670, y:R1+H+10, label:"tower step: assign · rework"},
   {id:"ci", x1:690, x2:1010, y:R1+H+10, label:"tower step: ci"},
   {id:"merge", x1:1210, x2:1380, y:R1+H+10, label:"tower step: merge"},
   {id:"release", x1:20, x2:1040, y:R2+H+10, label:"tower step: release — awaits the image, then runs launchpad"},
@@ -372,6 +372,11 @@ function draw() {
   line(`M${risk.x+80},${risk.y+H} L${rev.x+80},${rev.y-2}`, "risk>review");
   line(`M${rev.x+rev.w},${mid(rev)} L${merge.x+85},${mid(rev)} L${merge.x+85},${merge.y+H+2}`, "review>merge");
   line(`M${build.x+90},${build.y+H} L${build.x+90},${R2-36} L95,${R2-36} L95,${R2-2}`, "build>freeze");
+  // rework: a NO-GO before merge goes back to the worker (docs/adr/0038)
+  const gates = BYID.gates, crew = BYID.crew;
+  const back = `M${gates.x+40},${gates.y-2} L${gates.x+40},${gates.y-12} L${crew.x+75},${gates.y-12} L${crew.x+75},${crew.y-2}`;
+  EDGES["gates>crew"] = {d:back, red:true, e:svg.appendChild(el("path", {d:back, class:"edge loop", "marker-end":"url(#ar)"}))};
+  svg.appendChild(el("text", {x:crew.x+82, y:gates.y-16, class:"blabel", style:"fill:#F85149"}, "NO-GO → REWORK · CAPPED BY POLICY"));
   // rollback bus
   const bus = 424, rb = BYID.rollback;
   const g = el("g", {id:"rollpath"});
@@ -424,7 +429,7 @@ const EDGES = {};
 const ARTEFACT = {
   "ticket>crew":"ticket.md", "crew>perimeter":"patch", "perimeter>pr":"branch", "pr>gates":"PR · base..head",
   "gates>risk":"verdict.env", "risk>merge":"auto-merge", "risk>review":"review request", "review>merge":"APPROVED",
-  "merge>build":"merge sha", "build>freeze":"signed image", "freeze>sign":"release-freeze: off", "sign>staging":"digest",
+  "merge>build":"merge sha", "gates>crew":"verdict", "build>freeze":"signed image", "freeze>sign":"release-freeze: off", "sign>staging":"digest",
   "staging>c5":"canary up", "c5>c25":"GO: slo", "c25>held":"GO: slo", "held>human":"release.json · brief",
   "human>full":"GO", "full>operate":"100%", "operate>ticket":"incident → ticket",
   "staging>rollback":"NO-GO", "c5>rollback":"NO-GO: slo", "c25>rollback":"NO-GO: slo", "human>rollback":"NO-GO",
@@ -456,7 +461,8 @@ function handoff(from, to, ms) {
 // (gate lights), focus (stations to pulse), br (tower step bracket),
 // tower: [step, to] (validated against MACHINE), fail: [step, why],
 // resume: step, open, out (stdout lines), w / canary (traffic), lock,
-// roll (rollback path lit), say, ref.
+// roll (rollback path lit), attempt (the document's, from then on), set
+// (fields merged into the document), say, ref.
 const T = "0042";
 const P = {
   open: {open:true, focus:["ticket"], n:{ticket:"go"}, br:"open",
@@ -465,7 +471,7 @@ const P = {
     say:"The dev-worker role takes the ticket in a throwaway workspace, with a token for that role only and no production credentials: a token budget, a turn limit, a timeout. At L0 it replays an answer recorded once against Gemini.", ref:"core/crew.sh · roles/dev-worker · docs/adr/0017"},
   perimeter: {focus:["perimeter"], n:{perimeter:"go"}, lock:{perimeter:"ok"},
     say:"Every changed path must match a glob in the ticket's `## Perimeter`. One path outside it and no PR is ever opened.", ref:"core/perimeter.sh · docs/adr/0021 §5"},
-  pr: {focus:["pr"], n:{pr:"go"}, tower:["assign","pr-opened"],
+  pr: {focus:["pr"], n:{pr:"go"}, tower:["assign","pr-opened"], attempt:1,
     say:"The branch goes to the code host (a Gitea inside the plane at L0) and the PR opens. The tower records base and head SHA, moves to `pr-opened` and requests `ci`.", ref:"core/steps/assign.sh"},
   judges: {focus:["gates"], br:"ci", g:{risk:"run"}, lock:{judges:"on"},
     say:"CI checks out the PR's code, then puts back its judges from the base: Makefile, gates/, ci/, core/, policy/ and the workload's contract. A PR cannot edit the gates that judge it.", ref:"core/steps/ci.sh · docs/adr/0033"},
@@ -518,7 +524,26 @@ const SCENARIOS = [
    steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
      {focus:["gates"], g:{mutation:"nogo"}, n:{gates:"nogo", risk:"skip", review:"skip", merge:"skip", build:"skip"}, tower:["ci","ci-failed"],
       out:["NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"],
-      say:"The worker's test passes and coverage would call it done. But 9 of 10 mutants survive: the test asserts nothing about the change. NO-GO, a failure status on the PR, state `ci-failed`. Nothing merges.", ref:"gates/mutation.sh · ./go demo-gates proves every gate both GO and NO-GO"}]},
+      say:"The worker's test passes and coverage would call it done. But 9 of 10 mutants survive: the test asserts nothing about the change. NO-GO, a failure status on the PR, state `ci-failed`. Nothing merges: the verdict goes back to the worker (the next scenario).", ref:"gates/mutation.sh · ./go demo-gates proves every gate both GO and NO-GO"}]},
+  {id:"rework", name:"NO-GO, rework, GO", blurb:"the verdict goes back to the worker",
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
+     {focus:["gates"], g:{mutation:"nogo"}, n:{gates:"nogo"}, tower:["ci","ci-failed"],
+      out:["NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"],
+      say:"Attempt 1: the worker's test passes, but it posts a venue that never reaches the new 404 branch, so 9 of 10 mutants survive. NO-GO, state `ci-failed`. Nothing merges, and the ticket is not over: `ci-failed` requests `rework`.", ref:"gates/mutation.sh · core/tower.sh"},
+     {focus:["crew"], br:"assign", n:{crew:"idle", perimeter:"idle", pr:"idle"}, lock:{perimeter:"idle", judges:"idle"},
+      set:{rework:[{attempt:1, judge:"gates", line:"NO-GO: gates — mutation: …", details:["app/backend/meetups/geocoder_client.py:30 …"]}]},
+      out:["[rework] ticket 0042: attempt 1 rejected by the gates; attempt 2 of 4"],
+      say:"The tower runs `rework`. dev-worker starts again from its own PR head, and its input is the ticket plus the verdict: the NO-GO line and the surviving mutants. Never its previous conversation, never a reviewer's. The verdict stays in the document's `rework` list; the cap, four attempts, comes from `policy/rework.env` in the base, not from the PR.", ref:"core/steps/rework.sh · policy/rework.env · docs/adr/0038"},
+     {focus:["perimeter"], n:{crew:"go", perimeter:"go"}, lock:{perimeter:"ok"},
+      say:"The perimeter is checked again, on the whole PR from its fork point to the new head, before anything is pushed.", ref:"core/crew.sh · core/perimeter.sh"},
+     {focus:["pr"], n:{pr:"go"}, tower:["rework","pr-opened"], attempt:2,
+      say:"Same branch, same PR, a new head. The tower is back at `pr-opened`, attempt 2, and requests `ci`.", ref:"core/steps/rework.sh · adapters/gitea/open-pr.sh"},
+     {focus:["gates"], br:"ci", n:{gates:"idle"}, g:{risk:"run", secrets:"", deps:"", sast:"", test:"", mutation:""}, lock:{judges:"on"},
+      say:"Attempt 2 meets the same judges: the base's gates, policy and perimeter, the same risk routing. Nothing about the loop lives in the PR, so nothing in the PR can loosen it.", ref:"core/steps/ci.sh · docs/adr/0033"},
+     P.gates5,
+     {...P.mutation, say:"The test now posts the venue the contract answers 404 for. The mutants die: GO."},
+     P.riskLow, P.merge, P.build,
+     {focus:[], say:"From here the release is the same as any other, and after merge nothing loops: a failing canary still rolls back on its own. Had attempt 4 failed too, the ticket would have stopped at `needs-human`.", ref:"./go demo-rework"}]},
   {id:"review", name:"Risky diff", blurb:"auth touched: a second reader",
    steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
      {...P.mutation, out:["GO: mutation","GO: gates — risk high, review"]},
@@ -527,7 +552,7 @@ const SCENARIOS = [
      {focus:["review"], br:"ci",
       say:"test-reviewer reads the ticket and the diff, never the worker's conversation: a blind second read. Its verdict is the first line of final.md, with a reason and the sha256 of what it read.", ref:"core/steps/review.sh · docs/adr/0021"},
      {focus:["review"], n:{review:"go", risk:"go"}, tower:["review","ci-passed"],
-      say:"APPROVED, posted on the PR as a commit status: state `ci-passed`, `merge` requested. CHANGES-REQUESTED would have ended at `ci-failed`.", ref:"core/steps/review.sh"},
+      say:"APPROVED, posted on the PR as a commit status: state `ci-passed`, `merge` requested. CHANGES-REQUESTED would have reached `ci-failed`, and the reason would have gone back to the worker for another attempt.", ref:"core/steps/review.sh"},
      P.merge, P.build,
      {focus:[], say:"From here the release is the same as any other: freeze check, signature, staging, 5%, 25%, held."}]},
   {id:"freeze", name:"Freeze, then resume", blurb:"a lock on, a stranded ticket, resume",
@@ -602,9 +627,12 @@ function apply(v, s, i) {
   v.out = v.out.concat(s.out || []);
   v.newest = -1;
   if (s.open) { v.doc = {id:T, state:"opened", history:[{step:"open", state:"opened", at:stamp(i)}]}; v.newest = 0; }
-  if (s.tower) { const [step, to] = s.tower; v.doc.state = to; v.doc.history.push({step, state:to, at:stamp(i)}); v.newest = v.doc.history.length - 1; }
-  if (s.fail) { const [step, why] = s.fail; v.doc.history.push({step, state:v.doc.state, at:stamp(i), error:why}); v.newest = v.doc.history.length - 1; }
-  if (s.resume) { v.doc.history.push({step:"resume", state:v.doc.state, at:stamp(i), resumed:s.resume}); v.newest = v.doc.history.length - 1; }
+  if (s.attempt) v.doc.attempt = s.attempt;
+  if (s.set) Object.assign(v.doc, s.set);
+  const att = () => v.doc.attempt ? {attempt:v.doc.attempt} : {};
+  if (s.tower) { const [step, to] = s.tower; v.doc.state = to; v.doc.history.push({step, state:to, at:stamp(i), ...att()}); v.newest = v.doc.history.length - 1; }
+  if (s.fail) { const [step, why] = s.fail; v.doc.history.push({step, state:v.doc.state, at:stamp(i), ...att(), error:why}); v.newest = v.doc.history.length - 1; }
+  if (s.resume) { v.doc.history.push({step:"resume", state:v.doc.state, at:stamp(i), ...att(), resumed:s.resume}); v.newest = v.doc.history.length - 1; }
   v.say = s.say || ""; v.ref = s.ref || "";
 }
 let mode = "explain", sc = SCENARIOS[0], idx = 0, timer = null;
@@ -650,7 +678,7 @@ function render(v) {
   document.getElementById("states").innerHTML = STATES.map(s => {
     let cls = s === cur ? "now" : "";
     if (s === cur && (s === "ci-failed" || s === "rolled-back" || stranded)) cls += " bad";
-    if (s === cur && (s === "held" || s === "review")) cls += " amb";
+    if (s === cur && (s === "held" || s === "review" || s === "needs-human")) cls += " amb";
     return `<b class="${cls}">${s}</b>`;
   }).join("");
   document.getElementById("doc").innerHTML = v.doc ? docHTML(v.doc, v.newest) : '<span class="muted">no document yet: the ticket is not open</span>';
@@ -818,7 +846,7 @@ function liveView() {
     if (h.some(x => x.error) || lastErr) v.locks.stranded = lastErr ? "on" : "off";
     const st = d.state;
     v.nodes.ticket = "go";
-    const after = ["pr-opened","review","ci-passed","ci-failed","merged","held","rolled-back"];
+    const after = ["pr-opened","review","ci-passed","ci-failed","needs-human","merged","held","rolled-back"];
     if (after.includes(st)) Object.assign(v.nodes, {crew:"go", perimeter:"go", pr:"go"}), v.locks.perimeter = "ok";
     if (st === "opened") { v.focus = ["crew"]; v.br = "assign"; if (lastErr) v.nodes.crew = "nogo"; }
     if (st === "pr-opened") { v.focus = ["gates"]; v.br = "ci"; if (lastErr) v.nodes.gates = "nogo"; }
@@ -834,7 +862,9 @@ function liveView() {
     if (d.review) { v.nodes.review = d.review.verdict === "approved" ? "go" : "nogo"; v.out.push(`review ${d.review.role}: ${d.review.verdict} — ${d.review.reason || ""}`.trim()); }
     if (["ci-passed","merged","held","rolled-back"].includes(st)) v.nodes.risk = "go";
     if (st === "ci-passed") { v.focus = ["merge"]; v.br = "merge"; if (lastErr) v.nodes.merge = "nogo"; }
-    if (st === "ci-failed") { v.nodes.merge = "skip"; v.nodes.build = "skip"; }
+    if (st === "ci-failed") { v.nodes.merge = "skip"; v.nodes.build = "skip"; v.focus = ["crew"]; v.br = "assign"; if (lastErr) v.nodes.crew = "nogo"; }
+    if (st === "needs-human") { v.nodes.merge = "skip"; v.nodes.build = "skip"; }
+    (d.rework || []).forEach(r => v.out.push(`rework: attempt ${r.attempt} sent back by the ${r.judge}`));
     if (["merged","held","rolled-back"].includes(st)) { v.nodes.merge = "go"; v.locks.pinned = "on"; }
     if (st === "merged") { v.focus = ["build"]; v.br = "release"; if (lastErr) v.nodes.build = "nogo"; }
     if (["held","rolled-back"].includes(st)) { v.nodes.build = "go"; v.locks.signed = "on"; }
@@ -960,7 +990,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(
 const TOUR = [
   {sel:".mode", title:"Two modes", text:"EXPLAINER plays scripted walks through the real code paths, with example versions and numbers. LIVE reads your plane through the same port verbs the tower uses; a source that does not answer says so, nothing is filled in.",
    enter:() => { setMode("explain"); pick("rollback"); idx = 13; show(); }},
-  {sel:"#scenarios", title:"Pick a scenario", text:"Each one is a path the code really takes: a clean release, a canary that rolls itself back, a fake test, a risky diff, a freeze, a human who says no, a change out of bounds, a kill switch. \"Bad canary rolls back\" is what ./go demo does."},
+  {sel:"#scenarios", title:"Pick a scenario", text:"Each one is a path the code really takes: a clean release, a canary that rolls itself back, a fake test, a NO-GO the worker fixes, a risky diff, a freeze, a human who says no, a change out of bounds, a kill switch. \"Bad canary rolls back\" is what ./go demo does."},
   {sel:".diagram", title:"The launch sequence", text:"Top row: the tower takes a ticket to a merged, signed image. Bottom row: launchpad releases it in stages, and numbers decide each one. Amber is the only human gate. The red dashed path is the rollback.",
    enter:() => { closeDrawer(); }},
   {sel:"#explain-controls", title:"Step through it", text:"← and → step, space plays. Watch the arrow: the pulse carries the artefact handed over, because every handoff is a file, never a conversation. Here verify has just said NO-GO at 5%, and the rollback takes over.",
