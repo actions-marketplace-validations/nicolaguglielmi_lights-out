@@ -1,0 +1,30 @@
+name: My codebase does not fit
+description: ./go attach, or a step of docs/use-on-your-repo.md, does not work on your repository.
+labels: [attach]
+body:
+  - type: input
+    id: step
+    attributes:
+      label: Which step failed
+      description: The step of docs/use-on-your-repo.md, or the command.
+      placeholder: "./go mutation-baseline"
+    validations:
+      required: true
+  - type: textarea
+    id: codebase
+    attributes:
+      label: Your codebase
+      description: Language and version, test runner, how it starts, what it needs to run (database, queues...).
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The NO-GO line and the lines above it. Remove anything private.
+      render: text
+  - type: input
+    id: public
+    attributes:
+      label: Public repository
+      description: If the codebase is public, its URL helps the most.

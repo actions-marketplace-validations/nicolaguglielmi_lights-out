@@ -1,0 +1,29 @@
+name: Gate bypass
+description: A change got past a gate, the perimeter or the policy when it should not have.
+labels: [gate-bypass]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If content an agent or a contributor controls can do this without a human helping, report it privately instead (SECURITY.md).
+  - type: input
+    id: gate
+    attributes:
+      label: Which gate or rule
+      placeholder: "mutation, perimeter, risk routing, base-branch policy..."
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How
+      description: What the change does, and the verdict it got.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: To reproduce
+      description: A patch, a ticket or a fixture is best. The repo's gate fixtures (app/fixtures/gates/) show the shape.
+    validations:
+      required: true
