@@ -1,0 +1,4 @@
+{
+  "title": "Refuse a meetup capacity below one with 422",
+  "body": "POST /api/meetups validated capacity only as an integer, so 0 or a\nnegative number created a meetup that answered 409 \"meetup is full\" to\nits first registration. MeetupCreateRequest now requires capacity >= 1;\nFastAPI answers 422 before anything is created. The README row for the\nroute says so.\n\nHand-written L0 fixture for ticket 0012's impl member (docs/adr/0036 §7):\nno model wrote this change."
+}
