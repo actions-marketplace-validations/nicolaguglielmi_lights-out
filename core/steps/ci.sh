@@ -59,6 +59,7 @@ perimeter=$(git -C "$WORKLOAD" diff --no-renames --name-only "$merge_base" "$HEA
 
 mkdir -p "$GATES_OUT"
 details_file=$tmp/details
+gates_dir=""
 : > "$details_file"
 if [ "$perimeter_rc" -ne 0 ]; then
   out="NO-GO: perimeter — $(printf '%s' "$perimeter" | tr '\n' ' ')"
@@ -91,11 +92,13 @@ else
   if [ -n "${WORKLOAD_ATTACHED:-}" ]; then
     # The platform's judges are this checkout's: no PR to another
     # repository can carry them.
-    out=$(make --no-print-directory gates WORKLOAD="$wt" GATES_OUT="$tmp/gates-out" BASE="$BASE_SHA" HEAD="$HEAD_SHA") || true
-    cp "$tmp/gates-out/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
+    gates_dir=$tmp/gates-out
+    out=$(make --no-print-directory gates WORKLOAD="$wt" GATES_OUT="$gates_dir" BASE="$BASE_SHA" HEAD="$HEAD_SHA") || true
+    cp "$gates_dir/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
   else
+    gates_dir=$wt/$GATES_OUT
     out=$( (cd "$wt" && make --no-print-directory gates BASE="$BASE_SHA" HEAD="$HEAD_SHA") ) || true
-    cp "$wt/$GATES_OUT/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
+    cp "$gates_dir/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
   fi
 fi
 printf '[ci] gates: %s\n' "$out" >&2
@@ -107,7 +110,7 @@ decision=$(grep '^RISK_DECISION=' "$GATES_OUT/verdict.env" | cut -d= -f2) || dec
 failed=$(grep '^FAILED=' "$GATES_OUT/verdict.env" | cut -d= -f2) || failed=""
 # The failed gate's own details (docs/adr/0038 §5), for the rework loop.
 if [ -n "$failed" ] && [ "$failed" != perimeter ]; then
-  cp "$wt/$GATES_OUT/$failed.details" "$details_file" 2>/dev/null || :
+  cp "$gates_dir/$failed.details" "$details_file" 2>/dev/null || :
 fi
 details=$(jq -R . < "$details_file" | jq -cs .)
 

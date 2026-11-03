@@ -101,8 +101,9 @@ for id in $ids; do
   mkdir -p "$m/out"
   git clone -q "$WORKSPACE" "$m/workspace" >&2
   git -C "$m/workspace" checkout -q -B "member/$id" "$BASE" >&2
-  if [ -f "$WORKLOAD/crew-prepare.sh" ]; then
-    sh "$WORKLOAD/crew-prepare.sh" "$m/workspace"
+  # The contract's directory (docs/adr/0037 §2), as core/crew.sh reads it.
+  if [ -f "${WORKLOAD_CONTRACT:-$WORKLOAD}/crew-prepare.sh" ]; then
+    sh "${WORKLOAD_CONTRACT:-$WORKLOAD}/crew-prepare.sh" "$m/workspace"
   fi
   {
     awk '/^## / { skip = ($0 ~ /^## (Perimeter|Network)[[:space:]]*$/) } !skip' "$TICKET_FILE"
