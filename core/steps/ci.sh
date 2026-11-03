@@ -10,7 +10,9 @@
 # $GATES_OUT/verdict.env at the repo root, and prints the fields for the
 # document. Next state: ci-passed on GO + auto-merge, review on GO +
 # review (core/steps/review.sh picks it up from there, docs/adr/0021),
-# ci-failed on NO-GO. Called by the tower (PR_NUMBER, BASE_SHA,
+# ci-failed on NO-GO, with the failed gate's own details as ci.details —
+# what core/steps/rework.sh hands back to the worker (docs/adr/0038).
+# Called by the tower (PR_NUMBER, BASE_SHA,
 # HEAD_SHA from the document) and by the Makefile's crew-run (from
 # .crew/<id>/pr-opened.env): one code path for both.
 #
@@ -51,8 +53,11 @@ perimeter=$(git diff --no-renames --name-only "$merge_base" "$HEAD_SHA" \
   | sh core/perimeter.sh "$tmp/ticket.md" 2>&1) && perimeter_rc=0 || perimeter_rc=$?
 
 mkdir -p "$GATES_OUT"
+details_file=$tmp/details
+: > "$details_file"
 if [ "$perimeter_rc" -ne 0 ]; then
   out="NO-GO: perimeter — $(printf '%s' "$perimeter" | tr '\n' ' ')"
+  printf '%s\n' "$perimeter" > "$details_file"
   printf 'GATES=NO-GO\nFAILED=perimeter\nRISK_LEVEL=unknown\nRISK_DECISION=unknown\n' > "$GATES_OUT/verdict.env"
 else
   git worktree add --detach "$wt" FETCH_HEAD >/dev/null 2>&1 \
@@ -73,6 +78,11 @@ verdict=$(grep '^GATES=' "$GATES_OUT/verdict.env" | cut -d= -f2) || verdict=""
 level=$(grep '^RISK_LEVEL=' "$GATES_OUT/verdict.env" | cut -d= -f2) || level=unknown
 decision=$(grep '^RISK_DECISION=' "$GATES_OUT/verdict.env" | cut -d= -f2) || decision=unknown
 failed=$(grep '^FAILED=' "$GATES_OUT/verdict.env" | cut -d= -f2) || failed=""
+# The failed gate's own details (docs/adr/0038 §5), for the rework loop.
+if [ -n "$failed" ] && [ "$failed" != perimeter ]; then
+  cp "$wt/$GATES_OUT/$failed.details" "$details_file" 2>/dev/null || :
+fi
+details=$(jq -R . < "$details_file" | jq -cs .)
 
 case "$verdict/$decision" in
   GO/auto-merge) state=ci-passed; status=success ;;
@@ -85,5 +95,6 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
 
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
+  --argjson details "$details" \
   '{state: $state, ci: {verdict: $verdict, failed: (if $failed == "" then null else $failed end),
-    risk_level: $level, decision: $decision, head_sha: $head, line: $line}}'
+    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details}}'

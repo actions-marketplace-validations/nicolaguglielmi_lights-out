@@ -21,6 +21,14 @@ name=crew
 : "${CODE_HOST:?CODE_HOST not set; run this via ./go, not directly}"
 : "${TRACKER:?TRACKER not set; run this via ./go, not directly}"
 : "${WORKLOAD:?WORKLOAD not set; run this via ./go, not directly}"
+# A rework (docs/adr/0038 §4), set only by core/steps/rework.sh: attempt
+# ATTEMPT starts from REWORK_HEAD, the head the judges rejected, and the
+# worker reads the ticket followed by REWORK_FILE, the verdict.
+: "${ATTEMPT:=1}"
+if [ "$ATTEMPT" -gt 1 ]; then
+  : "${REWORK_FILE:?REWORK_FILE not set for attempt $ATTEMPT}"
+  : "${REWORK_HEAD:?REWORK_HEAD not set for attempt $ATTEMPT}"
+fi
 
 # A role without a prompt has no run at M5 (docs/adr/0017 §7): the reason
 # is whichever milestone's ROLE.md names, not re-derived here.
@@ -45,8 +53,24 @@ sh "adapters/$TRACKER/get.sh" "$TICKET" > "$crew_dir/ticket.md" \
 
 git clone -q "$(sh "adapters/$CODE_HOST/clone-url.sh")" "$crew_dir/workspace" >&2 \
   || nogo "clone from $CODE_HOST failed"
-base=$(git -C "$crew_dir/workspace" rev-parse HEAD)
-git -C "$crew_dir/workspace" checkout -q -b "ticket/$TICKET" >&2
+input="$crew_dir/ticket.md"
+if [ "$ATTEMPT" -gt 1 ]; then
+  # The worker changes what it pushed; the PR keeps its fork point as base.
+  git -C "$crew_dir/workspace" fetch -q origin "ticket/$TICKET" >&2 \
+    || nogo "ticket/$TICKET not found on $CODE_HOST for attempt $ATTEMPT"
+  fetched=$(git -C "$crew_dir/workspace" rev-parse FETCH_HEAD)
+  [ "$fetched" = "$REWORK_HEAD" ] \
+    || nogo "ticket/$TICKET on $CODE_HOST is $fetched, the judged head was $REWORK_HEAD"
+  base=$(git -C "$crew_dir/workspace" merge-base HEAD FETCH_HEAD)
+  git -C "$crew_dir/workspace" checkout -q -b "ticket/$TICKET" FETCH_HEAD >&2
+  start=$fetched
+  input="$crew_dir/input.md"
+  { cat "$crew_dir/ticket.md"; printf '\n---\n\n'; cat "$REWORK_FILE"; } > "$input"
+else
+  base=$(git -C "$crew_dir/workspace" rev-parse HEAD)
+  git -C "$crew_dir/workspace" checkout -q -b "ticket/$TICKET" >&2
+  start=$base
+fi
 
 # A workload may need its checked-out workspace prepared before the
 # harness starts on it — a layout its test suite assumes but a plain
@@ -58,15 +82,16 @@ fi
 
 mkdir -p "$crew_dir/out"
 
-printf '[crew] ticket %s: role %s, harness %s\n' "$TICKET" "$ROLE" "$harness" >&2
+printf '[crew] ticket %s: role %s, harness %s, attempt %s\n' "$TICKET" "$ROLE" "$harness" "$ATTEMPT" >&2
 
-ROLE="$ROLE" TICKET="$TICKET" TICKET_FILE="$crew_dir/ticket.md" \
-WORKSPACE="$crew_dir/workspace" BASE="$base" OUT="$crew_dir/out" \
+ROLE="$ROLE" TICKET="$TICKET" TICKET_FILE="$input" ATTEMPT="$ATTEMPT" \
+WORKSPACE="$crew_dir/workspace" BASE="$start" OUT="$crew_dir/out" \
 THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
   sh "adapters/$harness/run.sh" >&2 \
   || nogo "$harness run failed for ticket $TICKET"
 
-sh core/harness-check.sh "$crew_dir/out" "$crew_dir/workspace" "$base" \
+# The attempt's own range: a rework that changes nothing is no attempt.
+sh core/harness-check.sh "$crew_dir/out" "$crew_dir/workspace" "$start" \
   || nogo "worker produced no change or an incomplete artefact"
 
 # Ticket 0003 (docs/adr/0021 §5): the diff must stay inside the ticket's
