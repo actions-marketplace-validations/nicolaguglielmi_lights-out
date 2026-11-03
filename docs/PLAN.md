@@ -124,6 +124,8 @@ Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud D
 
 **Un solo modello per tutti i ruoli, la leva è il thinking level.** Gemini 3.8 Flash (2 settembre 2026): finestra da 1M token, tre livelli di thinking. Sui task lunghi consuma più token, quindi il thinking si fissa per ruolo e il budget di token si misura, non si stima.
 
+*Emendamento 2026-11-03 (§16, M18):* un solo modello **alla volta**, scelto dal profilo con `MODEL_PROVIDER` e `MODEL` (Gemini, Claude o OpenAI), non più `gemini-3.8-flash` per definizione. La tabella del thinking qui sotto resta la leva per ruolo; la mappa verso il parametro di ogni fornitore sta nell'adapter.
+
 Quindi `thinking` diventa un campo della definizione del ruolo, accanto a budget di token, timeout e iterazioni massime:
 
 | Ruolo | thinking | perché |
@@ -363,6 +365,8 @@ Prima di scrivere: ADR 0038.
 
 *Nota 2026-11-03 (stato M15, branch `m15-rework`, non mergiato):* `./go demo-rework` → `GO: demo-rework` in 404 s su un piano freddo: tentativo 1 `NO-GO: gates — mutation: … 4/8 mutants on changed lines killed (0.500 < 0.666)`, il worker riceve la riga e i quattro sopravvissuti (`meetups/geocoder_client.py:26 …`), tentativo 2 `GO: gates — risk low, auto-merge`, merge, rollback del canary, `GO: audit` con la traccia del rework. `./go ci` → `GO: ci` (`ci-tower` con i casi del loop e del limite, `ci-contract` con `NOGO_DETAILS`, `ci-board`). **Regola d'oro, primi tentativi:** sulla macchina di sviluppo, con load average dell'host fra 9 e 135, `./go demo` è andato in NO-GO tre volte su questo branch (smoke a 3 s di timeout; due volte l'attesa di 300 s dell'immagine del merge commit in `e2e`, 1111 s e 1979 s) e una volta su `main` 1c62d1d nelle stesse condizioni (staging non healthy in `demo-rollback`, 810 s). Rifatto più tardi lo stesso giorno, con il piano libero e load average 5: `./go demo` → `GO: demo, milestone M9, 712s to rollback (budget 900s, plan §2)` da un clone pulito di `m15-rework` (da61847), senza chiave. Regola d'oro verificata. Trovato: il runner Gitea esegue il job `ci` di `.github/workflows/ci.yml` (`./go ci`) a ogni push dentro il piano L0, in coda davanti al job `image` che `e2e` aspetta per 300 s; e `./go` non funziona da un git worktree (il `.git` del worktree sta fuori dal mount). Il limite di quattro tentativi per ticket (`policy/rework.env`) è confermato dal proprietario il 2026-11-03.
 
+
+*Emendamento 2026-11-03:* le milestone da M18 a M24 — modello a scelta, harness `claude-code` e `codex`, i gate senza piano, GitHub come code host, il post mortem, il pacchetto, l'esperimento con tre fornitori — sono in §16, con M14 assorbita da M20 e M21.
 ---
 
 ## 8. Il golden path
@@ -551,3 +555,91 @@ Su 10 ore: 6–7 di prodotto, 2 di contenuti (il post settimanale, le CFP), 1 di
 ### Cosa non fare
 
 Comprare stelle o scambiarle. Spammare awesome list. Lanciare su HN prima dell'esperimento: il primo giudizio è quello che resta. Aprire canali (Discord, Slack) che con 10 ore a settimana non si possono presidiare: bastano le Discussions.
+
+## 16. Il terzo arco: ingresso zero, modello a scelta
+
+*Aggiunto 2026-11-03, decisione dell'owner.* La valutazione del 2026-11-03 ([docs/plans/assessment-and-must-have-plan.md](plans/assessment-and-must-have-plan.md)) ha concluso che lights-out oggi è un prodotto per un platform team, non per ogni sviluppatore: il valore (gate numerici, perimetro, rollback automatico, catena di audit) sta sotto otto servizi, un solo runtime di modello e un contratto pesante. L'owner ha deciso di costruire l'intero prodotto — sviluppo di feature e ops, post mortem compreso — con **complessità in ingresso nulla e modello a scelta** (Gemini, Claude, OpenAI, configurabile).
+
+### Due principi che guidano tutto
+
+1. **Complessità progressiva, non assente.** L'ingresso è un comando su un repo qualunque che risponde `GO`/`NO-GO` in cinque minuti senza piano, senza socket dell'engine e senza chiave. Ogni scalino successivo (l'agente, la PR su GitHub, le metriche vere, il canary) si paga solo quando serve, e ogni scalino vale da solo.
+2. **Il modello è una scelta del profilo, non una costante del ruolo.** Un ruolo fissa `THINKING` e i budget; chi risponde lo dicono `MODEL_PROVIDER` e `MODEL`, nel profilo o in `.env`. Il replay a L0 resta senza modello: la regola d'oro non cambia. Il free tier di Gemini resta l'unico percorso gratuito a L1 e il README lo dice; Claude e OpenAI costano a ogni run.
+
+**L'oggetto unificante è il record**, non i ruoli: ticket → PR → gate → release → verify → incidente → ipotesi → post mortem → ticket di fix. Un post mortem è la catena di audit letta al contrario; l'SRE è un insieme di soglie con provenienza, che è già come lights-out tratta `policy.env` e `slo.promql`. Tutto quello che il prodotto fa finisce in quel record e in un `GO`/`NO-GO`; se no è un assistente generico, e lì non ci si distingue da nessuno. I ruoli restano sei (`ci/roles.sh`): il post mortem è un compito del ruolo ops-triage, non un settimo ruolo.
+
+### Cosa cambia nelle regole
+
+- §5, "Un solo modello per tutti i ruoli": resta vero che un solo modello *alla volta* serve tutti i ruoli e che la leva è il thinking level; smette di essere vero che quel modello è `gemini-3.8-flash`. La tabella del thinking per ruolo vale per ogni fornitore, con una mappa per fornitore dentro l'adapter (M18).
+- `CLAUDE.md`, "Due livelli di modelli": il runtime è "il modello del profilo", non un id.
+- §4, tabella delle porte: `AgentHarness` guadagna `claude-code` e `codex`; `Metrics` guadagna `promql` (qualunque endpoint compatibile Prometheus, non solo il container del piano); `CodeHost` `github` passa da M10 a M21.
+- Regola d'oro, una seconda misura accanto ai 900 s: **`./go init <repo> && ./go gates` sotto i 300 s su un repository qualunque, senza `./go up`** (M20, decisione dell'owner; la provenienza è il "cinque minuti" della valutazione, da rimisurare al primo run).
+
+### La sequenza
+
+Ogni milestone ha una ADR prima del codice, lascia `./go ci` e `./go demo` verdi, e dichiara a L0 cosa replaya. Le stime sono settimane a 5–15 ore (stima mia, non misura). M18 e M20 toccano file diversi (tranne `Makefile`, README e questo piano) e possono andare in parallelo in due sessioni in worktree, con il merge alla fine; M19 dipende da M18; M21, M22 e M23 dipendono da M20.
+
+### M18 — Il modello è una scelta (ADR 0039)
+
+- `MODEL_PROVIDER` ∈ {`gemini`, `anthropic`, `openai`} e `MODEL` (l'id esatto, pinnato) nel profilo, sovrascrivibili da `.env`; `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` in `.env.example`, valori finti. L0 resta `replay`, senza provider.
+- `THINKING` del ruolo mappato per fornitore dentro l'adapter, mai nel ruolo: `thinkingLevel` per Gemini, il livello di ragionamento per Claude e per OpenAI, con la mappa in un file solo per adapter (`adapters/<harness>/thinking.env`), ogni riga con la fonte verificata il giorno in cui si scrive.
+- I ruoli ADK (product, ops-triage, release) scelgono il modello in `adapters/adk/lights_out_adk/model.py` con il wrapper `LiteLlm` di ADK per Claude e OpenAI; `RecordingLlm` e il replay avvolgono qualunque `BaseLlm`, quindi le fixture restano come sono e guadagnano il campo `provider`.
+- `run.json` di ogni harness riporta `provider` e `model` serviti, non richiesti (la lezione di ADR 0018).
+- `ci/model-free.sh`: nessun id di modello in `core/`, `gates/`, `verify/`, `roles/`; solo in `profiles/` e `adapters/`.
+- *Da verificare prima di scrivere:* che ADK 2.9.1 esponga `LiteLlm` e passi il livello di ragionamento a Claude e OpenAI (le pagine lette il 2026-11-03 non sono versionate per la 2.x); la versione di LiteLLM da pinnare in `workbench/pyproject.toml`; gli id correnti dei modelli dei tre fornitori.
+- **Fatto quando:** `./go ci` ha `model-free`; `./go demo` è verde a L0 senza chiave; `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic` registra almeno un ruolo ADK con un modello non Gemini e `./go demo-triage` lo replaya a L0 con `provider` nel run.json; lo stesso con `openai`. Stima: 2–3 settimane.
+
+### M19 — Harness `claude-code` e `codex` (ADR 0040)
+
+- Due adapter `AgentHarness` nuovi, una cartella ciascuno come `gemini-cli`: la CLI del fornitore pinnata da `package-lock.json` dentro un container, una sessione headless per run, lo stesso contratto di artefatti (`OUT/patch`, `pr.json`, `final.md`, `run.json`, `hooks.log`), l'adapter committa e non il modello (ADR 0017 §1).
+- **Suite di conformità dell'harness**, `gates/harness-conformance.sh`, sul modello di ADR 0026: su un ticket stub, l'adapter produce patch e `pr.json`; un `git push` dal modello è negato e loggato; la lettura di `.env` e dei file di chiave è negata; `MAX_TURNS`, `TIMEOUT_S` e `TOKEN_BUDGET` fermano il run; `run.json` dice il modello servito; nessuna chiave negli artefatti. `gemini-cli` la passa per primo; è il requisito d'ingresso per ogni harness, contribuito compreso.
+- Dove un fornitore non ha gli hook, la guardia si ottiene dal contenitore: niente credenziali git, rete chiusa, workspace in sola scrittura locale; la suite lo prova e il README dichiara quale harness ha la guardia nell'hook e quale nel contenitore.
+- *Da verificare prima di scrivere:* che gli hook `PreToolUse` di Claude Code scattino in modalità `-p` e che l'exit code distingua budget esaurito da errore (fonti di comunità in disaccordo, 2026-11-03); gli eventi JSON di `codex exec --json` e le sue modalità sandbox; che entrambe le CLI accettino la chiave da variabile d'ambiente senza login interattivo.
+- **Fatto quando:** `./go harness-conformance` è `GO` per `gemini-cli`, `claude-code` e `codex`; `./go record TICKET=0001 PROFILE=l1 AGENT_HARNESS=claude-code` produce una PR che passa `./go gates`, e lo stesso con `codex`; le due registrazioni entrano in `fixtures/` con `provider`; `./go demo` è verde a L0. Stima: 3–4 settimane.
+
+### M20 — Gate ovunque: `./go init` e i gate senza piano (ADR 0041)
+
+Assorbe la metà "toolchain" di M14.
+
+- **Contratto del runner nel workload**: `.lights-out/workload.env` guadagna `TEST_CMD`, `SAST_CMD`, `MUTATION_CMD` e `TOOLCHAIN_IMAGE` (o il `Containerfile` del repo). I gate `test`, `sast` e `mutation` eseguono il comando nell'immagine della toolchain del repo; il servizio compose `backend-test` diventa una delle implementazioni, che l'app in bundle continua a usare. Il dev-worker gira nella stessa immagine: è la toolchain del repo, non più Python 3.13 e Node 24 fissi.
+- **Il percorso senza socket**: `secrets`, `deps`, `risk` e il perimetro girano già nel workbench nudo; `sast` ci gira se il runner è un binario del workbench (semgrep); `test` e `mutation` girano nel workbench quando la toolchain del repo coincide con la sua, altrimenti nell'immagine del repo attraverso l'engine. La riga `GO`/`NO-GO` dice sempre dove ha girato.
+- **`./go init <path>`**: legge il repo, deduce lo stack (`pyproject.toml`/`uv.lock`, `package.json`), scrive una bozza di `.lights-out/` con `worker.md`, `workload.env` e `policy.env`, ogni valore con un commento che ne dice la provenienza ("dedotto da", "misurato con `./go mutation-baseline`", "default della piattaforma"); non scrive mai nel repo dell'utente, come `attach` (ADR 0037): la bozza sta in `.attached/.lights-out/` finché l'utente la copia.
+- **Secondo stack**: JavaScript con Stryker come runner di mutation, provato su un repo di esempio attaccabile; il gate di mutation legge uno score, non un tool.
+- **Fatto quando:** da un clone pulito, su `workloads/minimal` come repo a sé e senza `./go up`: `./go attach`, `./go init`, `./go gates` → `GO` in meno di 300 s (misurati nel report); lo stesso su un repo JavaScript di esempio; `./go demo-gates` e `./go demo-seam` invariati; `ci/workloads.sh` controlla le chiavi nuove. Stima: 3–4 settimane.
+
+### M21 — GitHub come code host e il rilascio di un repo attaccato (ADR 0042)
+
+Assorbe la metà "rilascio" di M14.
+
+- `adapters/github/`: gli stessi verbi di `gitea` (`bootstrap`, `clone-url`, `push`, `open-pr`, `status`, `merge`, `pr`, `await`) sulla REST API di GitHub con un token in `.env`, mai nel `.git/config`, mai visibile al modello. La PR del ticket arriva sul repository dell'utente; la tower la giudica con i gate della base (ADR 0033) e posta lo stato `gates` sul commit.
+- Il rilascio di un repo attaccato: dopo il merge, `./go release` costruisce l'immagine del merge commit con il `Containerfile` del repo (o `TOOLCHAIN_IMAGE`), la firma e la verifica come oggi (ADR 0025), senza il job Gitea Actions che il repo dell'utente non ha.
+- L0 resta Gitea: nessuna API GitHub registrata, nessun finto GitHub. Un nightly su GitHub Actions contro un repository usa e getta dell'owner prova l'adapter a L1 (§11, "un adapter senza nightly è un debito").
+- **Fatto quando:** `./go e2e CODE_HOST=github PROFILE=l1` su un repo attaccato apre la PR su GitHub, la mergia dopo `GO: gates`, costruisce e rilascia il merge sul piano locale fino al rollback; il nightly è verde; `./go demo` invariato. Stima: 3 settimane.
+
+### M22 — Ops senza piano: incidente in entrata, post mortem in uscita (ADR 0043)
+
+- Il ruolo ops-triage accetta, oltre all'alert JSON, un **incidente**: alert, record di release, estratto dei log e l'intervallo di tempo. Guadagna lo strumento `file_postmortem` (cronologia ancorata alla catena di audit, cause contribuenti, azioni correttive) accanto a `file_incident` e alle proposte; ogni azione correttiva diventa un ticket nel `Tracker`, che rientra nella tower come qualunque ticket: così il loop si chiude.
+- `./go postmortem INCIDENT=<file>` scrive `.crew/postmortem/<nome>/postmortem.md` e i ticket; `NO-GO` se la cronologia non è ancorata a release e PR reali della catena di audit o se un'azione non ha un ticket.
+- **La porta `Metrics` si generalizza**: l'adapter `promql` interroga `METRICS_URL`, qualunque endpoint compatibile Prometheus (Prometheus, Mimir, VictoriaMetrics, Managed Prometheus); `verify/slo.promql` resta un file solo; l'adapter `prometheus` del piano diventa il caso `METRICS_URL=http://prometheus:9090`. Così `./go verify` giudica le metriche vere dell'utente senza il piano.
+- **Fatto quando:** `./go demo-postmortem` a L0, senza chiave, replaya un incidente registrato dal record di release vero di `demo-rollback` e stampa `GO: demo-postmortem` con un ticket di fix in `tickets/`; `./go verify METRICS_URL=…` contro il Prometheus del piano dà lo stesso verdetto di oggi; i ruoli restano sei. Stima: 3 settimane.
+
+### M23 — Il comando unico e il pacchetto (ADR 0044)
+
+- Un'immagine pubblicata (`ghcr.io/nicolaguglielmi/lights-out`) e un wrapper `lights-out` di poche righe che fa quello che `./go` fa dal clone: `lights-out init`, `lights-out gates`, `lights-out triage`, `lights-out postmortem` su qualunque repo, senza clonare lights-out. Il piano completo resta `git clone && ./go demo`.
+- Una GitHub Action `lights-out gates` che posta la riga `GO`/`NO-GO` come check sulla PR; una ricetta documentata per chiamare `lights-out gates` da un hook di Claude Code, Codex o Gemini CLI prima del commit.
+- `./go doctor`: engine, versioni, porte, chiave presente per il provider scelto, in una riga per voce.
+- **Fatto quando:** su una macchina pulita con il solo engine, `lights-out gates` su un repo con `.lights-out/` risponde in meno di 300 s; la Action è verde su una PR del repo di esempio; `./go demo` invariato. Stima: 2–3 settimane.
+
+### M24 — L'esperimento pubblico, con qualunque fornitore
+
+L'esperimento di §14 come scritto, ma ogni ticket gira con i tre fornitori e il diario pubblica i tre verdetti: è la risposta al rischio "runtime solo Gemini" di §15, e il materiale del lancio di fase 2. Il criterio d'uscita di §14 non cambia. Stima: 8–12 settimane, in parallelo con la fase 1 di §15.
+
+### Dopo
+
+M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
+
+### Rischi di questo arco
+
+- **Tre CLI che cambiano in fretta.** Ogni harness è pinnato e ha la sua suite di conformità in `./go ci`; un bump è un commit a sé con la suite come eval, come per Gemini CLI (ADR 0018).
+- **La regola d'oro con tre fornitori.** L0 replaya e non chiama nessuno; le fixture registrano chi ha risposto. Nessuna fixture viene scritta a mano per un harness nuovo: o si registra, o il demo di quell'harness non esiste.
+- **La guardia senza hook.** Dove la CLI non ha hook, la guardia è il contenitore; la suite di conformità lo prova e il README lo dichiara. Mai "equivalente" senza la prova.
+- **Il costo.** Claude e OpenAI non hanno free tier: il README dà il costo misurato di un run per fornitore prima del lancio, dai `run.json` registrati.

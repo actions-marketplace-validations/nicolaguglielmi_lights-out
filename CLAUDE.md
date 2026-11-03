@@ -45,7 +45,7 @@ Vale per ogni gate, presente e futuro, in `ci/`, `gates/`, `verify/`:
 
 ## Due livelli di modelli, da non confondere
 
-- **Runtime**: i ruoli agente girano su `gemini-3.8-flash`, con `thinking` per ruolo. È configurazione di prodotto, sta in `roles/`.
+- **Runtime**: i ruoli agente girano sul modello del profilo (`MODEL_PROVIDER` e `MODEL`: Gemini, Claude o OpenAI, dal M18), con `thinking` per ruolo in `roles/`. È configurazione di prodotto. Nessun id di modello in `core/`, `gates/`, `verify/`, `roles/`: solo in `profiles/` e `adapters/`.
 - **Costruzione**: i modelli Claude che scrivono questo repo stanno nel frontmatter dei subagent in `.claude/agents/`. Non finiscono mai nel codice del prodotto.
 
 ## Come si lavora
