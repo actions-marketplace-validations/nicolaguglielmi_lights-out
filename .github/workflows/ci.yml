@@ -8,8 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  # GitHub-only (docs/adr/0039): on the L0 Gitea runner, which has one
+  # slot, it queued ahead of the merge commit's `image` job that
+  # core/steps/release.sh waits for, and nothing read its result — at L0
+  # the CI leg is core/steps/ci.sh, and ./go demo runs ./go ci itself.
   ci:
     runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
     steps:
       - uses: actions/checkout@v4
         with:

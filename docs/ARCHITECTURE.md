@@ -41,7 +41,7 @@ Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`
 
 1. **One PromQL file:** `verify/slo.promql` is the only query that decides if the canary passes. It runs identically on Prometheus local (L0/L1) and on Managed Prometheus (L2/L3). This is the line that prevents L0 and L2 from diverging. At L2 this means Cloud Deploy's own `verify` stanza stays off: `core/launchpad.sh` decides at every level (ADR 0027 §3).
 
-2. **One workflow YAML:** the same `.github/workflows/ci.yml` runs on Gitea Actions (L0/L1) and GitHub Actions (L2/L3). The syntax is GitHub Actions. Gitea unsupported features are isolated in steps and skipped with conditions, never duplicated. See [ADR 0002](adr/0002-self-ci-is-make-ci.md).
+2. **One workflow YAML:** the same `.github/workflows/ci.yml` runs on Gitea Actions (L0/L1, where only the `image` job runs, [ADR 0039](adr/0039-the-gitea-runner-runs-only-the-image-job.md)) and GitHub Actions (L2/L3). The syntax is GitHub Actions. Gitea unsupported features are isolated in steps and skipped with conditions, never duplicated. See [ADR 0002](adr/0002-self-ci-is-make-ci.md).
 
 3. **Nothing reaches staging unsigned:** the `Registry` port signs what it publishes and `core/launchpad.sh` verifies the signature before the first traffic, at every level — a local key pair at L0/L1, a KMS key at L2, the same cosign command. An unsigned image is `NO-GO: launchpad — unsigned image`. See [ADR 0022](adr/0022-local-first-cloud-optional.md) and [ADR 0025](adr/0025-release-artefact-build-sign-verify.md).
 
