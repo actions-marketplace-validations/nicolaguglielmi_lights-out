@@ -39,6 +39,8 @@ Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the
 
 Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset.
 
+Declared at L0 (ADR 0036, proposed): `CREW_HARNESS=network` makes the assign step fan a ticket's `## Network` section out to its members — each a run of the profile's harness in its own clone of the base, judged alone (exit code, the harness check, its own perimeter, no path shared with another member) and then integrated in the declared order into one PR, which the tower governs like any other. Only `core/crew.sh` reads the variable, so the review step keeps its own harness; a ticket without `## Network` runs as a single worker. Ticket 0012's two members (`impl`, `tests`) replay patches written by hand under `fixtures/0012/`, marked `hand_written` in their `run.json`: no network has been recorded at L1 yet, and `./go record` cannot save one.
+
 ## Commands
 
 On macOS, podman runs inside `podman machine`, a VM. The docker CLI is compatible but not the documented path; use `CONTAINER_ENGINE=docker` if needed.
@@ -60,6 +62,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go audit           # rebuild the chain from a ticket's state: ./go audit TICKET=0001
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
+./go demo-network    # prove a network of members on ticket 0012: one PR through the whole tower (ADR 0036)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]
 ./go review          # run the review step on a PR: TICKET=<id> [ROLE=test-reviewer]
 ./go demo-review     # prove a medium-risk PR goes through review (L0 replay of fixture)
