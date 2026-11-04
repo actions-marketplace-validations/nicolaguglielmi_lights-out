@@ -1,20 +1,24 @@
 #!/bin/sh
-# budget (Claude Code PostToolUse hook, docs/adr/0041 §5): sums the
-# session's token use from the transcript Claude Code names on stdin and,
-# once it reaches TOKEN_BUDGET, writes TOKEN_BUDGET to $CREW_OUT/stop and
-# prints {"continue":false}, which ends the session (verified on 2.1.311:
-# terminal_reason hook_stopped, exit 0; run.sh reads the marker). The unit
-# is the one the budget was measured in, Gemini's totalTokenCount: input,
-# cache writes and reads included, plus output, summed over requests. A
-# transcript holds one line per content block, each repeating its
-# message's usage, so lines are counted once per message id. Never denies
-# the tool call itself; always exits 0.
+# budget (Claude Code PreToolUse hook, docs/adr/0041 §5): sums the
+# session's token use from the stream-json transcript the entrypoint is
+# writing to $CREW_OUT/transcript.jsonl and, once it reaches TOKEN_BUDGET,
+# writes TOKEN_BUDGET to $CREW_OUT/stop and prints {"continue":false},
+# which ends the session before the tool runs (verified on 2.1.311:
+# terminal_reason hook_stopped, exit 0; run.sh reads the marker). Not the
+# session file Claude Code names in transcript_path: found by
+# ./go harness-conformance, that file lags the run by a few messages, so a
+# budget read from it stopped three requests late; the stream is written
+# per event. The unit is the one the budget was measured in, Gemini's
+# totalTokenCount: input, cache writes and reads included, plus output,
+# summed over requests, each message counted once by id. Never denies the
+# tool call itself; always exits 0.
 set -eu
 : "${CREW_OUT:=.}"
 : "${TOKEN_BUDGET:=}"
 
-transcript=$(jq -r '.transcript_path // empty' 2>/dev/null || true)
-[ -n "$TOKEN_BUDGET" ] && [ -n "$transcript" ] && [ -f "$transcript" ] || exit 0
+cat >/dev/null
+transcript="$CREW_OUT/transcript.jsonl"
+[ -n "$TOKEN_BUDGET" ] && [ -f "$transcript" ] || exit 0
 
 spent=$(jq -s '[.[] | select(.type == "assistant" and .message.id != null)]
   | unique_by(.message.id)
