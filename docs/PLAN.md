@@ -85,18 +85,18 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 |---|---|---|
 | `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
 | `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5) |
-| `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro |
+| `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
 | `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
 | `StateStore` | `firestore-emulator`, `firestore` | stato del workflow, idempotenza |
 | `Orchestrator` | `inproc`, `cloud-workflows` | macchina a stati del ciclo di vita del ticket |
 | `Delivery` | `envoy-canary`, `cloud-deploy` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
-| `Metrics` | `prometheus`, `managed-prometheus` | stessa query PromQL |
+| `Metrics` | `promql`, `prometheus`, `managed-prometheus` | stessa query PromQL; `promql` interroga `METRICS_URL`; `prometheus` ne è il caso del piano a `http://$PLANE_HOST:9090`, non `prometheus:9090`, che il workbench non risolve |
 | `Flags` | `flagd`, `unleash` | OpenFeature, l'SDK non cambia; due verbi per il nucleo e i target: `evaluate.sh <flag> [version]`, `set.sh <flag> <variant>` (ADR 0026 §3) |
 | `Registry` | `zot`, `artifact-registry` | `publish.sh <tag>` costruisce, firma e pusha stampando il riferimento immutabile; `verify.sh <tag>` verifica la firma e stampa il digest verificato (ADR 0025 §1) |
 | `Charts` | `grafana`, `cloud-monitoring` | i grafici che la console mostra; la console non li ridisegna (ADR 0023) |
 | `Workload` | `app`, `workloads/minimal` | ciò su cui la piattaforma opera, scelto da `WORKLOAD=<dir>` (default `app`), non dal profilo; `workload.env`, `compose.yaml`, `/healthz` e `/metrics` su `:8000`, `flags/flags.json`, `smoke.sh`, `load.sh`, runner in-image test/mutation/SAST, `fixtures/gates/`; non nominato in `core/`, `gates/`, `verify/`, `adapters/` (`ci/app-free.sh`); verificato da `ci/workloads.sh` e `./go demo-seam` (ADR 0030) |
 
-*Stato 2026-11-02:* esistono `replay`, `gemini-cli`, `adk`, `gitea`, `file`, `pubsub-emulator`, `firestore-emulator`, `inproc`, `envoy-canary`, `prometheus`, `flagd`, `zot` e i workload `app` e `workloads/minimal`. Gli altri nomi della tabella non sono ancora scritti e sono da implementare, ciascuno nella milestone che lo porta:
+*Stato 2026-11-02:* esistono `replay`, `gemini-cli`, `adk`, `gitea`, `file`, `pubsub-emulator`, `firestore-emulator`, `inproc`, `envoy-canary`, `promql`, `prometheus`, `flagd`, `zot` e i workload `app` e `workloads/minimal`. Gli altri nomi della tabella non sono ancora scritti e sono da implementare, ciascuno nella milestone che lo porta:
 
 | Adapter | Porta | Milestone |
 |---|---|---|
@@ -628,6 +628,8 @@ Assorbe la metà "rilascio" di M14.
 - `./go postmortem INCIDENT=<file>` scrive `.crew/postmortem/<nome>/postmortem.md` e i ticket; `NO-GO` se la cronologia non è ancorata a release e PR reali della catena di audit o se un'azione non ha un ticket.
 - **La porta `Metrics` si generalizza**: l'adapter `promql` interroga `METRICS_URL`, qualunque endpoint compatibile Prometheus (Prometheus, Mimir, VictoriaMetrics, Managed Prometheus); `verify/slo.promql` resta un file solo; l'adapter `prometheus` del piano diventa il caso `METRICS_URL=http://prometheus:9090`. Così `./go verify` giudica le metriche vere dell'utente senza il piano.
 - **Fatto quando:** `./go demo-postmortem` a L0, senza chiave, replaya un incidente registrato dal record di release vero di `demo-rollback` e stampa `GO: demo-postmortem` con un ticket di fix in `tickets/`; `./go verify METRICS_URL=…` contro il Prometheus del piano dà lo stesso verdetto di oggi; i ruoli restano sei. Stima: 3 settimane.
+
+*Stato 2026-11-04 (sessione M22):* costruito, ADR 0044. `./go incident`, `./go postmortem`, `./go demo-postmortem` e `./go record-postmortem`; il quarto strumento `file_postmortem` di ops-triage; il verbo `put.sh` del Tracker `file`; l'adapter `promql`, con `prometheus` che lo chiama su `http://$PLANE_HOST:9090`. `./go demo-postmortem` è NO-GO finché l'owner non esegue `./go record-postmortem PROFILE=l1`: nella sessione non c'era la chiave Gemini, e nessuna risposta del modello è scritta a mano. I ticket della demo vanno in una copia di `tickets/`, così il checkout resta pulito; `./go postmortem` scrive in `tickets/`. `./go ci` e `./go demo` non dipendono dalla registrazione.
 
 ### M23 — Il comando unico e il pacchetto (ADR 0045)
 

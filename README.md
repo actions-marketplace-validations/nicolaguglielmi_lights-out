@@ -38,11 +38,21 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 
 ```sh
 ./go demo-triage     # an alert becomes ranked hypotheses, 3 seconds, nothing to start
+./go incident        # build an incident document from the last release record: NAME= FROM= TO= [LOGS=<file>] [TICKET=<id>]
+./go postmortem INCIDENT=<file>   # an incident document becomes a post mortem and tickets
+./go demo-postmortem # replay the post mortem of the demo-rollback incident (needs a recording, see below)
+./go record-postmortem PROFILE=l1 # record that answer once, with your Gemini key
 ./go up              # start the local plane (about 15 s once downloaded)
 ./go demo-rollback   # just the self-rollback, about a minute
 ./go board           # the pipeline explained, and live while the plane runs: localhost:8099
 ./go down            # stop everything
 ```
+
+**Ops without the plane**
+
+An incident document holds the alerts, the release record, a log excerpt and the time window. `./go postmortem` turns it into a post mortem in `.crew/postmortem/<name>/`. Each timeline entry is anchored to an id the document holds (the release, a stage, a log line, an alert, and the PR or ticket when the tower released it), and core prints that evidence beside it. Every action item is filed as a ticket in `tickets/`. The ticket has no perimeter: a human adds one before `./go assign`. An anchored timeline is not a true one: the check stops invented releases and log lines, not a wrong story about real ones.
+
+To judge your own metrics, run `./go verify METRICS_URL=<any Prometheus-compatible endpoint> CANARY_VERSION=<v> STABLE_VERSION=<s>`. It uses the unchanged `verify/slo.promql`. "Any Prometheus-compatible endpoint" means one that answers `/api/v1/query` with the OTel HTTP semconv histogram joined to `target_info{service_version}`. On other metrics the answer is NO-GO with "no data". An auth header goes in `.env` as `METRICS_AUTH_HEADER`.
 
 ## If something goes wrong
 
@@ -62,6 +72,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 - **Recorded:** no model is called without a key. The agents replay answers recorded once against the Gemini API (`fixtures/`), and the promotion brief at this level is rendered from the release record and labelled so. With `GEMINI_API_KEY` in `.env` and `PROFILE=l1`, the agents run live.
 - **Hand-written (rework):** `./go demo-rework` sends ticket 0013's first attempt back to the worker with the gates' verdict (ADR 0038). No rework has been recorded against the Gemini API yet, so at L0 both attempts replay patches written by hand (`fixtures/0013/`, `hand_written: true`), and the run says `model none`. The gates that reject the first attempt and pass the second, the tower, the loop and the cap are real.
 - **Hand-written (network):** `./go demo-network` splits ticket 0012 between two workers behind one harness port (ADR 0036). No network run has been recorded yet, so at L0 the two workers replay patches written by hand, and the run, the PR and the audit say `model none`. The governance around them (perimeters, gates, canary, rollback, audit) is real.
+- **Recorded (post mortem):** `./go demo-postmortem` replays the ops-triage recording of the incident captured from a real `demo-rollback` run (`fixtures/incidents/`). That recording needs the owner's Gemini key: `./go record-postmortem PROFILE=l1`. Until it exists, `demo-postmortem` says NO-GO and names that command. `./go postmortem` on your own incident needs a key at L1 for the same reason as any agent on your code.
 - **Local only:** merges happen on a Gitea inside the plane, never on this repository.
 - **Your engine:** for plane commands, `./go` hands its toolchain container your engine's socket, which means full control of the engine. Run it where that is acceptable.
 - **Cloud:** Google Cloud profiles are designed, not yet run.
