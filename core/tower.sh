@@ -3,8 +3,9 @@
 #
 # core-tower: the control plane's state machine (docs/adr/0019 §1, §2).
 # Vendor-free: it only calls the STATE_STORE and EVENT_BUS adapter verbs
-# the profile names, and the step scripts under $TOWER_STEPS. No
-# Firestore, Pub/Sub or Gitea word appears below.
+# the profile names, and the step scripts under $TOWER_STEPS. No vendor
+# of either port, nor of the code host, is named below (ci/vendor-free.sh
+# checks the code host's).
 #
 #   tower.sh open <ticket>          write the document at `opened`, publish `assign`
 #   tower.sh step <ticket> <step>   apply one step: precondition, effect, write, publish next

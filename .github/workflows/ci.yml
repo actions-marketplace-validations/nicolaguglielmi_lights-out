@@ -116,6 +116,15 @@ jobs:
       - run: ./go demo-launch
         env:
           CONTAINER_ENGINE: docker
+      # The CodeHost port's conformance suite (docs/adr/0043 §5) against the
+      # plane's Gitea, the reference adapter: no new job and no second plane
+      # boot, the plane is up. Gitea's bootstrap pushes this checkout's HEAD
+      # to its main. The same suite runs against GitHub every night
+      # (nightly-github.yml), so a red nightly with this step green points at
+      # the GitHub adapter, not the suite.
+      - run: ./go codehost-conformance
+        env:
+          CONTAINER_ENGINE: docker
       # Envoy has failed to answer here on some cold runners and not others;
       # its log and the backend's are the evidence.
       - if: always()
