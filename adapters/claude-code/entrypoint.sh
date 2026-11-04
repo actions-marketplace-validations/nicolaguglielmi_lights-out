@@ -37,8 +37,7 @@ mkdir -p "$HOME/.claude" "$CREW_OUT"
 hooks=/opt/claude-code-hooks
 settings=$(jq -cn --arg guard "$hooks/guard.sh" --arg budget "$hooks/budget.sh" '{
   hooks: {
-    PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $guard}]}],
-    PostToolUse: [{matcher: "*", hooks: [{type: "command", command: $budget}]}]
+    PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $guard}, {type: "command", command: $budget}]}]
   }
 }')
 
