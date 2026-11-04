@@ -1,0 +1,8 @@
+{
+  "name": "lights-out-crew-claude-code",
+  "private": true,
+  "description": "Pins the Claude Code version the claude-code AgentHarness adapter runs (docs/adr/0041 §1): 2.1.311, the npm `stable` dist-tag on 2026-11-04. The native binary comes from the per-platform optionalDependencies, every platform pinned with integrity in package-lock.json. A bump is its own commit with ./go harness-conformance as its eval. Never published.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.311"
+  }
+}

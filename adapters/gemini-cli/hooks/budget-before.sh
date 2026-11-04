@@ -20,6 +20,9 @@ case "$spent" in
 esac
 
 if [ "$spent" -ge "$TOKEN_BUDGET" ]; then
+  # The stop marker run.sh reads (docs/adr/0041 §5): which budget stopped
+  # the run, whatever exit code the CLI then chooses.
+  printf 'TOKEN_BUDGET\n' > "$CREW_OUT/stop" 2>/dev/null || :
   printf 'TOKEN_BUDGET exceeded: %s >= %s\n' "$spent" "$TOKEN_BUDGET" >&2
   exit 2
 fi

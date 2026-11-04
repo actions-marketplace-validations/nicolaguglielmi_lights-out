@@ -13,6 +13,14 @@
 # the .gemini/ rule match every call unconditionally -- every tool denied,
 # always for the same wrong reason, real quota burned finding out.
 #
+# Since docs/adr/0041 §11 this one file is the guard of every CLI
+# harness: gemini-cli's BeforeTool, claude-code's and codex's PreToolUse
+# all hand it {tool_name, tool_input} on stdin and read exit 2 as a deny
+# (verified live 2026-11-04 for all three). Each image's build context is
+# its own adapter directory, so the file is copied into
+# adapters/<harness>/hooks/ byte for byte; ci/harness-shape.sh compares
+# them with cmp. The deny-list is the union over the three vendors.
+#
 # Vendor format, so it lives in the adapter, not in roles/. Every call,
 # allowed or denied, appends one line to $CREW_OUT/hooks.log (default ".",
 # so a standalone test run degrades gracefully) -- the evidence hooks fired
@@ -59,6 +67,12 @@ if [ -n "$rm_lines" ] && printf '%s\n' "$rm_lines" | grep -Eq -- "$rm_target_re"
   exit 2
 fi
 
+# `.key` (docs/adr/0041 §4, §11: cosign.key, signing.key, a TLS key) is
+# matched only when the name ends at whitespace, a quote or the end of a
+# line, so `item.keys()` or `obj.key)` in code the model writes is not a
+# key file; `return obj.key` at the end of a line still is, a false deny
+# accepted for the second layer behind the mount.
+#
 # label|ERE, one per line. A word-boundary class ([^A-Za-z0-9_.-] or
 # start/end of string) around bare command names keeps "dockerfile" from
 # tripping "docker", while a plain substring is enough for the rest (the
@@ -85,8 +99,11 @@ id_rsa|id_rsa
 id_ed25519|id_ed25519
 .git-credentials|\.git-credentials
 .gemini/|\.gemini/
+.claude/|\.claude/
+.codex/|\.codex/
+.key|[A-Za-z0-9_-]\.key([[:space:]"'"'"']|$)
 /run/secrets|/run/secrets
-GEMINI_API_KEY|GEMINI_API_KEY
+_API_KEY|[A-Z0-9]+_API_KEY
 printenv|(^|[^A-Za-z0-9_.-])printenv([^A-Za-z0-9_.-]|$)
 env|(^|[^A-Za-z0-9_.-])env([^A-Za-z0-9_.-]|$)
 os.environ|os\.environ
