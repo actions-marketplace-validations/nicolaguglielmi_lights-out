@@ -1,6 +1,7 @@
 # ADR 0013 — Launchpad at M3: a second compose revision behind Envoy runtime weights, `slo.promql` selects canary vs stable by `service_version` through `target_info`, thresholds live in `verify/slo.sh`, freeze and kill switch are flags
 
 - Status: accepted (amends ADR 0003 stage list; ADR 0011 §1 query text and §4 gate rules; ADR 0012 §4 canary cluster, §7 ports; ADR 0007 §4 declared design becomes executable). Amended by ADR 0014 §1 and §4: a canary that clears 5% and 25% is held there at exit 0 for the human gate instead of being retracted, and `demo-hold` proves that branch. Amended by ADR 0019 §5, §8: Zot stays empty through M6; `100%: NOT YET (M7, go-for-launch)`. Amended by ADR 0020 [launchpad writes `RELEASE_RECORD`; the held line names `./go promote`]. Amended by ADR 0024: the Delivery adapter contract gains `status.sh` (stable, canary, weight) and a conformance suite every adapter must pass. Amended by ADR 0025 §6 [§4's `deploy.sh <version>` becomes `deploy.sh <version> <image>`, and a signature stage sits between the freeze check and staging] and ADR 0026 [`ready.sh` is the plane's readiness probe, not a Delivery verb; §6's freeze flag and kill switch move behind the `Flags` port's `evaluate.sh`/`set.sh`]
+- Amended 2026-11-04 (ticket 0010 item 6, launch-readiness session): §7's verdict is no longer applied to a local first run. A run where `./go` had to build the workbench, outside CI, reports its time over the 900 s budget and passes; CI and every later run are judged as before. See "Amendment 2026-11-04" at the end.
 - Date: 2026-09-14
 - Milestone: M3
 
@@ -257,3 +258,65 @@ is the app image already built, `launchpad` and the adapters are sh, curl,
 jq. Added cold time is bounded by design at about 80 s (point 5): projected
 ~340 s against 900. Passes; the clean-container figure is recorded at M3
 close and the GitHub job measures it on every push.
+
+## Amendment 2026-11-04
+
+**Context.** Ticket 0010 item 6. §7 starts the clock before
+`engine-compat`, so the budget covers the workbench build and the first
+image pulls. That was the point: the canonical stranger is a fresh
+GitHub runner, and the `engine-compat` job measures the cold run on
+every push (689 s and 700 s on the M23 and M21 runs, `.claude/context/HANDOFF.md`).
+On a person's first run, though, the same clock also measures their
+network. A slow first download ends in `NO-GO: demo` after every stage
+passed, and the README's answer was "run it again". Before a public
+launch, that is the first line many people would see.
+
+**Decision.**
+
+1. **A local first run reports its time; it is not judged on it.** A
+   first run is one where `./go` had to build the workbench image
+   (`LIGHTS_OUT_FIRST_RUN=1`). Outside CI, when such a run reaches the
+   rollback over budget, it prints `GO: demo, milestone M9, <n>s to
+   rollback, a first run: over the 900s budget, reported, not judged
+   (...)` and exits 0. Every stage still has to pass: the time is the
+   only thing not judged.
+2. **CI is always judged.** `./go` passes the host's `CI` variable as
+   `LIGHTS_OUT_CI`, which GitHub Actions sets to `true`. When it is set,
+   the verdict is §7's, first run or not. The golden rule stays a
+   property of the repository, measured where the stranger can be
+   reproduced: a fresh runner, cold, on every push.
+3. **A later local run is judged.** Once the workbench is built, the
+   biggest downloads are done, and an over-budget run says something
+   about the repository or the machine. It stays `NO-GO`, and the README
+   row tells the reader what to check.
+4. **The verdict stays in `make demo`** (§7's rejected alternative,
+   "verdict inside go", still holds). `go` only passes two facts:
+   whether it built the workbench, and `CI`. It passes `CI` under its own
+   name so that no tool inside the workbench changes behaviour because a
+   `CI` variable appeared.
+
+**Alternatives rejected.**
+
+- *Every local run reports, only CI judges.* A warm run on a developer's
+  machine would never catch a regression the CI runner hides (for
+  example, a step that is slow only on podman). It costs nothing to keep
+  that verdict.
+- *Start the clock after the workbench build.* The plan's 900 s covers
+  the cold pulls (§7). Moving the start would make the CI measurement
+  lie about what a stranger waits for.
+- *A bigger budget for first runs.* There is no measurement of strangers'
+  networks to set it from, so the number would have no provenance.
+- *Detect "cold" from the plane's images.* `docker-compose` pulls and
+  builds about a dozen images. Checking each before `up` is a second
+  copy of the compose file's list. The workbench image is one check, and
+  it is missing on exactly the run that pays most of the cold cost.
+
+**Consequences.**
+
+- A first run after a pull that changes `workbench/Containerfile`,
+  `pyproject.toml` or `uv.lock` also counts as a first run, because the
+  image tag changes and the image is rebuilt. That rebuild is most of
+  such a run's extra time, so this is the intended reading.
+- After `podman system prune` with the workbench image kept, the plane's
+  pulls are cold but the run is judged. The README row covers it.
+- `DEMO_BUDGET_SECONDS=0` still disables the verdict everywhere.
