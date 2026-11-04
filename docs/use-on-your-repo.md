@@ -221,11 +221,25 @@ guessed file would be a hidden mock. `./go up` refuses a contract without
 
 | File | What it is |
 |---|---|
-| `compose.yaml` | Your services, merged into the plane's. `${WORKLOAD}` is your repository's root: use it as the build context. A service with profile `test` is what `compose:<service>` names |
+| `compose.yaml` | Your services, merged into the plane's. `${WORKLOAD}` is your repository's root: use it as the build context. A service with profile `test` is what `compose:<service>` names. Services the worker needs (Postgres, say) are declared once under `x-crew-worker` and applied to the three worker services, `gemini-cli`, `claude-code` and `codex` (ADR 0041 §11; `./go ci` checks it) |
 | `flags/flags.json` | `release-freeze`, plus your kill switch, on for `CANARY_VERSION` |
 | `smoke.sh`, `load.sh` | The happy path through `$APP_URL`; traffic until killed |
 | `crew-prepare.sh` | Optional: prepares the worker's checkout |
 | `fixtures/gates/<name>/` | At least one: a `git format-patch` against your repository and the verdict you expect |
+
+The worker's services go under one anchor, so every harness gets them:
+
+```yaml
+x-crew-worker: &crew-worker
+  depends_on: [db]
+  environment:
+    DATABASE_URL: postgresql://app:app@db:5432/app
+
+services:
+  gemini-cli: *crew-worker
+  claude-code: *crew-worker
+  codex: *crew-worker
+```
 
 The rest of the port is ADR 0030 §3: three compose services (`backend`,
 `backend-canary` with profile `canary` and image `${CANARY_IMAGE}`, and
