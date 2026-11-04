@@ -772,8 +772,8 @@ demo-triage: ## Prove a fake alert becomes an incident with ranked hypotheses an
 # ticket. Neither needs the engine socket or the plane (TICKET= on
 # `incident` is the one option that reads the state store).
 .PHONY: incident
-incident: ## Build an incident document from the release record: NAME=<slug> FROM=<utc> TO=<utc> [LOGS=<file>] [TICKET=<id>] (docs/adr/0044 §2)
-	@NAME="$(NAME)" FROM="$(FROM)" TO="$(TO)" LOGS="$(LOGS)" TICKET="$(TICKET)" sh core/incident.sh
+incident: ## Build an incident document from the release record: NAME=<slug> FROM=<utc> TO=<utc> [LOGS=<file>] [TICKET=<id>, the one option that needs the plane] (docs/adr/0044 §2)
+	@NAME="$(NAME)" FROM="$(FROM)" TO="$(TO)" LOGS="$(LOGS)" TICKET="$(if $(filter command line,$(origin TICKET)),$(TICKET))" sh core/incident.sh
 
 .PHONY: postmortem
 postmortem: ## Run the ops-triage role on an incident document: INCIDENT=<file> → .crew/postmortem/<name>/postmortem.md and one ticket per action item (docs/adr/0044 §5)
