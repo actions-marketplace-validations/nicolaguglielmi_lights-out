@@ -14,6 +14,10 @@
 # the anthropic SDK. Measured in a fresh Python 3.13 venv the same day:
 # google-adk alone 61 MB of site-packages, with litellm 239 MB (+178 MB,
 # 50 transitive packages), paid once per image build, L0 included.
+# mcp (2026-11-04, found by the first Claude record-evals on Actions):
+# litellm 1.106.6 imports `mcp` on the anthropic path and failed every
+# eval case with "No module named 'mcp'" before any model call; 2.3.0 is
+# the version litellm's own `proxy` extra resolves to.
 [project]
 name = "lights-out-workbench"
 version = "0"
@@ -21,6 +25,7 @@ requires-python = ">=3.13"
 dependencies = [
     "google-adk==2.9.1",
     "litellm==1.106.6",
+    "mcp==2.3.0",
     "google-cloud-aiplatform==2.1.3",
     "rouge-score==0.1.2",
     "pandas==2.3.3",
