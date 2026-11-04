@@ -34,7 +34,7 @@ ci run 41825221364 (fecc782): success
 
 Final commit 4c1012e: see "Runs on the final commit" at the end.
 
-`./go ci` gains `ci/package.sh` (the gate-writer's, from ADR 0045 §8): GO in the full `make ci` run inside the workbench, `GO: ci`, before the last two commits; on Actions in the runs below.
+`./go ci` gains `ci/package.sh` (the gate-writer's, from ADR 0045 §8): `GO: package` and `GO: ci` in the workbench, and the `ci` job of run 41831535100 below.
 
 ## What changed
 
@@ -71,6 +71,12 @@ M21 merges with this on `Makefile`, `go`, README and `docs/PLAN.md`. Then the ow
 
 Clear the context before the next milestone.
 
-## Runs on the final commit
+## Runs on the final code commit (4c1012e) and the handoff commit (b537222)
 
-Pending when this was written: the `ci` and `package` runs on 4c1012e; the next commit records them.
+```
+ci      41831535100 (4c1012e): success — ci (./go ci with ci/package.sh), engine-compat (./go demo),
+                               gates, init, seam, launch, harness-conformance
+package 41831535098 (4c1012e): success — package (./go demo-package), action (GO and NO-GO check runs)
+package 41831657158 (b537222): success
+ci      41831657167 (b537222): running when this was written; docs only since 4c1012e
+```
