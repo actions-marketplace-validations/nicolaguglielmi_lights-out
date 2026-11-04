@@ -8,12 +8,19 @@
 # Exact pins; uv.lock is the pin. Installed into /opt/workbench-venv at
 # image build; the image tag covers this file and the lock (go). Bump in
 # a dedicated commit whose eval is `./go ci`.
+# litellm (docs/adr/0040 §6): the ADK roles reach Claude and OpenAI through
+# ADK's LiteLlm wrapper, which imports litellm only on that branch; the
+# pin is the newest release on 2026-11-03 and brings openai with it, not
+# the anthropic SDK. Measured in a fresh Python 3.13 venv the same day:
+# google-adk alone 61 MB of site-packages, with litellm 239 MB (+178 MB,
+# 50 transitive packages), paid once per image build, L0 included.
 [project]
 name = "lights-out-workbench"
 version = "0"
 requires-python = ">=3.13"
 dependencies = [
     "google-adk==2.9.1",
+    "litellm==1.106.6",
     "google-cloud-aiplatform==2.1.3",
     "rouge-score==0.1.2",
     "pandas==2.3.3",

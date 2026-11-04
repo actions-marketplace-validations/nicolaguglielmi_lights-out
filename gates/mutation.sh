@@ -96,7 +96,7 @@ MUTATION_MARGIN=$(sed -n 's/^MUTATION_MARGIN=//p' "$gates_out/effective-policy.e
 # A project name of our own (docs/adr/0015 §2 shared interface, docs/adr/0017
 # §11), via -p rather than a written .env: this worktree's backend-test/
 # postgres never collide with another job's or a running plane's, and the
-# user's own .env (where an L1 GEMINI_API_KEY lives) is never touched.
+# user's own .env (where an L1 key lives) is never touched.
 log=$(mktemp)
 # `run --rm` only removes the backend-test container; the postgres it
 # depends on keeps running under -p lo-mutation on every exit path (go,

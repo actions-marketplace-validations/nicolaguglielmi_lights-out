@@ -580,13 +580,17 @@ Ogni milestone ha una ADR prima del codice, lascia `./go ci` e `./go demo` verdi
 
 ### M18 — Il modello è una scelta (ADR 0040)
 
+*Nota 2026-11-03:* la ADR 0039 era già presa dal runner Gitea lo stesso giorno; M18 è ADR 0040 e i numeri successivi di §16 slittano di uno (M19 → 0041, M20 → 0042, M21 → 0043, M22 → 0044, M23 → 0045).
+
 - `MODEL_PROVIDER` ∈ {`gemini`, `anthropic`, `openai`} e `MODEL` (l'id esatto, pinnato) nel profilo, sovrascrivibili da `.env`; `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` in `.env.example`, valori finti. L0 resta `replay`, senza provider.
 - `THINKING` del ruolo mappato per fornitore dentro l'adapter, mai nel ruolo: `thinkingLevel` per Gemini, il livello di ragionamento per Claude e per OpenAI, con la mappa in un file solo per adapter (`adapters/<harness>/thinking.env`), ogni riga con la fonte verificata il giorno in cui si scrive.
 - I ruoli ADK (product, ops-triage, release) scelgono il modello in `adapters/adk/lights_out_adk/model.py` con il wrapper `LiteLlm` di ADK per Claude e OpenAI; `RecordingLlm` e il replay avvolgono qualunque `BaseLlm`, quindi le fixture restano come sono e guadagnano il campo `provider`.
 - `run.json` di ogni harness riporta `provider` e `model` serviti, non richiesti (la lezione di ADR 0018).
 - `ci/model-free.sh`: nessun id di modello in `core/`, `gates/`, `verify/`, `roles/`; solo in `profiles/` e `adapters/`.
 - *Da verificare prima di scrivere:* che ADK 2.9.1 esponga `LiteLlm` e passi il livello di ragionamento a Claude e OpenAI (le pagine lette il 2026-11-03 non sono versionate per la 2.x); la versione di LiteLLM da pinnare in `workbench/pyproject.toml`; gli id correnti dei modelli dei tre fornitori.
-- **Fatto quando:** `./go ci` ha `model-free`; `./go demo` è verde a L0 senza chiave; `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic` registra almeno un ruolo ADK con un modello non Gemini e `./go demo-triage` lo replaya a L0 con `provider` nel run.json; lo stesso con `openai`. Stima: 2–3 settimane.
+- **Fatto quando:** `./go ci` ha `model-free`; `./go demo` è verde a L0 senza chiave; `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` registra almeno un ruolo ADK con un modello non Gemini e `./go demo-triage` lo replaya a L0 con `provider` nel run.json; lo stesso con `openai` e `MODEL=gpt-6.1-sol`. Stima: 2–3 settimane.
+
+*Stato 2026-11-03 (sessione M18):* fatto tranne la registrazione non-Gemini. `MODEL_PROVIDER`/`MODEL` nei profili e in `.env`; mappa del thinking in `adapters/adk/thinking.env` e `adapters/gemini-cli/thinking.env` con la fonte per riga; i ruoli ADK scelgono Claude e OpenAI con `LiteLlm` (`reasoning_effort`, senza planner, che `LiteLlm` 2.9.1 ignora) e Gemini col modello e il planner di ADK; `run.json` riporta `provider` e il modello servito; `ci/model-free.sh` in `./go ci`; `litellm==1.106.6` nel workbench (+190 MB di immagine). Il percorso `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` è implementato e documentato, non eseguito: la registrazione con una chiave non Gemini resta all'owner.
 
 ### M19 — Harness `claude-code` e `codex` (ADR 0041)
 

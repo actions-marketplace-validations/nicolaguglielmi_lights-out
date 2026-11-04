@@ -1,7 +1,9 @@
 """One input in, three files out (docs/adr/0020 §1): runs a role's
 root_agent on the text of INPUT as the single user message and writes
 OUT/calls.json (the tool calls, in order), OUT/final.md (the final text)
-and OUT/run.json. Called by adapters/adk/run.sh; never by core directly.
+and OUT/run.json, which says the provider and the model that answered,
+not the one requested (docs/adr/0040 §3). Called by adapters/adk/run.sh;
+never by core directly.
 
   ROLE=ops-triage INPUT=alert.json OUT=dir python3 -m lights_out_adk.run
 """
@@ -41,12 +43,15 @@ async def run(role: str, input_text: str) -> tuple[list[dict], str, dict]:
     final = ""
     turns = 0
     tokens = {"input": 0, "output": 0, "total": 0}
+    served = None
     message = types.Content(role="user", parts=[types.Part(text=input_text)])
     async for event in runner.run_async(user_id="lights-out", session_id=session.id, new_message=message):
         if event.author == "user":
             continue
         for fc in event.get_function_calls():
             calls.append({"name": fc.name, "args": dict(fc.args or {})})
+        if getattr(event, "model_version", None):
+            served = event.model_version
         if event.usage_metadata is not None:
             turns += 1
             for k, v in _tokens(event.usage_metadata).items():
@@ -55,9 +60,9 @@ async def run(role: str, input_text: str) -> tuple[list[dict], str, dict]:
             text = "".join(p.text or "" for p in event.content.parts if p.text)
             if text:
                 final = text
-    model = getattr(root_agent.model, "model", str(root_agent.model))
-    thinking = root_agent.planner.thinking_config.thinking_level.value.lower() if root_agent.planner else None
-    return calls, final, {"model": model, "thinking": thinking, "turns": turns, "tokens": tokens}
+    # The model that answered, not the one requested (docs/adr/0018,
+    # 0040 §3): the last non-empty model_version the responses carried.
+    return calls, final, {"model": served or "unknown", "turns": turns, "tokens": tokens}
 
 
 def main() -> int:
@@ -72,7 +77,8 @@ def main() -> int:
     exit_code = 0
     calls: list[dict] = []
     final = ""
-    stats: dict = {"model": None, "thinking": None, "turns": 0, "tokens": {"input": 0, "output": 0, "total": 0}}
+    stats: dict = {"model": None, "turns": 0, "tokens": {"input": 0, "output": 0, "total": 0}}
+    replay = os.environ.get("AGENT_HARNESS", "replay") == "replay"
     try:
         calls, final, stats = asyncio.run(run(role, input_path.read_text()))
     except Exception as e:  # one stderr line, the adapter convention
@@ -82,20 +88,35 @@ def main() -> int:
     (out / "final.md").write_text(final + ("\n" if final and not final.endswith("\n") else ""))
     run_json = {
         "harness": "adk",
-        "model": stats["model"],
-        "thinking": stats["thinking"],
+        "provider": None if replay else os.environ.get("MODEL_PROVIDER") or None,
+        "model": None if replay else stats["model"],
+        "thinking": os.environ.get("THINKING") or None,
         "turns": stats["turns"],
         "tokens": stats["tokens"],
         "duration_s": round(time.time() - start, 1),
         "exit_code": exit_code,
     }
-    if os.environ.get("AGENT_HARNESS", "replay") == "replay":
-        # A replay never claims tokens it did not spend (docs/adr/0017 §2):
-        # the recorded numbers move under `recorded`.
+    if replay:
+        # A replay never claims a model or tokens it did not use (docs/adr/
+        # 0017 §2, 0040 §3): provider and model are null, and the fixture's
+        # own provider, model and numbers move under `recorded`.
         run_json["source"] = "fixtures/adk"
-        run_json["recorded"] = {"turns": run_json["turns"], "tokens": run_json["tokens"]}
+        run_json["recorded"] = {
+            "provider": None,
+            "model": stats["model"] if stats["model"] != "unknown" else None,
+            "turns": run_json["turns"],
+            "tokens": run_json["tokens"],
+        }
         run_json["turns"] = 0
         run_json["tokens"] = {"input": 0, "output": 0, "total": 0}
+        try:
+            root_agent = importlib.import_module(f"agents.{role.replace('-', '_')}").root_agent
+            recorded = getattr(root_agent.model, "recorded", None) or {}
+            run_json["recorded"]["provider"] = recorded.get("provider")
+            if recorded.get("model"):
+                run_json["recorded"]["model"] = recorded["model"]
+        except Exception:
+            pass
     (out / "run.json").write_text(json.dumps(run_json, indent=2) + "\n")
     return exit_code
 

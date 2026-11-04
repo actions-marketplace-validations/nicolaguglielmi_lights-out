@@ -29,14 +29,17 @@ set -eu
 : "${MAX_TURNS:?MAX_TURNS not set}"
 : "${TIMEOUT_S:?TIMEOUT_S not set}"
 : "${TOKEN_BUDGET:?TOKEN_BUDGET not set}"
+: "${MODEL:?MODEL not set}"
+: "${GEMINI_THINKING_LEVEL:?GEMINI_THINKING_LEVEL not set}"
 export CREW_OUT TOKEN_BUDGET
 
 mkdir -p "$HOME/.gemini" "$CREW_OUT"
 cp "/roles/$ROLE/prompt.md" "$HOME/.gemini/GEMINI.md"
 
-# thinkingConfig.thinkingLevel is documented as an upper-case level name
-# (docs/adr/0017 §3 verified facts); THINKING in role.env is lower case.
-thinking_level=$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')
+# GEMINI_THINKING_LEVEL is the role's THINKING already mapped by run.sh
+# from adapters/gemini-cli/thinking.env (docs/adr/0040 §2); MODEL is the
+# profile's id (docs/adr/0040 §1, §4).
+thinking_level=$GEMINI_THINKING_LEVEL
 
 # The per-role thinking level rides on a user alias named like the model,
 # in the exact shape of the CLI's own built-in `gemini-3.5-flash` alias
@@ -50,11 +53,12 @@ thinking_level=$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')
 
 jq -n \
   --arg thinking "$thinking_level" \
+  --arg model "$MODEL" \
   --argjson maxTurns "$MAX_TURNS" \
   '{
     security: {auth: {selectedType: "gemini-api-key"}},
-    model: {name: "gemini-3.8-flash", maxSessionTurns: $maxTurns},
-    modelConfigs: {customAliases: {"gemini-3.8-flash": {extends: "chat-base-3", modelConfig: {model: "gemini-3.8-flash", generateContentConfig: {thinkingConfig: {thinkingLevel: $thinking}}}}}},
+    model: {name: $model, maxSessionTurns: $maxTurns},
+    modelConfigs: {customAliases: {($model): {extends: "chat-base-3", modelConfig: {model: $model, generateContentConfig: {thinkingConfig: {thinkingLevel: $thinking}}}}}},
     tools: {exclude: ["web_fetch", "google_web_search"]},
     hooks: {
       BeforeTool: [{matcher: "run_shell_command|write_file|replace|read_file", hooks: [{name: "guard", type: "command", command: "/opt/gemini-cli-hooks/guard.sh"}]}],
@@ -81,7 +85,7 @@ timeout "$TIMEOUT_S" gemini \
   --approval-mode yolo \
   --skip-trust \
   --output-format stream-json \
-  -m gemini-3.8-flash \
+  -m "$MODEL" \
   > "$CREW_OUT/transcript.jsonl" 2> "$CREW_OUT/stderr.log" || rc=$?
 
 printf '%s' "$rc" > "$CREW_OUT/exit_code"

@@ -4,8 +4,8 @@
 # harness-adk: the AgentHarness verb for the conversational roles (docs/
 # adr/0020 §1). No workspace: INPUT is one file whose text is the user
 # message, OUT receives calls.json (the tool calls the role made, in
-# order), final.md and run.json. The model is the profile's: replay at L0,
-# gemini-3.8-flash with the role's thinking level otherwise (§2). Adapter
+# order), final.md and run.json. The model is the profile's (docs/adr/0040):
+# replay at L0, MODEL on MODEL_PROVIDER with the role's thinking otherwise. Adapter
 # convention (docs/adr/0012 §6): silent on success, one stderr line and
 # exit 1 on failure. Exit 0 with an empty calls.json is a failure — the
 # harness-independent invariant of ADR 0017 §1, in this contract's terms.
@@ -20,6 +20,13 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 [ -f "$INPUT" ] || { printf 'harness-adk: INPUT %s is not a file\n' "$INPUT" >&2; exit 1; }
 command -v adk >/dev/null 2>&1 || { printf 'harness-adk: adk is not on PATH; rebuild the workbench (./go clean)\n' >&2; exit 1; }
 mkdir -p "$OUT"
+
+# litellm (the Claude and OpenAI path, docs/adr/0040 §3, §6) fetches its
+# model-cost table from GitHub at import unless told to use the copy it
+# ships (verified in litellm 1.106.6's get_model_cost_map.py): the only
+# network a role may touch is its provider's API.
+LITELLM_LOCAL_MODEL_COST_MAP=True
+export LITELLM_LOCAL_MODEL_COST_MAP
 
 rc=0
 PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" LIGHTS_OUT_ROOT="$here/../.." \

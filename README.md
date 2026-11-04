@@ -58,7 +58,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ## What is real and what is recorded
 
 - **Real:** the gates, the signed build, the canary, the metrics, the rollback, the audit chain. Nothing in them is simulated.
-- **Recorded:** no model is called without a key. The agents replay answers recorded once against the Gemini API (`fixtures/`), and the promotion brief at this level is rendered from the release record and labelled so. With `GEMINI_API_KEY` in `.env` and `PROFILE=l1`, the agents run live.
+- **Recorded:** no model is called without a key. The agents replay answers recorded once against the Gemini API (`fixtures/`), and the promotion brief at this level is rendered from the release record and labelled so. With `GEMINI_API_KEY` in `.env` and `PROFILE=l1`, the agents run live. The model is the profile's choice (ADR 0040): `MODEL_PROVIDER` and `MODEL` in `profiles/` or `.env`, Gemini by default, Claude or OpenAI for the three ADK roles with that provider's key; the coding roles run Gemini only until the `claude-code` and `codex` harnesses (M19). Gemini's free tier is the only free path; Claude and OpenAI charge per run. Every recording in `fixtures/` is Gemini's, and `run.json` says which provider and model answered.
 - **Hand-written (rework):** `./go demo-rework` sends ticket 0013's first attempt back to the worker with the gates' verdict (ADR 0038). No rework has been recorded against the Gemini API yet, so at L0 both attempts replay patches written by hand (`fixtures/0013/`, `hand_written: true`), and the run says `model none`. The gates that reject the first attempt and pass the second, the tower, the loop and the cap are real.
 - **Hand-written (network):** `./go demo-network` splits ticket 0012 between two workers behind one harness port (ADR 0036). No network run has been recorded yet, so at L0 the two workers replay patches written by hand, and the run, the PR and the audit say `model none`. The governance around them (perimeters, gates, canary, rollback, audit) is real.
 - **Local only:** merges happen on a Gitea inside the plane, never on this repository.
@@ -74,7 +74,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 What works today, and what does not yet:
 
 - **Works:** the plane, the six gates, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
-- **Needs a Gemini API key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0. The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
+- **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` with `MODEL_PROVIDER` and `MODEL` for the ADK roles. The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
 - **Python 3.13 and Node 24 only.** That is the dev-worker's toolchain; other stacks are the next milestone.
 - **Stops at release at L1.** A merged change is not yet built and released from your repository.
 - **Local only.** Merges land on the plane's Gitea and you `git fetch` them back. No pull requests on GitHub yet, and no deploy to your production.
