@@ -54,9 +54,26 @@ An incident document holds the alerts, the release record, a log excerpt and the
 
 To judge your own metrics, run `./go verify METRICS_URL=<any Prometheus-compatible endpoint> CANARY_VERSION=<v> STABLE_VERSION=<s>`. It uses the unchanged `verify/slo.promql`. "Any Prometheus-compatible endpoint" means one that answers `/api/v1/query` with the OTel HTTP semconv histogram joined to `target_info{service_version}`. On other metrics the answer is NO-GO with "no data". An auth header goes in `.env` as `METRICS_AUTH_HEADER`.
 
+**On your repository, without cloning lights-out**
+
+You need podman or docker, and git. The image is not published yet (see below).
+
+```sh
+cd ~/code/your-repo
+lights-out doctor                  # engine, image, key: one line each
+lights-out init                    # drafts .lights-out/ outside your repository
+cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
+git add .lights-out && git commit -m "add lights-out contract"
+lights-out gates                   # judges the last commit
+```
+
+`lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`. [The guide](docs/use-on-your-repo.md) has the details, the hook recipes for coding agents and a GitHub Action.
+
+Not published yet: the image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` does not exist on any registry. The workflow `package.yml` builds and tests it on every push, and publishes only on a `v*` tag or a manual dispatch, which is the owner's act. The package is private until the owner makes it public, and the wrapper's raw-URL download works only once the repository is public. Until then, from a clone: `./go package` builds `localhost/lights-out:dev`, copy the file `lights-out` onto your PATH, and run `LIGHTS_OUT_IMAGE=localhost/lights-out:dev lights-out gates`.
+
 ## If something goes wrong
 
-`./go` checks your engine before it builds anything and prints the command that fixes what is missing. The other cases:
+Run `./go doctor` first. It prints one line per item: the engine and whether it answers, the podman API socket, git, whether the workbench image is built, whether the plane's ports (3000, 5050, 8016, 8085, 8086, 9090, 9901 and `APP_PORT`) are free or held by the lights-out plane, and whether the key your profile needs is set in `.env` (the name, never the value). It ends with `GO: doctor` or `NO-GO: doctor — <items>`. `./go` also checks your engine before it builds anything and prints the command that fixes what is missing. The other cases:
 
 | You see | Do this |
 |---|---|
@@ -73,6 +90,7 @@ To judge your own metrics, run `./go verify METRICS_URL=<any Prometheus-compatib
 - **Hand-written (rework):** `./go demo-rework` sends ticket 0013's first attempt back to the worker with the gates' verdict (ADR 0038). No rework has been recorded against the Gemini API yet, so at L0 both attempts replay patches written by hand (`fixtures/0013/`, `hand_written: true`), and the run says `model none`. The gates that reject the first attempt and pass the second, the tower, the loop and the cap are real.
 - **Hand-written (network):** `./go demo-network` splits ticket 0012 between two workers behind one harness port (ADR 0036). No network run has been recorded yet, so at L0 the two workers replay patches written by hand, and the run, the PR and the audit say `model none`. The governance around them (perimeters, gates, canary, rollback, audit) is real.
 - **Recorded (post mortem):** `./go demo-postmortem` replays the ops-triage recording of the incident captured from a real `demo-rollback` run (`fixtures/incidents/`). It was recorded once at L1 on gemini-3.8-flash (`./go record-postmortem PROFILE=l1`, 2026-11-04), so `demo-postmortem` prints GO with a fix ticket and no key. `./go postmortem` on your own incident needs a key at L1 for the same reason as any agent on your code.
+- **The image (built and tested, not published):** `./go demo-package` builds the image and runs `lights-out init` and `lights-out gates` from it on `workloads/minimal` as a repository of its own, in GitHub Actions. `ghcr.io/nicolaguglielmi/lights-out:0.1.0` is not published yet. The Action (`action/`) is proven in lights-out's own workflow only, not on another repository.
 - **Local only:** merges happen on a Gitea inside the plane, never on this repository.
 - **Your engine:** for plane commands, `./go` hands its toolchain container your engine's socket, which means full control of the engine. Run it where that is acceptable.
 - **Cloud:** Google Cloud profiles are designed, not yet run.
