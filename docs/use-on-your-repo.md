@@ -18,7 +18,7 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | `./go init` and `./go gates` on a repository with no plane | Proven on the two examples: `./go demo-init` runs both on `workloads/minimal/` and `workloads/minimal-js/` (ADR 0042 §10). Not proven on any other repository |
 | The 300 s budget for init and gates | Proven on two small examples only. Init measures the whole scope (ADR 0042, Consequences) |
 | The platform reads only your `.lights-out/`, and never names your repository | Proven: `ci/attach.sh` and `ci/app-free.sh` run in `./go ci` |
-| A PR is judged by your base branch's policy, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
+| A PR is judged by your base branch's policy and runners, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
 | The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
 | The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository, which needs the first publish |
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` published | **No.** CI builds and tests it on every push. Publishing is the owner's act, on a `v*` tag or a manual dispatch, and the package is private until then |
@@ -423,8 +423,8 @@ RISK_HIGH_AUTH=src/auth/*
 - The three `RISK_HIGH_*` lists are empty by default: lights-out cannot
   know where your migrations, authentication and payments live. Declare
   them, or a change to them is judged on size alone.
-- A PR is judged by your base branch's `policy.env` and `workload.env`,
-  never its own. Anything under `.lights-out/` is high risk: it goes to
+- A PR is judged by your base branch's `policy.env`, `workload.env` and
+  `runners/`, never its own. Anything under `.lights-out/` is high risk: it goes to
   review, whatever `RISK_AUTO_MERGE_LEVELS` says.
 
 ## 4. Tickets and a real agent run
