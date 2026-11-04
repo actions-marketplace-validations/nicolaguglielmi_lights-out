@@ -76,7 +76,7 @@ else
   if [ -n "${WORKLOAD_ATTACHED:-}" ]; then
     judges="${contract}workload.env ${contract}policy.env ${contract}runners"
   else
-    judges="Makefile profiles gates ci core policy ${contract}workload.env ${contract}policy.env"
+    judges="Makefile profiles gates ci core policy ${contract}workload.env ${contract}policy.env ${contract}runners"
   fi
   # restore is no-overlay: a judge the PR adds is removed too. A judge
   # neither side has (an optional policy.env) is left out of the pathspec,
