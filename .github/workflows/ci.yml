@@ -137,3 +137,18 @@ jobs:
       - run: ./go demo-seam
         env:
           CONTAINER_ENGINE: docker
+
+  # M20's acceptance (docs/adr/0042 §10): attach, init and gates on the
+  # two example repositories without the plane, the draft judged with no
+  # engine at all, timed against plan §16's 300 s. Needs the engine for
+  # the committed contracts' run (compose and image forms), not the plane.
+  init:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./go demo-init
+        env:
+          CONTAINER_ENGINE: docker

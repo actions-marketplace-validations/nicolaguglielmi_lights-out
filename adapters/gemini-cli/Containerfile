@@ -1,18 +1,43 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# The gemini-cli AgentHarness worker: the workbench image plus
-# @google/gemini-cli, pinned by package-lock.json (docs/adr/0017 §3). The
-# runner precedent (adapters/gitea/runner/Containerfile): workbench already
-# has node 24, python3, uv, git, jq and `timeout`, so this is one npm
-# install, not a second base image. WORKBENCH_IMAGE is the cksum-tagged
-# image ./go built; compose passes it as a build arg.
+# The gemini-cli AgentHarness worker: the workload's toolchain plus
+# @google/gemini-cli, pinned by package-lock.json (docs/adr/0017 §3,
+# 0042 §8). HARNESS_BASE_IMAGE is the workload's TOOLCHAIN_IMAGE when that
+# is an image reference, else the workbench (the Makefile exports it;
+# compose passes both as build args): the worker runs the repository's
+# tests in the repository's own toolchain. The CLI's node is the
+# harness's own, copied from the workbench stage under /opt/harness and
+# reached through a wrapper, never on the repository's PATH as its node:
+# a javascript workload keeps the node its image gives it. git and jq are
+# what the entrypoint and hooks need beyond the CLI; on a base without
+# them, apt installs them, and a base without apt stops the build with
+# its own message (no silent fallback: docs/adr/0042 §8).
 ARG WORKBENCH_IMAGE
-FROM ${WORKBENCH_IMAGE}
+ARG HARNESS_BASE_IMAGE
+FROM ${WORKBENCH_IMAGE} AS workbench
+
+FROM ${HARNESS_BASE_IMAGE}
+
+COPY --from=workbench /usr/local/bin/node /opt/harness/node/bin/node
+COPY --from=workbench /usr/local/lib/node_modules/npm /opt/harness/node/lib/node_modules/npm
+
+RUN set -eu; \
+    if ! command -v git >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then \
+      if command -v apt-get >/dev/null 2>&1; then \
+        apt-get update && apt-get install -y --no-install-recommends ca-certificates git jq coreutils && rm -rf /var/lib/apt/lists/*; \
+      else \
+        echo "HARNESS_BASE_IMAGE lacks git, jq or timeout and has no apt-get to install them; the dev-worker needs all three (docs/adr/0042 §8)" >&2; \
+        exit 1; \
+      fi; \
+    fi; \
+    /opt/harness/node/bin/node --version
 
 WORKDIR /opt/gemini-cli
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev \
- && ln -s /opt/gemini-cli/node_modules/.bin/gemini /usr/local/bin/gemini \
+RUN /opt/harness/node/bin/node /opt/harness/node/lib/node_modules/npm/bin/npm-cli.js ci --omit=dev \
+ && launcher=$(readlink -f /opt/gemini-cli/node_modules/.bin/gemini) \
+ && printf '#!/bin/sh\nexec /opt/harness/node/bin/node %s "$@"\n' "$launcher" > /usr/local/bin/gemini \
+ && chmod 0755 /usr/local/bin/gemini \
  && gemini --version
 
 # The BeforeTool guard (docs/adr/0017 §9) and the token-budget hooks

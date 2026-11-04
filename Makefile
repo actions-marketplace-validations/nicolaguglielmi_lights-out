@@ -29,7 +29,13 @@ else
 WORKLOAD_CONTRACT := $(WORKLOAD)/.lights-out
 WORKLOAD_ATTACHED := 1
 endif
+# `init` is the one goal that may start without a contract: it drafts one
+# (docs/adr/0042 §6). Every other goal stops here, naming the file.
+ifeq ($(MAKECMDGOALS),init)
+-include $(WORKLOAD_CONTRACT)/workload.env
+else
 include $(WORKLOAD_CONTRACT)/workload.env
+endif
 export
 
 # COMPOSE_FILE merges the workload's compose file after the plane's; these
@@ -43,6 +49,12 @@ export FLAGS_FILE
 # The file Tracker's directory (docs/adr/0037 §2): this checkout's tickets/
 # for a bundled workload, the attached repository's own otherwise.
 TICKETS_DIR := $(if $(WORKLOAD_ATTACHED),$(WORKLOAD_CONTRACT)/tickets,tickets)
+# The dev-worker's image is built on the workload's toolchain (docs/adr/
+# 0042 §8): the image reference when TOOLCHAIN_IMAGE is one, the workbench
+# for `workbench` and for a compose: service, which has no image of its
+# own to lend. compose.yaml's gemini-cli service takes it as a build arg.
+HARNESS_BASE_IMAGE := $(if $(filter workbench compose:%,$(TOOLCHAIN_IMAGE)),$(WORKBENCH_IMAGE),$(or $(TOOLCHAIN_IMAGE),$(WORKBENCH_IMAGE)))
+export HARNESS_BASE_IMAGE
 export TICKETS_DIR
 
 # docker-compose over the podman socket builds through the classic /build
@@ -145,12 +157,12 @@ help: ## List the targets
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
 	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
-		attach "clone a repository with a .lights-out/ contract and make it the workload: ./go attach <path> (docs/adr/0037)" \
+		attach "clone a repository and make it the workload; with a .lights-out/ contract it is checked: ./go attach <path> (docs/adr/0037, 0042)" \
 		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach core-tests vendor-free app-free model-free hooks harness network tower perimeter review prompts evals promote board roles contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free hooks harness network tower perimeter review prompts evals promote board roles contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -194,6 +206,7 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 # write the key into. GitHub's engine-compat and seam jobs failed this way
 # from M8 on (docs/adr/0025 §3).
 up: ## Start the L0 plane, wait until every adapter is ready, then publish the signed stable image (docs/adr/0012 §6, 0025 §3)
+	@[ -f "$(WORKLOAD_CONTRACT)/compose.yaml" ] || { printf 'NO-GO: up — %s has no compose.yaml: this workload has the gates half of the contract only (docs/adr/0042 §7); ./go gates runs without the plane, docs/use-on-your-repo.md says what the plane half needs\n' "$(WORKLOAD_CONTRACT)"; exit 1; }
 	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
 	@$(COMPOSE) up -d --build >&2 || { \
 		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, 3000, 5050, 8016, 8085, 8086, 9090 and 9901 on the host; only the app port (%s) moves, with APP_PORT=<port> in .env.\n' "$(APP_PORT)" "$(APP_PORT)" >&2; \
@@ -237,15 +250,27 @@ verify: ## Check verify/slo.promql against the live app (M1: metric shape only, 
 # step hands to the rework loop (docs/adr/0038 §5). `gates` writes $(GATES_OUT)/verdict.env in the exact shape
 # gates/fixtures/*/expect uses, so demo-gates can diff the two instead of
 # re-parsing anything (docs/adr/0015 §2, §6).
+# With no range given, the last commit is judged (docs/adr/0042 §5): the
+# defaults live in this recipe only, never as make variables, so the cold
+# ci/contract.sh run of every gate still sees no range. A root commit's
+# base is the empty tree: the whole tree is the diff, which is what init
+# measured.
 .PHONY: gates
-gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test, mutation (docs/adr/0015, 0016)
+gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk, secrets, deps, sast, test, mutation (docs/adr/0015, 0016, 0042)
 	@rm -rf "$(GATES_OUT)" && mkdir -p "$(GATES_OUT)"
-	@failed=""; failreason=""; \
+	@base="$(BASE)"; head="$(HEAD)"; \
+	[ -n "$$head" ] || head=$$(git -C "$(WORKLOAD)" rev-parse HEAD); \
+	if [ -z "$$base" ]; then \
+		base=$$(git -C "$(WORKLOAD)" rev-parse --verify -q "$$head~1" 2>/dev/null) \
+			|| base=$$(git -C "$(WORKLOAD)" hash-object -t tree /dev/null); \
+		printf '[gates] no BASE/HEAD given: judging the last commit, %s..%s\n' "$$(printf '%s' "$$base" | cut -c1-7)" "$$(git -C "$(WORKLOAD)" rev-parse --short "$$head")" >&2; \
+	fi; \
+	failed=""; failreason=""; \
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
-		out=$$(BASE="$(BASE)" HEAD="$(HEAD)" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
+		out=$$(BASE="$$base" HEAD="$$head" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
 		case "$$out" in \
-			"GO: $$g") ;; \
+			"GO: $$g"|"GO: $$g — "*) ;; \
 			*) failed=$$g; failreason=$$out; break ;; \
 		esac; \
 	done; \
@@ -269,7 +294,8 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> — risk, secrets, deps, sast, test,
 	{ printf 'GATES=GO\n'; printf 'RISK_LEVEL=%s\n' "$$level"; printf 'RISK_DECISION=%s\n' "$$decision"; \
 	  if [ -n "$$mt" ]; then printf 'MUTATION_TOTAL=%s\n' "$$mt"; fi; \
 	} > "$(GATES_OUT)/verdict.env"; \
-	printf 'GO: gates — risk %s, %s\n' "$$level" "$$decision"
+	where=""; [ ! -f "$(GATES_OUT)/toolchain.where" ] || where=", in $$(cat "$(GATES_OUT)/toolchain.where")"; \
+	printf 'GO: gates — risk %s, %s%s\n' "$$level" "$$decision" "$$where"
 
 # Proves every gate can both GO and NO-GO, on committed fixtures, not just
 # once in a build log (docs/adr/0015 §6; the demo-hold lesson, docs/adr/0014:
@@ -413,19 +439,8 @@ record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=d
 # comment (commit, date, tool version, mutant count, wall time) written by
 # hand after reading this target's output (docs/adr/0015 §3).
 .PHONY: mutation-baseline
-mutation-baseline: ## Whole-package mutation score, for MUTATION_BASELINE's provenance (docs/adr/0015 §3)
-	@$(COMPOSE) -p lo-mutation-baseline --profile test build backend-test >&2
-	@start=$$(date +%s); \
-	trap '$(COMPOSE) -p lo-mutation-baseline --profile test down -v >/dev/null 2>&1' EXIT; \
-	result=$$($(COMPOSE) -p lo-mutation-baseline --profile test run --rm -T -e MUTATION_LINES=all backend-test sh tests/mutation/run.sh) \
-		|| { printf 'mutation-baseline: the mutation run failed; nothing measured\n' >&2; exit 1; }; \
-	end=$$(date +%s); \
-	printf '%s\n' "$$result"; \
-	total=$$(printf '%s' "$$result" | jq -er .total) \
-		&& killed=$$(printf '%s' "$$result" | jq -er .killed) \
-		&& score=$$(printf '%s' "$$result" | jq -er .score) \
-		|| { printf 'mutation-baseline: the run did not report total, killed and score; nothing measured\n' >&2; exit 1; }; \
-	printf 'mutation-baseline: %s/%s killed, score=%s, %ss wall time\n' "$$killed" "$$total" "$$score" "$$((end - start))" >&2
+mutation-baseline: ## Whole-scope mutation score of the workload, where its TOOLCHAIN_IMAGE says, for MUTATION_BASELINE's provenance (docs/adr/0015 §3, 0042 §6)
+	@sh core/mutation-baseline.sh
 
 .PHONY: release
 release: ## Deploy CANARY_VERSION at CANARY_TAG and run the controller through staging, 5%, 25% (docs/adr/0013 §4, 0025 §6)
@@ -829,6 +844,65 @@ demo-seam: ## Prove attach and the Workload port on workloads/minimal, as a repo
 	esac; \
 	$(MAKE) --no-print-directory down WORKLOAD="$(ATTACHED)" || exit 1; \
 	printf 'GO: demo-seam\n'
+
+# The M20 acceptance (docs/adr/0042 §10), outside `./go demo` (ADR 0003):
+# each example repository copied into a fresh git repository outside the
+# checkout, attached, judged on its committed contract (the compose or
+# image form, through the engine), drafted by init and judged again on the
+# draft with DOCKER_HOST aimed at a path that does not exist, so a gate
+# that reached for the engine would NO-GO instead of passing in silence.
+# Init plus the draft's gates are timed against INIT_BUDGET_SECONDS: plan
+# §16's second golden-rule measure, 300 s, an owner decision (2026-11-03)
+# to be re-measured at the first run; 0 disables the verdict.
+INIT_BUDGET_SECONDS ?= 300
+
+.PHONY: demo-init
+demo-init: ## Prove attach, init and gates without the plane on workloads/minimal and workloads/minimal-js, timed (docs/adr/0042 §10)
+	@if [ -e "$(ATTACHED)" ]; then \
+		printf 'NO-GO: demo-init — %s is attached at %s; demo-init attaches its own repositories there: ./go detach first\n' \
+			"$$(git -C "$(ATTACHED)" remote get-url origin 2>/dev/null || echo 'a repository')" "$(ATTACHED)"; \
+		exit 1; \
+	fi
+	@src=$$(mktemp -d); \
+	trap 'rm -rf "$$src" "$(ATTACHED)"' EXIT; \
+	trap 'exit 130' INT TERM; \
+	report=""; \
+	for w in minimal minimal-js; do \
+		rm -rf "$$src/$$w" "$(ATTACHED)"; mkdir -p "$$src/$$w"; \
+		cp -R "workloads/$$w/." "$$src/$$w/" && \
+		git -C "$$src/$$w" init -q -b main && git -C "$$src/$$w" add -A && \
+		git -C "$$src/$$w" -c user.name=lights-out-demo -c user.email=demo@lights-out.invalid -c commit.gpgsign=false \
+			commit -q -m "workloads/$$w, as a repository of its own" || { printf 'NO-GO: demo-init — could not make a repository of workloads/%s\n' "$$w"; exit 1; }; \
+		printf '[demo-init] workloads/%s is now the repository %s, outside this checkout\n' "$$w" "$$src/$$w" >&2; \
+		sh core/attach.sh "$$src/$$w" "$(ATTACHED)" || { printf 'NO-GO: demo-init — attach refused %s\n' "$$src/$$w"; exit 1; }; \
+		out=$$($(MAKE) --no-print-directory attached WORKLOAD="$(ATTACHED)") || { printf 'NO-GO: demo-init — %s: the committed contract fails its check: %s\n' "$$w" "$$out"; exit 1; }; \
+		printf '[demo-init] %s: %s\n' "$$w" "$$out" >&2; \
+		out=$$($(MAKE) --no-print-directory gates WORKLOAD="$(ATTACHED)" GATES_OUT="$$src/$$w-gates-committed") || { printf 'NO-GO: demo-init — %s: gates on the committed contract: %s\n' "$$w" "$$out"; exit 1; }; \
+		printf '[demo-init] %s, committed contract: %s\n' "$$w" "$$out" >&2; \
+		committed=$$out; \
+		start=$$(date +%s); \
+		out=$$($(MAKE) --no-print-directory init WORKLOAD="$(ATTACHED)") || { printf 'NO-GO: demo-init — %s: init: %s\n' "$$w" "$$out"; exit 1; }; \
+		printf '[demo-init] %s: %s\n' "$$w" "$$out" >&2; \
+		out=$$(env DOCKER_HOST=unix:///nonexistent/lights-out-no-engine.sock \
+			$(MAKE) --no-print-directory gates WORKLOAD="$(ATTACHED)" GATES_OUT="$$src/$$w-gates-draft") || { printf 'NO-GO: demo-init — %s: gates on the draft, no engine: %s\n' "$$w" "$$out"; exit 1; }; \
+		elapsed=$$(( $$(date +%s) - start )); \
+		printf '[demo-init] %s, draft, no engine: %s (%ss for init and gates)\n' "$$w" "$$out" "$$elapsed" >&2; \
+		where=$$(cat "$$src/$$w-gates-draft/toolchain.where" 2>/dev/null || echo unknown); \
+		[ "$$where" = workbench ] || { printf 'NO-GO: demo-init — %s: the draft ran in %s, want workbench\n' "$$w" "$$where"; exit 1; }; \
+		if [ "$(INIT_BUDGET_SECONDS)" -gt 0 ] && [ "$$elapsed" -gt "$(INIT_BUDGET_SECONDS)" ]; then \
+			printf 'NO-GO: demo-init — %s: init and gates took %ss, over the %ss budget (plan §16)\n' "$$w" "$$elapsed" "$(INIT_BUDGET_SECONDS)"; exit 1; \
+		fi; \
+		report="$$report$${report:+, }$$w $${elapsed}s in workbench (committed contract: $${committed#GO: gates — })"; \
+		rm -rf "$(ATTACHED)"; \
+	done; \
+	printf 'GO: demo-init — %s\n' "$$report"
+
+# What `./go init [<path>]` runs once the clone exists (docs/adr/0042 §6):
+# the gates half of .lights-out/ drafted into the clone, every value with
+# its provenance, MUTATION_BASELINE measured, then the contract check.
+.PHONY: init
+init: ## Draft the attached repository's .lights-out/ in the clone, baseline measured, never in your repository: ./go init <path> (docs/adr/0042 §6)
+	@sh core/init.sh
 
 # What `./go attach <path>` runs once the clone exists (docs/adr/0037 §1,
 # §7): the attached repository's contract, checked the way ci/workloads.sh

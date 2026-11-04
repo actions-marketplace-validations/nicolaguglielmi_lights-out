@@ -11,7 +11,8 @@
 name: lights-out
 
 services:
-  # The gemini-cli AgentHarness worker (docs/adr/0017 §3): workbench plus
+  # The gemini-cli AgentHarness worker (docs/adr/0017 §3): the workload's
+  # toolchain image (or the workbench, docs/adr/0042 §8) plus
   # @google/gemini-cli, pinned by adapters/gemini-cli/package-lock.json. No
   # engine socket. Reaches its workload's Postgres to run the workload's
   # own tests (docs/adr/0017 §10; the `depends_on`/`environment` that make
@@ -30,6 +31,9 @@ services:
       dockerfile: Containerfile
       args:
         WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
+        # The workload's toolchain image, or the workbench (docs/adr/0042
+        # §8); the Makefile exports it from TOOLCHAIN_IMAGE.
+        HARNESS_BASE_IMAGE: ${HARNESS_BASE_IMAGE:?set by the Makefile from TOOLCHAIN_IMAGE}
     profiles: ["crew"]
     user: "${CREW_UID:-0}:${CREW_GID:-0}"
     volumes:
