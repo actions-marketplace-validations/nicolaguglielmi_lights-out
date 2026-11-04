@@ -1,3 +1,46 @@
+# Handoff: M24 step 1, the legacy shortlist, 2026-11-04, branch `claude/admiring-shannon-7qlb8s`, pushed, no pull request, not merged
+
+Docs only. The diff is `docs/plans/m24-shortlist.md` and this section. The owner picks a repository from it. The parent session merges.
+
+## What is in the shortlist
+
+- 32 repositories read from shallow clones: 18 Python, 14 JavaScript. Six Python candidates are ranked, each with evidence at a named commit and five ticket drafts in the shape of `tickets/0013.md`:
+  1. andialbrecht/sqlparse
+  2. python-validators/validators
+  3. gruns/furl
+  4. kislyuk/yq
+  5. jd/tenacity
+  6. jmespath/jmespath.py
+- Recommendation: **sqlparse**. It is the only candidate that needs no commit before ticket 1: `uv.lock` committed, pytest in the default `dev` group, and `AGENTS.md` and `CLAUDE.md` in the repository. validators is second; it needs only a `TEST_CMD` edit inside `.lights-out/`.
+- Rejected for their stated AI policy:
+  - hynek/structlog: "no unsupervised agentic tools".
+  - Python-Markdown: "use of an AI agent to submit a pull request ... autonomously is not permitted".
+
+## Measured here, and how
+
+- Init's inference: `python3 core/init.py --repo <clone> --out <scratch>` on every clone. Each candidate's line is in the document.
+- Mutant counts: cosmic-ray 8.7.0 from `stacks/python/runners/uv.lock`, `init` with `mutation.sh`'s operator and pragma filters. Static: no candidate code ran.
+- Lint debt: ruff 0.15.0 `--isolated`. Static.
+
+## Not done, and why
+
+- **No candidate's test suite was run.** The session's permission policy refused to execute third-party code. Suite times and baselines are extrapolations (mutants × the app's 3.9 s per mutant) and are labelled so.
+- **No lockfile advisory check.** `api.osv.dev` answered 403 through the environment's proxy.
+- **No GitHub repository API for these repositories.** Only search worked, so there is no CI history or PR merge rate.
+- **Nobody contacted**, nothing opened anywhere.
+
+## Findings for the owner and the parent session
+
+1. **No real candidate's whole-scope baseline fits "minutes".** The smallest scopes are 1,094 to 1,477 mutants, which is 1.2 h and more at the app's rate, serial. The baseline is paid once, and per-ticket gates are line-scoped. The first real `./go init` is the measurement; the shortlist says to record it before ticket 1.
+2. **An init defect, not fixed here** (docs-only branch). `core/init.py` `node_admits` splits on whitespace before matching the operator, so `engines.node = ">= 20"`, which is valid npm, is refused ("admits none of the node majors init knows"). This is why markedjs/marked is refused. Reproduced: `node_admits(">= 20", 24)` is False, `node_admits(">=20", 24)` is True. `python_admits(">= 3.10", (3, 13))` is True, so the Python side is unaffected. A candidate for a small ticket of its own.
+3. **None of the six is a service.** M24 on any of them proves assign → gates → PR on foreign code, not the canary. The only service in the pool, psf/httpbin, is frozen.
+
+## Done when
+
+The branch is pushed, the commit signed off, and `ci` green. The run is linked below once it finishes.
+
+---
+
 # Handoff: M23 "one command, one package", 2026-11-04, branch `claude/kind-gauss-tzw1q7`, pushed, no pull request, not merged
 
 The owner reviews and merges (the parent session resolves the expected conflicts with M21 on `Makefile`, `go`, README and `docs/PLAN.md`). Plan: `docs/PLAN.md` §16 M23 (status note added); decision: `docs/adr/0045-one-command-one-package.md`; file-by-file plan: `docs/plans/m23.md` (committed before the build, plan mode was not available).
