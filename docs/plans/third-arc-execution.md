@@ -135,6 +135,18 @@ write the comparison.
 | 4. The final analysis: what held, what did not, per provider | one-shot task | Fable | xhigh |
 | 5. The article | owner | | |
 
+## Where the sessions run
+
+*2026-11-04, owner's decision:* from M21 on, milestone sessions run in the
+cloud (the "Lights-Out" environment), in parallel, to keep the owner's Mac
+free. A cloud environment has no container engine, so each session pushes
+its own branch and takes its engine proofs (`./go ci`, `./go demo`,
+`./go demo-gates`) from GitHub Actions; it never pushes `main` and opens no
+pull request. Cloud sessions send no notice when they finish: the owner, or
+the parent session on request, reads the branch and its Actions runs. The
+merge into `main` happens locally, from a clean clone, one milestone at a
+time, with `./go ci` and `./go demo` rerun on the merged tree.
+
 ## How to apply it
 
 - Start each milestone session with the model above (`start_session`
