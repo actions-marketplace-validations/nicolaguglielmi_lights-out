@@ -29,11 +29,14 @@ def load(path: str, what: str):
         with open(path) as f:
             return json.load(f)
     except (OSError, ValueError) as e:
-        raise Fail(f"{what} is not JSON: {e}")
+        raise Fail(f"{what} is not JSON ({e})")
 
 
 def validate(path: str) -> dict:
-    doc = load(path, path)
+    try:
+        doc = load(path, path)
+    except Fail as e:
+        raise Fail(f"{path} is not an incident document: {str(e).split(' is not JSON ', 1)[-1]}")
 
     def bad(what: str):
         raise Fail(f"{path} is not an incident document: {what}")
@@ -55,7 +58,7 @@ def validate(path: str) -> dict:
     if not isinstance(release, dict) or not isinstance(release.get("version"), str) or not release["version"]:
         bad('"release" is not a release record with a version')
     if release.get("verdict") == "in-progress":
-        raise Fail(f"release {release['version']} is in-progress: a run died before its verdict")
+        raise Fail(f"release {release['version']} is in-progress")
     if release.get("verdict") not in ("held", "rolled-back"):
         bad('"release.verdict" is neither held nor rolled-back')
     if not isinstance(release.get("stages"), list):
@@ -84,7 +87,7 @@ def anchor_evidence(anchor: str, doc: dict) -> list[str]:
     if kind == "release":
         v, at, pct = rest.partition("@")
         if v != version:
-            raise Fail(f"names no release in the incident (the release is {version})")
+            raise Fail("names no release in the incident")
         if not at:
             return [f"release {version}: {release['verdict']}, image {release.get('image') or 'none'}"]
         stage = next((s for s in release["stages"] if str(s.get("pct")) == pct), None)
@@ -181,6 +184,7 @@ def render(checked_path: str, tickets_path: str, run_path: str, out_dir: str) ->
     run = load(run_path, run_path)
     for action in pm["actions"]:
         action["ticket"] = tickets[str(action["n"])]
+        del action["problem"], action["acceptance"]  # they live in the ticket
     pm["run"] = run
     chain = pm["chain"]
     lines = [

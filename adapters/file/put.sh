@@ -10,8 +10,9 @@
 # ticket belongs to the Tracker and is never rewritten. Not a gate:
 # silent but for the id, one stderr line and exit 1 on failure.
 set -eu
-title=${1:?usage: put.sh <title> <origin> < body}
-origin=${2:?usage: put.sh <title> <origin> < body}
+[ $# -ge 2 ] && [ -n "$1" ] && [ -n "$2" ] || { printf 'put-file: usage: put.sh <title> <origin> < body\n' >&2; exit 1; }
+title=$1
+origin=$2
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 dir=${TICKETS_DIR:-tickets}

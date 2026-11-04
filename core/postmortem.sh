@@ -18,7 +18,7 @@ set -eu
 name=postmortem
 . ci/lib.sh
 
-: "${INCIDENT:?INCIDENT not set; ./go postmortem INCIDENT=<file>}"
+[ -n "${INCIDENT:-}" ] || nogo "INCIDENT not set; ./go postmortem INCIDENT=<file>"
 : "${AGENT_HARNESS:?AGENT_HARNESS not set; run this via ./go, not directly}"
 : "${TRACKER:?TRACKER not set; run this via ./go, not directly}"
 : "${POSTMORTEM_OUT:=.crew/postmortem}"
@@ -60,7 +60,7 @@ while [ "$n" -le "$count" ]; do
   title=$(jq -r --argjson n "$n" '.actions[] | select(.n == $n) | .title' "$work/checked.json")
   body=$(jq -r --argjson n "$n" --arg i "$incident" --arg v "$release" --arg d "$verdict" '
     .actions[] | select(.n == $n)
-    | "## Problem\n\n\(.problem)\n\nFound by the post mortem of incident `\($i)` (release `\($v)`, \($d)).\n\n## Acceptance criteria\n\n\(.acceptance)\n\n## Notes\n\nWritten by the ops-triage role from the incident document alone. It has not seen the code, so this ticket declares no perimeter: a human adds one before it is assigned."' \
+    | "## Problem\n\n\(.problem)\n\nFound by the post mortem of incident `\($i)` (release `\($v)`, `\($d)`).\n\n## Acceptance criteria\n\n\(.acceptance)\n\n## Notes\n\nWritten by the ops-triage role from the incident document alone. It has not seen the code, so this ticket declares no perimeter: a human adds one before it is assigned."' \
     "$work/checked.json")
   id=$(printf '%s\n' "$body" | sh "adapters/$TRACKER/put.sh" "$title" "postmortem $incident action $n" 2>"$work/put.err") \
     || nogo "action $n has no ticket: $(tail -n1 "$work/put.err")"
