@@ -96,6 +96,11 @@ mkdir -p "$crew_root/.uv-cache"
 endpoint=${MODEL_BASE_URL:-}
 gemini_base_url=${endpoint:-https://generativelanguage.googleapis.com}
 
+# The one way out of the internal `crew` network (docs/adr/0046 §4): the
+# egress proxy opens this harness's provider (MODEL_BASE_URL's host when it
+# is set) and the hosts the workload's contract names, nothing else.
+sh core/egress.sh "$(grep '^EGRESS=' "$here/conformance.env" | head -n1 | cut -d= -f2-)" || exit 1
+
 mkdir -p "$OUT"
 rm -f "$OUT/stop"
 input_sha256=$(sha256sum "$TICKET_FILE" | cut -d' ' -f1)

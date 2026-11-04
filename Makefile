@@ -1062,10 +1062,11 @@ delivery-conformance: ## Six-case Delivery/Flags conformance suite, real release
 # beside it; the worker image is built on the workbench, not the workload's
 # toolchain. CONFORMANCE_HARNESS=<name> runs one. The suite is proved first,
 # on a made-up harness and a stand-in for compose, to accept a good harness
-# and refuse seventeen wrong ones (gates/harness-conformance/proof.sh): a
+# and refuse thirty-three wrong ones, its probe proved one way out at a time
+# (gates/harness-conformance/proof.sh): a
 # suite that cannot fail would say GO to everything.
 .PHONY: harness-conformance
-harness-conformance: ## Every CLI harness against a scripted model, nine cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
+harness-conformance: ## Every CLI harness against a scripted model, ten cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
 	@sh gates/harness-conformance/proof.sh
 	@CONFORMANCE=1 \
 		WORKLOAD=workloads/minimal WORKLOAD_CONTRACT=workloads/minimal/.lights-out \

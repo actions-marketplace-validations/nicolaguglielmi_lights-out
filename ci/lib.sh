@@ -82,3 +82,40 @@ effective_policy() {
     --overrides "$WORKLOAD_CONTRACT/policy.env" --out "$1") \
     || nogo "${policy_reason:-core/policy.py failed without a reason; see stderr}"
 }
+
+# egress_flaw LIST: the first thing wrong with LIST, a space-separated list of
+# `name:port` (an adapter's EGRESS, a contract's crew-egress.txt, docs/adr/0046
+# §4-§5), as a short phrase on stdout, or nothing when every entry is fine. A
+# name is lowercase DNS with at least one dot and a last label that is not all
+# digits (so no IPv4 literal); there is no `*`; a port is 1 to 65535. An empty
+# LIST has no flaw: whether one entry at least is required is the caller's. Never
+# calls nogo (callers run it inside $(...)).
+egress_flaw() {
+  for entry in $1; do
+    case "$entry" in
+      *'*'*) printf "'%s' has a wildcard" "$entry"; return ;;
+      *:*:*) printf "'%s' has more than one colon, so it is not name:port (an IPv6 literal?)" "$entry"; return ;;
+      *:*) ;;
+      *) printf "'%s' has no port" "$entry"; return ;;
+    esac
+    host=${entry%:*}
+    port=${entry#*:}
+    case "$port" in
+      ''|*[!0-9]*) printf "'%s' has a port that is not a number" "$entry"; return ;;
+    esac
+    if [ "${#port}" -gt 5 ] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+      printf "'%s' has a port outside 1-65535" "$entry"
+      return
+    fi
+    case "$host" in
+      *[A-Z]*) printf "'%s' is not lowercase" "$entry"; return ;;
+      ''|*[!a-z0-9.-]*|.*|*.|*..*|-*|*-|*.-*|*-.*) printf "'%s' is not a DNS name" "$entry"; return ;;
+      *.*) ;;
+      *) printf "'%s' has a name with no dot" "$entry"; return ;;
+    esac
+    case "${host##*.}" in
+      *[!0-9]*) ;;
+      *) printf "'%s' is an IP literal (its last label is all digits)" "$entry"; return ;;
+    esac
+  done
+}
