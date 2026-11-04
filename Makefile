@@ -162,7 +162,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free hooks harness network tower perimeter review prompts evals promote board roles contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free hooks harness network tower perimeter review prompts evals promote board roles postmortem metrics contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -181,7 +181,7 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 	@printf '[demo] up: L0 plane, %s\n' "$(PLANE_ADAPTERS)" >&2
 	@$(MAKE) --no-print-directory smoke
 	@printf '[demo] smoke: the happy path passed through Envoy at %s\n' "$(APP_URL)" >&2
-	@$(MAKE) --no-print-directory verify
+	@$(MAKE) --no-print-directory verify METRICS_URL=
 	@printf '[demo] verify: metric shape only; canary vs stable is evaluated inside demo-rollback below\n' >&2
 	@$(MAKE) --no-print-directory demo-rollback
 	@printf '[demo] deploy, verify (canary vs stable), rollback: proved by demo-rollback above (docs/adr/0013, 0014)\n' >&2
@@ -240,8 +240,12 @@ test: ## Run the backend test suite against compose Postgres (docs/adr/0010)
 	$(COMPOSE) --profile test run --rm --build backend-test
 
 .PHONY: verify
-verify: ## Check verify/slo.promql against the live app (M1: metric shape only, evaluated at M3)
-	@APP_URL="$(APP_URL)" sh verify/metric-shape.sh
+verify: ## Check verify/slo.promql: against the live app's scrape, or with METRICS_URL=<endpoint> CANARY_VERSION=<v> STABLE_VERSION=<s> against any Prometheus-compatible endpoint (docs/adr/0044 §8)
+	@if [ -n "$(METRICS_URL)" ]; then \
+		METRICS=promql METRICS_URL="$(METRICS_URL)" CANARY_VERSION="$(CANARY_VERSION)" STABLE_VERSION="$(STABLE_VERSION)" sh verify/slo.sh; \
+	else \
+		APP_URL="$(APP_URL)" sh verify/metric-shape.sh; \
+	fi
 
 # Each gate's own stdout line is the verdict; a gate's stderr (compose
 # builds, pytest, bandit, cosmic-ray) streams straight through, live, never
@@ -761,6 +765,74 @@ demo-triage: ## Prove a fake alert becomes an incident with ranked hypotheses an
 		[ "$$got" = "$$want" ] || { printf 'NO-GO: demo-triage — %s proposed %s, expected %s\n' "$$id" "$$got" "$$want"; exit 1; }; \
 	done; \
 	printf 'GO: demo-triage\n'
+
+# Ops without the plane (docs/adr/0044). `incident` builds the document
+# the ops-triage role reads from a release record, a window and a log
+# excerpt; `postmortem` runs the role on it and files each action item as a
+# ticket. Neither needs the engine socket or the plane (TICKET= on
+# `incident` is the one option that reads the state store).
+.PHONY: incident
+incident: ## Build an incident document from the release record: NAME=<slug> FROM=<utc> TO=<utc> [LOGS=<file>] [TICKET=<id>] (docs/adr/0044 §2)
+	@NAME="$(NAME)" FROM="$(FROM)" TO="$(TO)" LOGS="$(LOGS)" TICKET="$(TICKET)" sh core/incident.sh
+
+.PHONY: postmortem
+postmortem: ## Run the ops-triage role on an incident document: INCIDENT=<file> → .crew/postmortem/<name>/postmortem.md and one ticket per action item (docs/adr/0044 §5)
+	@INCIDENT="$(INCIDENT)" sh core/postmortem.sh
+
+# The incident captured from a real `demo-rollback` run is committed under
+# fixtures/incidents/ (its README says when and how). The role answers from
+# the recording `record-postmortem` makes at L1; until it exists this says
+# so and names the command, and a hand-written answer is never a stand-in
+# (docs/adr/0044 §7). The tickets go to a copy of tickets/, so the checkout
+# stays clean and the next ticket number stays the owner's; the second run
+# proves a re-run files nothing. Not a `demo` stage (ADR 0003).
+.PHONY: demo-postmortem
+demo-postmortem: ## Prove the incident captured from demo-rollback becomes a post mortem and a fix ticket, no plane (docs/adr/0044 §7)
+	@incident=fixtures/incidents/demo-rollback.json; \
+	[ -f "$$incident" ] || { printf 'NO-GO: demo-postmortem — no %s\n' "$$incident"; exit 1; }; \
+	work=.crew/demo-postmortem; rm -rf "$$work"; mkdir -p "$$work/tickets"; cp tickets/*.md "$$work/tickets/"; \
+	run() { PLANE_HOST=nowhere.invalid TICKETS_DIR="$$work/tickets" POSTMORTEM_OUT="$$work/out" INCIDENT="$$incident" sh core/postmortem.sh 2>"$$work/stderr"; }; \
+	out=$$(run) || { \
+		cat "$$work/stderr" >&2; \
+		if grep -q 'no recorded responses' "$$work/stderr"; then \
+			printf 'NO-GO: demo-postmortem — no recording of the ops-triage role for %s; at L0 it replays fixtures/adk/ops-triage, record it with ./go record-postmortem PROFILE=l1\n' "$$incident"; \
+		else \
+			printf 'NO-GO: demo-postmortem — %s\n' "$${out#NO-GO: postmortem — }"; \
+		fi; exit 1; }; \
+	cat "$$work/stderr" >&2; printf '[demo-postmortem] %s\n' "$$out" >&2; \
+	name=$$(jq -r .name "$$incident"); pm="$$work/out/$$name/postmortem.json"; \
+	jq -e '[.timeline[].anchor | startswith("release:")] | any' "$$pm" >/dev/null || { printf 'NO-GO: demo-postmortem — no timeline entry is anchored to the release\n'; exit 1; }; \
+	for id in $$(jq -r '.actions[].ticket' "$$pm"); do \
+		f="$$work/tickets/$$id.md"; \
+		grep -q "^- Origin: postmortem $$name action " "$$f" || { printf 'NO-GO: demo-postmortem — ticket %s carries no origin line\n' "$$id"; exit 1; }; \
+		printf '[demo-postmortem] fix ticket %s\n' "$$f" >&2; \
+	done; \
+	before=$$(ls "$$work/tickets" | wc -l); ids=$$(jq -r '[.actions[].ticket] | join(" ")' "$$pm"); \
+	out=$$(run) || { printf 'NO-GO: demo-postmortem — the second run did not pass: %s\n' "$$out"; exit 1; }; \
+	[ "$$(ls "$$work/tickets" | wc -l)" = "$$before" ] && [ "$$(jq -r '[.actions[].ticket] | join(" ")' "$$pm")" = "$$ids" ] \
+		|| { printf 'NO-GO: demo-postmortem — a re-run filed new tickets\n'; exit 1; }; \
+	printf 'GO: demo-postmortem\n'
+
+# Records the post mortem of every incident under fixtures/incidents/ at L1
+# (docs/adr/0044 §7): writes the evalset that holds them, one case per
+# file, records the ops-triage role through `record-evals` (which also
+# re-records the alert cases under the current prompt), and keeps the
+# evalset only if the eval passes. Refuses at L0 as `record-evals` does.
+.PHONY: record-postmortem
+record-postmortem: ## Record the ops-triage role's post mortem of fixtures/incidents/*.json at L1 and keep it only if the eval passes (docs/adr/0044 §7)
+	@if [ "$(AGENT_HARNESS)" = "replay" ]; then \
+		printf 'NO-GO: record-postmortem — recording a replay is circular; PROFILE=l1\n'; exit 1; \
+	fi
+	@ls fixtures/incidents/*.json >/dev/null 2>&1 || { printf 'NO-GO: record-postmortem — no incident under fixtures/incidents/\n'; exit 1; }
+	@evalset=adapters/adk/agents/ops_triage/evals/postmortem.evalset.json; \
+	for f in fixtures/incidents/*.json; do jq -nc --arg id "$$(jq -r .name "$$f")" --rawfile text "$$f" \
+		'{eval_id: $$id, conversation: [{invocation_id: $$id, user_content: {role: "user", parts: [{text: $$text}]}, intermediate_data: {tool_uses: [{name: "file_postmortem", args: {}}], intermediate_responses: []}}], session_input: {app_name: "ops_triage", user_id: "lights-out", state: {}}}'; done \
+		| jq -s '{eval_set_id: "postmortems", name: "postmortems", description: "The ops-triage role: the post mortem of an incident document captured from a real release (fixtures/incidents/, docs/adr/0044 §7). The expected trajectory is one file_postmortem call, written from the ADR.", eval_cases: .}' > "$$evalset"; \
+	if $(MAKE) --no-print-directory record-evals ROLES=ops_triage >&2; then \
+		printf 'GO: record-postmortem\n'; \
+	else \
+		rm -f "$$evalset"; printf 'NO-GO: record-postmortem — the eval did not pass; the evalset was removed (recordings under .crew/adk/)\n'; exit 1; \
+	fi
 
 .PHONY: promote
 promote: ## go-for-launch: the brief, then the human answer — GO_FOR_LAUNCH=GO|NO-GO or the terminal — then 100% or rollback (docs/adr/0020 §4)

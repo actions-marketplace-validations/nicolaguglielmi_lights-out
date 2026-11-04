@@ -51,7 +51,7 @@ commit() { git -c commit.gpgsign=false commit -q "$@"; }
 # it. WORKLOAD itself is unset (ATTACHED or the caller names it), ATTACHED
 # is a temp path, and no MAKEFLAGS of the enclosing make reaches a nested one.
 as_ci() {
-  env -u WORKLOAD -u MAKEFLAGS -u MFLAGS -u MAKELEVEL -u HARNESS \
+  env -u WORKLOAD -u MAKEFLAGS -u MFLAGS -u MAKELEVEL -u HARNESS -u METRICS_URL -u METRICS_AUTH_HEADER \
     -u GEMINI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_API_KEY -u MODEL_PROVIDER -u MODEL \
     WORKLOAD_CONTRACT=app WORKLOAD_ATTACHED= COMPOSE_FILE=compose.yaml:app/compose.yaml \
     FLAGS_FILE=app/flags/flags.json TICKETS_DIR=tickets CANARY_VERSION=0.0.0-environment \
