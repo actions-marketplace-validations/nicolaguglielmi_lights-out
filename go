@@ -33,6 +33,7 @@
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
 #   ./go record-evals   record the ADK roles' responses at L1 (PROFILE=l1)
+#   ./go harness-conformance  every CLI harness against a scripted model, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041)
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
@@ -210,7 +211,7 @@ host_sock_flag=""
 socket_optional=""
 case "$cmd" in gates|init|mutation-baseline|demo-init) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board|demo-rework|init|demo-init)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|harness-conformance|unsigned-refused|board|demo-rework|init|demo-init)
     sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}

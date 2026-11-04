@@ -216,3 +216,29 @@ services:
     command: ["gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8086", "--project=lights-out"]
     ports:
       - "8086:8086"
+
+  # The scripted model of gates/harness-conformance.sh (docs/adr/0041 §8):
+  # the suite's one far end of the wire. The workbench image runs the stub
+  # (Python standard library only); the directory is mounted read-only, and
+  # .crew/conformance/model, which the suite creates, is where the stub
+  # reads each case's script and writes every request it sees. No key: it
+  # checks each request's against CONFORMANCE_CANARY, the random value the
+  # suite exports into every key variable (the `:-` default only keeps
+  # `docker-compose config -q` clean; the stub exits on an empty one). Only
+  # the suite starts it, by name; a CLI harness's container reaches it at
+  # http://conformance-model:$CONFORMANCE_PORT on the project's network.
+  conformance-model:
+    image: ${WORKBENCH_IMAGE:?set by ./go}
+    profiles: ["conformance"]
+    user: "${CREW_UID:-0}:${CREW_GID:-0}"
+    command: ["python3", "-I", "/stub/stub.py", "${CONFORMANCE_PORT:-8089}"]
+    volumes:
+      - ./gates/harness-conformance:/stub:ro
+      - ./.crew/conformance/model:/work
+    security_opt:
+      - label=disable
+    environment:
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      STUB_WORK: /work
+      CONFORMANCE_CANARY: ${CONFORMANCE_CANARY:-}
