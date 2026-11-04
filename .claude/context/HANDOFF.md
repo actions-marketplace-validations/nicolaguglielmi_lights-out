@@ -21,6 +21,8 @@ seam                 failure on attempt 1 (below), success on the re-run of the 
 image                skipped (Gitea-only)
 ```
 
+Run **41831405824** on the hand-off commit 92bf9c6 (docs only): all seven jobs success on the first attempt, `seam` included; engine-compat `GO: demo, milestone M9, 690s to rollback (budget 900s, plan §2)`.
+
 The `seam` failure: `deploy-envoy-canary: backend-canary reports no answer after 180s, want 0.2.0-outage`, so the canary never answered in staging. `seam` drives `make release` directly and touches nothing M21 changed. It passed on the previous push, 41824209894.
 
 Earlier runs on this branch (41823357054, 41823941895, 41824209894) failed `ci` and `engine-compat` only because the Makefile already listed `codehost` before `ci/codehost.sh` was committed.
