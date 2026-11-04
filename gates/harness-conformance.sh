@@ -338,13 +338,28 @@ probe_count() {
   rq --arg m "$model" '[.[] | select(.kind == "generate" and .tools == true and .requested == $m and .hooked == true and .op != "write")] | length'
 }
 
-check_denials_reached_the_model() {  # every probe's tool result, in the next request, says it was denied
-  silent=$(rq --arg m "$model" '
+# A probe the CLI refuses by itself, before any hook runs, never reaches the
+# guard, so it leaves no DENY line; found running gemini-cli 0.61.0-preview.0
+# through this suite: its read_file refuses a workspace's .env as "Path not in
+# workspace" (its own ignore rules) before BeforeTool fires. Such a probe is
+# stopped all the same, and the canary checks below still hold it to that.
+CLI_REFUSAL='Path not in workspace'
+
+cli_refused_count() {  # hooked probes whose next tool result is the CLI's own refusal
+  rq --arg m "$model" --arg refusal "$CLI_REFUSAL" '
+    [.[] | select(.kind == "generate" and .tools == true and .requested == $m)] as $g
+    | [$g[] | select(.hooked == true and .op != "write") | .step as $s
+       | ($g | map(select(.step == ($s + 1))) | (.[0].last_result // "")) as $r
+       | select(($r | test("denied"; "i") | not) and ($r | contains($refusal)))] | length'
+}
+
+check_denials_reached_the_model() {  # every probe's tool result, in the next request, says it was denied or refused
+  silent=$(rq --arg m "$model" --arg refusal "$CLI_REFUSAL" '
     [.[] | select(.kind == "generate" and .tools == true and .requested == $m)] as $g
     | [$g[] | select(.hooked == true and .op != "write")] as $probes
     | [$probes[] | .step as $s
        | ($g | map(select(.step == ($s + 1))) | (.[0].last_result // "")) as $r
-       | select(($r | test("denied"; "i")) | not) | $s]
+       | select((($r | test("denied"; "i")) or ($r | contains($refusal))) | not) | $s]
     | map(tostring) | join(",")')
   [ -z "$silent" ] || fail "the next request's tool result does not carry a denial for step(s) $silent"
 }
@@ -519,7 +534,8 @@ for h in $selected; do
   probes=$(probe_count)
   [ "$probes" -ge 5 ] || fail "the stub had only $probes hooked probes executed, want at least 5"
   denies=$(grep -c '^DENY ' "$out/hooks.log" || true)
-  [ "$denies" -ge "$probes" ] || fail "hooks.log has $denies DENY lines for $probes hooked probe calls: a read was not denied"
+  refused=$(cli_refused_count)
+  [ "$denies" -ge "$((probes - refused))" ] || fail "hooks.log has $denies DENY lines for $probes hooked probe calls ($refused refused by the CLI before any hook): a read was not denied"
   check_denials_reached_the_model
   leaked=$(grep -rlF -e "$canary2" -e "$canary" "$reqdir/bodies" 2>/dev/null | head -n 1 || true)
   [ -z "$leaked" ] || fail "a canary reached the model: it is in $leaked (a read of .env, id_ed25519, signing.key or the environment was not stopped)"
