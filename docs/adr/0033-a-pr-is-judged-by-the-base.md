@@ -1,6 +1,6 @@
 # ADR 0033 — A PR is judged by the base's gates and policy, and by its ticket's perimeter, in the tower's CI step
 
-- Status: accepted (amends ADR 0019 §4 [the gates still run on the PR head, but the files that judge it come from the base]; amends ADR 0021 §5 [the perimeter is checked again in the CI step, not only in `core/crew.sh`])
+- Status: accepted (amends ADR 0019 §4 [the gates still run on the PR head, but the files that judge it come from the base]; amends ADR 0021 §5 [the perimeter is checked again in the CI step, not only in `core/crew.sh`]); amended 2026-11-04 [the contract's `runners/` joins its judges, the set ADR 0045 §3's wrapper already takes]
 - Date: 2026-11-02
 - Ticket: 0007
 
@@ -33,14 +33,14 @@ reached the code host any other way was never checked against it.
    `NO-GO: perimeter — <path> is outside …`, posted as the `gates` status.
    No gate runs. It stays a `core/` check and not a gate, for ADR 0021 §5's
    reason: gates know nothing about tickets.
-3. **The test is `ci/tower.sh` case (g).** It runs the real step on a real
+3. **The test is `ci/tower.sh` case (h).** It runs the real step on a real
    git range with a stub CodeHost and Tracker, the base built from this
    checkout's judges with `GATES` narrowed to `risk` (the other five need
    an engine or the network). The PR loosens `policy/merge.env`. The test
    first checks that the PR's own policy would auto-merge it. Then it
    checks two verdicts: `review`, risk `high`, under a ticket whose
-   perimeter holds the diff; `ci-failed` on `perimeter` under one whose
-   perimeter does not.
+   perimeter holds the diff (h1); `ci-failed` on `perimeter` under one whose
+   perimeter does not (h2).
 
 ## Alternatives rejected
 
@@ -75,3 +75,86 @@ reached the code host any other way was never checked against it.
 
 No new tool, no new service, no network. `ci/tower.sh` stays cold: two
 local git repos and one `make gates` with `risk` only, a few seconds.
+
+## Amendment, 2026-11-04 (ADR 0042, 0045)
+
+**Context.** ADR 0042 §6–§7 added `runners/` to the gates half of a
+contract: `SAST_CMD` and `MUTATION_CMD` call `.lights-out/runners/*.sh`.
+The step restored the contract's `workload.env` and `policy.env` (§1, ADR
+0037 §4), not its runners. So a PR could rewrite `runners/sast.sh` to
+print `{"findings": 0}`, and the base's `sast` gate would trust it. The
+risk gate's `.lights-out/*` → high still blocked auto-merge, but the sast
+and mutation verdicts the reviewer saw came from the PR's own runners.
+The wrapper (ADR 0045 §3) already restores the base's runners.
+
+**Decision.**
+
+1. **The contract's judges are `workload.env`, `policy.env` and
+   `runners/`, taken from `BASE_SHA`, no-overlay.** This is the set
+   `package/entrypoint.sh` restores, with no fourth path. A judge that
+   neither side has is left out of the pathspec. When the base has no
+   `runners/` and the PR adds one, the PR's copy is removed, as with
+   `policy.env`. The step adds `${contract}runners` to both lists:
+   - attached: `${contract}workload.env ${contract}policy.env ${contract}runners`
+   - bundled: `Makefile profiles gates ci core policy` + the same three.
+
+   There is one definition of the contract's judges, wherever the
+   contract lives. The bundled entry costs nothing: no bundled contract
+   has a `runners/` today.
+2. **Not taken from the base, one reason each.**
+   - `worker.md`: the dev-worker's brief. It is read before the PR
+     exists, and no gate reads it.
+   - `tickets/`: the step reads the ticket from the Tracker, outside the
+     worktree (§2). A copy in the worktree is read by nothing.
+   - The plane half (`compose.yaml`, `flags/flags.json`, `smoke.sh`,
+     `load.sh`, `fixtures/gates/`): no gate reads it, except
+     `compose.yaml`, which is build surface that `test` must exercise.
+     The third rejected alternative above still holds.
+
+   An edit to any of these is high under `.lights-out/*`.
+3. **The test is `ci/attach.sh` case (f), next to (b) and (c).**
+   - **Setup.** The base's contract has `TOOLCHAIN_IMAGE=workbench`,
+     `SAST_CMD=sh .lights-out/runners/sast.sh`, and a runner that
+     reports one finding. The PR's ticket perimeter holds that runner,
+     and the PR rewrites it to report none.
+   - **Premise.** The test first shows that the head's own `SAST_CMD`,
+     run in-process on the head, reports zero findings.
+   - **Verdict.** The real step must return `ci-failed`, verdict
+     `NO-GO`, failed `sast`, with a line that names the base's finding.
+   - **The `sast` gate is a stand-in.** The test's platform root
+     replaces `gates/sast.sh` with a script that runs the worktree's
+     `SAST_CMD` in-process. The real gate runs under the step's
+     `TOOLCHAIN_ISOLATE=1`, which needs the engine socket, and `./go ci`
+     mounts none. The real gate would NO-GO on the socket, and the case
+     would pass for the wrong reason. What is under test is the restore,
+     not the gate.
+
+**Alternatives rejected.**
+
+- *Attached list only:* this gives two definitions of the contract's
+  judges, and the gap reopens silently once a bundled `SAST_CMD` calls
+  `runners/`.
+- *Run case (f) only when an engine is present:* a skip is a green that
+  proved nothing.
+- *A switch that turns isolation off for the test:* it would be a
+  product knob that exists only for a test, and it would remove what
+  keeps a PR's code out of the tower's container.
+
+**Consequences.**
+
+- **Runners outside `runners/` remain the PR's.** This covers bundled
+  `app/tests/{sast,mutation}/run.sh`, and also an attached contract whose
+  command calls `tests/sast/run.sh`, as `workloads/minimal` does. These
+  are the build surface of §1. Editing them is always high: the platform
+  `RISK_HIGH_PLATFORM` lists `*tests/sast/*` and `*tests/mutation/*`, no
+  `policy.env` can override it (it is not in `core/policy.py`
+  `OVERRIDABLE`), and high never auto-merges. The sast or mutation GO on
+  such a PR is still the PR's own claim. The reviewer must not read it as
+  evidence.
+- **A legitimate runner change (a new bandit pin) is judged by the old
+  runner.** It takes effect from the next PR onward.
+- **The same three paths now live in two places**, `core/steps/ci.sh`
+  and `package/entrypoint.sh`. A fourth path must be added in both;
+  ci/attach.sh (f) and the wrapper's test catch only the paths they name.
+- **Golden rule:** the demo path is untouched, and case (f) is local git
+  with no engine.
