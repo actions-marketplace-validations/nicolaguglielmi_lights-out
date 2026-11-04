@@ -142,7 +142,11 @@ export RELEASE_RECORD
 
 # Plan §2's ceiling on `./go demo` reaching the automatic rollback, timed by
 # ./go from before engine-compat, where the cold pulls happen (docs/adr/0013
-# §7). 0 disables the verdict; the elapsed time is still printed.
+# §7). 0 disables the verdict; the elapsed time is still printed. Judged in
+# CI (LIGHTS_OUT_CI, the host's CI variable) and on every run that found the
+# workbench already built; a local first run (LIGHTS_OUT_FIRST_RUN=1: ./go
+# built the workbench) over budget reports its time and passes
+# (docs/adr/0013, amendment 2026-11-04).
 DEMO_BUDGET_SECONDS ?= 900
 
 # The PR gates (docs/adr/0015 §2), cheap and stable ones first, the ones
@@ -210,6 +214,10 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
 		exit 0; \
 	fi; \
 	if [ "$(DEMO_BUDGET_SECONDS)" -gt 0 ] && [ "$$elapsed" -gt "$(DEMO_BUDGET_SECONDS)" ]; then \
+		if [ "$${LIGHTS_OUT_FIRST_RUN:-0}" = 1 ] && [ -z "$${LIGHTS_OUT_CI:-}" ]; then \
+			printf 'GO: demo, milestone M9, %ss to rollback, a first run: over the %ss budget, reported, not judged (the toolchain build and first downloads; the next run is judged, plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"; \
+			exit 0; \
+		fi; \
 		printf 'NO-GO: demo — rollback reached, but %ss > %ss budget (plan §2)\n' "$$elapsed" "$(DEMO_BUDGET_SECONDS)"; \
 		exit 1; \
 	fi; \

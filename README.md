@@ -79,7 +79,8 @@ Run `./go doctor` first. It prints one line per item: the engine and whether it 
 |---|---|
 | A port is already in use | Put `APP_PORT=9000` in a file named `.env` for the app port. Ports 3000, 5050, 8016, 8085, 8086, 9090 and 9901 must be free. |
 | `Cannot allocate memory`, or everything crawls | `podman machine stop`, `podman machine set --memory 6144`, `podman machine start` |
-| `NO-GO: demo — rollback reached, but … > 900s budget` | Everything worked; the first download was slow. Run `./go demo` again. |
+| `GO: demo … a first run: over the 900s budget, reported, not judged` | Everything worked; the first download and the toolchain build were slow. Your first run reports its time instead of failing on it. Later runs and CI are judged against the 900 s ([ADR 0013](docs/adr/0013-launchpad-canary-verify-rollback-at-l0.md), amendment 2026-11-04). |
+| `NO-GO: demo — rollback reached, but … > 900s budget` | Everything worked, but a run after the first one took longer than 900 s. The engine is usually short of memory or CPU (see the row above), or other containers are running. `./go down`, then `./go demo` again. |
 | Anything else | `./go down`, then `./go demo` again. Still stuck? Open an issue with the last 30 lines. |
 
 ## What is real and what is recorded

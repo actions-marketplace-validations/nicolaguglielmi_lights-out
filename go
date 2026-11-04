@@ -206,10 +206,14 @@ if [ "$cmd" = demo-package ]; then
   CONTAINER_ENGINE="$engine" exec sh "$here/package/demo.sh"
 fi
 
-# 2. Build the workbench image once per Containerfile revision.
+# 2. Build the workbench image once per Containerfile revision. A run
+# that has to build it is a first run: demo reports its time instead of
+# judging it, unless CI is set (docs/adr/0013, amendment 2026-11-04).
+first_run=0
 if ! "$engine" image inspect "$image" >/dev/null 2>&1; then
   printf 'go: building workbench with %s, the first run takes a few minutes\n' "$engine" >&2
   "$engine" build -t "$image" -f "$containerfile" "$here/workbench"
+  first_run=1
 fi
 
 # 3. Run flags. The repo is mounted at the same absolute path as on the host so
@@ -285,7 +289,7 @@ run() {
   exec "$engine" run --rm --init $tty \
     -v "$here:$here$label" -w "$here" \
     -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
-    -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" \
+    -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" -e LIGHTS_OUT_FIRST_RUN="$first_run" -e LIGHTS_OUT_CI="${CI:-}" \
     $engine_flags $socket_flags $host_sock_flag $port_flags \
     "$image" "$@"
 }
