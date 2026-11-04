@@ -1,10 +1,24 @@
 # lights-out
 
-Six agents ship it. One human turns the lights back on.
+![lights-out: six agents ship it, one human turns the lights back on](docs/assets/lights-out.jpg)
+
+**The safety system for a dark factory of coding agents.** A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system for agents that write and ship code.
 
 **Autonomous agents take a ticket to production on a codebase you do not trust. Numeric gates decide, the ticket's perimeter holds, a failing canary rolls itself back, and one human approves the last step.**
 
 It runs complete on your laptop: no account, no API key, no cloud.
+
+| | |
+|---|---|
+| **Six gates on every PR** | risk, secrets, dependencies, static analysis, tests, mutation. Each prints one line, `GO` or `NO-GO` with the reason, and every threshold says where it comes from. A PR is judged by its base's policy, never its own. |
+| **A perimeter per ticket** | the diff must stay inside the files the ticket declares, checked before a PR exists. |
+| **A canary that rolls itself back** | one signed image per merge, 5% then 25% of real traffic, compared with stable on errors and p95 latency. A bad number rolls it back with nobody paged. |
+| **One human gate** | the step to 100% waits for a person's GO. Silence never promotes. |
+| **Your model, your coding CLI** | Gemini, Claude or OpenAI, through `gemini-cli`, `claude-code` or `codex`, all behind the same guard. |
+| **Gates on your repository** | `./go init` drafts the contract from your repository and `./go gates` judges your last commit, with no plane and no key. |
+| **Ops, too** | an alert becomes ranked hypotheses; an incident becomes a post mortem anchored to the audit chain, with each action item a ticket. |
+
+What is proven and what is not yet is said plainly below, in [What is real and what is recorded](#what-is-real-and-what-is-recorded).
 
 ## Try it
 
