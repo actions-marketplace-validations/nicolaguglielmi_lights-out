@@ -56,12 +56,23 @@ done
 
 run() { make --no-print-directory "$@" || exit 1; exit 0; }
 
+# At L0 the roles replay lights-out's own recordings only (docs/adr/0045
+# §3): on any other alert or incident the NO-GO says what runs it live.
+role() {
+  out=$(make --no-print-directory "$@") && { printf '%s\n' "$out"; exit 0; }
+  if [ "${PROFILE:-l0}" = l0 ]; then
+    out="$out; at L0 only lights-out's own recordings replay: on yours, PROFILE=l1 with GEMINI_API_KEY in your environment (ANTHROPIC_API_KEY or OPENAI_API_KEY with MODEL_PROVIDER=anthropic or openai)"
+  fi
+  printf '%s\n' "$out"
+  exit 1
+}
+
 case "$sub" in
   triage)
-    run triage TRIAGE_OUT=/out/triage "$@" ;;
+    role triage TRIAGE_OUT=/out/triage "$@" ;;
   postmortem)
     mkdir -p /out/tickets
-    run postmortem POSTMORTEM_OUT=/out/postmortem TICKETS_DIR=/out/tickets "$@" ;;
+    role postmortem POSTMORTEM_OUT=/out/postmortem TICKETS_DIR=/out/tickets "$@" ;;
 esac
 
 # init and gates: the repository's HEAD, cloned where only this container
