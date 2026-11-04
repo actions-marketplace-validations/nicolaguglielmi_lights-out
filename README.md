@@ -149,6 +149,7 @@ What works today, and what does not yet:
 
 ## Next
 
+- [The tutorial: the demo read stage by stage, then your own repository](docs/tutorial.md)
 - [How it works, every command, every level](docs/reference.md)
 - [Architecture](docs/ARCHITECTURE.md) and [decisions](docs/adr/)
 - [Contributing](CONTRIBUTING.md) and [roadmap](ROADMAP.md)
