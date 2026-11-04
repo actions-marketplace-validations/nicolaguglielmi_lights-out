@@ -3,7 +3,8 @@
 #
 # ci-evals: docs/adr/0020 §3, §8, the agents' own regression suite.
 # (a) the `adk` CLI must be in the image; (b) every root_agent's toolset
-# must equal the ADR's list, always all three roles, under whatever
+# must equal the ADR's list (docs/adr/0020 §3, ops_triage's amended to
+# four tools by docs/adr/0044 §4), always all three roles, under whatever
 # AGENT_HARNESS the profile already exported -- never set here, never
 # overridden: a replay-backed toolset check is still a toolset check;
 # (c) the replay model's own unit tests; (d) `adk eval` per evalset,
@@ -37,7 +38,7 @@ import sys
 
 want = {
     "product": {"ask_product_owner", "confirm_acceptance"},
-    "ops_triage": {"file_incident", "propose_rollback", "propose_hold"},
+    "ops_triage": {"file_incident", "file_postmortem", "propose_rollback", "propose_hold"},
     "release": {"submit_brief", "decline_brief"},
 }
 
