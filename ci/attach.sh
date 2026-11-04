@@ -15,6 +15,9 @@
 #       a workload may set; a policy.env that lets high merge fails CI.
 #   (d) a bad policy.env is a NO-GO of gates/risk.sh naming the key (§5).
 #   (e) at L0 the crew refuses an attached repository first thing (§8).
+#   (f) an attached PR is judged by its base's runners/ (docs/adr/0033's
+#       2026-11-04 amendment): the real core/steps/ci.sh on a PR that
+#       rewrites the runner its base's SAST_CMD calls to report no finding.
 # Written from the ADR, not from the scripts; ci/tower.sh case (h)'s shape.
 set -eu
 name=attach
@@ -281,6 +284,99 @@ if [ -z "$mismatch" ]; then
     *) fail_case c-high "the risk gate's NO-GO does not name RISK_AUTO_MERGE_LEVELS: $(printf '%s' "$got" | jq -r .ci.line)" ;; esac
 fi
 
+# (f) An attached PR is judged by its base's runners/ (docs/adr/0033, the
+# 2026-11-04 amendment, §3). The base's contract has TOOLCHAIN_IMAGE=
+# workbench and SAST_CMD=sh .lights-out/runners/sast.sh over a runner that
+# reports one finding; the PR's ticket perimeter holds that runner and the
+# PR rewrites it to report none.
+#
+# The sast gate is a STAND-IN here: the platform root of this case replaces
+# gates/sast.sh with a script that runs the worktree's SAST_CMD in-process.
+# The real gate runs under the step's TOOLCHAIN_ISOLATE=1, which needs the
+# engine socket, and `./go ci` mounts none: the real gate would NO-GO on the
+# socket and the case would pass for the wrong reason. What is under test is
+# the restore of runners/, not the gate. Every other gate file is linked
+# from this checkout, and GATES is narrowed to sast alone, so the NO-GO
+# the step reports can only be sast's.
+pf="$t/platform-f"
+if [ -z "$mismatch" ]; then
+  (
+    mkdir -p "$pf/gates" "$t/tickets" &&
+    cp -R "$p/adapters" "$pf/adapters" &&
+    for d in ci core policy profiles; do ln -s "$repo/$d" "$pf/$d" || exit 1; done &&
+    for g in "$repo"/gates/*; do
+      [ "$(basename "$g")" = sast.sh ] || ln -s "$g" "$pf/gates/$(basename "$g")" || exit 1
+    done &&
+    sed 's/^GATES := .*/GATES := sast/' Makefile > "$pf/Makefile" &&
+    grep -qx 'GATES := sast' "$pf/Makefile"
+  ) >"$log" 2>&1 || fail_case f-setup "could not build the platform root with GATES := sast"
+  cat > "$pf/gates/sast.sh" <<'STUB'
+#!/bin/sh
+# Stand-in for gates/sast.sh (ci/attach.sh case f): the worktree's SAST_CMD
+# run in-process, same output contract and same $GATES_OUT/sast.json.
+set -eu
+name=sast
+. ci/lib.sh
+require_range
+out_dir=${GATES_OUT:-.gates-out}
+mkdir -p "$out_dir"
+[ -n "${SAST_CMD:-}" ] || nogo "SAST_CMD is empty"
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+rc=0
+result=$(cd "$WORKLOAD" && sh -c "$SAST_CMD" 2>"$err") || rc=$?
+cat "$err" >&2
+result=$(printf '%s\n' "$result" | grep -v '^[[:space:]]*$' | tail -1) || result=""
+count=$(printf '%s' "$result" | jq -r '.findings' 2>/dev/null) || count=""
+case "$count" in '' | *[!0-9]*) count="" ;; esac
+printf '{"findings": %s, "where": "in-process stand-in"}\n' "${count:-null}" > "$out_dir/sast.json"
+[ -n "$count" ] || nogo "SAST_CMD did not print valid JSON on stdout (exit $rc): $result" "$(cat "$err")"
+if [ "$count" -gt 0 ]; then
+  nogo "$count SAST finding(s): $(head -1 "$err")" "$(cat "$err")"
+fi
+[ "$rc" -eq 0 ] || nogo "SAST_CMD exited $rc with no findings parsed" "$(cat "$err")"
+go
+STUB
+fi
+if [ -z "$mismatch" ]; then
+  ticket 0004 .lights-out/runners/sast.sh
+  (
+    cd "$src" &&
+    git checkout -q -b base-f main &&
+    sed -e 's/^TOOLCHAIN_IMAGE=.*/TOOLCHAIN_IMAGE=workbench/' \
+      -e 's|^SAST_CMD=.*|SAST_CMD=sh .lights-out/runners/sast.sh|' .lights-out/workload.env > "$t/f-workload.env" &&
+    cp "$t/f-workload.env" .lights-out/workload.env &&
+    mkdir -p .lights-out/runners &&
+    printf '#!/bin/sh\necho "sast.sh: B999 base-finding in minimal/app.py" >&2\nprintf '"'"'{"findings": 1}\\n'"'"'\n' > .lights-out/runners/sast.sh &&
+    git add -A && commit -m 'a contract with a runner that reports one finding' &&
+    git checkout -q -b ticket/0004 &&
+    printf '#!/bin/sh\nprintf '"'"'{"findings": 0}\\n'"'"'\n' > .lights-out/runners/sast.sh &&
+    commit -am 'the runner reports none' &&
+    git checkout -q main
+  ) >"$log" 2>&1 || fail_case f-setup "could not build the base and PR branches"
+fi
+# Premise, or the case could pass for the wrong reason: the head's own
+# SAST_CMD, run in-process on the head, reports zero findings.
+if [ -z "$mismatch" ]; then
+  { mkdir "$t/head-f" && git -C "$src" archive -o "$t/head-f.tar" ticket/0004 &&
+    tar -x -f "$t/head-f.tar" -C "$t/head-f"; } >"$log" 2>&1 \
+    || fail_case f-premise "could not check out the PR's head"
+fi
+if [ -z "$mismatch" ]; then
+  own_cmd=$(sed -n 's/^SAST_CMD=//p' "$t/head-f/.lights-out/workload.env")
+  [ "$own_cmd" = 'sh .lights-out/runners/sast.sh' ] \
+    || fail_case f-premise "the head's SAST_CMD is '$own_cmd'"
+  own=$(cd "$t/head-f" && sh -c "$own_cmd" 2>"$log") || fail_case f-premise "the head's own SAST_CMD exited $?"
+  [ "$own" = '{"findings": 0}' ] || fail_case f-premise "the head's own SAST_CMD printed '$own', want zero findings"
+fi
+if [ -z "$mismatch" ]; then
+  got=$(p=$pf step_ci 0004 base-f ticket/0004) || fail_case f "the CI step exited $?"
+  [ "$(printf '%s' "$got" | jq -r '.state + " " + .ci.verdict + " " + .ci.failed')" = "ci-failed NO-GO sast" ] \
+    || fail_case f "a PR rewriting its base's SAST runner to report none: $got (want ci-failed NO-GO sast)"
+  case "$(printf '%s' "$got" | jq -r .ci.line)" in *"B999 base-finding"*) : ;;
+    *) fail_case f-finding "the NO-GO line does not name the base's finding: $(printf '%s' "$got" | jq -r .ci.line)" ;; esac
+fi
+
 # (d) gates/risk.sh on the clone with its own .lights-out/policy.env
 # rewritten (core/tests/test_policy.py has the rules; this is the wiring).
 # The control first: the same range and contract with a valid policy.env
@@ -338,5 +434,5 @@ if [ -z "$mismatch" ]; then
   [ ! -e "$t/crew/.crew" ] || fail_case e "core/crew.sh prepared $t/crew/.crew before refusing"
 fi
 
-[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0037"
+[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0037 or 0033"
 go

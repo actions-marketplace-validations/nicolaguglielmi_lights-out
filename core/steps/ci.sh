@@ -21,8 +21,9 @@
 # ci/, core/ and policy/ are the base's; the ticket comes from the
 # Tracker and the perimeter check from this checkout, never from the PR.
 # An attached repository's PR (docs/adr/0037 §4) cannot carry this
-# checkout's judges at all: only its contract's workload.env and
-# policy.env come from its base, and the gates run from here.
+# checkout's judges at all: only its contract's workload.env, policy.env
+# and runners/ come from its base (the wrapper's set, docs/adr/0045 §3),
+# and the gates run from here.
 set -eu
 : "${TICKET:?TICKET not set}"
 : "${PR_NUMBER:?PR_NUMBER not set}"
@@ -73,9 +74,9 @@ else
   contract=$(git -C "$WORKLOAD_CONTRACT" rev-parse --show-prefix) \
     || { printf 'step-ci: %s is not inside a git repository\n' "$WORKLOAD_CONTRACT" >&2; exit 1; }
   if [ -n "${WORKLOAD_ATTACHED:-}" ]; then
-    judges="${contract}workload.env ${contract}policy.env"
+    judges="${contract}workload.env ${contract}policy.env ${contract}runners"
   else
-    judges="Makefile profiles gates ci core policy ${contract}workload.env ${contract}policy.env"
+    judges="Makefile profiles gates ci core policy ${contract}workload.env ${contract}policy.env ${contract}runners"
   fi
   # restore is no-overlay: a judge the PR adds is removed too. A judge
   # neither side has (an optional policy.env) is left out of the pathspec,
