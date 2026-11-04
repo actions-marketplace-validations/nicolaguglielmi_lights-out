@@ -78,7 +78,7 @@ Each CLI installed by `npm ci` from a generated lockfile in the workbench image 
 
 1. **Every CLI harness registers `guard.sh` on its pre-tool event with the matcher `*`**: gemini-cli `BeforeTool`, claude-code and codex `PreToolUse`. The guard decides, never the matcher. A tool that a CLI version adds is guarded the day it ships. A call whose strings name nothing on the deny-list is allowed and logged like any other. An enumerated list is rejected because it goes stale with every CLI bump, and that is how this gap opened.
 2. **`ci/hooks.sh` enforces the rule without an engine.** It fails if any discovered harness's entrypoint registers the guard with a matcher other than `*`. Its cases now cover gemini-cli's file tools that the old matcher missed, in gemini's input shape. They are rendered for claude-code and codex as the same shell command through `Bash`, because neither offers those tools (claude-code runs `--tools Bash,Edit,Read,Write`).
-3. **Case 3 of the conformance suite gains a `grep` probe** on `signing.key`. For gemini-cli it is `grep_search` with that file as `dir_path`, which ripgrep reads. Under the old matcher the second canary would reach the model.
+3. **Case 3 of the conformance suite gains a `grep` probe** on `signing.key`. For gemini-cli it is `grep_search` over the workspace with `include_pattern` `signing.key`. A file as `dir_path` does not work: gemini-cli's fallback grep, used when ripgrep is not usable, refuses it in `build()`, before `BeforeTool` fires (found on Actions). Under the old matcher the second canary would reach the model.
 
 **Consequences.**
 

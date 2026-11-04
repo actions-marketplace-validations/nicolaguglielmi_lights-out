@@ -1,3 +1,63 @@
+# Handoff: gemini-cli guard gap closed before launch, 2026-11-04, branch `claude/bold-euler-67dwsf`, pushed, no pull request, not merged
+
+The parent session merges after Actions is green. The decision is in `docs/adr/0041-claude-code-and-codex-harnesses.md`, "Amendment 2026-11-04: one matcher rule for the three hooks". This closes the M19 finding below ("Not done", first bullet).
+
+## What changed
+- `adapters/gemini-cli/entrypoint.sh`: the `BeforeTool` matcher went from `run_shell_command|write_file|replace|read_file` to `*`, as claude-code's and codex's `PreToolUse` already were. The guard decides on every call. `guard.sh` is unchanged and still byte-identical in the three adapters.
+- `ci/hooks.sh`: 12 new cases, 7 deny and 5 allow, in gemini's input shape for `grep_search`, `glob`, `list_directory`, `read_many_files` and `invoke_agent`. They are rendered for claude-code and codex as the same command through `Bash`. The check also fails when any harness's entrypoint registers the guard with a matcher other than `*`. With the old matcher put back, the output is `NO-GO: hooks — gemini-cli: guard registered with matcher 'run_shell_command|write_file|replace|read_file', want '*' (docs/adr/0041 §3)`.
+- `gates/harness-conformance` case 3: the stub has a new `grep` op. For gemini it is `grep_search` over the workspace with `include_pattern` `signing.key`; for the other two it is `grep -rn` through the shell. The case now needs at least 6 hooked probes. Under the old matcher, gemini's second canary would reach the model.
+
+## Verified before writing (pinned 0.61.0-preview.0)
+- The tarball's sha512 matches `adapters/gemini-cli/package-lock.json`. The CLI bundles `@google/gemini-cli-core@0.61.0-preview.0`, and the same tool names appear in `bundle/chunk-ACTC6X24.js`.
+- How the matcher works (`core dist/src/hooks/hookPlanner.js`, `matchesContext`): an empty matcher or `*` matches every tool. Anything else is `new RegExp(matcher).test(toolName)`, and a matcher that is not a valid regex is compared to the tool name exactly.
+- Tools registered for the model (`dist/src/config/config.js`, `createToolRegistry`; names in `dist/src/tools/definitions/base-declarations.js`), excluding `web_fetch` and `google_web_search`, which the entrypoint excludes:
+  - `update_topic`, `list_directory`, `read_file`, `grep_search`, `glob`
+  - `activate_skill`, `replace`, `write_file`, `run_shell_command`
+  - `read_mcp_resource`, `list_mcp_resources`
+  - `list_background_processes`, `read_background_output`
+  - `ask_user`, `invoke_agent`
+  - when enabled: `write_todos`, the plan tools and the tracker tools
+  - plus any MCP or discovered tools
+- The "four missing tools":
+  - Three of them, `grep_search`, `glob` and `list_directory`, are real.
+  - `read_many_files` is in `ALL_BUILTIN_TOOL_NAMES` but is not registered for the model in this version.
+  - Every other tool in the list above was uncovered too.
+- Subagent tool calls go through the same scheduler and hook (`agents/agent-scheduler.js`, then `scheduler/scheduler.js`, `evaluateBeforeToolHook`).
+
+## Not done, and findings for the owner
+- **`@path` in the prompt bypasses every hook.** Headless `gemini -p` runs `handleAtCommand` from `runNonInteractive`, and it reads `@<path>` tokens with `ReadManyFilesTool` and `invocation.execute()` directly, with no scheduler and no `BeforeTool`. The prompt is `core/crew.sh`'s `input.md`: the ticket, the workload's brief and the rework verdict. For an attached repository, the brief is repository content. This is recorded in the ADR 0041 amendment's consequences, not fixed. Two possible fixes, each with its own conformance case: escape `@` in the prompt the entrypoint builds, or use a verified flag that turns the expansion off.
+- **The deny-list misses `~/.ssh/*`.** The gate-writer found this by reading the code: `ssh`'s boundary class excludes `.`, so `.ssh` does not match, and a glob such as `~/.ssh/*` is allowed. `id_rsa` and `id_ed25519` by name are still denied. `guard.sh` is unchanged.
+- **The draft issue is still in the launch branch.** `claude/compassionate-cerf-t5kc8v` was not merged into main when this session finished. At merge, the parent must drop `docs/launch/good-first-issues.md` §6, "Gemini CLI's guard hook does not see four file tools", because this branch closes it.
+- **Merge order with ADR 0046.** `claude/confident-brown-k17txt` also edits `gates/harness-conformance.sh` and `stub.py`. This branch only touches case 3's probe list and threshold and `stub.py`'s `render`, `shell_form` and docstring head, none of which that branch touches. Expect a clean merge either way.
+
+## Acceptance on GitHub Actions
+**Not done: `ci` is not green on the last code commit.** On 84fe886, GitHub did not start six of the eight jobs because of the account's billing. The annotation reads: "The job was not started because recent account payments have failed or your spending limit needs to be increased". Once billing is fixed, rerun run 41874405081. Nothing in the code is known to be red.
+
+```
+ci run 41874405081 (commit 84fe886, the last code commit)
+  harness-conformance   success  (job 126729781091): all three harnesses, case 3 with the grep probe
+  ci, engine-compat, gates, init, launch, seam   failure: not started (billing), no logs; image skipped
+
+ci run 41872293408 (commit f825cc2), red for two real reasons, both fixed in 84fe886:
+  ci, engine-compat     ./go ci → NO-GO: shell — SC2016 on two new lines in ci/hooks.sh
+  harness-conformance   gemini-cli case 3: 5 DENY lines for 7 hooked probes, 1 refused by the CLI.
+                        The image's gemini-cli used its fallback JS grep_search, which refuses a file
+                        as dir_path ("Path is not a directory") in build(), before BeforeTool fires
+                        (scheduler.js:253, then :415). That probe proved nothing, and the suite
+                        rightly refused to count it. The probe now greps the workspace with
+                        include_pattern signing.key.
+  gates, init, launch, seam   success
+
+ci run 41871656222 (commit dc28250, the matcher change alone): every job success, harness-conformance
+  included. With "*", nothing in the three harnesses' conformance changed.
+```
+
+Checked locally in this session, with no engine: on 84fe886, `sh ci/shell.sh` (shellcheck 0.11.0, installed in the scratchpad) prints `GO: shell`; on f825cc2's `ci/hooks.sh` it prints NO-GO. `ci/hooks.sh`, `ci/contract.sh`, `ci/harness-shape.sh`, `ci/model-free.sh` and `ci/roles.sh` all print GO.
+
+Clear the context before the next milestone.
+
+---
+
 # Handoff: M23 "one command, one package", 2026-11-04, branch `claude/kind-gauss-tzw1q7`, pushed, no pull request, not merged
 
 The owner reviews and merges (the parent session resolves the expected conflicts with M21 on `Makefile`, `go`, README and `docs/PLAN.md`). Plan: `docs/PLAN.md` §16 M23 (status note added); decision: `docs/adr/0045-one-command-one-package.md`; file-by-file plan: `docs/plans/m23.md` (committed before the build, plan mode was not available).
