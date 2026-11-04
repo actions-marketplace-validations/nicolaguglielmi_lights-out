@@ -73,7 +73,7 @@ To judge your own metrics, run `./go verify METRICS_URL=<any Prometheus-compatib
 - **Hand-written (rework):** `./go demo-rework` sends ticket 0013's first attempt back to the worker with the gates' verdict (ADR 0038). No rework has been recorded against the Gemini API yet, so at L0 both attempts replay patches written by hand (`fixtures/0013/`, `hand_written: true`), and the run says `model none`. The gates that reject the first attempt and pass the second, the tower, the loop and the cap are real.
 - **Hand-written (network):** `./go demo-network` splits ticket 0012 between two workers behind one harness port (ADR 0036). No network run has been recorded yet, so at L0 the two workers replay patches written by hand, and the run, the PR and the audit say `model none`. The governance around them (perimeters, gates, canary, rollback, audit) is real.
 - **Recorded (post mortem):** `./go demo-postmortem` replays the ops-triage recording of the incident captured from a real `demo-rollback` run (`fixtures/incidents/`). It was recorded once at L1 on gemini-3.8-flash (`./go record-postmortem PROFILE=l1`, 2026-11-04), so `demo-postmortem` prints GO with a fix ticket and no key. `./go postmortem` on your own incident needs a key at L1 for the same reason as any agent on your code.
-- **Local only:** merges happen on a Gitea inside the plane, never on this repository.
+- **Local only:** at L0 merges happen on a Gitea inside the plane, never on this repository. At L1 an attached repository can use GitHub (ADR 0043). No GitHub answer is recorded and there is no fake GitHub; the adapter is proven against the real API only by a nightly that needs the owner's throwaway repository.
 - **Your engine:** for plane commands, `./go` hands its toolchain container your engine's socket, which means full control of the engine. Run it where that is acceptable.
 - **Cloud:** Google Cloud profiles are designed, not yet run.
 
@@ -123,8 +123,8 @@ What works today, and what does not yet:
 - **Time:** `./go demo-init` proves init and gates in under 300 s on two small example repositories. Init measures the whole scope, so a large suite takes longer.
 - **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `AGENT_HARNESS=claude-code` with `ANTHROPIC_API_KEY`, or `AGENT_HARNESS=codex` with `OPENAI_API_KEY` (with `MODEL_PROVIDER` and `MODEL`; the ADK roles take the same keys). The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
 - **Python and javascript.** `./go init` infers both. The dev-worker runs in your toolchain image when `TOOLCHAIN_IMAGE` names an image, and in the workbench otherwise. Building that image is checked; no run at L1 has been made.
-- **Stops at release at L1.** A merged change is not yet built and released from your repository.
-- **Local only.** Merges land on the plane's Gitea and you `git fetch` them back. No pull requests on GitHub yet, and no deploy to your production.
+- **Release at L1.** A merged change is built from your repository's own Containerfile, signed and released on the local plane (ADR 0043). This is implemented and has not been run on a repository of yours.
+- **Pull requests.** By default merges land on the plane's Gitea and you `git fetch` them back. At L1 the pull request can land on your GitHub repository instead, with `CODE_HOST=github` and a token in `.env`. That path is implemented, proven verb by verb by `./go codehost-conformance`, and not yet run end to end. See [the guide](docs/use-on-your-repo.md) and [ADR 0043](docs/adr/0043-github-code-host-and-attached-release.md). There is no deploy to your production.
 - **Not yet proven** on a codebase that was not written for lights-out.
 
 [The guide](docs/use-on-your-repo.md) says what `.lights-out/` holds, what each key says, what the plane needs and how to write tickets.
