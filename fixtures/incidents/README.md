@@ -4,7 +4,7 @@ Incident documents (docs/adr/0044 §1) built by `./go incident` from a real rele
 
 ## demo-rollback.json
 
-Captured 2026-11-04 from `./go demo-rollback` on a full clone of the M22 branch (commit 3dc46d1), podman 5 machine on macOS, L0, no key. The commands, in the clone:
+Captured 2026-11-04 from `./go demo-rollback` on a full clone of the M22 branch (commit 3dc46d1), podman machine (applehv) on macOS, L0, no key. The commands, in the clone:
 
 ```
 ./go up
