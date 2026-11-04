@@ -31,13 +31,15 @@ Then stop and wait for approval. Do not touch a file before it comes.
 ## Models and effort per task
 
 Plan §5 fixes the construction models; `docs/plans/third-arc-execution.md`
-assigns them per milestone. When you delegate, pass the effort below.
+assigns them per milestone. Sonnet is the floor: no subagent runs on a
+smaller model. When you delegate, pass the effort below; a session that
+runs on Sonnet works at xhigh itself except while it waits on `./go`.
 
 | Task | Subagent | Effort |
 |---|---|---|
 | ADR, structural decision | `architect` (opus) | high |
-| Gates, ci checks, tests from the spec | `gate-writer` (sonnet) | medium |
-| README, docs, commit messages | `doc-scribe` (haiku) | low |
+| Gates, ci checks, tests from the spec | `gate-writer` (sonnet) | xhigh |
+| README, docs, commit messages | `doc-scribe` (sonnet) | medium |
 | A cross-cutting problem the session has missed twice | a one-shot task on fable | xhigh |
 
 ## 3. Build

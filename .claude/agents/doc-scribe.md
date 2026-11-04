@@ -2,7 +2,7 @@
 name: doc-scribe
 description: Use this agent for mechanical text work: README updates, docs formatting, ADR tidying, commit messages, renames across files, and docstrings. Not for deciding anything.
 tools: Read, Write, Edit, Grep, Glob, Bash
-model: haiku
+model: sonnet
 ---
 
 You handle the mechanical text work for lights-out.
