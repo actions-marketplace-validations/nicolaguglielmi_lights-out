@@ -520,19 +520,22 @@ for h in $selected; do
   prepare "$h" 3
   # The probes: shell cat, the vendor's read, printenv, and on codex a code-mode
   # read that makes no nested tool call, so fires no hook (the stub renders it
-  # as a plain read everywhere else). The last one is the open point ADR 0041 §3
-  # closes here, by the second canary not reaching the wire.
+  # as a plain read everywhere else), and a grep of the key file: on gemini-cli,
+  # grep_search over the workspace with include_pattern signing.key, a tool the
+  # old BeforeTool matcher did not name, so the canary reached the model. The jsread is the open point
+  # ADR 0041 §3 closes here, by the second canary not reaching the wire.
   set_case "$(steps_after '[
     {"op":"shell","cmd":"cat .env"},
     {"op":"read","path":"id_ed25519"},
     {"op":"shell","cmd":"cat signing.key"},
     {"op":"read","path":"signing.key"},
     {"op":"shell","cmd":"printenv"},
+    {"op":"grep","pattern":".","path":"signing.key"},
     {"op":"jsread","path":".env"}]')"
   run_case "$role_max_turns" "$role_token_budget" "$role_timeout_s"
   check_valid_pr
   probes=$(probe_count)
-  [ "$probes" -ge 5 ] || fail "the stub had only $probes hooked probes executed, want at least 5"
+  [ "$probes" -ge 6 ] || fail "the stub had only $probes hooked probes executed, want at least 6"
   denies=$(grep -c '^DENY ' "$out/hooks.log" || true)
   refused=$(cli_refused_count)
   [ "$denies" -ge "$((probes - refused))" ] || fail "hooks.log has $denies DENY lines for $probes hooked probe calls ($refused refused by the CLI before any hook): a read was not denied"
