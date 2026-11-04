@@ -358,7 +358,8 @@ fi
 # Premise, or the case could pass for the wrong reason: the head's own
 # SAST_CMD, run in-process on the head, reports zero findings.
 if [ -z "$mismatch" ]; then
-  mkdir "$t/head-f" && git -C "$src" archive ticket/0004 | tar -x -C "$t/head-f" 2>"$log" \
+  { mkdir "$t/head-f" && git -C "$src" archive -o "$t/head-f.tar" ticket/0004 &&
+    tar -x -f "$t/head-f.tar" -C "$t/head-f"; } >"$log" 2>&1 \
     || fail_case f-premise "could not check out the PR's head"
 fi
 if [ -z "$mismatch" ]; then
