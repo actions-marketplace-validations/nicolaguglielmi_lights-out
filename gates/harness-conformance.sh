@@ -371,9 +371,22 @@ check_auth() {
 
 # --- confinement (docs/adr/0046, "Conformance"): the proxy, the sink, the probe ----
 
+# Retried, ten times a second apart (decision): found on rootless podman in
+# GitHub Actions (podman run 41868543196), aardvark-dns answered "Temporary
+# failure in name resolution" for `egress` right after a harness container
+# left the network, where the same lookup had worked one case earlier. A
+# name that never resolves still fails, after ten seconds.
 stub_resolve() {  # NAME: the address NAME has for the stub's own container, on stdout (empty on failure)
   docker-compose --profile conformance exec -T conformance-model \
-    python3 -c 'import socket, sys; print(socket.gethostbyname(sys.argv[1]))' "$1" 2> "$dir/resolve.err" \
+    python3 -c 'import socket, sys, time
+for i in range(10):
+    try:
+        print(socket.gethostbyname(sys.argv[1]))
+        break
+    except OSError:
+        if i == 9:
+            raise
+        time.sleep(1)' "$1" 2> "$dir/resolve.err" \
     | tr -d '\r' | head -n 1
 }
 
