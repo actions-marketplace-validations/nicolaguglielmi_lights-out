@@ -58,7 +58,8 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ## What is real and what is recorded
 
 - **Real:** the gates, the signed build, the canary, the metrics, the rollback, the audit chain. Nothing in them is simulated.
-- **Recorded:** no model is called without a key. The agents replay answers recorded once against the Gemini API (`fixtures/`), and the promotion brief at this level is rendered from the release record and labelled so. With `GEMINI_API_KEY` in `.env` and `PROFILE=l1`, the agents run live. The model is the profile's choice (ADR 0040): `MODEL_PROVIDER` and `MODEL` in `profiles/` or `.env`, Gemini by default, Claude or OpenAI for the three ADK roles with that provider's key; the coding roles run Gemini only until the `claude-code` and `codex` harnesses (M19). Gemini's free tier is the only free path; Claude and OpenAI charge per run. Every recording in `fixtures/` is Gemini's, and `run.json` says which provider and model answered.
+- **Gates without the plane:** `./go demo-init` proves attach, init and gates on the two examples, `workloads/minimal` and `workloads/minimal-js`, with no plane and no engine for the draft's run. It does not prove the same on your repository.
+- **Recorded:** no model is called without a key. The agents replay answers recorded once against the Gemini API (`fixtures/`), and the promotion brief at this level is rendered from the release record and labelled so. With `GEMINI_API_KEY` in `.env` and `PROFILE=l1`, the agents run live.
 - **Hand-written (rework):** `./go demo-rework` sends ticket 0013's first attempt back to the worker with the gates' verdict (ADR 0038). No rework has been recorded against the Gemini API yet, so at L0 both attempts replay patches written by hand (`fixtures/0013/`, `hand_written: true`), and the run says `model none`. The gates that reject the first attempt and pass the second, the tower, the loop and the cap are real.
 - **Hand-written (network):** `./go demo-network` splits ticket 0012 between two workers behind one harness port (ADR 0036). No network run has been recorded yet, so at L0 the two workers replay patches written by hand, and the run, the PR and the audit say `model none`. The governance around them (perimeters, gates, canary, rollback, audit) is real.
 - **Local only:** merges happen on a Gitea inside the plane, never on this repository.
@@ -68,19 +69,27 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ## On your own codebase
 
 ```sh
-./go attach ~/code/your-repo   # your repository gets one directory, .lights-out/; lights-out never writes to it
+./go init ~/code/your-repo   # attaches a clone of its HEAD and drafts the gates half of .lights-out/ in the clone
+./go gates                   # judges the last commit: no plane, no key, no engine socket when the toolchain is the workbench
 ```
+
+`./go init` never writes to your repository. It infers the stack from the files at the root (python or javascript), and writes `workload.env` with a provenance line over every value, plus `worker.md`, `policy.env` and the stack's runners. It measures `MUTATION_BASELINE` by running the mutation command over the whole scope. Its last line gives the stack, the draft's location and the baseline. Copy `.attached/.lights-out/` into your repository and commit it.
+
+A toolchain gate's GO line says where it ran: `in workbench`, or the image or service the contract names. On the workbench, `./go gates` runs your repository's tests in lights-out's toolchain container, on this machine. Attach only a repository you would run here.
+
+The plane comes next: attach, up, smoke, verify and rollback on your repository. It needs more of the contract: a compose file, a flag file, and smoke and load scripts. [The guide](docs/use-on-your-repo.md) says what each part is and what is proven.
 
 What works today, and what does not yet:
 
-- **Works:** the plane, the six gates, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
+- **Works:** the six gates on the gates half alone. With the plane half, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
+- **Time:** `./go demo-init` proves init and gates in under 300 s on two small example repositories. Init measures the whole scope, so a large suite takes longer.
 - **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` with `MODEL_PROVIDER` and `MODEL` for the ADK roles. The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
-- **Python 3.13 and Node 24 only.** That is the dev-worker's toolchain; other stacks are the next milestone.
+- **Python and javascript.** `./go init` infers both. The dev-worker runs in your toolchain image when `TOOLCHAIN_IMAGE` names an image, and in the workbench otherwise. Building that image is checked; no run at L1 has been made.
 - **Stops at release at L1.** A merged change is not yet built and released from your repository.
 - **Local only.** Merges land on the plane's Gitea and you `git fetch` them back. No pull requests on GitHub yet, and no deploy to your production.
 - **Not yet proven** on a codebase that was not written for lights-out.
 
-[The guide](docs/use-on-your-repo.md) says what `.lights-out/` holds, how to measure your mutation baseline and how to write tickets.
+[The guide](docs/use-on-your-repo.md) says what `.lights-out/` holds, what each key says, what the plane needs and how to write tickets.
 
 ## Next
 

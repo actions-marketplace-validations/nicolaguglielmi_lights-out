@@ -37,3 +37,7 @@ regexTarget = "line"
 [[allowlists]]
 description = "the clone ./go attach makes of a user's repository (docs/adr/0037 §3); gitignored, never committed, and scanned as that repository by the secrets gate on its own ranges"
 paths = ['''^\.attached/''']
+
+[[allowlists]]
+description = "the uv and npm caches core/toolchain.sh keeps under .crew/cache/ for the workbench form (docs/adr/0042 §2): third-party sources and tarballs, gitignored, never committed; ci/secrets.sh proves the path ignored and untracked first"
+paths = ['''^\.crew/cache/''']

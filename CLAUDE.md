@@ -26,10 +26,10 @@ Questa regola vince su qualunque altra considerazione tecnica. Se una scelta la 
 
 Vale per ogni gate, presente e futuro, in `ci/`, `gates/`, `verify/`:
 
-- Ogni gate stampa su stdout **esattamente una riga**: `GO: <nome>` oppure `NO-GO: <nome> — <motivo>`. `GO` esce 0, `NO-GO` esce 1.
+- Ogni gate stampa su stdout **esattamente una riga**: `GO: <nome>`, eventualmente seguito da ` — <dettaglio>` (dove ha girato, ADR 0042 §3), oppure `NO-GO: <nome> — <motivo>`. `GO` esce 0, `NO-GO` esce 1.
 - Nessun colore quando stdout non è un TTY: `NO_COLOR=1` e il flag del singolo tool (`--no-color`, `-no-color`, `--color=never`).
 - Il rumore dei tool e i dettagli di un `NO-GO` vanno su stderr o in un file di log, mai su stdout.
-- Si implementa con `. ci/lib.sh` e le funzioni `go` / `nogo`. Il meta-gate `ci/contract.sh` esegue ogni gate con stdout catturato e fallisce se trova più di una riga, una sequenza ANSI o un exit code incoerente.
+- Si implementa con `. ci/lib.sh` e le funzioni `go` / `go_with` / `nogo`. Il meta-gate `ci/contract.sh` esegue ogni gate con stdout catturato e fallisce se trova più di una riga, una sequenza ANSI o un exit code incoerente.
 
 ## Contro la sovra-ingegnerizzazione
 

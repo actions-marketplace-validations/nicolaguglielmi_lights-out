@@ -1,0 +1,7 @@
+# gitleaks config for an attached repository's history scan (docs/adr/0042
+# §4, resolved 10): the default rules and nothing else. Passed with -c so
+# gitleaks never loads a .gitleaks.toml from the scanned repository, where
+# a PR could allowlist itself; --ignore-gitleaks-allow covers the inline
+# comment the same way.
+[extend]
+useDefault = true

@@ -3,7 +3,9 @@
 # shellcheck disable=SC2154 # name is set by the sourcing gate
 #
 # Gate output contract (CLAUDE.md, "Contratto di output dei gate"):
-#   - stdout carries exactly one line: "GO: <name>" or "NO-GO: <name> — <reason>"
+#   - stdout carries exactly one line: "GO: <name>", optionally followed by
+#     " — <detail>" (docs/adr/0042 §3: where a toolchain gate ran), or
+#     "NO-GO: <name> — <reason>"
 #   - no colour when stdout is not a TTY: NO_COLOR is set here, and each tool
 #     gets its own no-colour flag where it has one
 #   - everything a tool prints goes to stderr; details for a NO-GO go to stderr
@@ -14,6 +16,13 @@ export NO_COLOR
 
 go() {
   printf 'GO: %s\n' "$name"
+  exit 0
+}
+
+# go_with DETAIL: the one GO line with a detail after " — " (docs/adr/0042
+# §3: where a toolchain gate ran), one line like a NO-GO's reason.
+go_with() {
+  printf 'GO: %s — %s\n' "$name" "$(printf '%s' "$1" | tr '\n' ' ')"
   exit 0
 }
 
@@ -49,8 +58,14 @@ require_range() {
   if [ -z "$base_ref" ] || [ -z "$head_ref" ]; then
     nogo "BASE and HEAD must both be set"
   fi
-  base=$(git -C "${WORKLOAD:-.}" merge-base "$base_ref" "$head_ref" 2>&1) \
-    || nogo "git merge-base $base_ref $head_ref failed" "$base"
+  # A tree as the base (the empty tree, `make gates` on a root commit,
+  # docs/adr/0042 §5) has no merge-base: it is the base as given.
+  if [ "$(git -C "${WORKLOAD:-.}" cat-file -t "$base_ref" 2>/dev/null)" = tree ]; then
+    base=$base_ref
+  else
+    base=$(git -C "${WORKLOAD:-.}" merge-base "$base_ref" "$head_ref" 2>&1) \
+      || nogo "git merge-base $base_ref $head_ref failed" "$base"
+  fi
   # shellcheck disable=SC2034 # head is consumed by the sourcing gate
   head=$head_ref
 }

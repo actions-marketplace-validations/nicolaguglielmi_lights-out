@@ -14,7 +14,10 @@
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
 #   ./go demo-seam      prove attach and the Workload port on workloads/minimal as its own repository
-#   ./go attach <path>  make a repository of yours, with a .lights-out/ contract, the workload
+#   ./go attach <path>  make a repository of yours the workload (its .lights-out/ is the contract, if it has one)
+#   ./go init [<path>]  draft the attached repository's .lights-out/ in the clone, baseline measured (ADR 0042)
+#   ./go gates          judge a range of the workload: BASE=<ref> HEAD=<ref>, default the last commit; no plane needed
+#   ./go demo-init      prove attach, init and gates on the two example repositories, without the plane
 #   ./go detach         drop the attached repository; the workload is app/ again
 #   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
@@ -67,10 +70,24 @@ die() { printf 'go: %s\n' "$*" >&2; exit 1; }
 attached="$here/.attached"
 case "$cmd" in
   attach)
-    [ $# -eq 1 ] || die "usage: ./go attach <path to a git repository with a .lights-out/ directory>"
+    [ $# -eq 1 ] || die "usage: ./go attach <path to a git repository>"
     sh "$here/core/attach.sh" "$1" "$attached" || exit 1
     shift
-    cmd=attached ;;
+    # A repository without a contract is attached for ./go init to draft
+    # one (docs/adr/0042 §6); there is nothing to check yet.
+    if git -C "$attached" cat-file -e HEAD:.lights-out/workload.env 2>/dev/null; then
+      cmd=attached
+    else
+      printf 'go: %s has no .lights-out/ at HEAD; ./go init drafts one in the clone\n' "$(git -C "$attached" remote get-url origin)" >&2
+      exit 0
+    fi ;;
+  init)
+    [ $# -le 1 ] || die "usage: ./go init [<path to a git repository>]"
+    if [ $# -eq 1 ]; then
+      sh "$here/core/attach.sh" "$1" "$attached" || exit 1
+      shift
+    fi
+    [ -d "$attached/.git" ] || die "no repository is attached; ./go init <path>, or ./go attach <path> first" ;;
   detach)
     rm -rf "$attached"
     printf 'go: detached; the workload is app/ again (run ./go down first if the plane still serves the attached one)\n' >&2
@@ -184,34 +201,50 @@ if [ "$engine" = docker ]; then
 fi
 
 # 4. Targets that drive the engine get its socket. This hands workbench full
-# control of the engine; the README says so.
+# control of the engine; the README says so. For gates, init and
+# mutation-baseline the socket is optional (docs/adr/0042 §4): a workload
+# whose toolchain is the workbench never needs it, and one that does gets
+# a NO-GO naming it inside, never a silent in-process run.
 socket_flags=""
 host_sock_flag=""
+socket_optional=""
+case "$cmd" in gates|init|mutation-baseline|demo-init) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board|demo-rework)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|unsigned-refused|board|demo-rework|init|demo-init)
+    sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
-      [ "$(podman info --format '{{.Host.RemoteSocket.Exists}}')" = true ] \
-        || die "podman's API socket $sock does not exist. Enable it: systemctl --user enable --now podman.socket"
-      [ -n "$sock" ] || die "podman reports no API socket. Enable it: systemctl --user enable --now podman.socket"
+      if [ "$(podman info --format '{{.Host.RemoteSocket.Exists}}')" != true ] || [ -z "$sock" ]; then
+        [ -n "$socket_optional" ] \
+          || die "podman's API socket ${sock:-(none)} does not exist. Enable it: systemctl --user enable --now podman.socket"
+        printf 'go: podman has no API socket; %s runs without the engine (a toolchain other than workbench will NO-GO)\n' "$cmd" >&2
+        sock=""
+      fi
     else
       sock=${DOCKER_HOST:-}; sock=${sock#unix://}
       [ -n "$sock" ] || sock=/var/run/docker.sock
+      if [ ! -S "$sock" ]; then
+        [ -n "$socket_optional" ] || die "$engine's socket $sock does not exist"
+        printf 'go: no engine socket at %s; %s runs without the engine (a toolchain other than workbench will NO-GO)\n' "$sock" "$cmd" >&2
+        sock=""
+      fi
     fi
-    # label=disable: the engine's SELinux (podman machine is Fedora CoreOS)
-    # would otherwise deny the container access to the socket.
-    socket_flags="-v $sock:/var/run/docker.sock -e DOCKER_HOST=unix:///var/run/docker.sock --security-opt label=disable"
-    # Under docker the container runs as the host user (see engine_flags),
-    # who reaches the socket through its group; carry that group in.
-    if [ "$engine" = docker ] && [ -S "$sock" ]; then
-      sock_gid=$(stat -c %g "$sock" 2>/dev/null || stat -f %g "$sock")
-      socket_flags="$socket_flags --group-add $sock_gid"
-    fi
-    # The same host path, passed through so compose can give the Gitea
-    # runner service its own copy of the socket (docs/adr/0015 §7, 0025
-    # §4: the runner is the only *compose service* with it; this is a
-    # separate mount from workbench's own above, not a second grant of it).
-    host_sock_flag="-e HOST_DOCKER_SOCK=$sock" ;;
+    if [ -n "$sock" ]; then
+      # label=disable: the engine's SELinux (podman machine is Fedora CoreOS)
+      # would otherwise deny the container access to the socket.
+      socket_flags="-v $sock:/var/run/docker.sock -e DOCKER_HOST=unix:///var/run/docker.sock --security-opt label=disable"
+      # Under docker the container runs as the host user (see engine_flags),
+      # who reaches the socket through its group; carry that group in.
+      if [ "$engine" = docker ] && [ -S "$sock" ]; then
+        sock_gid=$(stat -c %g "$sock" 2>/dev/null || stat -f %g "$sock")
+        socket_flags="$socket_flags --group-add $sock_gid"
+      fi
+      # The same host path, passed through so compose can give the Gitea
+      # runner service its own copy of the socket (docs/adr/0015 §7, 0025
+      # §4: the runner is the only *compose service* with it; this is a
+      # separate mount from workbench's own above, not a second grant of it).
+      host_sock_flag="-e HOST_DOCKER_SOCK=$sock"
+    fi ;;
 esac
 
 # 5. The board is the one target that serves a port: on the host's

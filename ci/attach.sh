@@ -123,24 +123,35 @@ if [ -z "$mismatch" ]; then
   grep -qF "$contract/workload.env" "$log" \
     || fail_case a-no-fallback "make's error does not name $contract/workload.env"
 fi
-# attach refuses a repository whose .lights-out/workload.env is not
-# committed at HEAD: here it is in the working tree only, and a complete
-# workload.env is committed at the root.
+# A repository whose .lights-out/workload.env is not committed at HEAD
+# (here it is in the working tree only, and a complete workload.env is
+# committed at the root) is attached all the same, for ./go init to draft
+# a contract in the clone (docs/adr/0042 §6, amending §1): attach says so,
+# names .lights-out/workload.env, and the clone holds HEAD, where no
+# contract is -- the root's decoy is never one (§2), so make on that clone
+# stops naming the contract file, as a-no-fallback proved.
 if [ -z "$mismatch" ]; then
   (
     mkdir -p "$t/uncommitted/.lights-out" && cd "$t/uncommitted" &&
     cp "$src/workload.env" workload.env &&
     git init -q -b main . && git add -A && commit -m 'a contract at the root only' &&
     cp "$src/.lights-out/workload.env" .lights-out/workload.env
-  ) >"$log" 2>&1 || fail_case a-refuse "could not build the repository without a committed contract"
+  ) >"$log" 2>&1 || fail_case a-draftable "could not build the repository without a committed contract"
 fi
 if [ -z "$mismatch" ]; then
-  if sh core/attach.sh "$t/uncommitted" "$t/refused" >"$log" 2>&1; then
-    fail_case a-refuse "core/attach.sh attached a repository with no .lights-out/workload.env committed at HEAD"
+  sh core/attach.sh "$t/uncommitted" "$t/draftable" >"$log" 2>&1 \
+    || fail_case a-draftable "core/attach.sh refused a repository with no .lights-out/workload.env committed at HEAD; docs/adr/0042 §6 attaches it for ./go init"
+  [ -d "$t/draftable/.git" ] || fail_case a-draftable "no clone at $t/draftable"
+  [ ! -e "$t/draftable/.lights-out/workload.env" ] \
+    || fail_case a-draftable "the clone holds a .lights-out/workload.env that was never committed"
+  if ! grep -qF '.lights-out/workload.env' "$log" || ! grep -qF 'init' "$log"; then
+    fail_case a-draftable "attach's line does not name .lights-out/workload.env and ./go init"
   fi
-  [ ! -e "$t/refused" ] || fail_case a-refuse "a refused attach left $t/refused behind"
-  grep -qF '.lights-out/workload.env' "$log" \
-    || fail_case a-refuse "the refusal does not name .lights-out/workload.env"
+  if as_ci make --no-print-directory -s ATTACHED="$t/draftable" --eval "$probe" lo-attach-probe >"$t/probe" 2>"$log"; then
+    fail_case a-draftable "make ran on the contract-less clone: $(tr '\n' ' ' <"$t/probe")"
+  fi
+  grep -qF "$t/draftable/.lights-out/workload.env" "$log" \
+    || fail_case a-draftable "make's error on the contract-less clone does not name its .lights-out/workload.env"
 fi
 
 # (b), (c): the real core/steps/ci.sh, run from a platform root that is

@@ -69,6 +69,18 @@ scan() {
   osv-scanner scan source --format json $scan_args > "$scan_out" 2> "$scan_out.err" && rc=0 || rc=$?
   case "$rc" in
     0|1) : ;;
+    128)
+      # A lockfile that lists no package at all (a repository with no
+      # dependency yet): osv-scanner 2.6.0
+      # reads it, reports "found 0 packages", then exits 128 with "No
+      # package sources found" (seen 2026-11-03). Nothing to judge is
+      # clean; any other 128 is the tool's error, as before.
+      if grep -q 'No package sources found' "$scan_out.err"; then
+        printf 'deps: the lockfile(s) list no package; nothing to scan\n' >&2
+        printf '{"results":[]}\n' > "$scan_out"
+      else
+        cat "$scan_out.err" >&2; nogo "osv-scanner exited $rc; error on stderr"
+      fi ;;
     *) cat "$scan_out.err" >&2; nogo "osv-scanner exited $rc; error on stderr" ;;
   esac
 }
