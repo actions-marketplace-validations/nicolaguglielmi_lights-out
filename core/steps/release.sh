@@ -30,27 +30,28 @@ merge_sha=$(jq -r '.merge.sha // empty' "$DOC_FILE")
 
 canary_tag="sha-$merge_sha"
 if [ -n "${WORKLOAD_ATTACHED:-}" ]; then
-  # docs/adr/0043 §4: the merge, from the code host, in a worktree of the
-  # attached clone (inside this checkout, where the engine's build reads
-  # it), published under the tag the release deploys. launchpad verifies
-  # the signature before staging, as for any other image (ADR 0025 §6).
+  # docs/adr/0043 §4: the merge, from the code host's default branch, in a
+  # throwaway worktree of the attached clone (not under .crew/, which the
+  # worker mounts), published under the tag the release deploys by the
+  # merge's own contract. launchpad verifies the signature before staging,
+  # as for any other image (ADR 0025 §6).
   : "${WORKLOAD:?WORKLOAD not set; run this via ./go, not directly}"
   clone_url=$(sh "adapters/$CODE_HOST/clone-url.sh")
   git -C "$WORKLOAD" fetch -q "$clone_url" HEAD \
     || { printf 'step-release: could not fetch the default branch from %s\n' "$CODE_HOST" >&2; exit 1; }
-  git -C "$WORKLOAD" cat-file -e "$merge_sha^{commit}" 2>/dev/null \
+  git -C "$WORKLOAD" merge-base --is-ancestor "$merge_sha" FETCH_HEAD 2>/dev/null \
     || { printf 'step-release: merge %s is not on the default branch of %s\n' "$merge_sha" "$CODE_HOST" >&2; exit 1; }
-  src=".crew/$TICKET/release-src"
-  rm -rf "$src"
-  git -C "$WORKLOAD" worktree prune
-  git -C "$WORKLOAD" worktree add -q --detach "$(pwd)/$src" "$merge_sha" >&2 \
-    || { printf 'step-release: could not check out %s\n' "$merge_sha" >&2; exit 1; }
-  printf '[release] publishing %s, built from the merge %s (docs/adr/0043 §4)\n' "$canary_tag" "$merge_sha" >&2
+  src_tmp=$(mktemp -d)
+  src=$src_tmp/merge
+  git -C "$WORKLOAD" worktree add -q --detach "$src" "$merge_sha" >&2 \
+    || { rm -rf "$src_tmp"; printf 'step-release: could not check out %s\n' "$merge_sha" >&2; exit 1; }
+  printf '[release] publishing %s, built from the merge %s by its own contract (docs/adr/0043 §4)\n' "$canary_tag" "$merge_sha" >&2
   published=0
   env -u APP_TAG -u CANARY_TAG -u CANARY_IMAGE \
     make --no-print-directory publish TAG="$canary_tag" WORKLOAD="$src" >/dev/null || published=$?
-  git -C "$WORKLOAD" worktree remove --force "$(pwd)/$src" >/dev/null 2>&1 || rm -rf "$src"
-  [ "$published" = 0 ] || { printf 'step-release: publish of %s failed\n' "$canary_tag" >&2; exit 1; }
+  git -C "$WORKLOAD" worktree remove --force "$src" >/dev/null 2>&1 || :
+  rm -rf "$src_tmp"
+  [ "$published" = 0 ] || { printf 'step-release: publish of %s failed; see above\n' "$canary_tag" >&2; exit 1; }
 else
   image_state=$(AWAIT_TIMEOUT="$IMAGE_TIMEOUT" sh "adapters/$CODE_HOST/await.sh" "$merge_sha" image) || exit 1
   [ "$image_state" = success ] \

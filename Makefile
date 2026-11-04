@@ -46,6 +46,19 @@ COMPOSE_FILE := compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml
 export COMPOSE_FILE
 FLAGS_FILE := $(WORKLOAD_CONTRACT)/flags/flags.json
 export FLAGS_FILE
+# A code host that ships a git credential helper gets it as environment-
+# scoped config (docs/adr/0043 §2): core's clone and fetches and the
+# adapter's push authenticate through it, the token never in a URL, an
+# argv or a .git/config. Appended at index 1: index 0 is the workbench
+# image's safe.directory, which overwriting would lose. ci/codehost.sh
+# checks both indices.
+ifneq ($(wildcard adapters/$(CODE_HOST)/credential.sh),)
+GIT_CONFIG_COUNT := 2
+GIT_CONFIG_KEY_1 := credential.helper
+GIT_CONFIG_VALUE_1 := !sh '$(CURDIR)/adapters/$(CODE_HOST)/credential.sh'
+export GIT_CONFIG_COUNT GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
+endif
+
 # The file Tracker's directory (docs/adr/0037 §2): this checkout's tickets/
 # for a bundled workload, the attached repository's own otherwise.
 TICKETS_DIR := $(if $(WORKLOAD_ATTACHED),$(WORKLOAD_CONTRACT)/tickets,tickets)
@@ -162,7 +175,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free hooks harness harness-shape network tower perimeter review prompts evals promote board roles postmortem metrics contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower perimeter review prompts evals promote board roles postmortem metrics contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -1007,6 +1020,16 @@ attached: ## Check the attached repository's .lights-out/ contract (docs/adr/003
 	printf 'GO: attached — %s at %s, contract in %s\n' \
 		"$$(git -C "$(WORKLOAD)" remote get-url origin 2>/dev/null || echo "$(WORKLOAD)")" \
 		"$$(git -C "$(WORKLOAD)" rev-parse --short HEAD)" "$(WORKLOAD_CONTRACT)"
+
+# The CodeHost conformance suite (docs/adr/0043 §5): ten cases on
+# whichever CODE_HOST is set, a real branch, PR, statuses and merge on it.
+# Like delivery-conformance, the suite refuses to run unless this target
+# sets CONFORMANCE=1, so ci/contract.sh's cold run stays instant. At L0
+# against Gitea (ci.yml's launch job, plane up); with CODE_HOST=github
+# against the attached throwaway repository (the nightly).
+.PHONY: codehost-conformance
+codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST set: Gitea at L0 (plane up), CODE_HOST=github on an attached throwaway repository (docs/adr/0043 §5)
+	@CONFORMANCE=1 sh gates/codehost-conformance.sh
 
 # The M8 acceptance command (docs/adr/0026 §4): the suite refuses to run by
 # accident (ci/contract.sh's cold run of every gates/*.sh sees CONFORMANCE
