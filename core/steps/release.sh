@@ -1,8 +1,13 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# step-release (docs/adr/0019 §1, §5; docs/adr/0025 §5-§7): waits for the
-# merge commit's `image` status (adapters/$CODE_HOST/await.sh), then runs
+# step-release (docs/adr/0019 §1, §5; docs/adr/0025 §5-§7; docs/adr/0043
+# §4): for the bundled workload, waits for the merge commit's `image`
+# status (adapters/$CODE_HOST/await.sh), which the code host's own CI job
+# posts; for an attached repository, which has no such job, fetches the
+# merge commit from the code host and publishes it here, built by its own
+# contract's `backend` service (its Containerfile), pushed and signed by
+# the Registry port exactly as that job would (`make publish`). Then runs
 # the Makefile's `release` (load generator beside core/launchpad.sh) with
 # CANARY_VERSION and CANARY_TAG=sha-<merge sha>, its stderr kept at
 # .crew/<ticket>/release.log. Records the version, launchpad's one stdout
@@ -23,10 +28,34 @@ set -eu
 merge_sha=$(jq -r '.merge.sha // empty' "$DOC_FILE")
 [ -n "$merge_sha" ] || { printf 'step-release: %s has no merge.sha\n' "$DOC_FILE" >&2; exit 1; }
 
-image_state=$(AWAIT_TIMEOUT="$IMAGE_TIMEOUT" sh "adapters/$CODE_HOST/await.sh" "$merge_sha" image) || exit 1
-[ "$image_state" = success ] \
-  || { printf 'step-release: image build on %s: %s\n' "$merge_sha" "$image_state" >&2; exit 1; }
 canary_tag="sha-$merge_sha"
+if [ -n "${WORKLOAD_ATTACHED:-}" ]; then
+  # docs/adr/0043 §4: the merge, from the code host, in a worktree of the
+  # attached clone (inside this checkout, where the engine's build reads
+  # it), published under the tag the release deploys. launchpad verifies
+  # the signature before staging, as for any other image (ADR 0025 §6).
+  : "${WORKLOAD:?WORKLOAD not set; run this via ./go, not directly}"
+  clone_url=$(sh "adapters/$CODE_HOST/clone-url.sh")
+  git -C "$WORKLOAD" fetch -q "$clone_url" HEAD \
+    || { printf 'step-release: could not fetch the default branch from %s\n' "$CODE_HOST" >&2; exit 1; }
+  git -C "$WORKLOAD" cat-file -e "$merge_sha^{commit}" 2>/dev/null \
+    || { printf 'step-release: merge %s is not on the default branch of %s\n' "$merge_sha" "$CODE_HOST" >&2; exit 1; }
+  src=".crew/$TICKET/release-src"
+  rm -rf "$src"
+  git -C "$WORKLOAD" worktree prune
+  git -C "$WORKLOAD" worktree add -q --detach "$(pwd)/$src" "$merge_sha" >&2 \
+    || { printf 'step-release: could not check out %s\n' "$merge_sha" >&2; exit 1; }
+  printf '[release] publishing %s, built from the merge %s (docs/adr/0043 §4)\n' "$canary_tag" "$merge_sha" >&2
+  published=0
+  env -u APP_TAG -u CANARY_TAG -u CANARY_IMAGE \
+    make --no-print-directory publish TAG="$canary_tag" WORKLOAD="$src" >/dev/null || published=$?
+  git -C "$WORKLOAD" worktree remove --force "$(pwd)/$src" >/dev/null 2>&1 || rm -rf "$src"
+  [ "$published" = 0 ] || { printf 'step-release: publish of %s failed\n' "$canary_tag" >&2; exit 1; }
+else
+  image_state=$(AWAIT_TIMEOUT="$IMAGE_TIMEOUT" sh "adapters/$CODE_HOST/await.sh" "$merge_sha" image) || exit 1
+  [ "$image_state" = success ] \
+    || { printf 'step-release: image build on %s: %s\n' "$merge_sha" "$image_state" >&2; exit 1; }
+fi
 
 log=".crew/$TICKET/release.log"
 mkdir -p ".crew/$TICKET"
