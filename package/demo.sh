@@ -60,12 +60,10 @@ mkdir -p "$repo/.lights-out" && cp -R "$LIGHTS_OUT_OUT/.lights-out/." "$repo/.li
 git -C "$repo" add .lights-out
 commit -m "the lights-out contract, the gates half drafted by lights-out init"
 # A change, judged by the contract its base holds (docs/adr/0045 §3): the draft.
-sed -i.bak 's/return {"status": "ok", "version": APP_VERSION}/return {"status": "ok", "version": APP_VERSION, "service": "minimal"}/' "$repo/minimal/app.py"
-rm -f "$repo/minimal/app.py.bak"
-grep -q '"service": "minimal"' "$repo/minimal/app.py" || nogo "could not make the change to judge in minimal/app.py"
-printf '\n\ndef test_healthz_names_the_service(client):\n    assert client.get("/healthz").json()["service"] == "minimal"\n' >> "$repo/tests/test_app.py"
+printf '\n\n@app.get("/version")\ndef version():\n    return {"version": APP_VERSION}\n' >> "$repo/minimal/app.py"
+printf '\n\ndef test_version_returns_the_app_version(client):\n    assert client.get("/version").json() == {"version": APP_VERSION}\n' >> "$repo/tests/test_app.py"
 git -C "$repo" add -A
-commit -m "healthz names the service"
+commit -m "a /version route, and its test"
 out=$(lo gates) || nogo "lights-out gates on a change: $out"
 elapsed=$(( $(date +%s) - start ))
 printf '[demo-package] %s (%ss for init and gates)\n' "$out" "$elapsed" >&2
