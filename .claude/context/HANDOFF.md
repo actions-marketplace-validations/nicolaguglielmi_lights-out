@@ -1,3 +1,47 @@
+# Handoff: launch readiness, 2026-11-04, branch `claude/compassionate-cerf-t5kc8v`, pushed, no pull request, not merged
+
+The parent session merges through `merge/<name>` after Actions is green. No pull request, tag, release or GitHub issue was created; the repository is still private. The branch starts at `main` d5d089c (M21 and M23 merged). `compose.yaml` (root) is not touched: the item 7 fix is in the workload fragments.
+
+## Acceptance, on GitHub Actions
+
+```
+ci 41858183100 (1a1baf1, the last code and docs commit): success
+  ci                   ./go ci → GO: ci
+  engine-compat        GO: demo, milestone M9, 718s to rollback (budget 900s, plan §2)
+  gates, launch, seam, init, harness-conformance: success
+  (the Action test's "broken test, NO-GO expected" check run is red by design, M23 finding 9)
+ci 41857554465 (230111f, items 6 and 7): success, all seven jobs
+```
+
+Nothing ran locally on an engine: this session has no docker daemon and no egress for image builds. The new verdict branch of `make demo` was run on its own, on the host, against a copy of the recipe: first run outside CI over budget → GO with the time, exit 0; first run with CI set → NO-GO, exit 2; later run over budget → NO-GO; under budget → the usual GO line. A GitHub run never takes the new branch (CI is set), so Actions proves only that nothing else changed.
+
+## What changed
+
+- **Ticket 0010, item 6** (34895bc, ADR 0013 amendment 2026-11-04): `./go` marks a run that had to build the workbench as a first run (`LIGHTS_OUT_FIRST_RUN`) and passes the host's `CI` as `LIGHTS_OUT_CI` (its own name, so no tool in the workbench changes behaviour). `make demo` keeps the verdict: outside CI, a first run over 900 s prints `GO: demo, milestone M9, <n>s to rollback, a first run: over the 900s budget, reported, not judged (...)`; CI and every later run are judged as before. README's troubleshooting table has a row for each line.
+- **Ticket 0010, item 7** (230111f): the guess was wrong. In the two `launch` failures with logs (41710407450, 41821734075) Envoy started and initialised its clusters; the backend died at import with `ProviderNotReadyError: Blocking init finished before data synced`, because flagd's sync did not answer within the provider's 500 ms default (`openfeature-provider-flagd` 0.5.2, `DEFAULT_DEADLINE`, read in the wheel), and nothing restarted it. `restart: on-failure` on `backend` and `backend-canary` in `app/compose.yaml` and `workloads/minimal/.lights-out/compose.yaml`. The failure is intermittent: one green run does not prove the fix, the next red `launch` with these logs would. `seam`'s failure in 41829488115 (attempt 1) had the same symptom, but that job prints no container logs.
+- **Ticket 0010 closed** (5f48d7e), every item with its commit or ADR; its perimeter now lists the files actually touched. `.gitignore` ignores `.DS_Store`.
+- **`ROADMAP.md`** (9e86b5f): M18, M20, M21, M22, M23 in Done, one line each from ADRs 0040, 0042–0045 and plan §16's status notes (0042, 0044, 0045 marked *proposed*, as their status says); Next is M24 with plan §14's exit criterion, after egress for the harnesses and the tower restoring `.lights-out/runners/` from the base.
+- **`docs/launch/checklist.md`** and **`docs/launch/good-first-issues.md`** (1a1baf1).
+
+## What the owner must do
+
+All of it is in `docs/launch/checklist.md`, each line with its command or setting. In short:
+
+1. Merge this branch and the two parallel sessions (egress, the tower's `runners/`).
+2. The key-spending runs: the two harness recordings and the non-Gemini `record-evals` (then the cost per provider in the README); M21's throwaway repository, token, `./go e2e CODE_HOST=github PROFILE=l1`, and the nightly's variable `LIGHTS_OUT_GITHUB_REPO` and secret `LIGHTS_OUT_GITHUB_TOKEN`.
+3. `git tag v0.1.0 && git push origin v0.1.0`, the package made public, the release notes, then `uses: nicolaguglielmi/lights-out/action@v0.1.0` on another repository.
+4. The rollback recording for the README; description, topics, social preview, Discussions, private vulnerability reporting; the labels, then the good first issues.
+5. The soft launch to 10–20 people, `./go demo` on Linux and macOS, and only then the visibility flip.
+
+## Found
+
+1. **`main`'s last run, 41846872298 (d5d089c), failed `engine-compat`** on something else: `await-gitea: image on <merge> still pending after 300s`, the Gitea `image` job never ran; the runner log is many `Cannot ping the Gitea instance server` lines, then `Runner registered successfully`. Not in this task's perimeter and not investigated further. It did not recur on this branch.
+2. **The good-first-issue drafts include a guard gap** (gemini-cli's `BeforeTool` matcher misses four file tools, HANDOFF M19). The container stays the boundary, but the owner may want it fixed before launch rather than filed publicly.
+3. **`workloads/minimal/.lights-out/worker.md` line 9 calls `tests/mutation/` and `tests/sast/` "the gate runners"**, against ADR 0020 §6's rule; `ci/prompts.sh` does not read `worker.md` (good first issue 8).
+4. The checklist's private-vulnerability-reporting line comes from `SECURITY.md`, outside the sources the brief named, and says so.
+
+---
+
 # Handoff: the tower judges an attached PR with its base's runners/, 2026-11-04, branch `claude/upbeat-cori-u7ddcv`, pushed, no pull request, not merged
 
 Closes M23's finding 2 (below, "Contradictions with the plan"): `core/steps/ci.sh` restored an attached PR's `.lights-out/workload.env` and `policy.env` from the base, but not `runners/`, so the sast and mutation verdicts came from the PR's own runners. The parent session merges through a `merge/<name>` branch.

@@ -59,12 +59,22 @@ services:
   # publish.sh pushes and signs that exact tag — no retag, no rebuild.
   # localhost:5050 is the one registry host both engines treat as
   # insecure without configuration.
+  #
+  # restart: on-failure (ticket 0010 item 7): the app connects to flagd at
+  # import (meetups/flags.py, set_provider_and_wait) and exits with
+  # ProviderNotReadyError when flagd's sync has not answered within the
+  # provider's 500 ms default (openfeature-provider-flagd 0.5.2,
+  # DEFAULT_DEADLINE). On loaded GitHub runners it did not answer in time,
+  # the process died, and Envoy, started fine, had no upstream for 180 s
+  # (runs 41710407450 and 41821734075, launch job). A restart retries
+  # until flagd answers; a backend broken for good still fails ready.sh.
   backend:
     image: localhost:5050/lights-out-backend:${APP_TAG:-latest}
     build:
       context: ./app
       dockerfile: backend/Containerfile
       target: runtime
+    restart: on-failure
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -90,6 +100,8 @@ services:
   backend-canary:
     image: ${CANARY_IMAGE:-localhost:5050/lights-out-backend:latest}
     profiles: ["canary"]
+    # The same import-time flagd connection as backend, above.
+    restart: on-failure
     depends_on:
       migrate:
         condition: service_completed_successfully

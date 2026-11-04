@@ -15,6 +15,10 @@ services:
       context: ${WORKLOAD}
       dockerfile: Containerfile
       target: runtime
+    # minimal/app.py connects to flagd at import and exits when flagd has
+    # not answered within the provider's 500 ms default; restart retries
+    # until it does (lights-out ticket 0010 item 7).
+    restart: on-failure
     depends_on:
       flagd:
         condition: service_started
@@ -27,6 +31,7 @@ services:
   backend-canary:
     image: ${CANARY_IMAGE:-localhost:5050/lights-out-backend:latest}
     profiles: ["canary"]
+    restart: on-failure
     depends_on:
       flagd:
         condition: service_started
