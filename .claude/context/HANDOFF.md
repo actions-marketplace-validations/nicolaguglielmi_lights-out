@@ -10,7 +10,7 @@ ci 41858183100 (1a1baf1, the last code and docs commit): success
   engine-compat        GO: demo, milestone M9, 718s to rollback (budget 900s, plan §2)
   gates, launch, seam, init, harness-conformance: success
   (the Action test's "broken test, NO-GO expected" check run is red by design, M23 finding 9)
-ci 41857554465 (230111f, items 6 and 7): superseded by the run above while it ran
+ci 41857554465 (230111f, items 6 and 7): success, all seven jobs
 ```
 
 Nothing ran locally on an engine: this session has no docker daemon and no egress for image builds. The new verdict branch of `make demo` was run on its own, on the host, against a copy of the recipe: first run outside CI over budget → GO with the time, exit 0; first run with CI set → NO-GO, exit 2; later run over budget → NO-GO; under budget → the usual GO line. A GitHub run never takes the new branch (CI is set), so Actions proves only that nothing else changed.
