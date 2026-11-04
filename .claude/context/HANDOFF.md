@@ -1,3 +1,41 @@
+# Handoff: the tower judges an attached PR with its base's runners/, 2026-11-04, branch `claude/upbeat-cori-u7ddcv`, pushed, no pull request, not merged
+
+Closes M23's finding 2 (below, "Contradictions with the plan"): `core/steps/ci.sh` restored an attached PR's `.lights-out/workload.env` and `policy.env` from the base, but not `runners/`, so the sast and mutation verdicts came from the PR's own runners. The parent session merges through a `merge/<name>` branch.
+
+## What changed
+
+- **`core/steps/ci.sh`**: both judges lists gain `${contract}runners`. Attached: `workload.env policy.env runners`, the wrapper's set (`package/entrypoint.sh`, ADR 0045 §3), not a second one. Bundled: the same three after `Makefile profiles gates ci core policy`, costless (no bundled contract has `runners/`; a judge neither side has is left out of the pathspec). Restore stays no-overlay: a `runners/` the PR adds and the base lacks is removed.
+- **ADR 0033**, an amendment of 2026-11-04 (the architect's; an amendment, not a new ADR, since it completes 0033's own rule and 0046/0047 are being taken by parallel sessions): the contract's judges are exactly `workload.env`, `policy.env`, `runners/`; not `worker.md`, `tickets/` or the plane half, one reason each; §3 now names `ci/tower.sh` case (h) (it said (g)). ADR 0045's note on the gap points at the amendment.
+- **`ci/attach.sh` case (f)** (the gate-writer's, written from the amendment): the base's contract has `TOOLCHAIN_IMAGE=workbench`, `SAST_CMD=sh .lights-out/runners/sast.sh` and a runner reporting one finding; the PR (perimeter: the runner) rewrites it to report none. Premise: the head's own `SAST_CMD` prints `{"findings": 0}`. Verdict: the real step returns `ci-failed NO-GO sast` with a line naming the base's finding. The `sast` gate is an in-process **stand-in** in the case's platform root, said in the case: the real gate runs under the step's `TOOLCHAIN_ISOLATE=1`, which needs the engine socket `./go ci` does not mount, so it would NO-GO on the socket and pass the case for the wrong reason. With `${contract}runners` removed from the attached list the case fails (`NO-GO: attach — case f disagrees with docs/adr/0037 or 0033`; the step then said `review GO`).
+- **Docs**: `docs/use-on-your-repo.md` (the status table row and section 3: a PR is judged by the base's `policy.env`, `workload.env` and `runners/`), `docs/reference.md` (the attach paragraph), `docs/PLAN.md` §16 (an Italian note under M23).
+
+## Proven
+
+Locally (no engine in this session): `sh ci/attach.sh` → `GO: attach`, and `NO-GO` on case f with the fix reverted; `sh ci/tower.sh` → `GO: tower`; `sh ci/contract.sh` → `GO: contract`.
+
+On GitHub Actions, workflow `ci`:
+
+```
+ci 41861742824 (a0f96d8, the last code commit): success on every job —
+  ci (./go ci, with ci/attach.sh case f), engine-compat (./go demo), gates (./go demo-gates),
+  launch, init (./go demo-init), harness-conformance on attempt 1;
+  seam (./go demo-seam) on attempt 2: attempt 1 failed pulling the Gitea image
+  (docker.gitea.com: connection reset by peer), before any of this branch's code ran
+ci 41858143391 (c474458): failure — ci and engine-compat on ci-shell, shellcheck SC2015
+  in the new case (fixed in a0f96d8)
+ci 41857856995 (c55cbdd): success; ci 41857040896 (7695192): success
+```
+
+## Contradictions with the plan, and things found
+
+1. **Runners outside `.lights-out/runners/` are still the PR's**: the bundled app's and `workloads/minimal`'s `SAST_CMD=sh tests/sast/run.sh`, `MUTATION_CMD=sh tests/mutation/run.sh`. That is ADR 0033's build surface, left to the PR on purpose; an edit there is always high (`RISK_HIGH_PLATFORM` lists `*tests/sast/*` and `*tests/mutation/*`, not overridable), so it never auto-merges, but its sast/mutation GO is the PR's own claim and the reviewer must not read it as evidence (ADR 0033 amendment, Consequences).
+2. **The same three paths live in two places**, `core/steps/ci.sh` and `package/entrypoint.sh`. A fourth judge must be added to both; each test names only its own paths.
+3. **Case (f) proves the restore, not the real sast gate under isolation**: no cold check can run that without an engine. The end-to-end proof of the isolated sast gate on an attached PR stays with the engine jobs.
+4. A legitimate runner change (a new bandit pin) is judged by the old runner and takes effect from the next PR.
+5. The first push of case (f) failed `ci-shell` on shellcheck SC2015 (run 41858143391, jobs `ci` and `engine-compat`): this session had no shellcheck. Fixed in a0f96d8.
+
+---
+
 # Handoff: M23 "one command, one package", 2026-11-04, branch `claude/kind-gauss-tzw1q7`, pushed, no pull request, not merged
 
 The owner reviews and merges (the parent session resolves the expected conflicts with M21 on `Makefile`, `go`, README and `docs/PLAN.md`). Plan: `docs/PLAN.md` §16 M23 (status note added); decision: `docs/adr/0045-one-command-one-package.md`; file-by-file plan: `docs/plans/m23.md` (committed before the build, plan mode was not available).
