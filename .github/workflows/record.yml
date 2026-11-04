@@ -1,0 +1,62 @@
+# Recordings at L1 on GitHub Actions, for an owner whose machine runs no
+# container engine (docs/plans/third-arc-execution.md, "Where the sessions
+# run"). Manual only: every run spends the owner's Gemini key, so nothing
+# here runs on push. The key comes from the repository secret
+# GEMINI_API_KEY, goes into a gitignored .env for the run (the file
+# `./go record` already reads, .env.example) and is deleted at the end. The
+# recorded fixtures are uploaded as an artifact, never pushed: the owner
+# (or the parent session) reads them and commits them, as after a local
+# `./go record`. Each target keeps its own guards: `record` keeps a run only
+# if the gates said GO (docs/adr/0017 §6), `record-evals` and
+# `record-postmortem` only if the eval passes (docs/adr/0020 §2, 0044 §7),
+# and gemini-cli's run.sh refuses to record artefacts that contain the key.
+name: record
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: which recording
+        type: choice
+        options: [record, record-evals, record-postmortem]
+        default: record
+      ticket:
+        description: TICKET for `record` (four digits)
+        default: "0001"
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: the key into .env, from the repository secret
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          [ -n "$GEMINI_API_KEY" ] || { echo "NO-GO: record — the GEMINI_API_KEY repository secret is not set"; exit 1; }
+          umask 077
+          printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY" > .env
+      - name: record at L1
+        env:
+          CONTAINER_ENGINE: docker
+          TARGET: ${{ inputs.target }}
+          TICKET: ${{ inputs.ticket }}
+        run: |
+          case "$TICKET" in [0-9][0-9][0-9][0-9]) ;; *) echo "NO-GO: record — TICKET must be four digits"; exit 1 ;; esac
+          ./go "$TARGET" PROFILE=l1 TICKET="$TICKET"
+      - if: always()
+        run: rm -f .env
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixtures-${{ inputs.target }}-${{ inputs.ticket }}-${{ github.run_id }}
+          path: |
+            fixtures/
+            adapters/adk/agents/*/evals/
+          retention-days: 14
