@@ -4,7 +4,7 @@ Everything the [README](../README.md) leaves out: what runs at each milestone, e
 
 ## Status
 
-Milestones M19 (harnesses, ADR 0041) and M20 (gates anywhere, ADR 0042) closed. Next, in plan §16's order: M21 (GitHub as code host), M22 (ops without the plane), M23 (the packaged command). What runs today:
+Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M22 (ops without the plane, ADR 0044) and M23 (the packaged command, ADR 0045) closed. Next, in plan §16's order: M21 (GitHub as code host). What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -26,6 +26,7 @@ Milestones M19 (harnesses, ADR 0041) and M20 (gates anywhere, ADR 0042) closed. 
 | rework | M15 | ✓ a gates NO-GO or a CHANGES-REQUESTED review goes back to dev-worker with the verdict, up to four attempts (`policy/rework.env`), then `needs-human`; `./go demo-rework` on ticket 0013's hand-written attempts (ADR 0038) |
 | harnesses | M19 | ✓ `claude-code` (2.1.311) and `codex` (0.166.0) beside `gemini-cli`, one provider each, the guard in each CLI's pre-tool hook, `./go harness-conformance` against a scripted model (no key; plumbing, not a model's ability); recording with them is implemented, not yet run (ADR 0041) |
 | ops without the plane | M22 | ✓ `./go incident` and `./go postmortem` (ADR 0044); `./go verify METRICS_URL=…` on any Prometheus-compatible endpoint; `demo-postmortem` replays the ops-triage recording made at L1 on 2026-11-04 (`./go record-postmortem PROFILE=l1`, gemini-3.8-flash) and prints GO with a fix ticket |
+| packaged command | M23 | ✓ built and tested in CI, **not published**: the image and the `lights-out` wrapper (`init`, `gates`, `triage`, `postmortem`, `doctor`, `version`), the Action, `./go doctor`, `./go package`, `./go demo-package` (ADR 0045); the Action is proven in lights-out's own workflow only |
 | gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
 
 | | |
@@ -96,12 +97,36 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
 ./go unfreeze        # re-enable launchpad after freeze
 ./go board           # the pipeline explained, live while the plane runs, on localhost:8099 (BOARD_PORT to move it)
+./go doctor          # host-side: engine, podman socket, git, workbench image, the plane's ports, the key the profile needs; one line each, then GO or NO-GO (ADR 0045 §4)
+./go package         # build the lights-out image as localhost/lights-out:dev, for the lights-out wrapper (ADR 0045 §1)
+./go demo-package    # prove the wrapper: build the image, workloads/minimal as its own repository, init, commit the draft, gates GO in the workbench under 300 s, then a staged break NO-GO at test (ADR 0045 §8)
 ./go help            # list all targets
 ./go shell           # interactive shell inside workbench
 ./go clean           # remove the workbench image
 ```
 
 The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulls about 840 MB (amd64) / 720 MB (arm64) of images on the first run, the emulators image being more than half (measured 2026-09-14, ADR 0012). The image includes gcloud and terraform, although nothing uses them before M8. `./go demo` now needs the network for the `deps` gate (osv-scanner) inside e2e, not only for image pulls.
+
+## The image, the wrapper and the Action
+
+ADR 0045 (M23) packages the gates half so that it runs on a repository without cloning lights-out. Status: the image is built and tested in CI, and **not published yet**.
+
+- **The image.** `ghcr.io/nicolaguglielmi/lights-out:0.1.0` is the workbench plus the committed tree. `.github/workflows/package.yml` builds and tests it on every push (`./go package`, `./go demo-package`, the Action's test job). It publishes only on a `v*` tag or a manual dispatch, which is the owner's act. The package is private until the owner makes it public. Tags are mutable and the image is unsigned: pin it by digest. Until the first publish, `./go package` builds `localhost/lights-out:dev` and `LIGHTS_OUT_IMAGE=localhost/lights-out:dev` points the wrapper at it.
+- **The wrapper.** `lights-out`, a POSIX script at the repository root. The host needs podman or docker, and git. Download by raw URL works only once the repository is public; until then copy it from a clone onto your PATH.
+
+```sh
+lights-out init                      # draft to ~/.local/state/lights-out/<repo name>/.lights-out (LIGHTS_OUT_OUT moves it)
+lights-out gates                     # the last commit; BASE= HEAD= for a range; STAGED=1 for what is staged, as one commit
+lights-out triage ALERT=<file>
+lights-out postmortem INCIDENT=<file>
+lights-out doctor                    # engine, image, key: one line each
+lights-out version
+```
+
+  Your repository is mounted read-only, and `init` never writes into it. Copy the draft with `cp -R <out>/.lights-out/. .lights-out/` (the `/.` matters). Keys are read from your environment by name, never from `.env`. The engine socket is never given to the image, so `gates` and `init` work for `TOOLCHAIN_IMAGE=workbench` only; `compose:` and image forms get a NO-GO naming the socket, and are judged from a clone with `./go gates`. A range is judged by the contract at its base (`workload.env`, `policy.env`, `runners/`), so a change cannot loosen what judges it. At L0, `triage` and `postmortem` replay only lights-out's own recordings: on your alerts and incidents use `PROFILE=l1` and the key in your environment. The plane (`./go demo`, canary, rollback) stays the clone path.
+- **The Action.** `action/action.yml`, used as `nicolaguglielmi/lights-out/action@v0.1.0`. It runs the wrapper of the same ref and posts one check run, `lights-out gates`, with the line as its title. Linux runners only. Fork PRs cannot post the check (a warning; the job status still carries the verdict). A private package needs `docker login ghcr.io` before it. Proven in lights-out's own workflow (`uses: ./action` on a scratch repository, one GO and one NO-GO check run). Not proven on another repository: that needs the first publish. Usage is in [the guide](use-on-your-repo.md).
+
+Decisions and rejected alternatives: [ADR 0045](adr/0045-one-command-one-package.md).
 
 ## Levels
 

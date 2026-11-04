@@ -19,6 +19,10 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The 300 s budget for init and gates | Proven on two small examples only. Init measures the whole scope (ADR 0042, Consequences) |
 | The platform reads only your `.lights-out/`, and never names your repository | Proven: `ci/attach.sh` and `ci/app-free.sh` run in `./go ci` |
 | A PR is judged by your base branch's policy, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
+| The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
+| The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository, which needs the first publish |
+| The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` published | **No.** CI builds and tests it on every push. Publishing is the owner's act, on a `v*` tag or a manual dispatch, and the package is private until then |
+| The hook recipes (section 5) | **Not run** in this repository. The shapes come from ADR 0045 "Verified while writing"; some parts are unverified, and the recipes say which |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
 Known limits today, before you start:
@@ -211,6 +215,57 @@ Every value sits under a comment that says where it came from:
 `./go attach` refuses while `.attached/.lights-out/` holds a draft you have not
 copied out. `./go detach` drops it.
 
+### Without cloning lights-out: the wrapper
+
+The gates half also runs from the `lights-out` wrapper, with no clone of
+lights-out. The host needs podman or docker, and git.
+
+**Not published yet.** The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0`
+does not exist on a registry. `.github/workflows/package.yml` builds and
+tests it on every push. It publishes only on a `v*` tag or a manual
+dispatch, which is the owner's act, and the package is private until the
+owner makes it public. Until then, from a clone of lights-out:
+
+```sh
+./go package                                  # builds localhost/lights-out:dev
+cp lights-out ~/.local/bin/                   # any directory on your PATH
+export LIGHTS_OUT_IMAGE=localhost/lights-out:dev
+```
+
+Downloading the wrapper by raw URL works only once the repository is
+public.
+
+Then, in your repository:
+
+```sh
+lights-out doctor
+lights-out init
+cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
+git add .lights-out && git commit -m "add lights-out contract"
+lights-out gates
+```
+
+- `init` writes the draft to `~/.local/state/lights-out/<repo name>/.lights-out`
+  and prints the path. `LIGHTS_OUT_OUT` moves it. It is never written into
+  your repository. Keep the `/.` in the `cp` command: a plain `cp -R` into
+  an existing `.lights-out/` nests the draft inside it.
+- `gates` judges the last commit, or `BASE=<ref> HEAD=<ref>`. `STAGED=1`
+  judges what is staged as one commit.
+- `triage ALERT=<file>` and `postmortem INCIDENT=<file>` also work. At L0
+  they replay only lights-out's own recordings, so on your alerts and
+  incidents use `PROFILE=l1` and the key in your environment.
+- Keys are read from the environment by name, never from `.env`. Your
+  repository is mounted read-only. The engine socket is never given to the
+  image.
+- Only `TOOLCHAIN_IMAGE=workbench` works through the wrapper. A `compose:` or
+  image form gets a NO-GO that names the socket. Judge it from a clone with
+  `./go gates`.
+- A range is judged by the contract at its base (`workload.env`,
+  `policy.env`, `runners/`), so a change cannot loosen what judges it.
+  With no contract at the base, the head's own judges, and the wrapper says
+  so on stderr.
+- The plane (`./go demo`, canary, rollback) stays the clone path.
+
 ## 2. The plane half
 
 The plane half is what `./go up`, smoke, verify, release and `demo-gates`
@@ -335,6 +390,134 @@ A real agent run needs L1 and a Gemini API key in `.env` (see
 The dev-worker reads the ticket, then your `worker.md`. Its toolchain is
 your `TOOLCHAIN_IMAGE` when that names an image, and the workbench otherwise
 (ADR 0042 §8).
+
+## 5. Before a commit and on a PR
+
+### The Action
+
+`action/action.yml` runs the wrapper on a pull request and posts one check
+run, `lights-out gates`, with the GO or NO-GO line as its title.
+
+```yaml
+permissions:
+  contents: read
+  checks: write
+steps:
+  - uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+  - uses: nicolaguglielmi/lights-out/action@v0.1.0
+```
+
+- Linux runners only. The Action needs docker.
+- A fork PR's token cannot write checks. The post is skipped with a warning,
+  and the job status still carries the verdict.
+- A private package needs `docker login ghcr.io` before the Action.
+- Tags are mutable and the image is unsigned. Pin the image by digest with
+  the `image` input.
+- **Not proven on another repository.** It is proven in lights-out's own
+  workflow, with `uses: ./action` on a scratch repository (a GO and a NO-GO
+  check run). `@v0.1.0` needs the first publish, which has not happened.
+
+### Hook recipes for coding agents
+
+A hook runs the gates on the staged changes before an agent commits. These
+are recipes to copy, not files lights-out writes into your repository. Each
+runs one `sh -c`: exit 0 unless the hook's stdin contains `git commit`, else
+`lights-out gates STAGED=1 >&2 || exit 2`. Exit 2 is the deny all three CLIs
+read (ADR 0041). With no engine, the hook also exits 2. The timeout is 300 s,
+set explicitly in each CLI's own unit. Install the wrapper first (section 1).
+
+**Claude Code**, `.claude/settings.json` (also `.claude/settings.local.json`
+or `~/.claude/settings.json`). `PreToolUse`, matcher `Bash`; the command is in
+`tool_input.command` on stdin; `timeout` is in seconds. Verified against the
+Claude Code hooks page.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates STAGED=1 >&2 || exit 2; fi'",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Codex**, `.codex/hooks.json` in the repository or `~/.codex/hooks.json`.
+`PreToolUse`, matcher `*`; `timeout` is in seconds. The shell tool's matcher
+name is **not verified** (a third-party source says `Bash`), so the recipe
+matches every tool and relies on the `git commit` test. Project hooks run
+only when the project's `.codex/` layer is trusted, reviewed with `/hooks`.
+That exit 2 denies from a project hook is **not verified** from the docs;
+ADR 0041 (M19) verified it with `--dangerously-bypass-hook-trust`. The Codex
+page was read through search excerpts, not the page itself.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates STAGED=1 >&2 || exit 2; fi'",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Gemini CLI**, `.gemini/settings.json`. `BeforeTool`, matcher a regex on the
+tool name, here `run_shell_command`. `timeout` is in **milliseconds** and the
+default is 60000, so it must be set: 300000. Whether project settings in an
+untrusted folder load hooks is **not verified**. The page was read through
+search excerpts.
+
+```json
+{
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates STAGED=1 >&2 || exit 2; fi'",
+            "timeout": 300000
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The config shapes for Codex and Gemini CLI are the ADR's field names, and
+were not run against the real CLIs for this guide. Check them against the
+vendor's current page before you rely on them.
+
+Limits:
+
+- The hook matches text. `git -C x commit`, an alias, or a script that
+  commits are not seen.
+- `git commit -a` stages inside the commit, so the hook judges only what was
+  staged before. `--amend` judges the staged diff only.
+- Every run is cold: the dependencies are reinstalled each time.
+- What a CLI does when a hook times out was not verified.
+- The Action is the real gate. The hook is a convenience.
 
 ## When something does not fit
 
