@@ -1,0 +1,80 @@
+name: nightly-github
+
+# The CodeHost conformance suite against GitHub (docs/adr/0043 §6): the same
+# ten cases `launch` runs against Gitea on every push (ci.yml), here on an
+# attached throwaway repository of the owner's. It proves the eight verbs of
+# adapters/github/, not the tower: the full e2e on GitHub is the owner's run,
+# once (ADR 0043 §5).
+#
+# Configuration, set by the owner in this repository's settings:
+#   variable  LIGHTS_OUT_GITHUB_REPO   <owner>/<name> of the throwaway
+#                                      repository, made from workloads/minimal
+#                                      of this one: its .lights-out/ is the
+#                                      contract the run attaches
+#   secret    LIGHTS_OUT_GITHUB_TOKEN  a fine-grained token granted that one
+#                                      repository: Contents, Pull requests and
+#                                      Commit statuses, read and write
+# The token is not the GITHUB_TOKEN Actions gives this run: that one cannot
+# reach another repository. Both values come to the step through `env:`; the
+# runner's own GITHUB_TOKEN is never read, and the token is never in an argv.
+# Every run leaves a merged PR and its branch in the throwaway repository.
+
+on:
+  schedule:
+    # Daily, off the hour, when scheduled runs are crowded.
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # GitHub-only like every job that needs a real engine (docs/adr/0039).
+  # A single run: step, so no status function is needed (ci/gitea-compat.sh).
+  codehost-conformance:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach the throwaway repository and run the suite
+        env:
+          CONTAINER_ENGINE: docker
+          LIGHTS_OUT_GITHUB_REPO: ${{ vars.LIGHTS_OUT_GITHUB_REPO }}
+          LIGHTS_OUT_GITHUB_TOKEN: ${{ secrets.LIGHTS_OUT_GITHUB_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "$LIGHTS_OUT_GITHUB_REPO" ]; then
+            echo "::notice::nightly-github skipped: set the repository variable LIGHTS_OUT_GITHUB_REPO and the secret LIGHTS_OUT_GITHUB_TOKEN"
+            exit 0
+          fi
+          if [ -z "$LIGHTS_OUT_GITHUB_TOKEN" ]; then
+            echo "::error::the repository variable LIGHTS_OUT_GITHUB_REPO is set but the secret LIGHTS_OUT_GITHUB_TOKEN is empty: set the secret (a fine-grained token for $LIGHTS_OUT_GITHUB_REPO), or unset the variable to skip"
+            exit 1
+          fi
+          case "$LIGHTS_OUT_GITHUB_REPO" in
+            */*/* | /* | */) bad=1 ;;
+            */*) bad="" ;;
+            *) bad=1 ;;
+          esac
+          if [ -n "$bad" ]; then
+            echo "::error::the repository variable LIGHTS_OUT_GITHUB_REPO is $LIGHTS_OUT_GITHUB_REPO, want <owner>/<name>"
+            exit 1
+          fi
+          # .env, for the plane's Makefile: the secret and the variable, nothing
+          # of the runner's. Readable by its owner alone, and gone with the step.
+          trap 'rm -f .env' EXIT
+          (umask 077 && printf 'GITHUB_TOKEN=%s\nGITHUB_REPO=%s\n' "$LIGHTS_OUT_GITHUB_TOKEN" "$LIGHTS_OUT_GITHUB_REPO" > .env)
+          # The clone, on the host. The helper is a function that reads the
+          # token from the step's env block: git's argv holds its text, never
+          # the token. The empty helper first drops any the runner carries.
+          clone="$RUNNER_TEMP/throwaway"
+          # shellcheck disable=SC2016 # $1 and the token are the helper's own, expanded when git runs it
+          git -c credential.helper= \
+            -c 'credential.helper=!f() { test "$1" = get && printf "username=x-access-token\npassword=%s\n" "$LIGHTS_OUT_GITHUB_TOKEN"; }; f' \
+            clone --quiet "https://github.com/$LIGHTS_OUT_GITHUB_REPO.git" "$clone"
+          if ! git -C "$clone" cat-file -e HEAD:.lights-out/workload.env 2>/dev/null; then
+            echo "::error::$LIGHTS_OUT_GITHUB_REPO has no .lights-out/workload.env at its default branch: make the throwaway repository from workloads/minimal of this repository (copy that directory's contents to the root of a new repository), so the run has a contract to attach"
+            exit 1
+          fi
+          ./go attach "$clone"
+          ./go codehost-conformance CODE_HOST=github
