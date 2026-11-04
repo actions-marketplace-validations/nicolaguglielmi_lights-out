@@ -39,6 +39,6 @@ if [ -z "$line" ]; then
   line=$(jq -r '"\(.number) \(.html_url)"' "$tmp")
 fi
 case "$line" in
-  [0-9]*' 'http*) printf '%s\n' "$line" ;;
+  [0-9]*\ http*) printf '%s\n' "$line" ;;
   *) printf 'open-pr-github: no PR number in the response: %s\n' "$line" >&2; exit 1 ;;
 esac
