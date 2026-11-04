@@ -20,7 +20,8 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
 {
-  printf '%s\n' go workbench/fetch.sh
+  printf '%s\n' go lights-out workbench/fetch.sh
+  find package -type f -name '*.sh'
   find ci -maxdepth 1 -type f -name '*.sh'
   find adapters -type f -name '*.sh'
   find core -type f -name '*.sh'

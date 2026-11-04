@@ -40,6 +40,9 @@
 #   ./go harness-conformance  every CLI harness against a scripted model, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041)
 #   ./go codehost-conformance  ten cases on the CODE_HOST set: Gitea with the plane up, or CODE_HOST=github on an attached repository (ADR 0043)
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
+#   ./go doctor         engine, versions, ports, the key: one line each, then GO or NO-GO (host-side)
+#   ./go package        build the lights-out image, localhost/lights-out:dev, for the lights-out wrapper (host-side)
+#   ./go demo-package   prove the wrapper: init and gates from the image on workloads/minimal as its own repository
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
 #
@@ -102,6 +105,12 @@ case "$cmd" in
     [ ! -e "$attached" ] || die "a repository is attached ($(git -C "$attached" remote get-url origin 2>/dev/null || echo "$attached")); ./go demo runs the bundled app: ./go detach first, then ./go attach again"
     ;;
 esac
+
+# doctor diagnoses the engine itself, so it runs before ./go requires one
+# (docs/adr/0045 §4).
+if [ "$cmd" = doctor ]; then
+  exec sh "$here/core/doctor.sh"
+fi
 
 # 1. Pick the engine: CONTAINER_ENGINE, then podman, then docker.
 if [ -n "${CONTAINER_ENGINE:-}" ]; then
@@ -185,6 +194,16 @@ fi
 if [ "$cmd" = engine-compat ] || [ "$cmd" = demo ]; then
   CONTAINER_ENGINE="$engine" sh "$here/ci/engine-compat.sh" || exit 1
   [ "$cmd" = demo ] || exit 0
+fi
+
+# The lights-out image and its acceptance (docs/adr/0045 §1, §8) run on
+# the host: the image is built by the engine itself, and the wrapper a
+# stranger runs drives the engine from the host, never from a container.
+if [ "$cmd" = package ]; then
+  exec sh "$here/package/build.sh" "$engine" "${LIGHTS_OUT_IMAGE:-localhost/lights-out:dev}"
+fi
+if [ "$cmd" = demo-package ]; then
+  CONTAINER_ENGINE="$engine" exec sh "$here/package/demo.sh"
 fi
 
 # 2. Build the workbench image once per Containerfile revision.

@@ -1,0 +1,139 @@
+# The lights-out image, the wrapper and the Action (docs/adr/0045 §7, §8).
+# On every push: the image built through package/build.sh, the wrapper's
+# acceptance (./go demo-package) and the Action's own test. On a v* tag
+# or a manual dispatch only: publish to ghcr.io, the one job with
+# packages: write. GitHub-only, every job: the L0 Gitea runner reads this
+# directory too and holds the engine socket (docs/adr/0039).
+name: package
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # M23's acceptance: the image built, then `lights-out init` and
+  # `lights-out gates` from it on workloads/minimal as a repository of its
+  # own, timed against 300 s, and a staged break NO-GO at test.
+  package:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./go demo-package
+        env:
+          CONTAINER_ENGINE: docker
+      - if: always()
+        run: docker image ls localhost/lights-out
+
+  # The Action's own test, on a scratch repository made from
+  # workloads/minimal with the drafted contract committed: a good change
+  # (GO, a check run `success` on this commit) and a change that breaks a
+  # test (NO-GO, a check run `failure`). Both check runs land on this
+  # workflow's commit, where the branch's checks show them: the second is
+  # red on purpose, and its name says so.
+  action:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    permissions:
+      contents: read
+      checks: write
+    env:
+      CONTAINER_ENGINE: docker
+      LIGHTS_OUT_IMAGE: localhost/lights-out:dev
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./go package
+      - name: A scratch repository with the drafted contract, then a good change and a bad one
+        id: scratch
+        run: |
+          set -eu
+          repo="$GITHUB_WORKSPACE/scratch"
+          mkdir -p "$repo" && cp -R workloads/minimal/. "$repo/"
+          git -C "$repo" init -q -b main
+          git -C "$repo" config user.name lights-out-action-test
+          git -C "$repo" config user.email action-test@lights-out.invalid
+          git -C "$repo" add -A && git -C "$repo" commit -q -m "workloads/minimal"
+          (cd "$repo" && LIGHTS_OUT_OUT="$RUNNER_TEMP/init" sh "$GITHUB_WORKSPACE/lights-out" init)
+          cp -R "$RUNNER_TEMP/init/.lights-out/." "$repo/.lights-out/"
+          git -C "$repo" add -A && git -C "$repo" commit -q -m "the drafted contract"
+          echo "base=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf '\n\n@app.get("/version")\ndef version():\n    return {"version": APP_VERSION}\n' >> "$repo/minimal/app.py"
+          printf '\n\ndef test_version_returns_the_app_version(client):\n    assert client.get("/version").json() == {"version": APP_VERSION}\n' >> "$repo/tests/test_app.py"
+          git -C "$repo" commit -q -am "a /version route, and its test"
+          echo "good=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf '\n\ndef test_broken():\n    assert False, "a change that breaks the suite"\n' >> "$repo/tests/test_app.py"
+          git -C "$repo" commit -q -am "a change that breaks the suite"
+          echo "bad=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: The Action on the good change
+        id: good
+        uses: ./action
+        with:
+          path: scratch
+          base: ${{ steps.scratch.outputs.base }}
+          head: ${{ steps.scratch.outputs.good }}
+          image: localhost/lights-out:dev
+          name: "lights-out gates (Action test: a good change, GO expected)"
+      - name: The Action on the bad change
+        id: bad
+        continue-on-error: true
+        uses: ./action
+        with:
+          path: scratch
+          base: ${{ steps.scratch.outputs.good }}
+          head: ${{ steps.scratch.outputs.bad }}
+          image: localhost/lights-out:dev
+          name: "lights-out gates (Action test: a broken test, NO-GO expected)"
+      - name: Both verdicts are what they must be, and both check runs were posted
+        env:
+          GOOD: ${{ steps.good.outputs.line }}
+          BAD: ${{ steps.bad.outputs.line }}
+          BAD_OUTCOME: ${{ steps.bad.outcome }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          printf 'good: %s\nbad: %s (step %s)\n' "$GOOD" "$BAD" "$BAD_OUTCOME"
+          case "$GOOD" in "GO: gates — "*) ;; *) echo "the good change was not GO"; exit 1 ;; esac
+          case "$BAD" in "NO-GO: gates — test: "*) ;; *) echo "the bad change was not NO-GO at test"; exit 1 ;; esac
+          [ "$BAD_OUTCOME" = failure ] || { echo "the Action did not fail on NO-GO"; exit 1; }
+          runs=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?filter=all&per_page=100")
+          printf '%s' "$runs" | jq -r '.check_runs[] | select(.name | startswith("lights-out gates")) | "\(.id) \(.name): \(.conclusion), \(.output.title)"'
+          printf '%s' "$runs" | jq -e --arg l "$GOOD" '[.check_runs[] | select(.name | startswith("lights-out gates (Action test: a good")) | select(.conclusion == "success" and .output.title == $l)] | length > 0' >/dev/null \
+            || { echo "no success check run carries the GO line"; exit 1; }
+          printf '%s' "$runs" | jq -e --arg l "$BAD" '[.check_runs[] | select(.name | startswith("lights-out gates (Action test: a broken")) | select(.conclusion == "failure" and .output.title == $l)] | length > 0' >/dev/null \
+            || { echo "no failure check run carries the NO-GO line"; exit 1; }
+
+  # Publishing is the owner's act: never on a branch push, only on a v*
+  # tag (which must equal the wrapper's version=) or a manual dispatch.
+  # amd64 and arm64 through QEMU and buildx, the same package/build.sh.
+  publish:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag is the wrapper's version
+        id: version
+        run: |
+          set -eu
+          version=$(sed -n 's/^version=//p' lights-out)
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              [ "${GITHUB_REF#refs/tags/v}" = "$version" ] \
+                || { echo "tag ${GITHUB_REF#refs/tags/} is not v$version, the wrapper's version="; exit 1; }
+              echo "tag=$version" >> "$GITHUB_OUTPUT" ;;
+            *) echo "tag=sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to ghcr.io
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build amd64 and arm64, push
+        run: sh package/build.sh "docker buildx" "ghcr.io/nicolaguglielmi/lights-out:${{ steps.version.outputs.tag }}" --platform linux/amd64,linux/arm64 --push
