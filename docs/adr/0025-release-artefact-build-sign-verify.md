@@ -112,6 +112,21 @@ API. Nothing in ADR 0022's assumption broke; the flags did.
    of plan §2's 900 s is the most a build may take before the run is worth
    failing; re-measured at M8 close and lowered to 3× the measured build if
    that is smaller.
+
+   *Amended 2026-11-04 (found on GitHub Actions):* three `./go demo` runs
+   (41422559300, 41424697447, 41846872298) ended in e2e with `image on
+   <merge sha> still pending after 300s`, while green runs see the status
+   about 6 s after the merge (41844872862: release step at 14:20:21, the
+   signature verified at 14:20:27). The job had posted `pending`, so it
+   started and never posted its outcome; its log was printed nowhere, so
+   the cause is not known. The timeout stays: the job is stuck, not slow.
+   Gitea's `await.sh` now looks up the Actions job of the same name on the
+   same sha (Gitea 1.27.3's `GET /repos/{owner}/{repo}/actions/jobs` and
+   `/actions/jobs/{id}/logs`, read in its swagger), stops at once when that
+   job has completed with the status still pending, and on either exit 1
+   prints the job's state and the last 40 lines of its log to stderr.
+   Skipped jobs are ignored: the GitHub-only jobs, `gates` among them, are
+   skipped on every Gitea commit. The next occurrence names its cause.
 6. **The launchpad verifies, then deploys the digest.** New required
    variable `CANARY_TAG` (the tag the Registry port published under);
    `CANARY_VERSION` keeps its exact meaning — the version string the
