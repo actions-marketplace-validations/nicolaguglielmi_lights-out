@@ -162,7 +162,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free hooks harness network tower perimeter review prompts evals promote board roles postmortem metrics contract
+CI_CHECKS := secrets lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free hooks harness harness-shape network tower perimeter review prompts evals promote board roles postmortem metrics contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -407,17 +407,37 @@ demo-crew: ## Prove ticket 0001 becomes a PR that passes the M4 gates (docs/adr/
 	rm -f "$$tmp1" "$$tmp2"; \
 	printf 'GO: demo-crew\n'
 
+# What record and record-review need of the run they save (docs/adr/0041
+# §10, §7), $(1) the target: AGENT_HARNESS is not replay, which would replay
+# the fixture it is trying to create; it is a CLI harness, an adapters/<name>/
+# with run.sh, Containerfile and package-lock.json (the same discovery as
+# gates/harness-conformance.sh); and MODEL_BASE_URL is unset, so a run
+# against a scripted or proxied endpoint can never become a fixture.
+define record_guard
+	@if [ "$(AGENT_HARNESS)" = "replay" ]; then \
+		printf 'NO-GO: $(1) — recording a replay is circular; PROFILE=l1\n'; exit 1; \
+	fi
+	@if [ ! -f "adapters/$(AGENT_HARNESS)/run.sh" ] || [ ! -f "adapters/$(AGENT_HARNESS)/Containerfile" ] || [ ! -f "adapters/$(AGENT_HARNESS)/package-lock.json" ]; then \
+		printf 'NO-GO: $(1) — AGENT_HARNESS=%s is not a CLI harness (an adapters/<name>/ with run.sh, Containerfile and package-lock.json)\n' "$(AGENT_HARNESS)"; exit 1; \
+	fi
+	@if [ -n "$(MODEL_BASE_URL)" ]; then \
+		printf 'NO-GO: $(1) — MODEL_BASE_URL is set: a run against a scripted or proxied endpoint is never a fixture (docs/adr/0041 §7)\n'; exit 1; \
+	fi
+endef
+
 # Records the one real L1 run this ADR calls for (docs/adr/0017 §6): the
 # fixture L0 replays forever after. Refuses at L0 ("recording a replay is
 # circular" — AGENT_HARNESS=replay would replay the fixture it is trying to
 # create) and refuses a run that does not pass the gates (kept under
 # .crew/<ticket> for study; the attempt is not silently retried here, and
-# HANDOFF records how many attempts the recorded run took).
+# HANDOFF records how many attempts the recorded run took). Any CLI harness
+# records (docs/adr/0041 §10): gemini-cli's run is the fixture L0 replays, in
+# fixtures/<ticket>/<role>/; another harness's goes one directory deeper, in
+# fixtures/<ticket>/<role>/<harness>/, where replay does not read it (the
+# owner's measurement: cost, served model, budgets).
 .PHONY: record
-record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker] (docs/adr/0017 §6)
-	@if [ "$(AGENT_HARNESS)" != "gemini-cli" ]; then \
-		printf 'NO-GO: record — recording a replay is circular; PROFILE=l1\n'; exit 1; \
-	fi
+record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker] [AGENT_HARNESS=claude-code MODEL_PROVIDER=anthropic MODEL=…] (docs/adr/0017 §6, 0041 §10)
+	$(call record_guard,record)
 	@$(MAKE) --no-print-directory up
 	@role="$(ROLE)"; [ -n "$$role" ] || role=dev-worker; \
 	$(MAKE) --no-print-directory crew-run TICKET="$(TICKET)" ROLE="$$role" || { \
@@ -431,6 +451,7 @@ record: ## Run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=d
 		exit 1; \
 	fi; \
 	dest="fixtures/$(TICKET)/$$role"; \
+	[ "$(AGENT_HARNESS)" = "gemini-cli" ] || dest="$$dest/$(AGENT_HARNESS)"; \
 	mkdir -p "$$dest"; \
 	cp .crew/$(TICKET)/out/* "$$dest/" 2>/dev/null || true; \
 	cp "$(GATES_OUT)/verdict.env" "$$dest/expect"; \
@@ -715,18 +736,18 @@ demo-review: ## Prove a medium/high-risk PR goes through the review step to a tr
 # The one real L1 run this ADR calls for beyond dev-worker's (docs/adr/0021
 # §9): the reviewer fixture L0 replays forever after. record's own
 # precedent: refuses at L0, requires .crew/<ticket>/pr-opened.env from a
-# prior `record TICKET=<id>` (the PR the reviewer reads).
+# prior `record TICKET=<id>` (the PR the reviewer reads). Takes any CLI
+# harness and keeps record's layout (docs/adr/0041 §10).
 .PHONY: record-review
-record-review: ## Record a role's review verdict as a fixture: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021 §9)
-	@if [ "$(AGENT_HARNESS)" != "gemini-cli" ]; then \
-		printf 'NO-GO: record-review — recording a replay is circular; PROFILE=l1\n'; exit 1; \
-	fi
+record-review: ## Record a role's review verdict as a fixture: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021 §9, 0041 §10)
+	$(call record_guard,record-review)
 	@$(MAKE) --no-print-directory up
 	@role="$(ROLE)"; [ -n "$$role" ] || role=test-reviewer; \
 	$(MAKE) --no-print-directory review TICKET="$(TICKET)" ROLE="$$role" >&2 || { \
 		printf 'NO-GO: record-review — the review step did not reach a verdict\n'; exit 1; \
 	}; \
 	dest="fixtures/$(TICKET)/$$role"; \
+	[ "$(AGENT_HARNESS)" = "gemini-cli" ] || dest="$$dest/$(AGENT_HARNESS)"; \
 	mkdir -p "$$dest"; \
 	cp ".crew/$(TICKET)/review/input.md" "$$dest/input.md"; \
 	cp .crew/$(TICKET)/review/out/* "$$dest/" 2>/dev/null || true; \
@@ -997,6 +1018,26 @@ attached: ## Check the attached repository's .lights-out/ contract (docs/adr/003
 .PHONY: delivery-conformance
 delivery-conformance: ## Six-case Delivery/Flags conformance suite, real releases on the plane (docs/adr/0026)
 	@CONFORMANCE=1 sh gates/delivery-conformance.sh
+
+# Every CLI harness against a scripted model (docs/adr/0041 §8): its image is
+# built, its run.sh driven nine ways, no key, no account. CONFORMANCE=1 for
+# the same reason as above. The compose view is the root file plus the
+# smallest workload fragment that defines `backend` (the plane services
+# depend on it, so the root file alone does not load: a correction to the
+# ADR) and names no harness service, so running a harness starts nothing
+# beside it; the worker image is built on the workbench, not the workload's
+# toolchain. CONFORMANCE_HARNESS=<name> runs one. The suite is proved first,
+# on a made-up harness and a stand-in for compose, to accept a good harness
+# and refuse seventeen wrong ones (gates/harness-conformance/proof.sh): a
+# suite that cannot fail would say GO to everything.
+.PHONY: harness-conformance
+harness-conformance: ## Every CLI harness against a scripted model, nine cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
+	@sh gates/harness-conformance/proof.sh
+	@CONFORMANCE=1 \
+		WORKLOAD=workloads/minimal WORKLOAD_CONTRACT=workloads/minimal/.lights-out \
+		COMPOSE_FILE=compose.yaml:workloads/minimal/.lights-out/compose.yaml \
+		HARNESS_BASE_IMAGE=$(WORKBENCH_IMAGE) \
+		sh gates/harness-conformance.sh
 
 # Records the ADK roles' model responses at L1 (docs/adr/0020 §2), one
 # role at a time: ci/evals.sh with ADK_RECORD=1 writes fixtures/adk/<role>/

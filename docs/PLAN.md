@@ -83,7 +83,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 
 | Porta | Adapter | Note |
 |---|---|---|
-| `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
+| `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
 | `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5) |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
 | `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
@@ -602,6 +602,8 @@ Ogni milestone ha una ADR prima del codice, lascia `./go ci` e `./go demo` verdi
 - *Da verificare prima di scrivere:* che gli hook `PreToolUse` di Claude Code scattino in modalità `-p` e che l'exit code distingua budget esaurito da errore (fonti di comunità in disaccordo, 2026-11-03); gli eventi JSON di `codex exec --json` e le sue modalità sandbox; che entrambe le CLI accettino la chiave da variabile d'ambiente senza login interattivo.
 - **Fatto quando:** `./go harness-conformance` è `GO` per `gemini-cli`, `claude-code` e `codex`; `./go record TICKET=0001 PROFILE=l1 AGENT_HARNESS=claude-code` produce una PR che passa `./go gates`, e lo stesso con `codex`; le due registrazioni entrano in `fixtures/` con `provider`; `./go demo` è verde a L0. Stima: 3–4 settimane.
 
+*Stato 2026-11-04 (sessione M19):* fatto tranne le due registrazioni. Gli adapter `claude-code` (Claude Code 2.1.311, provider `anthropic`) e `codex` (Codex 0.166.0, provider `openai`) sono pinnati da `package-lock.json`; la guardia è lo stesso `guard.sh`, copiato identico, nell'hook pre-tool di ciascuna CLI (`BeforeTool` per Gemini, `PreToolUse` per Claude e Codex) e il contenitore è il confine per tutti e tre; Codex gira con la propria sandbox spenta (`danger-full-access`) perché bubblewrap non parte in podman rootless; la rete resta aperta, e chiuderla è la domanda aperta prima di M24. I budget sono letti dal segnale di ciascun fornitore. `./go harness-conformance` esegue la CLI vera nel suo container contro un modello scritto a mano (`gates/harness-conformance/stub.py`), nove casi, senza chiave: prova l'impianto, non la capacità di un modello né il protocollo vero del fornitore. Deviazioni: la suite non sta tutta in `./go ci`, perché `ci` non ha il socket e la suite costruisce tre immagini; `./go ci` ha la metà senza engine (`harness-shape`, `hooks` esteso), la suite intera è un target a sé e un job del workflow (ADR 0041 §9); il comando di registrazione nomina fornitore e modello (`AGENT_HARNESS=claude-code MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5`, e `codex openai gpt-6.1-sol`) e scrive in `fixtures/<ticket>/<ruolo>/<harness>/`, mentre L0 continua a riprodurre quelle di `gemini-cli` e il replay non legge le nuove cartelle; il worker monta la cartella del run e non più `.crew`. Tre difetti trovati costruendo, chiusi: un `.env` del repository poteva puntare `GOOGLE_GEMINI_BASE_URL` di `gemini-cli`, chiave compresa, su un altro host; un `.claude/settings.json` con `disableAllHooks` o un `.codex/config.toml` con `[features] hooks = false` del repository spegnevano la guardia (chiusi con `--setting-sources user` e `--enable hooks`); il worker montava tutto `.crew/`, chiave di firma del rilascio compresa. Le due registrazioni (`./go record TICKET=0001 PROFILE=l1` con ciascun harness) spendono le chiavi dell'owner e restano sue; il costo per fornitore va nel README quando esistono.
+
 ### M20 — Gate ovunque: `./go init` e i gate senza piano (ADR 0042)
 
 Assorbe la metà "toolchain" di M14.
@@ -630,6 +632,8 @@ Assorbe la metà "rilascio" di M14.
 - **Fatto quando:** `./go demo-postmortem` a L0, senza chiave, replaya un incidente registrato dal record di release vero di `demo-rollback` e stampa `GO: demo-postmortem` con un ticket di fix in `tickets/`; `./go verify METRICS_URL=…` contro il Prometheus del piano dà lo stesso verdetto di oggi; i ruoli restano sei. Stima: 3 settimane.
 
 *Stato 2026-11-04 (sessione M22):* costruito, ADR 0044. `./go incident`, `./go postmortem`, `./go demo-postmortem` e `./go record-postmortem`; il quarto strumento `file_postmortem` di ops-triage; il verbo `put.sh` del Tracker `file`; l'adapter `promql`, con `prometheus` che lo chiama su `http://$PLANE_HOST:9090`. `./go demo-postmortem` è NO-GO finché l'owner non esegue `./go record-postmortem PROFILE=l1`: nella sessione non c'era la chiave Gemini, e nessuna risposta del modello è scritta a mano. I ticket della demo vanno in una copia di `tickets/`, così il checkout resta pulito; `./go postmortem` scrive in `tickets/`. `./go ci` e `./go demo` non dipendono dalla registrazione.
+
+*Nota 2026-11-04 (owner):* registrato a L1 su gemini-3.8-flash (`./go record-postmortem PROFILE=l1`, commit a0ff191); `./go demo-postmortem` → `GO: demo-postmortem` a L0 senza chiave, un'azione, ticket di fix 0014. Il criterio di M22 è chiuso.
 
 ### M23 — Il comando unico e il pacchetto (ADR 0045)
 

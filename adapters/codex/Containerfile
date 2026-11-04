@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The codex AgentHarness worker (docs/adr/0041 §1): the workload's
+# toolchain plus @openai/codex, pinned by package-lock.json, on
+# adapters/gemini-cli/Containerfile's pattern (docs/adr/0042 §8): the
+# harness's own node under /opt/harness, git, jq and timeout from apt
+# when the base lacks them, a base without apt stopping the build.
+ARG WORKBENCH_IMAGE
+ARG HARNESS_BASE_IMAGE
+FROM ${WORKBENCH_IMAGE} AS workbench
+
+FROM ${HARNESS_BASE_IMAGE}
+
+COPY --from=workbench /usr/local/bin/node /opt/harness/node/bin/node
+COPY --from=workbench /usr/local/lib/node_modules/npm /opt/harness/node/lib/node_modules/npm
+
+RUN set -eu; \
+    if ! command -v git >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then \
+      if command -v apt-get >/dev/null 2>&1; then \
+        apt-get update && apt-get install -y --no-install-recommends ca-certificates git jq coreutils && rm -rf /var/lib/apt/lists/*; \
+      else \
+        echo "HARNESS_BASE_IMAGE lacks git, jq or timeout and has no apt-get to install them; the dev-worker needs all three (docs/adr/0042 §8)" >&2; \
+        exit 1; \
+      fi; \
+    fi; \
+    /opt/harness/node/bin/node --version
+
+WORKDIR /opt/codex
+COPY package.json package-lock.json ./
+# bin/codex.js is a node launcher that execs the platform's native binary
+# from the optionalDependencies; it runs on the harness's own node.
+RUN /opt/harness/node/bin/node /opt/harness/node/lib/node_modules/npm/bin/npm-cli.js ci --omit=dev \
+ && launcher=$(readlink -f /opt/codex/node_modules/.bin/codex) \
+ && printf '#!/bin/sh\nexec /opt/harness/node/bin/node %s "$@"\n' "$launcher" > /usr/local/bin/codex \
+ && chmod 0755 /usr/local/bin/codex \
+ && codex --version
+
+# The guard (docs/adr/0041 §3, §11, the same file as gemini-cli's) and
+# the budget hook (§5): baked into the image, not bind-mounted.
+COPY hooks/ /opt/codex-hooks/
+RUN chmod 0755 /opt/codex-hooks/*.sh
+
+COPY entrypoint.sh /usr/local/bin/crew-entrypoint
+RUN chmod 0755 /usr/local/bin/crew-entrypoint
+
+ENTRYPOINT ["/usr/local/bin/crew-entrypoint"]

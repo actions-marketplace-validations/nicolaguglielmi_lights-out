@@ -152,3 +152,20 @@ jobs:
       - run: ./go demo-init
         env:
           CONTAINER_ENGINE: docker
+
+  # Every CLI harness's entry requirement (docs/adr/0041 §8): its image
+  # built, its run.sh driven nine ways against a scripted model, with no
+  # key. The engine half of the suite; its engine-free half (ci/harness-
+  # shape.sh, ci/hooks.sh) is in `./go ci`, which has no socket by design.
+  # GitHub-only like every job that needs a real engine: the L0 Gitea
+  # runner's one job is image (docs/adr/0039).
+  harness-conformance:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./go harness-conformance
+        env:
+          CONTAINER_ENGINE: docker
