@@ -230,6 +230,27 @@ def code_mode_source(path):
     return CODE_MODE_JS % json.dumps([path[:half], path[half:]])
 
 
+def request_tools(body):
+    """The tools a request offers, flattened. Found running codex 0.166.0 through
+    the suite: it sends no top-level `tools`; they ride in an `input` item of
+    type `additional_tools`, grouped in `namespace` entries (`functions.exec`,
+    the code-mode tool, among them)."""
+    out = []
+
+    def walk(items):
+        for t in items or []:
+            if isinstance(t, dict) and t.get("type") == "namespace":
+                walk(t.get("tools"))
+            elif isinstance(t, dict):
+                out.append(t)
+
+    walk(body.get("tools"))
+    for item in body.get("input") or []:
+        if isinstance(item, dict) and item.get("type") == "additional_tools":
+            walk(item.get("tools"))
+    return out
+
+
 def pick_openai_surface(tools):
     kinds = {}
     for t in tools or []:
@@ -262,7 +283,7 @@ def render(proto, step, cwd, body):
         if op in ("read", "jsread"):
             return op, True, ("tool", "read_file", {"file_path": absolute(step["path"], cwd)})
         return op, True, ("tool", "write_file", {"file_path": absolute(step["path"], cwd), "content": step["content"]})
-    surface = pick_openai_surface(body.get("tools"))
+    surface = pick_openai_surface(request_tools(body))
     if op == "jsread" and surface == "code":
         return op, False, ("code", code_mode_source(step["path"]))
     cmd = shell_form(step, op)
@@ -451,7 +472,7 @@ class Handler(BaseHTTPRequestHandler):
         auth = auth_state(self.headers, query)
         requested = path_model or body.get("model")
         rec = {"method": "POST", "path": clean_path(self.path), "protocol": proto, "kind": kind,
-               "auth": auth, "requested": requested, "tools": bool(body.get("tools")),
+               "auth": auth, "requested": requested, "tools": bool(request_tools(body)),
                "step": None, "op": None, "hooked": None, "reported_tokens": 0, "last_result": ""}
         if kind == "other":
             log_request(case, raw, rec)
