@@ -11,18 +11,30 @@
 # from picking these up as gates of their own).
 #
 # A case file is written once, in Gemini CLI's input shape (tool_name
-# run_shell_command, read_file or write_file, the paths and strings in
-# tool_input). Each is rendered, here, in the shape each CLI hands its hook
-# (docs/adr/0041 §3, verified 2026-11-04): Gemini's BeforeTool as written;
-# Claude Code's PreToolUse with Bash, Read and Write; Codex's PreToolUse,
-# which has the one tool name Bash, so a read is `cat <path>` and a write is
-# `printf <content> > <path>`. Every rendering also carries what each CLI adds
+# run_shell_command, read_file, write_file, or another built-in from gemini-cli
+# 0.61.0-preview.0's ALL_BUILTIN_TOOL_NAMES: grep_search, glob, list_directory,
+# read_many_files, invoke_agent; the paths and strings in tool_input). Each is
+# rendered, here, in the shape each CLI hands its hook (docs/adr/0041 §3,
+# verified 2026-11-04): Gemini's BeforeTool as written; Claude Code's
+# PreToolUse with Bash, Read and Write; Codex's PreToolUse, which has the one
+# tool name Bash, so a read is `cat <path>` and a write is `printf <content> >
+# <path>`. Claude Code (--tools Bash,Edit,Read,Write) and Codex (a shell) have
+# none of the other built-ins, so both get the equivalent through Bash:
+# grep_search -> `grep -rn`, glob -> `find -path`, list_directory -> `ls`,
+# read_many_files -> `cat`, invoke_agent -> `echo <prompt>` (a subagent prompt
+# is only text the guard scans; echo carries that text and does not pretend to
+# run an agent). Every rendering also carries what each CLI adds
 # to every call and the guard must not mistake for the model's own: a
 # transcript_path and a cwd, the former inside the vendor's own directory
 # (.gemini/, .claude/, .codex/), which the deny-list names. The guard is one
 # file copied into each adapter (docs/adr/0041 §11, ci/harness-shape.sh
 # checks it byte for byte); any copy that differs from one already judged is
 # judged again, and an identical copy is the same program.
+#
+# The matcher rule (docs/adr/0041 §3 as amended) is checked here too, with no
+# engine: every CLI harness registers its guard on the pre-tool event with
+# matcher "*" in adapters/<h>/entrypoint.sh and the guard decides; a narrower
+# matcher lets every tool it omits (grep_search, glob, ...) skip the guard.
 #
 # Beyond the exit code, the guard must leave exactly one hooks.log line per
 # call, ALLOW or DENY to match, naming the tool the CLI sent (docs/adr/0017
@@ -42,6 +54,14 @@ for d in adapters/*/; do
   [ -f "adapters/$h/package.json" ] || [ -f "adapters/$h/package-lock.json" ] || continue
   guard=adapters/$h/hooks/guard.sh
   [ -f "$guard" ] || nogo "$guard not found: adapters/$h is a CLI harness and needs its guard (docs/adr/0041 §11)"
+  # The guard is registered with matcher "*": check each entrypoint line that
+  # names it (gemini: the guard.sh path; claude-code, codex: $guard).
+  ep=adapters/$h/entrypoint.sh
+  [ -f "$ep" ] || nogo "$ep not found: adapters/$h is a CLI harness and needs its entrypoint"
+  reg=$(grep -E 'matcher:.*(command: \$guard|guard\.sh)' "$ep" || true)
+  [ -n "$reg" ] || nogo "$h: $ep registers no guard hook with a matcher (docs/adr/0041 §3)"
+  matchers=$(printf '%s\n' "$reg" | sed -n 's/.*matcher: *"\([^"]*\)".*/\1/p')
+  [ "$matchers" = '*' ] || nogo "$h: guard registered with matcher '$matchers', want '*' (docs/adr/0041 §3)"
   same=no
   for g in $distinct; do
     cmp -s "$g" "$guard" && same=yes
@@ -50,6 +70,20 @@ for d in adapters/*/; do
 done
 [ -n "$distinct" ] || nogo "no CLI harness with a guard under adapters/"
 
+# The shell command a case stands for, for the shapes whose tool is a shell:
+# the forms the header comment lists. $c is the whole case, $i its tool_input.
+shell_form='def shell_form($c; $i):
+  if $c.tool_name == "run_shell_command" then $i.command
+  elif $c.tool_name == "grep_search" then "grep -rn " + ($i.pattern | @sh) + " " + ($i.dir_path // ".")
+       + (if $i.include_pattern then " --include=" + ($i.include_pattern | @sh) else "" end)
+  elif $c.tool_name == "glob" then "find " + ($i.dir_path // ".") + " -path " + ($i.pattern | @sh)
+  elif $c.tool_name == "list_directory" then "ls " + $i.dir_path
+  elif $c.tool_name == "read_many_files" then "cat " + ($i.include | join(" "))
+  elif $c.tool_name == "invoke_agent" then "echo " + ($i.prompt | @sh)
+  elif $c.tool_name == "read_file" then "cat " + $i.file_path
+  elif $c.tool_name == "write_file" then "printf %s " + ($i.content | @sh) + " > " + $i.file_path
+  else error("no shell form for " + $c.tool_name) end;'
+
 # render SHAPE FILE: the case in the shape that CLI hands its hook, one line.
 render() {
   case "$1" in
@@ -57,21 +91,19 @@ render() {
       jq -c '{session_id: "s", cwd: "/crew/0001/workspace", hook_event_name: "BeforeTool",
               transcript_path: "/tmp/crew-home/.gemini/tmp/s/chat.json"} + .' "$2" ;;
     claude)
-      jq -c '{session_id: "s", cwd: "/crew/0001/workspace", hook_event_name: "PreToolUse",
-              transcript_path: "/tmp/crew-home/.claude/projects/-crew/s.jsonl",
-              permission_mode: "acceptEdits", tool_use_id: "toolu_1"}
-             + {tool_name: ({run_shell_command: "Bash", read_file: "Read", write_file: "Write"}[.tool_name]
-                            // error("no Claude Code tool for " + .tool_name)),
-                tool_input: .tool_input}' "$2" ;;
+      jq -c "$shell_form"'. as $c | .tool_input as $i
+             | {session_id: "s", cwd: "/crew/0001/workspace", hook_event_name: "PreToolUse",
+                transcript_path: "/tmp/crew-home/.claude/projects/-crew/s.jsonl",
+                permission_mode: "acceptEdits", tool_use_id: "toolu_1"}
+             + (({run_shell_command: "Bash", read_file: "Read", write_file: "Write"}[$c.tool_name]) as $t
+                | if $t then {tool_name: $t, tool_input: $i}
+                  else {tool_name: "Bash", tool_input: {command: shell_form($c; $i)}} end)' "$2" ;;
     codex)
-      jq -c '. as $c | .tool_input as $i
+      jq -c "$shell_form"'. as $c | .tool_input as $i
              | {session_id: "s", turn_id: "t1", cwd: "/crew/0001/workspace", hook_event_name: "PreToolUse",
                 transcript_path: "/tmp/crew-home/.codex/sessions/rollout-s.jsonl",
                 model: "m", permission_mode: "bypassPermissions", tool_use_id: "call_1", tool_name: "Bash",
-                tool_input: {command: (if $c.tool_name == "run_shell_command" then $i.command
-                                       elif $c.tool_name == "read_file" then "cat " + $i.file_path
-                                       elif $c.tool_name == "write_file" then "printf %s " + ($i.content | @sh) + " > " + $i.file_path
-                                       else error("no Codex form for " + $c.tool_name) end)}}' "$2" ;;
+                tool_input: {command: shell_form($c; $i)}}' "$2" ;;
   esac
 }
 
