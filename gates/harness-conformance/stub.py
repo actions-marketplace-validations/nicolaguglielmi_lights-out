@@ -23,8 +23,10 @@ The script of the running case is /work/case.json, read on every request:
 A step is abstract and is rendered as each vendor's own tool call: Bash, Read and
 Write for Anthropic; run_shell_command, read_file and write_file for Gemini; a
 shell command for OpenAI (`read` is `cat`, `write` is `printf > file`). `grep` is
-grep_search (pattern, dir_path) for Gemini, whose tool takes a file as dir_path, and
-`grep -rn` through Bash and the shell for the others. `jsread`
+grep_search for Gemini, over the workspace with the file named as include_pattern
+(found in the suite: gemini-cli 0.61.0-preview.0's fallback grep, used when ripgrep
+is not usable, refuses a file as dir_path before BeforeTool fires), and `grep -rn`
+through Bash and the shell for the others. `jsread`
 is the one probe of OpenAI's code mode: JavaScript that tries to read a file and
 the environment itself, with no nested tool call, so no hook fires; on every
 other surface it is a `read`. `hang` never answers.
@@ -292,7 +294,8 @@ def render(proto, step, cwd, body):
         if op == "shell":
             return op, True, ("tool", "run_shell_command", {"command": step["cmd"]})
         if op == "grep":
-            return op, True, ("tool", "grep_search", {"pattern": step["pattern"], "dir_path": absolute(step["path"], cwd)})
+            return op, True, ("tool", "grep_search", {"pattern": step["pattern"], "dir_path": cwd or ".",
+                                                      "include_pattern": step["path"]})
         if op in ("read", "jsread"):
             return op, True, ("tool", "read_file", {"file_path": absolute(step["path"], cwd)})
         return op, True, ("tool", "write_file", {"file_path": absolute(step["path"], cwd), "content": step["content"]})
