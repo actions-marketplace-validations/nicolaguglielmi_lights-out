@@ -32,7 +32,8 @@ jobs:
   # workloads/minimal with the drafted contract committed: a good change
   # (GO, a check run `success` on this commit) and a change that breaks a
   # test (NO-GO, a check run `failure`). Both check runs land on this
-  # workflow's commit, where the branch's checks show them.
+  # workflow's commit, where the branch's checks show them: the second is
+  # red on purpose, and its name says so.
   action:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
@@ -74,6 +75,7 @@ jobs:
           base: ${{ steps.scratch.outputs.base }}
           head: ${{ steps.scratch.outputs.good }}
           image: localhost/lights-out:dev
+          name: "lights-out gates (Action test: a good change, GO expected)"
       - name: The Action on the bad change
         id: bad
         continue-on-error: true
@@ -83,6 +85,7 @@ jobs:
           base: ${{ steps.scratch.outputs.good }}
           head: ${{ steps.scratch.outputs.bad }}
           image: localhost/lights-out:dev
+          name: "lights-out gates (Action test: a broken test, NO-GO expected)"
       - name: Both verdicts are what they must be, and both check runs were posted
         env:
           GOOD: ${{ steps.good.outputs.line }}
@@ -96,11 +99,11 @@ jobs:
           case "$BAD" in "NO-GO: gates — test: "*) ;; *) echo "the bad change was not NO-GO at test"; exit 1 ;; esac
           [ "$BAD_OUTCOME" = failure ] || { echo "the Action did not fail on NO-GO"; exit 1; }
           runs=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?check_name=lights-out%20gates&per_page=100")
-          printf '%s' "$runs" | jq -r '.check_runs[] | "\(.id) \(.conclusion) \(.output.title)"'
-          printf '%s' "$runs" | jq -e --arg l "$GOOD" '[.check_runs[] | select(.conclusion == "success" and .output.title == $l)] | length > 0' >/dev/null \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?filter=all&per_page=100")
+          printf '%s' "$runs" | jq -r '.check_runs[] | select(.name | startswith("lights-out gates")) | "\(.id) \(.name): \(.conclusion), \(.output.title)"'
+          printf '%s' "$runs" | jq -e --arg l "$GOOD" '[.check_runs[] | select(.name | startswith("lights-out gates (Action test: a good")) | select(.conclusion == "success" and .output.title == $l)] | length > 0' >/dev/null \
             || { echo "no success check run carries the GO line"; exit 1; }
-          printf '%s' "$runs" | jq -e --arg l "$BAD" '[.check_runs[] | select(.conclusion == "failure" and .output.title == $l)] | length > 0' >/dev/null \
+          printf '%s' "$runs" | jq -e --arg l "$BAD" '[.check_runs[] | select(.name | startswith("lights-out gates (Action test: a broken")) | select(.conclusion == "failure" and .output.title == $l)] | length > 0' >/dev/null \
             || { echo "no failure check run carries the NO-GO line"; exit 1; }
 
   # Publishing is the owner's act: never on a branch push, only on a v*

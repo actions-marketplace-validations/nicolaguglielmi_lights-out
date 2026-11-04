@@ -47,6 +47,10 @@ inputs:
     description: The lights-out image. Default the one this ref's wrapper names.
     required: false
     default: ""
+  name:
+    description: The check run's name.
+    required: false
+    default: lights-out gates
   token:
     description: The token that posts the check run.
     required: false
@@ -97,15 +101,16 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         LO_SHA: ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }}
+        LO_NAME: ${{ inputs.name }}
         LO_LINE: ${{ steps.gates.outputs.line }}
         LO_VERDICT: ${{ steps.gates.outputs.verdict }}
       run: |
         set -u
         conclusion=failure
         [ "$LO_VERDICT" != GO ] || conclusion=success
-        body=$(jq -n --arg sha "$LO_SHA" --arg c "$conclusion" --arg line "$LO_LINE" \
+        body=$(jq -n --arg name "$LO_NAME" --arg sha "$LO_SHA" --arg c "$conclusion" --arg line "$LO_LINE" \
           --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-          '{name: "lights-out gates", head_sha: $sha, status: "completed", conclusion: $c,
+          '{name: $name, head_sha: $sha, status: "completed", conclusion: $c,
             details_url: $url, output: {title: ($line | .[0:255]), summary: $line}}')
         resp=$(mktemp)
         code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST \
@@ -113,7 +118,7 @@ runs:
           -H "X-GitHub-Api-Version: 2022-11-28" \
           "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/check-runs" -d "$body") || code=000
         if [ "$code" = 201 ]; then
-          printf 'lights-out gates: check run posted on %s, %s\n' "$LO_SHA" "$conclusion"
+          printf '%s: check run posted on %s, %s\n' "$LO_NAME" "$LO_SHA" "$conclusion"
           printf 'check_url=%s\n' "$(jq -r .html_url "$resp")" >> "$GITHUB_OUTPUT"
         else
           printf '::warning title=lights-out gates::the check run was not posted (HTTP %s; a fork pull request has a read-only token, or checks: write is missing); the job status carries the verdict\n' "$code"
