@@ -48,7 +48,7 @@ harness=${CREW_HARNESS:-${HARNESS:-$AGENT_HARNESS}}
 # tickets. An attached repository has none, so at L0 there is nothing to
 # replay: say so before anything is bootstrapped, never a fake success.
 if [ -n "${WORKLOAD_ATTACHED:-}" ] && [ "$harness" = replay ]; then
-  nogo "the attached repository $(git -C "$WORKLOAD" remote get-url origin 2>/dev/null || printf '%s' "$WORKLOAD") has no recordings to replay at L0; run the crew at L1: PROFILE=l1 and GEMINI_API_KEY in .env (see .env.example)"
+  nogo "the attached repository $(git -C "$WORKLOAD" remote get-url origin 2>/dev/null || printf '%s' "$WORKLOAD") has no recordings to replay at L0; run the crew at L1: PROFILE=l1 and the key of MODEL_PROVIDER in .env (see .env.example)"
 fi
 : "${WORKLOAD_CONTRACT:?WORKLOAD_CONTRACT not set; run this via ./go, not directly}"
 # The workload's brief for the dev-worker (docs/adr/0037 §6): where its

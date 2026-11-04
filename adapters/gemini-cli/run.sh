@@ -37,12 +37,31 @@ set -eu
 : "${TIMEOUT_S:?TIMEOUT_S not set}"
 : "${TOKEN_BUDGET:?TOKEN_BUDGET not set}"
 
-case "${GEMINI_API_KEY:-}" in
-  ""|replace-me)
-    printf 'harness-gemini-cli: GEMINI_API_KEY is empty or the .env.example placeholder; set it in .env\n' >&2
+# The model is the profile's (docs/adr/0040 §1, §4): this harness runs
+# Gemini only until the claude-code and codex harnesses of M19.
+case "${MODEL_PROVIDER:-}" in
+  gemini) ;;
+  *)
+    printf 'harness-gemini-cli: MODEL_PROVIDER=%s needs the claude-code or codex harness (M19, docs/adr/0041); this harness runs gemini only\n' "${MODEL_PROVIDER:-}" >&2
     exit 1
     ;;
 esac
+[ -n "${MODEL:-}" ] || { printf 'harness-gemini-cli: MODEL is empty; set the exact model id in the profile or .env (docs/adr/0040 §1)\n' >&2; exit 1; }
+case "${GEMINI_API_KEY:-}" in
+  ""|replace-me)
+    printf 'harness-gemini-cli: MODEL_PROVIDER=gemini needs a real GEMINI_API_KEY in .env (see .env.example)\n' >&2
+    exit 1
+    ;;
+esac
+
+# The role's THINKING mapped to the CLI's thinkingLevel enum by this
+# adapter's own map (docs/adr/0040 §2); a missing line refuses here.
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+thinking_key="GEMINI_$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')"
+GEMINI_THINKING_LEVEL=$(grep "^${thinking_key}=" "$here/thinking.env" | head -n1 | cut -d= -f2)
+[ -n "$GEMINI_THINKING_LEVEL" ] || { printf 'harness-gemini-cli: %s has no %s= line (docs/adr/0040 §2)\n' "$here/thinking.env" "$thinking_key" >&2; exit 1; }
+export GEMINI_THINKING_LEVEL
 
 # WORKSPACE, OUT and TICKET_FILE are host paths under this checkout's
 # .crew/ (crew.sh's and step-review.sh's own convention); compose mounts
@@ -62,6 +81,7 @@ docker-compose --profile crew run --rm --build \
   -e CREW_WORKSPACE="$(to_container "$WORKSPACE")" \
   -e CREW_OUT="$(to_container "$OUT")" \
   -e THINKING -e MAX_TURNS -e TIMEOUT_S -e TOKEN_BUDGET \
+  -e MODEL -e GEMINI_THINKING_LEVEL \
   gemini-cli >&2 || container_rc=$?
 end=$(date +%s)
 duration=$((end - start))
@@ -134,11 +154,11 @@ model_served=$(printf '%s' "$stats" | jq -r '(.models // {}) | to_entries | max_
 # run without a final message never gets.
 write_run_json() {
   jq -n \
-    --arg harness gemini-cli --arg model "$model_served" --arg thinking "$THINKING" \
+    --arg harness gemini-cli --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
     --argjson turns "$turns" --arg insha "$input_sha256" \
     --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
     --argjson duration "$duration" --argjson exitCode "$container_rc" \
-    '{harness: $harness, model: $model, thinking: $thinking, turns: $turns,
+    '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
       tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
       duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}' > "$OUT/run.json"
 }

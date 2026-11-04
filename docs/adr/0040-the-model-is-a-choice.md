@@ -1,0 +1,56 @@
+# ADR 0040 — The model is a choice: `MODEL_PROVIDER` and `MODEL` in the profile, the thinking map in each adapter, ADK reaches Claude and OpenAI through `LiteLlm`, `gemini-cli` stays Gemini-only until M19
+
+- Status: accepted (amends ADR 0020 §2 [the model is the profile's, no longer derived from `AGENT_HARNESS`; its rejected "profile key for the model" now has its reason], ADR 0017 §3 and ADR 0018 §6 [the CLI's model id comes from `MODEL`; plan §5 is amended by §16]). §7's non-Gemini recording: implemented, not yet recorded.
+- Date: 2026-11-03
+- Milestone: M18
+- Numbered 0040: plan §16 gives M18 ADR 0039, which went to the Gitea-runner ADR the same day; the §16 numbers after it shift by one (M19 → 0041).
+
+## Context
+
+Plan §16 makes the runtime model a profile choice (Gemini, Claude, OpenAI) while `THINKING` stays the per-role lever (§5). Today `gemini-3.8-flash` is hardcoded in `adapters/adk/lights_out_adk/model.py` (`MODEL_ID`), twice in `adapters/gemini-cli/entrypoint.sh`, and named in a `roles/` comment; `GEMINI_API_KEY` is named in `core/crew.sh` and a `gates/mutation.sh` comment. L0 replays and must keep needing no key.
+
+## Decision
+
+1. **Two keys, set together.** `profiles/l1.env`–`l3.env`: `MODEL_PROVIDER=gemini`, `MODEL=gemini-3.8-flash` (ADR 0018's pinned id). `profiles/l0.env`: both present and empty (`ci/profiles.sh` wants one key set; empty is the truth at L0). `.env` overrides the profile (Makefile include order), the command line overrides both. An adapter that calls a model refuses, in one line naming the variable: empty `MODEL`, a provider outside `gemini|anthropic|openai`, or an empty/`replace-me` key for the chosen provider only (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). It never derives an id from the provider; a mismatched pair is refused by the vendor's "model not found", printed as the adapter's line. So the done-when command names both: `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` (plan §16 amended). `.env.example` gains the two keys as `replace-me` and two commented pairs, `claude-sonnet-5-5` and `gpt-6.1-sol`: the middle of each vendor's current line-up, where Flash sits in Gemini's (decision, not measurement). `ci/gitleaks-worktree.toml`'s `.env` entry grows to the three key lines, or a real Claude key turns `./go ci` red.
+2. **The thinking map is `adapters/<harness>/thinking.env`.** Lines `<PROVIDER>_<LEVEL>=<value the request carries>` (`GEMINI_LOW=low` … `OPENAI_HIGH=high`), read by `roles.py`'s `read_env` and in shell by `grep '^GEMINI_HIGH=' | cut -d= -f2`. A comment above each provider's three lines cites the page and the date read (`read_env` skips whole-line comments only). adk: Gemini `thinking_level`, Anthropic and OpenAI as LiteLLM `reasoning_effort`. gemini-cli: `GEMINI_LOW=LOW` …, the settings.json enum (ADR 0017 §3, live since ADR 0018's run); `entrypoint.sh`'s `tr` goes. A missing line is a refusal naming file and key. Three levels stay three. A unit test builds the outgoing request offline for each provider × level and asserts the value the vendor receives; should a LiteLLM bump rewrite a level, the file records what is sent and the README says so.
+3. **ADK.** `select_model`: replay unchanged; `gemini` → `Gemini(model=MODEL)` plus today's `BuiltInPlanner`; `anthropic|openai` → `LiteLlm(model="<provider>/<MODEL>", reasoning_effort=<map>, api_key=<key>)` with **no planner** (LiteLlm ignores `thinking_config`; a planner there is a lever that looks wired and is not, ADR 0018's bug again). `LiteLlm` is imported inside that branch only; a test asserts `litellm` is not in `sys.modules` after the three agents are built at replay. `RecordingLlm`/`ReplayLlm` wrap any `BaseLlm` unchanged; the recording gains `provider`. `run.json` gains `provider`; `model` is the last non-empty `model_version` of the responses (served, ADR 0018; `unknown` if none, never the requested id); `thinking` is the role's `THINKING`. At L0, `provider: null`, `model: null` (the `adapters/replay` precedent, replacing today's `"replay"`) and `recorded: {provider, model, turns, tokens}` from the fixture: that is the done-when's "provider in run.json", and `adapters/network/run.sh` already reads `.run.model // .run.recorded.model`. The seven `fixtures/adk/` files and the gemini-cli fixtures' `run.json` gain `"provider": "gemini"`, the only key either path accepted (ADR 0017 §3, ADR 0020 §2); replay keys (input hashes) do not move.
+4. **gemini-cli runs Gemini only.** Any other provider: `harness-gemini-cli: MODEL_PROVIDER=<x> needs the claude-code or codex harness (M19, ADR 0041)`. `-m "$MODEL"`, `model.name` and the alias keyed on `$MODEL`; `run.sh` passes `-e MODEL`; the crew container still receives `GEMINI_API_KEY` alone. `run.json` gains `provider`.
+5. **`ci/model-free.sh`**, `ci/vendor-free.sh`'s shape: `grep -rniE 'gemini-[0-9]|claude-[a-z]+-[0-9]|gpt-[0-9]|model_id|_api_key'` over `core gates verify roles`, every file, comments included; joins `CI_CHECKS`. Ids are set in `profiles/` and `.env`, translated in `adapters/`; `fixtures/` and `docs/` record and are not scanned. Today's three hits are reworded: `roles/dev-worker/role.env` cites ADR 0018, `core/crew.sh` says "the key for MODEL_PROVIDER", `gates/mutation.sh` says "an L1 key".
+6. **`litellm==1.106.6` in `workbench/pyproject.toml`**, the only new pin (`openai` comes with it; not `google-adk[extensions]`, which adds the anthropic SDK nothing calls). Every clone pays it once, L0 included: at most +178 MB installed (Verified; the workbench venv already shares some of those packages), at most ~71 s of download on ADR 0004's 20 Mbit/s reference line (arithmetic), then cached under the image tag (cksum of pyproject and lock). Measured 2026-11-03 on this host: the workbench image goes from 1.56 GB to 1.75 GB (+190 MB; `podman images`), one `uv sync` layer rebuilt, the rest cached. litellm fetches its model-cost table from GitHub at import unless `LITELLM_LOCAL_MODEL_COST_MAP=True` (its `get_model_cost_map.py`): `adapters/adk/run.sh` sets it, so a role's only network is its provider's API. If a cold `./go demo` on a clean container exceeds 900 s, M18 stops and asks.
+7. **`record-evals`** takes `MODEL_PROVIDER`/`MODEL` from the include order and the command line, refuses at L0 as today, and greps the fixtures for each of the three keys that is set and not `replace-me` (today's `grep -- "$GEMINI_API_KEY"` with an empty key matches every file and would delete a Claude recording). M18 records no non-Gemini fixture; the owner does, with his keys.
+
+## Alternatives rejected
+
+- **Model id in `role.env`**: makes the model the role's; plan §16 makes it the profile's.
+- **`MODEL_PROVIDER` alone, a default id per provider in the adapter**: a hidden id that rots in code, not where a user looks.
+- **Per-provider id keys in the profile (`ANTHROPIC_MODEL=` …)**: three ids per profile kept current where one is used.
+- **One key, `MODEL=anthropic/claude-sonnet-5-5`**: no mismatch possible, but plan, done-when and `CLAUDE.md` name two keys, and the vendor already refuses a mismatch.
+- **ADK's native `anthropic_llm.Claude`**: `AsyncAnthropicVertex` only, needs Vertex credentials.
+- **Claude via Vertex or Bedrock**: a cloud account at L1 breaks zero entry cost; ADR 0029 makes Google the target, not the gate.
+- **`LiteLlm` for Gemini too**: one path, but it moves the recorded, working path off ADK's planner.
+- **A small `BaseLlm` per vendor over REST**: no dependency, but we would own two tool-call translations both ways that `lite_llm.py` (over 3,100 lines) maintains.
+- **litellm in a second image or venv, or installed at first use**: ADR 0028's flavour comes from the profile, the provider also from `.env`, so `./go` would read a second place; a first-use install runs outside the Containerfile (ADR 0028).
+- **`THINKING` mapped to `xhigh`/`max`**: the plan's three levels stay three.
+- **A seventh role, or a provider per role**: one model at a time (plan §5); `ci/roles.sh`.
+
+## Consequences
+
+- **The one that hurts:** on Claude and OpenAI thinking travels as `reasoning_effort`, beside ADK's planner, not through it. If a later ADK teaches `LiteLlm` to read `thinking_config` and someone attaches the planner "for symmetry", two reasoning settings travel. The guards are one map per adapter and §2's test, which asserts exactly one reasoning parameter per request.
+- Ids rot: the vendors retire pinned snapshots. The failure is the vendor's error in the adapter's line; `ci/model-free.sh` keeps the fix to `profiles/` and `.env.example`.
+- `MAX_TURNS` (Gemini's free-tier request cap) and `TOKEN_BUDGET` (ADR 0021 §6) are Gemini measurements, and other tokenizers count differently. In M18 they bind only gemini-cli, which runs only Gemini; they stay per role until re-measured per provider in M19. A note, not a number.
+- At L1 with `anthropic|openai` the three ADK roles run; the crew step refuses until M19, so `./go e2e PROFILE=l1` stops at dev-worker with §4's line.
+- Fixtures stay Gemini until the owner records; the README says L0 replays Gemini.
+- 50 more packages in the image that holds the keys; `gates/deps.sh` does not scan workbench (ADR 0017's precedent). `ci/attach.sh`'s `env -u` list gains the two keys and the two model keys.
+
+## Verified (2026-11-03, parent session; not re-verified here)
+
+- google-adk 2.9.1: `google.adk.models.lite_llm.LiteLlm(BaseLlm)` forwards every kwarg to `litellm.acompletion` (lite_llm.py ~3111–3182); ImportError without `litellm`; the `extensions` extra wants `litellm>=1.84`, `anthropic>=0.78`, `openai>=2.20,<3`; no reference to `thinking_config`; served id in `LlmResponse.model_version` (lite_llm.py 2461, google_llm.py 624). `anthropic_llm.Claude` is `AsyncAnthropicVertex` only.
+- litellm 1.106.6 (PyPI, 2026-10-28): Python >=3.10,<3.15, depends on `openai>=2.20,<3`, not the anthropic SDK; `model_cost` knows the ids below. Measured transformation, each of `reasoning_effort` in `low|medium|high`: on `claude-sonnet-5-5` → `{"thinking": {"type": "adaptive", "display": "summarized"}, "output_config": {"effort": "<same level>"}}`; on `gpt-6-astra`/`gpt-6.1-sol` → `{"reasoning_effort": "<same level>"}` (OpenAIGPT5Config). No level is rewritten: the map is 1:1 on all three providers.
+- Size, fresh Python 3.13 venv: google-adk 2.9.1 alone 61 MB; plus litellm and 50 transitive deps 239 MB; +178 MB.
+- Anthropic (models overview, effort page): `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, pinned snapshots; `output_config.effort` in `low|medium|high|xhigh|max` on all four.
+- OpenAI (models page, reasoning guide): `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-luna`; `reasoning_effort` in `none|minimal|low|medium|high|xhigh|max`, model-dependent (`gpt-6.1-sol` rejects `none`, `minimal`), default `medium`.
+- Gemini (AI Studio thinking and models pages): `thinking_level`; `gemini-3.8-flash` takes `low|medium|high`; listed under "New". The free tier is the only free path at L1 (plan §16).
+
+## Golden-rule check
+
+At L0 both keys are empty, replay reads neither, `litellm` is never imported, no key is asked for. The cost is one larger workbench build per clone, at most +178 MB, measured at M18 close against 900 s; over it, stop and ask.

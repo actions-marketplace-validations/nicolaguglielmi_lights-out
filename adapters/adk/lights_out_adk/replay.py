@@ -2,7 +2,8 @@
 recorded once at L1, keyed by the first user message, indexed by how many
 model turns the request already carries — stateless, re-runnable, and
 loud when the recording is missing or exhausted. RecordingLlm is the
-other half: it wraps the real model and writes the same file."""
+other half: it wraps the real model, whatever BaseLlm it is (Gemini or
+LiteLlm, docs/adr/0040 §3), and writes the same file, provider included."""
 
 from __future__ import annotations
 
@@ -64,6 +65,9 @@ class ReplayLlm(BaseLlm):
     role: str
     fixtures_dir: str
     instruction_sha256: Optional[str] = None
+    # The last recording replayed: run.json reports its provider and model
+    # under `recorded` (docs/adr/0040 §3).
+    recorded: Optional[dict] = None
 
     @classmethod
     def supported_models(cls) -> list[str]:
@@ -77,6 +81,7 @@ class ReplayLlm(BaseLlm):
                 f"(input starts: {input_text.strip()[:80]!r}); record them with {RECORD_COMMAND}"
             )
         recording = json.loads(path.read_text())
+        self.recorded = {"provider": recording.get("provider"), "model": recording.get("model")}
         recorded_under = recording.get("instruction_sha256")
         if (
             self.instruction_sha256
@@ -114,6 +119,7 @@ class RecordingLlm(BaseLlm):
     call by call, to the file ReplayLlm reads."""
 
     model: str
+    provider: str
     role: str
     fixtures_dir: str
     inner: BaseLlm
@@ -131,6 +137,7 @@ class RecordingLlm(BaseLlm):
                 "input": canonical(input_text),
                 "instruction_sha256": self.instruction_sha256,
                 "model": self.inner.model,
+                "provider": self.provider,
                 "recorded_at": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "responses": [],
             }

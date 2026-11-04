@@ -2,6 +2,7 @@
   "input": "{\n  \"held_at\": 25,\n  \"image\": \"zot.local/lights-out/backend:0.2.0-waitlist\",\n  \"stable\": \"0.1.0-m2\",\n  \"stages\": [\n    {\n      \"numbers\": [\n        \"slo: traffic canary(0.2.0-waitlist)=0.208 stable(0.1.0-m2)=4.018\",\n        \"slo: error_rate canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=0.000\"\n      ],\n      \"pct\": 5,\n      \"verdict\": \"GO\"\n    },\n    {\n      \"numbers\": [\n        \"slo: traffic canary(0.2.0-waitlist)=1.040 stable(0.1.0-m2)=3.186\",\n        \"slo: error_rate canary(0.2.0-waitlist)=0.000 stable(0.1.0-m2)=0.000\"\n      ],\n      \"pct\": 25,\n      \"verdict\": \"GO\"\n    }\n  ],\n  \"verdict\": \"held\",\n  \"version\": \"0.2.0-waitlist\"\n}",
   "instruction_sha256": "5af11a944f8c313ad8e0f9356d15f0110f7d35ee6be35037ee921430f62f268d",
   "model": "gemini-3.8-flash",
+  "provider": "gemini",
   "recorded_at": "2026-09-16T14:47:52Z",
   "responses": [
     {
