@@ -153,7 +153,7 @@ Da non confondere con il precedente: i modelli qui sotto servono a **scrivere qu
 
 `CLAUDE_CODE_SUBAGENT_MODEL` sovrascrive il modello di tutti i subagent: usalo come tetto di spesa quando serve, non come default.
 
-*Nota 2026-11-04:* l'assegnazione per milestone del terzo arco (modello della sessione, subagent, effort per fase) è in [`docs/plans/third-arc-execution.md`](plans/third-arc-execution.md); la tabella degli effort che la skill `/milestone` applica sta in `.claude/skills/milestone/SKILL.md`.
+*Nota 2026-11-04, decisione dell'owner:* il modello minimo di costruzione è `sonnet`, anche per rinomine e commit message (la riga `haiku` qui sopra non si usa più); su Sonnet l'effort è `xhigh` ovunque il ragionamento serva, basso solo nei run di accettazione. L'assegnazione per milestone del terzo arco (modello della sessione, subagent, effort per fase) è in [`docs/plans/third-arc-execution.md`](plans/third-arc-execution.md); la tabella degli effort che la skill `/milestone` applica sta in `.claude/skills/milestone/SKILL.md`.
 
 ### Antigravity
 *Stato 2026-11-02: non usato. L'adapter `antigravity-sdk` non esiste ancora (tabella in §4); la superficie umana descritta qui sotto non è nel repo.*
