@@ -13,7 +13,7 @@ It runs complete on your laptop: no account, no API key, no cloud.
 | Your machine | Run |
 |---|---|
 | macOS | `brew install podman`<br>`podman machine init --cpus 4 --memory 6144`<br>`podman machine start` |
-| Linux | install podman, then<br>`systemctl --user enable --now podman.socket` |
+| Linux | `sudo apt-get install -y podman` (Debian, Ubuntu) or `sudo dnf install -y podman` (Fedora), then<br>`systemctl --user enable --now podman.socket` |
 | Docker on Linux | start Docker and put `CONTAINER_ENGINE=docker` before every `./go` (what CI runs) |
 
 **2. Clone and run**
