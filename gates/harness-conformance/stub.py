@@ -16,12 +16,15 @@ The script of the running case is /work/case.json, read on every request:
     {"case": "<harness>/<n>", "cwd": "<the workspace as the CLI sees it>",
      "steps": [{"op": "shell", "cmd": "..."}, {"op": "read", "path": "..."},
                {"op": "write", "path": "...", "content": "..."},
+               {"op": "grep", "pattern": "...", "path": "..."},
                {"op": "jsread", "path": "..."}, {"op": "final", "text": "..."},
                {"op": "hang"}]}
 
 A step is abstract and is rendered as each vendor's own tool call: Bash, Read and
 Write for Anthropic; run_shell_command, read_file and write_file for Gemini; a
-shell command for OpenAI (`read` is `cat`, `write` is `printf > file`). `jsread`
+shell command for OpenAI (`read` is `cat`, `write` is `printf > file`). `grep` is
+grep_search (pattern, dir_path) for Gemini, whose tool takes a file as dir_path, and
+`grep -rn` through Bash and the shell for the others. `jsread`
 is the one probe of OpenAI's code mode: JavaScript that tries to read a file and
 the environment itself, with no nested tool call, so no hook fires; on every
 other surface it is a `read`. `hang` never answers.
@@ -199,12 +202,18 @@ def absolute(path, cwd):
     return path if path.startswith("/") or not cwd else cwd.rstrip("/") + "/" + path
 
 
+def grep_cmd(step):
+    return "grep -rn " + shlex.quote(step["pattern"]) + " " + shlex.quote(step["path"])
+
+
 def shell_form(step, op):
     """The step as one shell command, for the surface that has only a shell."""
     if op == "read" or op == "jsread":
         return "cat " + shlex.quote(step["path"])
     if op == "write":
         return "printf %s " + shlex.quote(step["content"]) + " > " + shlex.quote(step["path"])
+    if op == "grep":
+        return grep_cmd(step)
     return step["cmd"]
 
 
@@ -269,17 +278,21 @@ def render(proto, step, cwd, body):
     op = step.get("op")
     if op == "final":
         return op, None, ("text", step.get("text", ""))
-    if op not in ("shell", "read", "write", "jsread"):
+    if op not in ("shell", "read", "write", "jsread", "grep"):
         raise Fault(503, "case.json: unknown op %r" % op)
     if proto == "anthropic":
         if op == "shell":
             return op, True, ("tool", "Bash", {"command": step["cmd"]})
+        if op == "grep":
+            return op, True, ("tool", "Bash", {"command": grep_cmd(step)})
         if op in ("read", "jsread"):
             return op, True, ("tool", "Read", {"file_path": absolute(step["path"], cwd)})
         return op, True, ("tool", "Write", {"file_path": absolute(step["path"], cwd), "content": step["content"]})
     if proto == "gemini":
         if op == "shell":
             return op, True, ("tool", "run_shell_command", {"command": step["cmd"]})
+        if op == "grep":
+            return op, True, ("tool", "grep_search", {"pattern": step["pattern"], "dir_path": absolute(step["path"], cwd)})
         if op in ("read", "jsread"):
             return op, True, ("tool", "read_file", {"file_path": absolute(step["path"], cwd)})
         return op, True, ("tool", "write_file", {"file_path": absolute(step["path"], cwd), "content": step["content"]})
