@@ -14,9 +14,9 @@ set -eu
 name=incident
 . ci/lib.sh
 
-: "${NAME:?NAME not set; ./go incident NAME=<slug> FROM=<utc> TO=<utc>}"
-: "${FROM:?FROM not set; ./go incident NAME=<slug> FROM=<utc> TO=<utc>}"
-: "${TO:?TO not set; ./go incident NAME=<slug> FROM=<utc> TO=<utc>}"
+[ -n "${NAME:-}" ] || nogo "NAME not set; ./go incident NAME=<slug> FROM=<utc> TO=<utc>"
+[ -n "${FROM:-}" ] || nogo "FROM not set; ./go incident NAME=<slug> FROM=<utc> TO=<utc>"
+[ -n "${TO:-}" ] || nogo "TO not set; ./go incident NAME=<slug> FROM=<utc> TO=<utc>"
 : "${RELEASE_RECORD:=.crew/release.json}"
 : "${INCIDENT_OUT:=.crew/incidents}"
 
