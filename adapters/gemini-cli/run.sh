@@ -37,12 +37,17 @@ set -eu
 : "${TIMEOUT_S:?TIMEOUT_S not set}"
 : "${TOKEN_BUDGET:?TOKEN_BUDGET not set}"
 
-# The model is the profile's (docs/adr/0040 §1, §4): this harness runs
-# Gemini only until the claude-code and codex harnesses of M19.
+# The model is the profile's (docs/adr/0040 §1, §4); one provider per
+# harness (docs/adr/0041 §2).
 case "${MODEL_PROVIDER:-}" in
   gemini) ;;
+  anthropic|openai)
+    fits=claude-code; [ "$MODEL_PROVIDER" = openai ] && fits=codex
+    printf 'harness-gemini-cli: MODEL_PROVIDER=%s runs on AGENT_HARNESS=%s (docs/adr/0041 §2); this harness runs gemini only\n' "$MODEL_PROVIDER" "$fits" >&2
+    exit 1
+    ;;
   *)
-    printf 'harness-gemini-cli: MODEL_PROVIDER=%s needs the claude-code or codex harness (M19, docs/adr/0041); this harness runs gemini only\n' "${MODEL_PROVIDER:-}" >&2
+    printf 'harness-gemini-cli: MODEL_PROVIDER=%s is not gemini; this harness runs gemini only (docs/adr/0041 §2)\n' "${MODEL_PROVIDER:-}" >&2
     exit 1
     ;;
 esac
@@ -64,14 +69,35 @@ GEMINI_THINKING_LEVEL=$(grep "^${thinking_key}=" "$here/thinking.env" | head -n1
 export GEMINI_THINKING_LEVEL
 
 # WORKSPACE, OUT and TICKET_FILE are host paths under this checkout's
-# .crew/ (crew.sh's and step-review.sh's own convention); compose mounts
-# ./.crew at /crew 1:1 (docs/adr/0017 §3), so the in-container path is
-# always the same suffix. Was hardcoded to $TICKET/{workspace,out,ticket.md}
-# until docs/adr/0021 §3: a review run's input document is not ticket.md.
+# .crew/ (crew.sh's and step-review.sh's own convention). The service
+# mounts only this run's directory, OUT's parent, at the same suffix under
+# /crew (docs/adr/0041 §4): never .crew/ itself, which holds the release
+# signing key and every other ticket. Was hardcoded to $TICKET/{workspace,
+# out,ticket.md} until docs/adr/0021 §3: a review run's input document is
+# not ticket.md.
 crew_root=$(pwd)/.crew
 to_container() { printf '/crew/%s' "${1#"$crew_root"/}"; }
+run_dir=$(dirname "$OUT")
+case "$run_dir/" in "$crew_root"/?*) ;; *) printf 'harness-gemini-cli: OUT=%s is not under %s/ (docs/adr/0041 §4)\n' "$OUT" "$crew_root" >&2; exit 1 ;; esac
+for p in "$WORKSPACE" "$TICKET_FILE"; do
+  case "$p" in "$run_dir"/*) ;; *) printf 'harness-gemini-cli: %s is outside the run directory %s, the only one the worker sees (docs/adr/0041 §4)\n' "$p" "$run_dir" >&2; exit 1 ;; esac
+done
+mkdir -p "$crew_root/.uv-cache"
+
+# MODEL_BASE_URL is the one seam gates/harness-conformance.sh sets, to
+# drive this CLI against its scripted model (docs/adr/0041 §7); unset
+# everywhere else. Gemini CLI reads GOOGLE_GEMINI_BASE_URL (verified
+# 2026-11-04 against the pinned bundle), and it is always set, to the
+# API's own host when the seam is unset: found building M19, the CLI also
+# loads a .env from the workspace, so a repository could otherwise point
+# it, key and all, at a host of its choosing (verified live: a workspace
+# .env with GOOGLE_GEMINI_BASE_URL sent the request there; set in the
+# environment, it wins).
+endpoint=${MODEL_BASE_URL:-}
+gemini_base_url=${endpoint:-https://generativelanguage.googleapis.com}
 
 mkdir -p "$OUT"
+rm -f "$OUT/stop"
 input_sha256=$(sha256sum "$TICKET_FILE" | cut -d' ' -f1)
 start=$(date +%s)
 container_rc=0
@@ -82,10 +108,20 @@ docker-compose --profile crew run --rm --build \
   -e CREW_OUT="$(to_container "$OUT")" \
   -e THINKING -e MAX_TURNS -e TIMEOUT_S -e TOKEN_BUDGET \
   -e MODEL -e GEMINI_THINKING_LEVEL \
+  -e GOOGLE_GEMINI_BASE_URL="$gemini_base_url" \
+  -v "$run_dir:$(to_container "$run_dir")" \
+  -v "$crew_root/.uv-cache:/crew/.uv-cache" \
   gemini-cli >&2 || container_rc=$?
 end=$(date +%s)
 duration=$((end - start))
 
+# A budget hook names the budget it stopped on in OUT/stop (docs/adr/0041
+# §5): that, not the exit code the CLI chose, is the stop reason.
+stopped=$(cat "$OUT/stop" 2>/dev/null || true)
+if [ "$stopped" = TOKEN_BUDGET ]; then
+  printf 'harness-gemini-cli: over TOKEN_BUDGET (%s)\n' "$TOKEN_BUDGET" >&2
+  exit 1
+fi
 if [ "$container_rc" -ne 0 ]; then
   reason="gemini exited $container_rc"
   case "$container_rc" in
@@ -157,10 +193,11 @@ write_run_json() {
     --arg harness gemini-cli --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
     --argjson turns "$turns" --arg insha "$input_sha256" \
     --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
-    --argjson duration "$duration" --argjson exitCode "$container_rc" \
+    --argjson duration "$duration" --argjson exitCode "$container_rc" --arg endpoint "$endpoint" \
     '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
       tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
-      duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}' > "$OUT/run.json"
+      duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
+      + (if $endpoint == "" then {} else {endpoint: $endpoint} end)' > "$OUT/run.json"
 }
 write_run_json
 

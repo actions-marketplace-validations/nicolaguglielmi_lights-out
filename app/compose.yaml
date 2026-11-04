@@ -10,11 +10,20 @@
 #
 # backend/backend-canary/backend-test are the three services the port
 # fixes (docs/adr/0030 §3); postgres/migrate/geocoder are this instance's
-# own. The gemini-cli fragment at the bottom has no `build:` (that stays
+# own. The crew-worker fragment at the bottom has no `build:` (that stays
 # in the root file, workload-agnostic): compose merges its `depends_on`
-# and `environment` into the root file's `gemini-cli` service, which is
-# how the worker reaches this instance's Postgres to run its tests
-# without the root file ever naming it.
+# and `environment` into the root file's harness services, which is how
+# the worker reaches this instance's Postgres to run its tests without
+# the root file ever naming it. It is declared once and applied to every
+# CLI harness's service (docs/adr/0041 §11; ci/harness-shape.sh checks it).
+x-crew-worker: &crew-worker
+  depends_on:
+    - postgres
+  environment:
+    POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
+    TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
+    OTEL_SEMCONV_STABILITY_OPT_IN: http
+
 services:
   postgres:
     image: docker.io/library/postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
@@ -108,18 +117,14 @@ services:
       POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
       TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
 
-  # Extends the root file's gemini-cli service (no build/profiles/volumes
-  # of its own): this instance's Postgres access and the test-database URL
+  # Extend the root file's harness services (no build/profiles/volumes of
+  # their own): this instance's Postgres access and the test-database URL
   # its test suite needs (docs/adr/0017 §10), plus the env var its metrics
   # test needs (app/backend/Containerfile sets it on the shipped image; the
   # worker cannot know that on its own).
-  gemini-cli:
-    depends_on:
-      - postgres
-    environment:
-      POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
-      TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
-      OTEL_SEMCONV_STABILITY_OPT_IN: http
+  gemini-cli: *crew-worker
+  claude-code: *crew-worker
+  codex: *crew-worker
 
 volumes:
   postgres-data:
