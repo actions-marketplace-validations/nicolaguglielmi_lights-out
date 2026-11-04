@@ -19,50 +19,28 @@ wins when the two disagree. Decisions behind each step are in
 | M12 | The Workload port: the platform operates on any workload, not only the bundled app |
 | M13 | Attach: `./go attach <path>` points a plain clone at your repository; its `.lights-out/` holds the contract, the dev-worker's brief and your thresholds (ADR 0037) |
 | M15 | The rework loop: a gates NO-GO or a review asking for changes goes back to the dev-worker with the verdict, up to four attempts, then a human (ADR 0038) |
+| M18 | The model is a choice: `MODEL_PROVIDER` (gemini, anthropic, openai) and `MODEL` in the profile or `.env`, a role keeps only its thinking level and budgets, the ADK roles reach Claude and OpenAI through `LiteLlm`, `ci/model-free.sh` keeps model ids out of the core (ADR 0040). The non-Gemini recording is implemented, not yet run |
 | M19 | The `claude-code` and `codex` harnesses beside `gemini-cli`, one provider each, and `./go harness-conformance` against a scripted model (ADR 0041). Recording with them is implemented, not yet run |
+| M20 | Gates anywhere: `./go init <repo>` drafts `.lights-out/` from the repository itself, and `test`, `sast` and `mutation` run the commands the contract declares, in the workbench, a compose service or an image; init and gates in 40 s on `workloads/minimal`, 8 s on `workloads/minimal-js`, under the 300 s rule; JavaScript with Stryker as the second stack (ADR 0042, *proposed*) |
+| M21 | GitHub as code host: `adapters/github/`, the eight CodeHost verbs on the REST API, the token never in argv or a `.git/config`; an attached repository's merge is built, signed and released; `./go codehost-conformance` against Gitea on every push and against GitHub in a nightly (ADR 0043). The end-to-end run on GitHub is the owner's, not yet run |
+| M22 | Ops without the plane: `./go incident` and `./go postmortem`, a post mortem whose timeline is anchored to the audit chain and whose action items are tickets; the `Metrics` port reads any Prometheus-compatible endpoint (`METRICS_URL`); `./go demo-postmortem` replays a recorded answer, still six roles (ADR 0044, *proposed*) |
+| M23 | One command, one package: the `lights-out` wrapper (`init`, `gates`, `triage`, `postmortem`, `doctor`) on any repository from one image, mounted read-only and never given the engine socket; `./go doctor`; a GitHub Action that posts the gates' line as a check run (ADR 0045, *proposed*). Built and tested in Actions, not yet published |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
 
-The third arc (plan §16, decided 2026-11-03): zero entry cost, and the
-model is a choice. Each milestone gets an ADR first and leaves `./go ci`
-and `./go demo` green. M18 and M20 touch different files (but the
-Makefile and the README) and can run in parallel; M19 needs M18; M21,
-M22 and M23 need M20.
+The third arc (plan §16) is built, except for the runs that are the
+owner's: the Claude and OpenAI recordings, the L1 end-to-end on GitHub
+and the first publish of the image. Two things close before M24, each in
+a session of its own: egress for the harnesses, and the tower restoring
+`.lights-out/runners/` from the base.
 
-1. **M18 — the model is a choice.** `MODEL_PROVIDER` (gemini, anthropic,
-   openai) and `MODEL` in the profile or `.env`; a role keeps only its
-   thinking level and budgets; the ADK roles run on Claude and OpenAI
-   through ADK's LiteLLM wrapper; `ci/model-free.sh` keeps model ids out
-   of the core. L0 stays replay, with no key.
-2. **M19 — `claude-code` and `codex` harnesses.** Done (ADR 0041); the two
-   recordings are the owner's. Two more adapters on
-   the `AgentHarness` port, same artefact contract as `gemini-cli`, and
-   a harness conformance suite every adapter must pass: push denied,
-   `.env` unreadable, budgets enforced, the served model recorded, no key
-   in the artefacts.
-3. **M20 — gates anywhere.** `./go init <repo>` drafts `.lights-out/`
-   from the repository itself; `test`, `sast` and `mutation` run the
-   commands the contract declares in the repository's own toolchain
-   image, so the dev-worker is no longer tied to Python 3.13 and Node 24;
-   a second golden rule: `init` and `gates` under 300 s, no plane.
-   JavaScript with Stryker as the second stack. Absorbs M14's toolchain
-   half.
-4. **M21 — GitHub as code host.** The ticket's PR lands on your
-   repository, judged by your base's policy; a merge on an attached
-   repository is built, signed and released. Proven by a nightly against
-   a throwaway repository. Absorbs M14's release half.
-5. **M22 — ops without the plane.** An incident in (alerts, release
-   record, logs), a post mortem out, anchored to the audit chain, with
-   every action item a ticket that re-enters the tower; the `Metrics`
-   port reads any Prometheus-compatible endpoint (`METRICS_URL`).
-   Still six roles.
-6. **M23 — one command, one package.** A published image and a thin
-   `lights-out` wrapper: `init`, `gates`, `triage`, `postmortem` on any
-   repository without cloning lights-out; a GitHub Action for the gates;
-   a recipe for calling them from a Claude Code, Codex or Gemini CLI hook.
-7. **M24 — the public legacy experiment**, every ticket run with the
-   three providers, the three verdicts published.
+1. **M24 — the public legacy experiment.** Plan §14's experiment on a
+   well-known open-source legacy repository, with every ticket run on the
+   three providers and all three verdicts published, GO and NO-GO alike.
+   The exit criterion is §14's: if at least two tickets in three do not
+   reach a mergeable PR without a human touching the code, the thesis is
+   weaker than expected.
 
 ## Later
 
