@@ -4,7 +4,7 @@ Everything the [README](../README.md) leaves out: what runs at each milestone, e
 
 ## Status
 
-Milestone M20 closed (gates anywhere, ADR 0042). Next, in plan §16's order: M21 (GitHub as code host), M22 (ops without the plane), M23 (the packaged command). What runs today:
+Milestones M19 (harnesses, ADR 0041) and M20 (gates anywhere, ADR 0042) closed. Next, in plan §16's order: M21 (GitHub as code host), M22 (ops without the plane), M23 (the packaged command). What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -24,6 +24,7 @@ Milestone M20 closed (gates anywhere, ADR 0042). Next, in plan §16's order: M21
 | seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
 | attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0037); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
 | rework | M15 | ✓ a gates NO-GO or a CHANGES-REQUESTED review goes back to dev-worker with the verdict, up to four attempts (`policy/rework.env`), then `needs-human`; `./go demo-rework` on ticket 0013's hand-written attempts (ADR 0038) |
+| harnesses | M19 | ✓ `claude-code` (2.1.311) and `codex` (0.166.0) beside `gemini-cli`, one provider each, the guard in each CLI's pre-tool hook, `./go harness-conformance` against a scripted model (no key; plumbing, not a model's ability); recording with them is implemented, not yet run (ADR 0041) |
 | gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
 
 | | |
@@ -75,7 +76,8 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker]
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
 ./go demo-network    # prove a network of members on ticket 0012: one PR through the whole tower (ADR 0036)
-./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker]
+./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker] [AGENT_HARNESS=claude-code|codex MODEL_PROVIDER=anthropic|openai MODEL=<id>]; a non-gemini harness writes fixtures/<ticket>/<role>/<harness>/ (ADR 0041 §10); refuses a set MODEL_BASE_URL
+./go harness-conformance # every CLI harness against a scripted model, nine cases, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041 §8); builds three CLI images, not part of ./go ci or demo
 ./go review          # run the review step on a PR: TICKET=<id> [ROLE=test-reviewer]
 ./go demo-review     # prove a medium-risk PR goes through review (L0 replay of fixture)
 ./go record-review   # record the review role's response at L1 (TICKET=<id> [ROLE=test-reviewer] PROFILE=l1)
@@ -143,7 +145,9 @@ Six gates run in order on a git range (the merge-base of `BASE` and `HEAD`, or t
 
 **Declared limits:** The six gates do not name the app or any workload (verified by `ci/app-free.sh`); instead, they read the active workload's `workload.env` configuration (`WORKLOAD_MUTATION_SCOPE`, `WORKLOAD_LOCKFILES`, `WORKLOAD_KILL_SWITCH`, `MUTATION_BASELINE`). Dependency scan covers both dev and runtime dependencies in the workload and workbench (cosmic-ray and other test tools are included) and is live-validated against the OSV database over the network; `adapters/gemini-cli/package-lock.json` (the Gemini CLI platform toolchain) is declared and not scanned, like workbench's own pinned binaries; the same commit can go from GO to NO-GO overnight with no code change when a new advisory lands (the fix is a version bump or an `osv-scanner.toml` ignore entry with a reason). The migration fixture's column lands in the shared `postgres-data` named volume (the same one `./go up` and `./go test` use) and stays there across runs, harmless to every current test (they use explicit column lists, never `SELECT *`); `./go down` does not remove it, only `docker-compose --profile test --profile canary down -v` from inside `./go shell` does, or a fresh clone. At M4 the Gitea runner has no engine socket; the `gates` CI job runs only on GitHub (`if: github.server_url == 'https://github.com'`). At M8 the socket arrives, but not for this job: it goes to a new `image` job that builds, signs and pushes the merge commit (below); `gates` stays GitHub-only until the milestone that runs the tower on GCP. The socket's three conditions (ADR 0015 §7, ADR 0025 §4): the runner is the only compose service with it, jobs run only on refs the workbench user pushed, and the trusted-network line below says so.
 
-**Model reality check:** The worker pins Gemini CLI `0.61.0-preview.0`, deliberately on the preview channel, because `0.59.0` and the current stable `0.60.0` silently serve `gemini-3.5-flash` when asked for `gemini-3.8-flash` (upstream fix google-gemini/gemini-cli#29252, in no stable release yet); the pin returns to the stable channel at `0.61.0`. A live L1 run on this pin answers from `gemini-3.8-flash` (verified 2026-09-16). The fixture at `fixtures/0001/dev-worker/` stays recorded on `gemini-3.5-flash` — its `run.json` says so — so at L0 the replayed PR was written by 3.5 while a live L1 run answers from 3.8, until the fixture is next re-recorded. See ADR 0018. Since M18 the id comes from `MODEL` in the profile (ADR 0040), still `gemini-3.8-flash`.
+**Model reality check:** The worker pins Gemini CLI `0.61.0-preview.0`, deliberately on the preview channel, because `0.59.0` and the current stable `0.60.0` silently serve `gemini-3.5-flash` when asked for `gemini-3.8-flash` (upstream fix google-gemini/gemini-cli#29252, in no stable release yet); the pin returns to the stable channel at `0.61.0`. A live L1 run on this pin answers from `gemini-3.8-flash` (verified 2026-09-16). The fixture at `fixtures/0001/dev-worker/` stays recorded on `gemini-3.5-flash` — its `run.json` says so — so at L0 the replayed PR was written by 3.5 while a live L1 run answers from 3.8, until the fixture is next re-recorded. See ADR 0018. Since M18 the id comes from `MODEL` in the profile (ADR 0040), still `gemini-3.8-flash`. Since M19 (ADR 0041) the other two harnesses are pinned the same way, by `package-lock.json` in their adapter: Claude Code `2.1.311` (the npm `stable` tag; latest was 2.1.318) with provider `anthropic` and `ANTHROPIC_API_KEY`, and Codex `0.166.0` (latest; no stable channel) with provider `openai` and `OPENAI_API_KEY` passed to the container as `CODEX_API_KEY`. Each `run.sh` refuses another provider. `MAX_TURNS` and `TOKEN_BUDGET` in `roles/` are Gemini measurements and bind all three until recordings re-measure them; the first Claude or OpenAI run may hit a budget for tokenizer reasons alone. The served model is read from the vendor's own signal (the `assistant` events for Claude, a trace line on stderr for Codex) and is `unknown` when unreadable. Neither pin has run against its real API yet: the suite uses a scripted model.
+
+**Found building M19 (ADR 0041):** three holes, each closed. A repository's own `.env` could point gemini-cli's `GOOGLE_GEMINI_BASE_URL`, key included, at another host; the adapter now always sets it. A repository's own `.claude/settings.json` with `disableAllHooks`, and its `.codex/config.toml` with `[features] hooks = false`, each switched the guard off; the adapters now run Claude Code with `--setting-sources user` and Codex with `--enable hooks`, and conformance case 4 checks it. The worker used to mount all of `.crew/`, including the release signing key `.crew/cosign.key`; it now mounts only its run directory (the parent of `OUT`).
 
 ## The L0 plane
 
@@ -267,6 +271,8 @@ lights-out/
   ci/                       # repo self-checks; each prints one line, GO or NO-GO
     lib.sh                  # go / nogo helpers, the output contract
     contract.sh             # meta-gate: every gate honours the contract
+    harness-shape.sh        # every CLI harness: pinned version and lockfile, thinking.env, conformance.env, guard.sh identical to gemini-cli's, fragments name every harness service (ADR 0041 §9)
+    hooks.sh                # the guard's cases in each vendor's input shape (gemini, Claude, Codex)
     secrets.sh              # gitleaks, history and working tree
     lint.sh                 # actionlint on the workflow
     shell.sh                # shellcheck on every sh script

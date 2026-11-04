@@ -19,6 +19,7 @@ wins when the two disagree. Decisions behind each step are in
 | M12 | The Workload port: the platform operates on any workload, not only the bundled app |
 | M13 | Attach: `./go attach <path>` points a plain clone at your repository; its `.lights-out/` holds the contract, the dev-worker's brief and your thresholds (ADR 0037) |
 | M15 | The rework loop: a gates NO-GO or a review asking for changes goes back to the dev-worker with the verdict, up to four attempts, then a human (ADR 0038) |
+| M19 | The `claude-code` and `codex` harnesses beside `gemini-cli`, one provider each, and `./go harness-conformance` against a scripted model (ADR 0041). Recording with them is implemented, not yet run |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
@@ -34,7 +35,8 @@ M22 and M23 need M20.
    thinking level and budgets; the ADK roles run on Claude and OpenAI
    through ADK's LiteLLM wrapper; `ci/model-free.sh` keeps model ids out
    of the core. L0 stays replay, with no key.
-2. **M19 — `claude-code` and `codex` harnesses.** Two more adapters on
+2. **M19 — `claude-code` and `codex` harnesses.** Done (ADR 0041); the two
+   recordings are the owner's. Two more adapters on
    the `AgentHarness` port, same artefact contract as `gemini-cli`, and
    a harness conformance suite every adapter must pass: push denied,
    `.env` unreadable, budgets enforced, the served model recorded, no key

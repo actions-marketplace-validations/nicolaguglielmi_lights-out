@@ -66,6 +66,33 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 - **Your engine:** for plane commands, `./go` hands its toolchain container your engine's socket, which means full control of the engine. Run it where that is acceptable.
 - **Cloud:** Google Cloud profiles are designed, not yet run.
 
+## Coding harnesses
+
+The coding roles run on one of three CLI harnesses, chosen by `AGENT_HARNESS`. Each has one provider, and `run.sh` refuses a mismatch with a line naming the harness that fits.
+
+| Harness | Provider | Key variable | Guard | Boundary | Vendor sandbox |
+|---|---|---|---|---|---|
+| `gemini-cli` | `gemini` | `GEMINI_API_KEY` | `BeforeTool` hook | container | not used |
+| `claude-code` (Claude Code 2.1.311) | `anthropic` | `ANTHROPIC_API_KEY` | `PreToolUse` hook | container | not used |
+| `codex` (Codex 0.166.0) | `openai` | `OPENAI_API_KEY`, passed to the container as `CODEX_API_KEY` | `PreToolUse` hook | container | off (`danger-full-access`) |
+
+The guard is the same `guard.sh`, copied byte-identical into each adapter. The container is the boundary for all three: no git credential, no engine socket, and only the run's directory and `/roles` (read-only) mounted. Codex's own sandbox is off because its bubblewrap cannot start in rootless podman. The network stays open for all three, because each must reach its provider. The hook denies the network tools, but that does not stop an interpreter from sending out what the container holds, the provider key included. Closing egress is an open question before M24 runs on a repository the owner does not control.
+
+`MAX_TURNS`, `TOKEN_BUDGET` and `TIMEOUT_S` stop each harness, each read from the vendor's own signal. The budgets in `roles/` are Gemini measurements and bind every harness until recordings re-measure them.
+
+`./go harness-conformance` runs the real pinned CLI in its real container against a scripted model (`gates/harness-conformance/stub.py`). It needs no key and no account. The model is simulated: the far end of the wire is a script, not a vendor. The suite proves a harness's plumbing in nine cases (guard, budgets, artefacts, served model, no key in artefacts). It does not prove a model's ability or the real vendor wire. It builds three CLI images (about 350 MB of binaries for codex on arm64, about 560 MB of `node_modules` for claude-code) and is not part of `./go demo`. `./go ci` runs its engine-free half, `harness-shape` and `hooks`. The full suite is its own target and a workflow job.
+
+Found while building it, three of them older than M19, and closed: a repository's own `.env` could point gemini-cli's `GOOGLE_GEMINI_BASE_URL`, key included, at another host; a repository's own `.claude/settings.json` (`disableAllHooks`) or `.codex/config.toml` (`[features] hooks = false`) switched the guard off; the worker mounted all of `.crew/`, including the release signing key.
+
+Recording with another harness is implemented and not yet run, because it spends the owner's keys:
+
+```sh
+./go record TICKET=0001 PROFILE=l1 AGENT_HARNESS=claude-code MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5
+./go record TICKET=0001 PROFILE=l1 AGENT_HARNESS=codex MODEL_PROVIDER=openai MODEL=gpt-6.1-sol
+```
+
+These write `fixtures/<ticket>/<role>/<harness>/`. L0 keeps replaying gemini-cli's `fixtures/<ticket>/<role>/`, and replay does not read the new directories yet. Claude and OpenAI cost money per run. The cost per provider will be stated here once those recordings exist.
+
 ## On your own codebase
 
 ```sh
@@ -83,7 +110,7 @@ What works today, and what does not yet:
 
 - **Works:** the six gates on the gates half alone. With the plane half, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
 - **Time:** `./go demo-init` proves init and gates in under 300 s on two small example repositories. Init measures the whole scope, so a large suite takes longer.
-- **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` with `MODEL_PROVIDER` and `MODEL` for the ADK roles. The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
+- **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `AGENT_HARNESS=claude-code` with `ANTHROPIC_API_KEY`, or `AGENT_HARNESS=codex` with `OPENAI_API_KEY` (with `MODEL_PROVIDER` and `MODEL`; the ADK roles take the same keys). The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
 - **Python and javascript.** `./go init` infers both. The dev-worker runs in your toolchain image when `TOOLCHAIN_IMAGE` names an image, and in the workbench otherwise. Building that image is checked; no run at L1 has been made.
 - **Stops at release at L1.** A merged change is not yet built and released from your repository.
 - **Local only.** Merges land on the plane's Gitea and you `git fetch` them back. No pull requests on GitHub yet, and no deploy to your production.
