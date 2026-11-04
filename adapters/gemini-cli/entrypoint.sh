@@ -50,6 +50,14 @@ thinking_level=$GEMINI_THINKING_LEVEL
 # remapped the request to gemini-3.5-flash before the alias lookup, and
 # which 0.61.0-preview.0 refuses with "Could not resolve a model name for
 # alias" — an alias with no model in its chain shadows the model name.
+#
+# BeforeTool's matcher is "*", as claude-code's and codex's PreToolUse
+# (docs/adr/0041 §3, amended 2026-11-04): every tool call reaches guard.sh
+# and the guard decides. In 0.61.0-preview.0 a matcher is a JS RegExp on
+# the tool name and "*" matches all before any regex
+# (packages/core/src/hooks/hookPlanner.ts, matchesContext); the earlier
+# list of four names let grep_search, glob, list_directory and every
+# other tool through unguarded.
 
 jq -n \
   --arg thinking "$thinking_level" \
@@ -61,7 +69,7 @@ jq -n \
     modelConfigs: {customAliases: {($model): {extends: "chat-base-3", modelConfig: {model: $model, generateContentConfig: {thinkingConfig: {thinkingLevel: $thinking}}}}}},
     tools: {exclude: ["web_fetch", "google_web_search"]},
     hooks: {
-      BeforeTool: [{matcher: "run_shell_command|write_file|replace|read_file", hooks: [{name: "guard", type: "command", command: "/opt/gemini-cli-hooks/guard.sh"}]}],
+      BeforeTool: [{matcher: "*", hooks: [{name: "guard", type: "command", command: "/opt/gemini-cli-hooks/guard.sh"}]}],
       BeforeModel: [{matcher: "*", hooks: [{name: "budget-before", type: "command", command: "/opt/gemini-cli-hooks/budget-before.sh"}]}],
       AfterModel: [{matcher: "*", hooks: [{name: "budget-after", type: "command", command: "/opt/gemini-cli-hooks/budget-after.sh"}]}]
     }
