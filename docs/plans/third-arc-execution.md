@@ -143,9 +143,17 @@ free. A cloud environment has no container engine, so each session pushes
 its own branch and takes its engine proofs (`./go ci`, `./go demo`,
 `./go demo-gates`) from GitHub Actions; it never pushes `main` and opens no
 pull request. Cloud sessions send no notice when they finish: the owner, or
-the parent session on request, reads the branch and its Actions runs. The
-merge into `main` happens locally, from a clean clone, one milestone at a
-time, with `./go ci` and `./go demo` rerun on the merged tree.
+the parent session on request, reads the branch and its Actions runs.
+
+*Amended the same day, owner's decision:* podman is stopped on the owner's
+Mac and nothing runs a container there any more. The parent session keeps
+the orchestration and merges with git alone: it merges a milestone branch
+into a branch `merge/<milestone>`, resolves conflicts, pushes that branch,
+and waits for `ci`, `engine-compat` (`./go demo`) and `gates` to be green on
+GitHub Actions before it fast-forwards `main` to it and pushes. One merge at
+a time. A cloud environment refuses the egress image builds need (found by
+a cloud session on 2026-11-04), so every engine proof is an Actions run.
+Recordings that spend a key (`./go record*`) stay with the owner.
 
 ## How to apply it
 
