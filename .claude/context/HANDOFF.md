@@ -35,9 +35,14 @@ Docs only. The diff is `docs/plans/m24-shortlist.md` and this section. The owner
 2. **An init defect, not fixed here** (docs-only branch). `core/init.py` `node_admits` splits on whitespace before matching the operator, so `engines.node = ">= 20"`, which is valid npm, is refused ("admits none of the node majors init knows"). This is why markedjs/marked is refused. Reproduced: `node_admits(">= 20", 24)` is False, `node_admits(">=20", 24)` is True. `python_admits(">= 3.10", (3, 13))` is True, so the Python side is unaffected. A candidate for a small ticket of its own.
 3. **None of the six is a service.** M24 on any of them proves assign → gates → PR on foreign code, not the canary. The only service in the pool, psf/httpbin, is frozen.
 
-## Done when
+## Done when: three of four
 
-The branch is pushed, the commit signed off, and `ci` green. The run is linked below once it finishes.
+- Branch pushed: yes.
+- Commit signed off: yes, `24b1da4`.
+- Shortlist ready for the owner: yes.
+- **`ci` green: no, and not because of the change.** In run [41873926766](https://github.com/nicolaguglielmi/lights-out/actions/runs/41873926766) (commit `24b1da4`), these jobs never started: `ci`, `gates`, `engine-compat`, `launch`, `init` and `harness-conformance`. Each has zero steps and the same failure annotation: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings."
+- `image` was skipped as usual. `seam` was the only job that got a runner.
+- Owner: fix the Actions billing, then re-run the workflow on `24b1da4`. This commit is `[skip ci]`; it only adds this note. The other cloud sessions of tonight are likely blocked the same way. That is inferred, not checked.
 
 ---
 
