@@ -1,0 +1,8 @@
+{
+  "name": "lights-out-crew-codex",
+  "private": true,
+  "description": "Pins the Codex CLI version the codex AgentHarness adapter runs (docs/adr/0041 §1): 0.166.0, npm `latest` on 2026-11-04 (the package has no stable channel). The native binary comes from the per-platform optionalDependencies, every platform pinned with integrity in package-lock.json. A bump is its own commit with ./go harness-conformance as its eval. Never published.",
+  "dependencies": {
+    "@openai/codex": "0.166.0"
+  }
+}
