@@ -44,7 +44,8 @@ the CI runs below did.
 
 Every gate in lights-out prints exactly one line on stdout: `GO: <name>`,
 sometimes followed by ` — <detail>`, or `NO-GO: <name> — <reason>`. The
-other lines you see are stderr: the evidence behind the verdict.
+lines around the verdicts are progress, and the evidence behind each
+verdict.
 
 ## 1. The demo, and how to read it
 
@@ -153,6 +154,7 @@ GO: crew
 risk: level=low decision=auto-merge signals=none
 deps: scanning 2 lockfile(s) at 5804fca9b45c05e68da6364745c09adb57181328 and at the base ee2f679bc63159c97a6eb4fbaf17520822cdbbcc: app/backend/uv.lock app/frontend/package-lock.json
 deps: 1 advisory finding(s) inherited from the base, not gating (docs/adr/0032):
+  PyPI opentelemetry-api GHSA-xcq7-p3pf-p88h
 score: 211 mutant(s) excluded from the population (skipped, no-test, or incompetent)
 [ci] gates: GO: gates — risk low, auto-merge, in compose:backend-test
 [tower] 0001: ci → ci-passed
@@ -200,7 +202,8 @@ Stage by stage:
   version, so verify stops it at 5% and the canary rolls back. The ticket
   ends at `rolled-back`.
 
-Then comes the audit, and the demo's last two lines:
+The audit closes `e2e` (it is shown below, under `./go audit`). The
+demo's last two lines:
 
 <!-- source: GitHub Actions run 41866972654 (commit ee2f679), job engine-compat (126703546061), step "./go demo" -->
 ```
@@ -212,10 +215,11 @@ GO: demo, milestone M9, 716s to rollback (budget 900s, plan §2)
 The 900 s budget is the golden rule: a clone reaches an automatic rollback
 in under 15 minutes, with no account and no key.
 
-### Every gate says no, once
+### The gates saying no
 
-The demo shows the gates saying GO. `./go demo-gates` shows each of them
-saying NO-GO, on six committed fixture patches:
+The demo shows the gates saying GO. `./go demo-gates` judges six committed
+fixture patches, and shows the test, mutation, SAST and deps gates saying
+NO-GO, and risk sending a change to review:
 
 <!-- source: GitHub Actions run 41866972654 (commit ee2f679), job gates (126703546044), step "./go demo-gates"; only the [demo-gates] lines and the last line -->
 ```
@@ -285,9 +289,9 @@ GO: e2e
 Read it from the top down: what ran in production, which merge it was
 built from (and that the code host agrees), which PR and which gate
 verdict let it merge, which ticket and which agent wrote it, and the
-spec: the sha256 of the ticket file as the agent read it. `harness replay, model
-gemini-3.8-flash` says the PR was replayed, and which model wrote the
-recording. The image digest is the one the launchpad verified.
+spec: the sha256 of the ticket file as the agent read it. `harness
+replay, model gemini-3.8-flash` says the PR was replayed, and which model
+wrote the recording. The image digest is the one the launchpad verified.
 
 ## 2. The short looks
 
@@ -323,7 +327,8 @@ score: 211 mutant(s) excluded from the population (skipped, no-test, or incompet
 is `demo-gates`' output for the patch that is `demo-rework`'s attempt 1,
 not `demo-rework`'s own output.*
 
-The worker's input for attempt 2 is the ticket followed by that verdict.
+The worker's input for attempt 2 is the ticket, the workload's brief,
+then that verdict.
 Attempt 2 adds the geocoder contract's 404 example for an unknown venue,
 and the combined change is the `honest-fix` fixture's: GO. The tower
 merges it, and the canary rolls back as in `e2e`. The audit shows the
@@ -346,7 +351,8 @@ $ cat fixtures/0013/dev-worker/run.json
 The gates that reject attempt 1 and pass attempt 2, the tower, the loop
 and the cap are real. No GitHub Actions job runs `demo-rework`, so its
 own output is not shown here. PLAN.md's M15 status note records
-`GO: demo-rework` in 404 s on a cold plane, run locally on 2026-11-03.
+`GO: demo-rework` in 404 s on a cold plane, on 2026-11-03, outside
+Actions.
 
 ### `./go demo-triage`: an alert becomes hypotheses
 
@@ -548,9 +554,11 @@ Two things to notice:
   "the last commit" is the whole tree, from the empty tree `4b825dc`. Its
   lockfile is new and judged whole. An advisory already in your lockfile
   is a NO-GO on your first `./go gates`.
-- **`risk high, review`.** That commit contains `.lights-out/`, and any
-  change to `.lights-out/` is high risk: it never merges on its own. Your
-  ordinary commits after that are judged on their own paths and size.
+- **`risk high, review`.** The example's one commit already contains its
+  own `.lights-out/`, and any change to `.lights-out/` is high risk: it
+  never merges on its own. On your repository, the commit that adds
+  `.lights-out/` is judged the same way. Your other commits are judged on
+  their own paths and size.
 
 `demo-init` proves init and gates in under 300 s on two small examples
 only: 44 s and 23 s in this run. Init measures the whole scope, so a large
