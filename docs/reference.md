@@ -80,7 +80,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go demo-crew       # prove ticket 0001 becomes a PR that passes the M4 gates (L0 replay)
 ./go demo-network    # prove a network of members on ticket 0012: one PR through the whole tower (ADR 0036)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker] [AGENT_HARNESS=claude-code|codex MODEL_PROVIDER=anthropic|openai MODEL=<id>]; a non-gemini harness writes fixtures/<ticket>/<role>/<harness>/ (ADR 0041 §10); refuses a set MODEL_BASE_URL
-./go harness-conformance # every CLI harness against a scripted model, nine cases, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041 §8); builds three CLI images, not part of ./go ci or demo
+./go harness-conformance # every CLI harness against a scripted model, ten cases, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041 §8, 0046); builds three CLI images, not part of ./go ci or demo
 ./go codehost-conformance # ten cases on the CODE_HOST set: Gitea with the plane up, or `CODE_HOST=github` on an attached throwaway repository (ADR 0043 §5); not part of ./go ci or demo
 ./go review          # run the review step on a PR: TICKET=<id> [ROLE=test-reviewer]
 ./go demo-review     # prove a medium-risk PR goes through review (L0 replay of fixture)

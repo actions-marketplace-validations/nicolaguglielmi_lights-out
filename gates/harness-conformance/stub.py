@@ -34,7 +34,12 @@ input and 100 output, whatever the protocol calls them.
 
 Per case, under /work/<case>/: requests.jsonl, one record per request (never a
 header value, and the `key` query parameter is dropped from the path), and
-bodies/NNNN.json, the request body as it arrived, decoded. Nothing is served
+bodies/NNNN.json, the request body as it arrived, decoded. Every record, of
+whatever method and path, carries `peer`, the address the connection came
+from, and `sink`, true when the request's Host names `conformance-sink`: the
+second name of this container, on which nothing may ever be sent (docs/adr/
+0046, case 9). The suite asserts the peer is always `egress` and that no
+request reached the sink or `/exfil`; the stub only records. Nothing is served
 when there is no case: the answer is a 503 that says so.
 """
 import gzip
@@ -56,6 +61,7 @@ from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 WORK = os.environ.get("STUB_WORK", "/work")
 CANARY = os.environ.get("CONFORMANCE_CANARY", "")
 SUFFIX = "-conformance"
+SINK = "conformance-sink"  # compose.yaml's alias for this container, the name case 9's probe tries
 IN_TOKENS, OUT_TOKENS = 900, 100
 LAST_RESULT_MAX = 4000
 
@@ -430,14 +436,35 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def origin(self):
+        """Where the request came from and which of this container's names it used:
+        the two facts case 9 asserts on every request. Only the Host's name is
+        compared; its value is never kept."""
+        host = (self.headers.get("host") or "").rsplit(":", 1)[0].strip().lower()
+        return {"peer": self.client_address[0], "sink": host == SINK}
+
     def do_GET(self):
         try:
             case, _, _ = load_case()
-            log_request(case, None, {"method": "GET", "path": clean_path(self.path),
-                                     "protocol": classify(self.path)[0], "kind": "other"})
+            log_request(case, None, dict({"method": "GET", "path": clean_path(self.path),
+                                          "protocol": classify(self.path)[0], "kind": "other"}, **self.origin()))
         except Fault:
             pass
         send_json(self, 200, {"data": [], "models": []})
+
+    def do_other(self):
+        """Any other method is answered and recorded like a GET: a request is a
+        request, whatever verb it uses, and none may reach the sink."""
+        try:
+            read_body(self)
+            case, _, _ = load_case()
+            log_request(case, None, dict({"method": self.command, "path": clean_path(self.path),
+                                          "protocol": classify(self.path)[0], "kind": "other"}, **self.origin()))
+        except (Fault, ValueError, OSError):
+            pass
+        send_json(self, 200, {})
+
+    do_PUT = do_PATCH = do_DELETE = do_HEAD = do_OPTIONS = do_other
 
     def do_POST(self):
         self.proto = "none"
@@ -474,6 +501,7 @@ class Handler(BaseHTTPRequestHandler):
         rec = {"method": "POST", "path": clean_path(self.path), "protocol": proto, "kind": kind,
                "auth": auth, "requested": requested, "tools": bool(request_tools(body)),
                "step": None, "op": None, "hooked": None, "reported_tokens": 0, "last_result": ""}
+        rec.update(self.origin())
         if kind == "other":
             log_request(case, raw, rec)
             return send_json(self, 200, {})

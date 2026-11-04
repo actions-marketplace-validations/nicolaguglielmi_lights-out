@@ -26,7 +26,21 @@
 #   (d) its worker.md, the dev-worker's brief, has `## Scope` and
 #       `## Tests` (docs/adr/0037 §6);
 #   (e) its policy.env, if any, passes core/policy.py: known keys, valid
-#       values, a provenance line over each (docs/adr/0037 §5).
+#       values, a provenance line over each (docs/adr/0037 §5);
+#   (f) with the plane half, the harnesses are confined (docs/adr/0046): on
+#       the merged project rendered with the `crew` profile, network `crew`
+#       is internal; every CLI harness service is on exactly [crew], with
+#       the four proxy variables (HTTPS_PROXY, HTTP_PROXY and their lower-case
+#       twins) at http://egress:3128 and no published port; every service a
+#       harness depends on (a workload's crew-postgres) is on exactly [crew]
+#       with no published port; `egress` is on exactly crew and default with
+#       none. The first project rendered is also judged with one planted
+#       defect at a time, and each must be named: a check that cannot fail
+#       is not one;
+#   (g) its crew-egress.txt, if it has one (the package indexes the worker may
+#       reach, docs/adr/0046 §5), lists name:port entries in the shape an
+#       adapter's EGRESS has (egress_flaw, ci/lib.sh), comment lines aside;
+#       the shape is planted-defect checked here too.
 # The contract is the workload's directory for one inside this checkout
 # (app/), and its .lights-out/ for a repository laid out to be attached:
 # workloads/*/ here, or the attached clone itself, named as the one
@@ -44,9 +58,174 @@ name=workloads
 
 err_log=$(mktemp)
 policy_out=$(mktemp)
-trap 'rm -f "$err_log" "$policy_out"' EXIT
+egress_files=$(mktemp -d)
+trap 'rm -rf "$err_log" "$policy_out" "$egress_files"' EXIT
+
 
 expected_keys='CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT TOOLCHAIN_IMAGE TEST_CMD SAST_CMD MUTATION_CMD'
+
+# The CLI harnesses, discovered as ci/harness-shape.sh discovers them: an
+# adapters/<name>/ with run.sh, Containerfile and package.json or
+# package-lock.json. Their compose services carry the adapter's name.
+harnesses=""
+for d in adapters/*/; do
+  h=$(basename "$d")
+  if [ -f "adapters/$h/run.sh" ] && [ -f "adapters/$h/Containerfile" ] && { [ -f "adapters/$h/package.json" ] || [ -f "adapters/$h/package-lock.json" ]; }; then
+    harnesses="$harnesses $h"
+  fi
+done
+[ -n "$harnesses" ] || nogo "no CLI harness under adapters/ (a directory with run.sh, Containerfile and package.json)"
+
+# (f), as a Python program: argv are the rendered project (JSON), the harnesses,
+# and "check" or "selfcheck". `check` prints the first flaw and exits 1;
+# `selfcheck` judges the project good, then the project with one planted defect
+# at a time, each of which must be refused with the words given here.
+crew_check=$(cat <<'PY'
+import copy
+import json
+import sys
+
+PROXY = "http://egress:3128"
+PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")
+
+
+def nets(service):
+    return sorted((service.get("networks") or {}).keys())
+
+
+def flaw(cfg, harnesses):
+    services = cfg.get("services") or {}
+    crew = (cfg.get("networks") or {}).get("crew")
+    if crew is None:
+        return "the project has no network crew (docs/adr/0046 §1)"
+    if crew.get("internal") is not True:
+        return "network crew is not internal, so it has a route out that does not go through egress (docs/adr/0046 §1)"
+    for h in harnesses:
+        svc = services.get(h)
+        if svc is None:
+            return "harness service %s is not in the project rendered with --profile crew" % h
+        if nets(svc) != ["crew"]:
+            return "harness service %s is on networks %s, want exactly [crew] (docs/adr/0046 §1)" % (h, nets(svc))
+        env = svc.get("environment") or {}
+        for var in PROXY_VARS:
+            if env.get(var) != PROXY:
+                return "harness service %s has %s=%r, want %s (docs/adr/0046 §3)" % (h, var, env.get(var), PROXY)
+        if svc.get("ports"):
+            return "harness service %s publishes a port; it must publish none (docs/adr/0046 §1)" % h
+    for dep in sorted({d for h in harnesses for d in (services[h].get("depends_on") or {})}):
+        svc = services.get(dep)
+        if svc is None:
+            return "a harness depends on %s, which is not in the project" % dep
+        if nets(svc) != ["crew"]:
+            return "%s, a service a harness depends on, is on networks %s, want exactly [crew] (docs/adr/0046 §6)" % (dep, nets(svc))
+        if svc.get("ports"):
+            return "%s, a service a harness depends on, publishes a port; it must publish none (docs/adr/0046 §6)" % dep
+    egress = services.get("egress")
+    if egress is None:
+        return "the project has no service egress (docs/adr/0046 §2)"
+    if nets(egress) != ["crew", "default"]:
+        return "service egress is on networks %s, want exactly [crew, default] (docs/adr/0046 §2)" % nets(egress)
+    if egress.get("ports"):
+        return "service egress publishes a port; it must publish none (docs/adr/0046 §2)"
+    return None
+
+
+def planted(h):
+    """(name, words the refusal must contain, a function that plants the defect in a project)."""
+    def service(c, name, **kw):
+        c["services"][name] = kw
+
+    def depend(c, **kw):
+        service(c, "planted-db", **kw)
+        c["services"][h]["depends_on"] = dict(c["services"][h].get("depends_on") or {}, **{"planted-db": {"condition": "service_started"}})
+
+    def drop_var(var):
+        return lambda c: c["services"][h]["environment"].pop(var)
+
+    def set_var(var, value):
+        return lambda c: c["services"][h]["environment"].__setitem__(var, value)
+
+    cases = [
+        ("network crew not internal", "is not internal", lambda c: c["networks"]["crew"].pop("internal")),
+        ("no network crew", "no network crew", lambda c: c["networks"].pop("crew")),
+        ("a harness also on default", "want exactly [crew]",
+         lambda c: c["services"][h].__setitem__("networks", {"crew": None, "default": None})),
+        ("a harness on default only", "want exactly [crew]", lambda c: c["services"][h].pop("networks")),
+        ("a harness with a published port", "publishes a port",
+         lambda c: c["services"][h].__setitem__("ports", [{"target": 80, "published": "8080"}])),
+        ("a harness with the wrong proxy", "HTTPS_PROXY", set_var("HTTPS_PROXY", "http://proxy.example:3128")),
+        ("a dependency on the default network", "planted-db, a service a harness depends on, is on networks",
+         lambda c: depend(c, networks={"default": None})),
+        ("a dependency on crew and default", "planted-db, a service a harness depends on, is on networks",
+         lambda c: depend(c, networks={"crew": None, "default": None})),
+        ("a dependency that publishes a port", "planted-db, a service a harness depends on, publishes a port",
+         lambda c: depend(c, networks={"crew": None}, ports=[{"target": 5432, "published": "5432"}])),
+        ("egress without crew", "service egress is on networks", lambda c: c["services"]["egress"].__setitem__("networks", {"default": None})),
+        ("egress without default", "service egress is on networks", lambda c: c["services"]["egress"].__setitem__("networks", {"crew": None})),
+        ("egress with a published port", "service egress publishes a port",
+         lambda c: c["services"]["egress"].__setitem__("ports", [{"target": 3128, "published": "3128"}])),
+        ("no egress service", "no service egress", lambda c: c["services"].pop("egress")),
+    ]
+    for var in PROXY_VARS:
+        cases.append(("a harness without " + var, var, drop_var(var)))
+    return cases
+
+
+def selfcheck(cfg, harnesses):
+    first = flaw(cfg, harnesses)
+    if first:
+        return "the self-check's good project is not judged good: " + first
+    h = harnesses[0]
+    # A dependency that is right must be accepted: the planted ones are judged against it.
+    good = copy.deepcopy(cfg)
+    good["services"]["planted-db"] = {"networks": {"crew": None}}
+    good["services"][h]["depends_on"] = dict(good["services"][h].get("depends_on") or {}, **{"planted-db": {}})
+    if flaw(good, harnesses):
+        return "the self-check's project with a good dependency on crew is refused: " + flaw(good, harnesses)
+    for name, words, plant in planted(h):
+        bad = copy.deepcopy(cfg)
+        plant(bad)
+        got = flaw(bad, harnesses)
+        if not got:
+            return "ci/workloads.sh cannot fail: it accepted the defect '%s'" % name
+        if words not in got:
+            return "ci/workloads.sh named the wrong problem for '%s': wanted a message with %r, got: %s" % (name, words, got)
+    return None
+
+
+cfg, harnesses, mode = json.loads(sys.argv[1]), sys.argv[2].split(), sys.argv[3]
+problem = (flaw if mode == "check" else selfcheck)(cfg, harnesses)
+if problem:
+    print(problem)
+    sys.exit(1)
+PY
+)
+
+# (g): a contract's crew-egress.txt, comment lines aside, in the shape of an
+# adapter's EGRESS (egress_flaw, ci/lib.sh); nothing at all is fine.
+crew_egress_flaw() {  # FILE
+  egress_flaw "$(grep -v '^[[:space:]]*#' "$1" | tr -s ' \t\n' ' ')"
+}
+
+# (g)'s self-check: a list of good entries with comments is accepted, and a
+# wildcard, an IP literal and an entry with no port are each refused, by name.
+printf '# the package index\npypi.org:443\nfiles.pythonhosted.org:443\n' > "$egress_files/good.txt"
+printf '# comments only\n' > "$egress_files/empty.txt"
+printf 'pypi.org:443\n*.pythonhosted.org:443\n' > "$egress_files/wildcard.txt"
+printf 'pypi.org:443\n151.101.0.223:443\n' > "$egress_files/ip.txt"
+printf 'pypi.org\n' > "$egress_files/port.txt"
+for f in good empty; do
+  [ -z "$(crew_egress_flaw "$egress_files/$f.txt")" ] || nogo "the self-check's good crew-egress.txt ($f) is refused: $(crew_egress_flaw "$egress_files/$f.txt")"
+done
+for pair in wildcard:wildcard ip:"IP literal" port:"no port"; do
+  got=$(crew_egress_flaw "$egress_files/${pair%%:*}.txt")
+  case "$got" in
+    *"${pair#*:}"*) ;;
+    "") nogo "ci/workloads.sh cannot fail: it accepted a crew-egress.txt with a ${pair%%:*} entry" ;;
+    *) nogo "ci/workloads.sh named the wrong problem for a crew-egress.txt with a ${pair%%:*} entry" "wanted a message with: ${pair#*:}" "got: $got" ;;
+  esac
+done
+crew_selfchecked=0
 
 # "<workload dir>:<contract dir>" pairs; no path here holds a colon.
 pairs=""
@@ -152,14 +331,15 @@ PY
 
   # (b) the merged project, with this workload's compose.yaml explicit,
   # shows the three fixed services (docs/adr/0030 §3). --profile canary
-  # --profile test: `config` renders only the default-profile services
-  # unless a profile is explicitly enabled (confirmed empirically,
-  # docker-compose v5.0.1), so backend-canary and backend-test would
-  # otherwise never appear in the output at all. stderr goes to a log, not
+  # --profile test --profile crew: `config` renders only the default-profile
+  # services unless a profile is explicitly enabled (confirmed empirically,
+  # docker-compose v5.0.1), so backend-canary, backend-test and the harnesses'
+  # own services (and what they depend on) would otherwise never appear in the
+  # output at all. stderr goes to a log, not
   # into $config_json: any warning on stderr on an otherwise-successful run
   # would land inside the string the next step parses as JSON.
   set +e
-  config_json=$(WORKLOAD="$wd" WORKLOAD_CONTRACT="$cd_" docker-compose --profile canary --profile test \
+  config_json=$(WORKLOAD="$wd" WORKLOAD_CONTRACT="$cd_" docker-compose --profile canary --profile test --profile crew \
     -f compose.yaml -f "$cd_/compose.yaml" config --format json 2>"$err_log")
   rc=$?
   set -e
@@ -220,6 +400,16 @@ PY
   ) && ok=1 || ok=0
   [ "$ok" -eq 1 ] || nogo "$reason"
 
+  # (f) the harnesses are confined on this project (docs/adr/0046), and the
+  # first project judged is also judged with each defect planted.
+  reason=$(python3 -c "$crew_check" "$config_json" "$harnesses" check) && ok=1 || ok=0
+  [ "$ok" -eq 1 ] || nogo "$wd: $reason"
+  if [ "$crew_selfchecked" -eq 0 ]; then
+    reason=$(python3 -c "$crew_check" "$config_json" "$harnesses" selfcheck) && ok=1 || ok=0
+    [ "$ok" -eq 1 ] || nogo "$reason"
+    crew_selfchecked=1
+  fi
+
   # (c) the flag file defines release-freeze and this workload's own kill
   # switch -- read from this workload's own file, never the ambient
   # $WORKLOAD_KILL_SWITCH, which only reflects the enclosing make's WORKLOAD.
@@ -258,6 +448,13 @@ PY
   for heading in '## Scope' '## Tests'; do
     grep -qx "$heading" "$brief" || nogo "$brief has no '$heading' section"
   done
+
+  # (g) the hosts the worker may reach besides its provider, if the contract
+  # names any (docs/adr/0046 §5).
+  if [ -f "$cd_/crew-egress.txt" ]; then
+    reason=$(crew_egress_flaw "$cd_/crew-egress.txt")
+    [ -z "$reason" ] || nogo "$cd_/crew-egress.txt: $reason (docs/adr/0046 §5)"
+  fi
 
   # (e) the thresholds, through the one reader the gates use; a looser
   # override is reported on stderr, not refused.
