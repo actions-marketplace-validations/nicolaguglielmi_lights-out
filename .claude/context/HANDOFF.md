@@ -17,7 +17,7 @@ launch               success   GO: demo-launch, then the new step:
                                GO: codehost-conformance — gitea, PR #1 merged
 init                 success
 harness-conformance  success
-seam                 failure on the first attempt; re-run of the failed job requested (result below once it lands)
+seam                 failure on attempt 1 (below), success on the re-run of the failed job (attempt 2)
 image                skipped (Gitea-only)
 ```
 
