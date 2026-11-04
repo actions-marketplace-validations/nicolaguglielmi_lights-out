@@ -7,3 +7,4 @@ dist/
 .crew/
 .adk/
 /.attached
+.DS_Store
