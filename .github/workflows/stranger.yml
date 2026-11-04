@@ -1,0 +1,171 @@
+# The first fifteen minutes of a stranger (docs/launch/onboarding-findings.md):
+# the README's Linux path followed literally on a fresh runner, with podman,
+# the reference engine, and no CONTAINER_ENGINE anywhere. Every other job
+# runs docker; this one is the README's own promise. Each step's wall time
+# is printed and lands in the run's summary. GitHub-only, every job: the
+# L0 Gitea runner reads this directory too and holds the engine socket
+# (docs/adr/0039).
+name: stranger
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # README "Try it", Linux: install podman, enable its API socket, clone,
+  # ./go doctor, ./go demo. No actions/checkout: a stranger clones.
+  demo:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    env:
+      TIMES: ${{ github.workspace }}/../stranger-times.txt
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: 1. Install podman (README, Linux)
+        run: |
+          s=$(date +%s)
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q podman
+          podman --version
+          echo "install podman: $(( $(date +%s) - s ))s" >> "$TIMES"
+      - name: 1. systemctl --user enable --now podman.socket (README, Linux)
+        run: |
+          s=$(date +%s)
+          systemctl --user enable --now podman.socket
+          systemctl --user is-active podman.socket
+          podman info --format 'API socket {{.Host.RemoteSocket.Path}} exists={{.Host.RemoteSocket.Exists}}'
+          echo "enable podman.socket: $(( $(date +%s) - s ))s" >> "$TIMES"
+      # The repository is private until launch: the clone carries the job's
+      # token in a header, never in the remote URL. A stranger types the
+      # README's plain git clone.
+      - name: 2. git clone (README), at the pushed commit
+        run: |
+          s=$(date +%s)
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" lights-out
+          git -C lights-out checkout -q "$GITHUB_SHA"
+          git -C lights-out log --oneline -1
+          echo "git clone: $(( $(date +%s) - s ))s" >> "$TIMES"
+      - name: ./go doctor (README, "If something goes wrong", run first)
+        working-directory: lights-out
+        run: |
+          s=$(date +%s)
+          rc=0; ./go doctor || rc=$?
+          echo "./go doctor: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          exit "$rc"
+      - name: 2. ./go demo, no CONTAINER_ENGINE
+        working-directory: lights-out
+        run: |
+          [ -z "${CONTAINER_ENGINE:-}" ] || { echo "CONTAINER_ENGINE is set; a stranger has none"; exit 1; }
+          s=$(date +%s)
+          rc=0; ./go demo || rc=$?
+          echo "./go demo: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          exit "$rc"
+      - if: always()
+        name: Wall time of each step
+        run: |
+          cat "$TIMES" || true
+          { echo '### stranger: demo (podman)'; echo '```'; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        name: The plane's logs, for the findings
+        run: |
+          podman ps -a --format '{{.Names}} {{.Status}}' || true
+          podman logs --tail 80 lights-out-runner-1 || true
+          podman logs --tail 40 lights-out-envoy-1 || true
+
+  # README "On your repository, without cloning lights-out", as far as it
+  # works with no published image: ./go package from a clone, the wrapper
+  # on workloads/minimal copied into a fresh repository, with podman.
+  package:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    env:
+      TIMES: ${{ github.workspace }}/../stranger-times.txt
+      GH_TOKEN: ${{ github.token }}
+      LIGHTS_OUT_IMAGE: localhost/lights-out:dev
+    steps:
+      - name: Install podman (README, Linux)
+        run: |
+          s=$(date +%s)
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q podman
+          podman --version
+          echo "install podman: $(( $(date +%s) - s ))s" >> "$TIMES"
+      - name: git clone, at the pushed commit
+        run: |
+          s=$(date +%s)
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" lights-out
+          git -C lights-out checkout -q "$GITHUB_SHA"
+          echo "git clone: $(( $(date +%s) - s ))s" >> "$TIMES"
+      - name: ./go package
+        working-directory: lights-out
+        run: |
+          s=$(date +%s)
+          rc=0; ./go package || rc=$?
+          echo "./go package: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          podman image ls localhost/lights-out
+          exit "$rc"
+      - name: The wrapper on your PATH (README)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          cp lights-out/lights-out "$HOME/.local/bin/lights-out"
+          chmod +x "$HOME/.local/bin/lights-out"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      # workloads/minimal's tests read .lights-out/flags/, its own data, so
+      # that stays; the contract (workload.env, policy.env) goes, so the
+      # repository is a stranger's: no contract yet.
+      - name: A repository of your own (workloads/minimal, fresh git, no contract)
+        run: |
+          set -eu
+          repo="$HOME/code/your-repo"
+          mkdir -p "$repo"
+          cp -R lights-out/workloads/minimal/. "$repo/"
+          rm -f "$repo/.lights-out/workload.env" "$repo/.lights-out/policy.env"
+          git -C "$repo" init -q -b main
+          git -C "$repo" config user.name stranger
+          git -C "$repo" config user.email stranger@lights-out.invalid
+          git -C "$repo" add -A
+          git -C "$repo" commit -q -m "your code"
+      - name: lights-out doctor
+        working-directory: /home/runner/code/your-repo
+        run: |
+          s=$(date +%s)
+          rc=0; lights-out doctor || rc=$?
+          echo "lights-out doctor: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          exit "$rc"
+      - name: lights-out init, then the README's cp and commit
+        working-directory: /home/runner/code/your-repo
+        run: |
+          set -eu
+          s=$(date +%s)
+          lights-out init
+          echo "lights-out init: $(( $(date +%s) - s ))s" >> "$TIMES"
+          cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
+          git add .lights-out && git commit -q -m "add lights-out contract"
+      - name: lights-out gates (the last commit)
+        working-directory: /home/runner/code/your-repo
+        run: |
+          s=$(date +%s)
+          rc=0; lights-out gates || rc=$?
+          echo "lights-out gates (contract commit): $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          exit "$rc"
+      - name: lights-out gates on a code change
+        working-directory: /home/runner/code/your-repo
+        run: |
+          set -eu
+          printf '\n\n@app.get("/version")\ndef version():\n    return {"version": APP_VERSION}\n' >> minimal/app.py
+          printf '\n\ndef test_version_returns_the_app_version(client):\n    assert client.get("/version").json() == {"version": APP_VERSION}\n' >> tests/test_app.py
+          git commit -q -am "a /version route, and its test"
+          s=$(date +%s)
+          rc=0; lights-out gates || rc=$?
+          echo "lights-out gates (code change): $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          exit "$rc"
+      - if: always()
+        name: Wall time of each step
+        run: |
+          cat "$TIMES" || true
+          { echo '### stranger: package (podman)'; echo '```'; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
