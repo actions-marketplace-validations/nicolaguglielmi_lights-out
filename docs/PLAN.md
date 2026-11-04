@@ -49,7 +49,7 @@ Quattro profili (`profiles/l0.env` … `profiles/l3.env`), in due gruppi:
 | Serve | podman rootless (podman machine su macOS) | + Gemini API key | + progetto GCP con billing | + quote Agent Engine |
 | Modelli | risposte registrate (fixture) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform (ex Vertex AI), `gemini-3.8-flash` | idem + thinking level per ruolo |
 | Harness worker | replay | Gemini CLI headless in container | Gemini CLI su Cloud Run Job | + adapter Antigravity SDK |
-| Git e PR | Gitea in compose | Gitea | GitHub reale (adapter a M10) | GitHub reale |
+| Git e PR | Gitea in compose | Gitea; GitHub per un repo attaccato (adapter a M21) | GitHub reale | GitHub reale |
 | CI | Gitea Actions (act runner) | Gitea Actions | GitHub Actions o Cloud Build | idem |
 | Registry e firma | Zot locale, firma con chiave locale, verifica della firma nel launchpad prima dello staging | idem | Artifact Registry, firma con chiave KMS, verifica con la stessa cosign, Binary Authorization come seconda serratura | idem |
 | Canary | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + opzione GKE |
@@ -84,7 +84,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | Porta | Adapter | Note |
 |---|---|---|
 | `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
-| `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5) |
+| `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
 | `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
 | `StateStore` | `firestore-emulator`, `firestore` | stato del workflow, idempotenza |
@@ -101,7 +101,8 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | Adapter | Porta | Milestone |
 |---|---|---|
 | `artifact-registry`, `cloud-deploy`, `managed-prometheus`, flagd su Cloud Run | Registry, Delivery, Metrics, Flags | M8, track cloud (il percorso di rilascio su GCP) |
-| `pubsub`, `firestore`, `github`, `github-issues`, `cloud-workflows` | EventBus, StateStore, CodeHost, Tracker, Orchestrator | M10 (la tower gira su GCP) |
+| `pubsub`, `firestore`, `github-issues`, `cloud-workflows` | EventBus, StateStore, Tracker, Orchestrator | M10 (la tower gira su GCP) |
+| `github` | CodeHost | M21 (GitHub come code host, ADR 0043) |
 | `grafana`, `cloud-monitoring` | Charts | M11 (console) |
 | `antigravity-sdk`, `linear`, `unleash` | AgentHarness, Tracker, Flags | da assegnare: ognuno con un ADR e la sua suite di conformità |
 
@@ -620,9 +621,11 @@ Assorbe la metà "toolchain" di M14.
 Assorbe la metà "rilascio" di M14.
 
 - `adapters/github/`: gli stessi verbi di `gitea` (`bootstrap`, `clone-url`, `push`, `open-pr`, `status`, `merge`, `pr`, `await`) sulla REST API di GitHub con un token in `.env`, mai nel `.git/config`, mai visibile al modello. La PR del ticket arriva sul repository dell'utente; la tower la giudica con i gate della base (ADR 0033) e posta lo stato `gates` sul commit.
-- Il rilascio di un repo attaccato: dopo il merge, `./go release` costruisce l'immagine del merge commit con il `Containerfile` del repo (o `TOOLCHAIN_IMAGE`), la firma e la verifica come oggi (ADR 0025), senza il job Gitea Actions che il repo dell'utente non ha.
+- Il rilascio di un repo attaccato: dopo il merge, `./go release` costruisce l'immagine del merge commit con il `Containerfile` del repo (o `TOOLCHAIN_IMAGE`; vedi la nota di stato: `TOOLCHAIN_IMAGE` è stato scartato), la firma e la verifica come oggi (ADR 0025), senza il job Gitea Actions che il repo dell'utente non ha.
 - L0 resta Gitea: nessuna API GitHub registrata, nessun finto GitHub. Un nightly su GitHub Actions contro un repository usa e getta dell'owner prova l'adapter a L1 (§11, "un adapter senza nightly è un debito").
 - **Fatto quando:** `./go e2e CODE_HOST=github PROFILE=l1` su un repo attaccato apre la PR su GitHub, la mergia dopo `GO: gates`, costruisce e rilascia il merge sul piano locale fino al rollback; il nightly è verde; `./go demo` invariato. Stima: 3 settimane.
+
+*Stato 2026-11-04 (sessione M21):* costruito, ADR 0043; la prova end to end su GitHub non è stata eseguita (nessun token in sessione). `adapters/github/` ha gli otto verbi di `gitea` più `ready.sh`, `env.sh` e `credential.sh`, sulla REST API (header di versione 2022-11-28), configurato da `GITHUB_REPO` e `GITHUB_TOKEN` in `.env`. Il token va a curl su stdin (`-H @-`) e a git tramite un credential helper che il Makefile aggiunge come config d'ambiente (`GIT_CONFIG_KEY_1`): mai in argv, in un `.git/config` o nel contenitore del modello. Il rilascio di un repo attaccato, su qualunque code host (Gitea compreso), è in `core/steps/release.sh`: costruisce il merge commit in un worktree usa e getta con `make publish`, lo firma, poi la launchpad invariata verifica la firma e rilascia; l'app inclusa aspetta ancora il job `image` di Gitea. La prova: `./go ci` guadagna `codehost` (controllo a freddo di ogni adapter, registratori per curl e git, nessun finto GitHub); `./go codehost-conformance` è una suite di dieci casi sul `CODE_HOST` impostato, gira contro Gitea nel job `launch` a ogni push e contro GitHub nel nightly `nightly-github.yml`. `ci/vendor-free.sh` vieta ora `gitea|github` in `core/`. Scostamenti dal piano: `TOOLCHAIN_IMAGE` non è un artefatto di rilascio (non contiene l'applicazione); il nightly esegue la suite di conformità, non l'e2e completo, quindi "il nightly è verde" prova i verbi e non la tower su GitHub; `CODE_HOST=github` serve solo un repo attaccato e va sulla riga di comando, mai in `.env`; dopo ogni merge va rifatto `git pull` e `./go attach`; l'app inclusa tiene il job `image` di Gitea e `./go demo` è invariato. Resta all'owner: il repository usa e getta (da `workloads/minimal`, che ora porta `.lights-out/tickets/0001.md`), la variabile `LIGHTS_OUT_GITHUB_REPO` e il secret `LIGHTS_OUT_GITHUB_TOKEN` per il nightly (finché la variabile manca, il nightly salta con un avviso), e l'unica esecuzione di `./go e2e CODE_HOST=github PROFILE=l1`.
 
 ### M22 — Ops senza piano: incidente in entrata, post mortem in uscita (ADR 0044)
 

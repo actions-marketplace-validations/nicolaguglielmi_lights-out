@@ -26,10 +26,12 @@ Known limits today, before you start:
 - **No recordings of your repository.** Without a key, lights-out replays
   runs recorded on its own app. On an attached repository the crew stops
   at L0 and says so; agents need L1 and a Gemini API key.
-- **At L1 the tower stops at release.** It waits for the image that
-  lights-out's own Gitea workflow builds from a merge, and your repository
-  has no such job. The canary and its rollback are proven on your stable
-  image (section 2); a merged change is not yet built and released.
+- **Release of a merged change is implemented, not run on your code.** For
+  an attached repository the tower builds the merge commit from your own
+  Containerfile, signs it and releases it (ADR 0043 §4); the bundled app
+  still waits for the Gitea `image` job. The canary and its rollback are
+  proven on your stable image (section 2). No run has released a merged
+  change of a repository that was not written for lights-out.
 - **With the workbench, your tests run here.** `TOOLCHAIN_IMAGE=workbench`
   makes `./go init` and `./go gates` run your repository's commands
   in-process, inside lights-out's toolchain container, on this machine. An
@@ -289,7 +291,60 @@ git -C ~/code/your-repo fetch http://localhost:3000/lights-out/workload.git main
 git -C ~/code/your-repo merge FETCH_HEAD
 ```
 
-A GitHub code host replaces this step when its adapter lands (M10).
+With the GitHub code host the PR lands on your repository instead, and
+this step is replaced by the next section.
+
+### Your PR on GitHub (L1)
+
+Implemented in M21 (ADR 0043) and not yet run end to end: the session that
+built it had no token. The code host's eight verbs are checked by
+`./go codehost-conformance`, on Gitea on every push and on GitHub nightly
+once the owner of lights-out has set a throwaway repository. GitHub is
+chosen for an attached repository only. `./go demo` and the bundled app
+stay on Gitea.
+
+1. Make a throwaway GitHub repository from `workloads/minimal`. It carries
+   `.lights-out/` and a small ticket, `.lights-out/tickets/0001.md`
+   (`GET /version`). Clone it locally.
+2. Create a fine-grained personal access token at github.com, Settings,
+   Developer settings, Fine-grained tokens. Set "Only select repositories"
+   to that one repository. Grant Contents, Pull requests and Commit
+   statuses, each read and write. Metadata read comes with them.
+3. Put `GITHUB_REPO=<owner>/<name>`, `GITHUB_TOKEN` and `GEMINI_API_KEY` in
+   `.env`. Do not put `CODE_HOST` there: it goes on the command line,
+   because in `.env` it would also redirect `./go demo`.
+4. Run:
+
+```sh
+./go attach ~/code/your-clone
+./go e2e CODE_HOST=github PROFILE=l1
+```
+
+The PR opens on GitHub and gets the `gates` status. After GO it is merged
+with the merge method `merge`, pinned to the head the gates judged. The
+merge is built, signed and released on the local plane, the canary
+(`CANARY_VERSION` 0.2.0-outage) rolls back, and the audit cross-checks
+GitHub.
+
+The token goes to curl on stdin and to git through a credential helper that
+lights-out sets as environment config. It is in no command line, no
+`.git/config` and no model container.
+
+**After every merge, pull and attach again.** Each merge moves your default
+branch. The next `assign` checks that the attached clone's HEAD equals the
+default branch head on GitHub and refuses otherwise:
+
+```sh
+git -C ~/code/your-clone pull
+./go attach ~/code/your-clone
+```
+
+Limits. The repository must allow merge commits, because the judged head
+must be the merge's second parent. If you make `gates` a required status
+check with "require branches to be up to date", GitHub refuses the merge
+and the ticket stops with that reason. A merge commit can contain commits
+from your default branch that no gate judged; only the canary judges the
+merge.
 
 ## 3. Your thresholds: `policy.env`
 

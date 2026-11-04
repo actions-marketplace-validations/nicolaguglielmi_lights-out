@@ -4,7 +4,7 @@ Everything the [README](../README.md) leaves out: what runs at each milestone, e
 
 ## Status
 
-Milestones M19 (harnesses, ADR 0041) and M20 (gates anywhere, ADR 0042) closed. Next, in plan §16's order: M21 (GitHub as code host), M22 (ops without the plane), M23 (the packaged command). What runs today:
+Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042) and M21 (GitHub as code host, ADR 0043) closed. Next, in plan §16's order: M22 (ops without the plane), M23 (the packaged command). What runs today:
 
 | Stage | Milestone | Real |
 |---|---|---|
@@ -27,6 +27,7 @@ Milestones M19 (harnesses, ADR 0041) and M20 (gates anywhere, ADR 0042) closed. 
 | harnesses | M19 | ✓ `claude-code` (2.1.311) and `codex` (0.166.0) beside `gemini-cli`, one provider each, the guard in each CLI's pre-tool hook, `./go harness-conformance` against a scripted model (no key; plumbing, not a model's ability); recording with them is implemented, not yet run (ADR 0041) |
 | ops without the plane | M22 | ✓ `./go incident` and `./go postmortem` (ADR 0044); `./go verify METRICS_URL=…` on any Prometheus-compatible endpoint; `demo-postmortem` replays the ops-triage recording made at L1 on 2026-11-04 (`./go record-postmortem PROFILE=l1`, gemini-3.8-flash) and prints GO with a fix ticket |
 | gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
+| GitHub code host | M21 | ✓ implemented: `adapters/github/` with the eight CodeHost verbs, an attached repository's merge built, signed and released by the release step at any code host, `./go codehost-conformance` (Gitea on every push, GitHub nightly once the owner sets the throwaway repository). Not yet run: `./go e2e CODE_HOST=github PROFILE=l1` (ADR 0043) |
 
 | | |
 |---|---|
@@ -79,6 +80,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go demo-network    # prove a network of members on ticket 0012: one PR through the whole tower (ADR 0036)
 ./go record          # run a ticket for real at L1 and save the fixture: TICKET=<id> [ROLE=dev-worker] [AGENT_HARNESS=claude-code|codex MODEL_PROVIDER=anthropic|openai MODEL=<id>]; a non-gemini harness writes fixtures/<ticket>/<role>/<harness>/ (ADR 0041 §10); refuses a set MODEL_BASE_URL
 ./go harness-conformance # every CLI harness against a scripted model, nine cases, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041 §8); builds three CLI images, not part of ./go ci or demo
+./go codehost-conformance # ten cases on the CODE_HOST set: Gitea with the plane up, or `CODE_HOST=github` on an attached throwaway repository (ADR 0043 §5); not part of ./go ci or demo
 ./go review          # run the review step on a PR: TICKET=<id> [ROLE=test-reviewer]
 ./go demo-review     # prove a medium-risk PR goes through review (L0 replay of fixture)
 ./go record-review   # record the review role's response at L1 (TICKET=<id> [ROLE=test-reviewer] PROFILE=l1)
@@ -113,7 +115,7 @@ Local first, cloud optional (ADR 0022): L0 and L1 are the whole product, no capa
 | **Needs** | podman rootless (podman machine on macOS) | + the chosen provider's API key (Gemini's free tier is the free path) | + GCP project with billing | + Agent Engine quota |
 | **Models** | Recorded responses (fixtures) | The profile's `MODEL_PROVIDER`/`MODEL` (ADR 0040): Gemini API `gemini-3.8-flash` by default; Claude or OpenAI for the ADK roles | idem, Gemini via Gemini Enterprise Agent Platform | idem + thinking level per role |
 | **Harness worker** | Replay from `fixtures/` | Gemini CLI headless in compose | Gemini CLI on Cloud Run Job | + adapter Antigravity SDK |
-| **Git and PR** | Gitea in compose | Gitea | GitHub real | GitHub real |
+| **Git and PR** | Gitea in compose | Gitea; GitHub for an attached repository with `CODE_HOST=github` (M21, ADR 0043; run end to end only by the owner, once) | GitHub real | GitHub real |
 | **CI** | Gitea Actions (act runner) | Gitea Actions | GitHub Actions or Cloud Build | idem |
 | **Registry and signing** | Zot local, local key, signature verified before staging (M8) | idem | Artifact Registry, KMS key, Binary Authorization | idem |
 | **App database** | Postgres in compose | idem | Cloud SQL — does not scale to zero, the one fixed cost; stop or delete it between runs (`infra/README.md`) | idem |
@@ -189,6 +191,8 @@ At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERS
 - `./go demo-hold` releases the same failing version with the kill switch thrown first (waitlist off), expects GO all the way, and asserts the canary is held at 25% (not silently rolled back), then rolls back itself for clean state.
 - `./go demo-launch` proves go-for-launch: a held canary, the brief, `GO_FOR_LAUNCH=GO` to promote to 100%, then the un-promote. A reader can step through the stages or let it run end-to-end (~150 s warm).
 
+**Release of an attached repository (ADR 0043 §4), at any code host.** The bundled app still waits for the Gitea `image` job. For an attached repository `core/steps/release.sh` fetches the default branch, checks that the merge is on it, builds the merge commit in a throwaway worktree with `make publish` (the repository's own Containerfile, through the `backend` service of its `.lights-out/compose.yaml`) and signs it. The unchanged launchpad then verifies the signature and releases. `TOOLCHAIN_IMAGE` is not a release artefact: it holds no application. A workload without `.lights-out/compose.yaml` has no release. The build has no timeout of its own.
+
 `demo-rollback` and `demo-hold` are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path. `demo-launch` is also optional; the manual human path is `./go kill-switch`, `./go release`, `./go promote` (the answer travels as `./go promote GO_FOR_LAUNCH=GO`; `go` forwards no host environment).
 
 **Kill switch and freeze** are feature-flag edits in the active workload's `flags/flags.json`, live within seconds through flagd's file poller, no deploy:
@@ -208,6 +212,12 @@ A workload can also live in a repository of its own (ADR 0037). `./go attach <pa
 `./go <target>` builds `workbench/Containerfile` and runs `make <target>` inside it with the repo mounted at the same absolute path as on the host. The workbench image carries make, git, gcloud, terraform, and all verification tools, so the host needs only a container engine and a shell.
 
 Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env` (gitignored, template `.env.example`). L0 needs no `.env`. Two optional keys serve `./go verify` on your own metrics (ADR 0044): `METRICS_URL`, the base that `/api/v1/query` is appended to, and `METRICS_AUTH_HEADER`, one header line such as `Authorization: Bearer …`, never printed. `./go demo` and the plane's own judge ignore both.
+
+Two more keys serve the GitHub code host (ADR 0043): `GITHUB_REPO=<owner>/<name>` and `GITHUB_TOKEN`, a fine-grained token for that one repository with Contents, Pull requests and Commit statuses, read and write. `CODE_HOST=github` goes on the command line, never in `.env`, because in `.env` it would also redirect `./go demo`. The token reaches curl on stdin and git through a credential helper the Makefile adds as env-scoped config; it is in no argv, no `.git/config` and no model container.
+
+### Workflows
+
+`.github/workflows/ci.yml` runs `./go ci` and the `launch` job. Since M21 the `launch` job ends with `./go codehost-conformance` against Gitea, with the plane up, on every push. `.github/workflows/nightly-github.yml` runs the same suite daily against GitHub, on a throwaway repository named by the repository variable `LIGHTS_OUT_GITHUB_REPO`, with the secret `LIGHTS_OUT_GITHUB_TOKEN`. While the variable is unset it prints a notice and skips; a variable without the secret fails. The nightly does not run the full e2e: it proves the eight verbs on GitHub, not the tower on GitHub.
 
 ### Engine socket
 
@@ -287,6 +297,7 @@ lights-out/
     help.sh                 # make help exits 0
     readme.sh               # every ./go X in README exists
     gitea-compat.sh         # workflow uses only what Gitea Actions supports
+    codehost.sh             # every code host adapter: the eight verbs and ready.sh, credential.sh answers, the Makefile's git config index, the token never in argv (curl and git replaced by recorders; no network, no fake GitHub; ADR 0043 §5)
     profiles.sh             # profiles are plain KEY=value, same keys
     workloads.sh            # validate every workload's workload.env (replaces compose.sh)
     app-free.sh             # verify core/gates/verify/adapters never name the app (ADR 0030)
@@ -349,6 +360,7 @@ lights-out/
     prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh (calls promql with http://$PLANE_HOST:9090)
     promql/                 # M22: query.sh, any Prometheus-compatible endpoint at METRICS_URL
     gitea/                  # ready.sh, runner/Containerfile, runner/config.yaml
+    github/                 # M21: the eight CodeHost verbs, ready.sh, env.sh, credential.sh; GitHub's REST API, an attached repository only (ADR 0043)
     flagd/                  # ready.sh
     zot/                    # ready.sh
     pubsub-emulator/        # ready.sh
