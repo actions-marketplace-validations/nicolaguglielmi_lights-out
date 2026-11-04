@@ -28,6 +28,18 @@ Delegate to the `architect` subagent anything that adds a package, an abstractio
 
 Then stop and wait for approval. Do not touch a file before it comes.
 
+## Models and effort per task
+
+Plan §5 fixes the construction models; `docs/plans/third-arc-execution.md`
+assigns them per milestone. When you delegate, pass the effort below.
+
+| Task | Subagent | Effort |
+|---|---|---|
+| ADR, structural decision | `architect` (opus) | high |
+| Gates, ci checks, tests from the spec | `gate-writer` (sonnet) | medium |
+| README, docs, commit messages | `doc-scribe` (haiku) | low |
+| A cross-cutting problem the session has missed twice | a one-shot task on fable | xhigh |
+
 ## 3. Build
 
 - Delegate tests, gates and the verify query to the `gate-writer` subagent.
