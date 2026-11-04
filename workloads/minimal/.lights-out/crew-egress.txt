@@ -1,0 +1,7 @@
+# The hosts the dev-worker may reach besides its provider (docs/adr/0046 §5):
+# one name:port per line. Each is an open channel out of the worker's
+# container: data can leave to an account on that host. The brief's
+# `uv sync --locked` and a dependency-upgrade ticket's `uv lock` read
+# PyPI's index and files; uploads go to upload.pypi.org, never listed.
+pypi.org:443
+files.pythonhosted.org:443

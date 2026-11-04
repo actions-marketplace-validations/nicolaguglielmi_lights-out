@@ -17,19 +17,24 @@ name: lights-out
 # read-only, and what each adapter's run.sh adds with `run -v`: the run's
 # own directory under .crew/ and the uv cache, never .crew/ itself (it
 # holds the release signing key and every other ticket, docs/adr/0041
-# §4). Reaches its workload's Postgres to run the workload's own tests
-# (docs/adr/0017 §10; the `depends_on`/`environment` that make that
-# possible live in the workload's own compose fragment, merged in —
-# docs/adr/0030 §3) — safe because demo-crew and record run one worker
-# at a time. user: CREW_UID:CREW_GID (the Makefile's `id -u`/`id -g`)
+# §4). Reaches a Postgres of its own, never the plane's, to run the
+# workload's own tests (docs/adr/0017 §10, 0046 §6; the `depends_on`/
+# `environment` and that service, on `crew` only, live in the workload's
+# own compose fragment, merged in — docs/adr/0030 §3). user: CREW_UID:CREW_GID (the Makefile's `id -u`/`id -g`)
 # keeps files the model's git writes in the bind-mounted workspace
 # writable by workbench afterwards; HOME is set because that uid has no
 # passwd entry. The `:-` default on each key keeps `docker-compose config
 # -q` (ci-workloads) clean with no key set — each adapter refuses an
 # empty or placeholder key, loudly, before its service ever starts.
+# Network (docs/adr/0046 §1, §3): `crew` only, which is internal, so the
+# one way out is the `egress` proxy below, through the proxy variables;
+# it allows the harness's provider and the hosts the workload's contract
+# names, nothing else. No plane service and no plane Postgres is on `crew`.
 x-crew-worker: &crew-worker
   profiles: ["crew"]
   user: "${CREW_UID:-0}:${CREW_GID:-0}"
+  networks:
+    - crew
   volumes:
     - ./roles:/roles:ro
   security_opt:
@@ -44,6 +49,12 @@ x-crew-env: &crew-env
   UV_PROJECT_ENVIRONMENT: /tmp/crew-venv
   UV_CACHE_DIR: /crew/.uv-cache
   UV_LINK_MODE: copy
+  HTTPS_PROXY: http://egress:3128
+  HTTP_PROXY: http://egress:3128
+  https_proxy: http://egress:3128
+  http_proxy: http://egress:3128
+  NO_PROXY: localhost,127.0.0.1,::1
+  no_proxy: localhost,127.0.0.1,::1
 
 x-crew-build-args: &crew-build-args
   WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
@@ -87,6 +98,32 @@ services:
     environment:
       <<: *crew-env
       CODEX_API_KEY: ${OPENAI_API_KEY:-}
+
+  # The one way out of `crew` (docs/adr/0046 §2): a forward proxy that
+  # opens only the host:port pairs listed in .crew/egress/allow, re-read
+  # on every connection. core/egress.sh writes that list from the
+  # adapter's EGRESS and the workload's crew-egress.txt and starts this
+  # service; no run stops it (parallel network members share it); `./go
+  # down` does. On `crew` and `default`, no published port: only the
+  # harnesses reach it. Workbench image, core/ read-only, as the
+  # conformance stub runs (docs/adr/0041 §8). Port 3128: decision.
+  egress:
+    image: ${WORKBENCH_IMAGE:?set by ./go}
+    profiles: ["crew"]
+    user: "${CREW_UID:-0}:${CREW_GID:-0}"
+    command: ["python3", "-I", "/core/egress.py", "3128"]
+    networks:
+      - crew
+      - default
+    volumes:
+      - ./core:/core:ro
+      - ./.crew/egress:/work
+    security_opt:
+      - label=disable
+    environment:
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      EGRESS_DIR: /work
 
   # --- the plane (M2) ---
 
@@ -226,10 +263,17 @@ services:
   # suite exports into every key variable (the `:-` default only keeps
   # `docker-compose config -q` clean; the stub exits on an empty one). Only
   # the suite starts it, by name; a CLI harness's container reaches it at
-  # http://conformance-model:$CONFORMANCE_PORT on the project's network.
+  # http://conformance-model:$CONFORMANCE_PORT on the project's network,
+  # through `egress` (docs/adr/0046): the harness is not on `default`.
+  # `conformance-sink` is the same container under another name, the host
+  # case 9's probe tries to send the key to; nothing may ever reach it.
   conformance-model:
     image: ${WORKBENCH_IMAGE:?set by ./go}
     profiles: ["conformance"]
+    networks:
+      default:
+        aliases:
+          - conformance-sink
     user: "${CREW_UID:-0}:${CREW_GID:-0}"
     command: ["python3", "-I", "/stub/stub.py", "${CONFORMANCE_PORT:-8089}"]
     volumes:
@@ -242,3 +286,10 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       STUB_WORK: /work
       CONFORMANCE_CANARY: ${CONFORMANCE_CANARY:-}
+
+# The harnesses' network (docs/adr/0046 §1): internal, so no gateway and no
+# route out; `egress` is the one service on it and on `default`, and a
+# service a harness depends on (a workload's crew-postgres) is on it alone.
+networks:
+  crew:
+    internal: true

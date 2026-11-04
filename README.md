@@ -114,17 +114,26 @@ Run `./go doctor` first. It prints one line per item: the engine and whether it 
 
 The coding roles run on one of three CLI harnesses, chosen by `AGENT_HARNESS`. Each has one provider, and `run.sh` refuses a mismatch with a line naming the harness that fits.
 
-| Harness | Provider | Key variable | Guard | Boundary | Vendor sandbox |
-|---|---|---|---|---|---|
-| `gemini-cli` | `gemini` | `GEMINI_API_KEY` | `BeforeTool` hook | container | not used |
-| `claude-code` (Claude Code 2.1.311) | `anthropic` | `ANTHROPIC_API_KEY` | `PreToolUse` hook | container | not used |
-| `codex` (Codex 0.166.0) | `openai` | `OPENAI_API_KEY`, passed to the container as `CODEX_API_KEY` | `PreToolUse` hook | container | off (`danger-full-access`) |
+| Harness | Provider | Key variable | Guard | Boundary | Vendor sandbox | Egress |
+|---|---|---|---|---|---|---|
+| `gemini-cli` | `gemini` | `GEMINI_API_KEY` | `BeforeTool` hook | container | not used | `generativelanguage.googleapis.com:443` |
+| `claude-code` (Claude Code 2.1.311) | `anthropic` | `ANTHROPIC_API_KEY` | `PreToolUse` hook | container | not used | `api.anthropic.com:443` |
+| `codex` (Codex 0.166.0) | `openai` | `OPENAI_API_KEY`, passed to the container as `CODEX_API_KEY` | `PreToolUse` hook | container | off (`danger-full-access`) | `api.openai.com:443` |
 
-The guard is the same `guard.sh`, copied byte-identical into each adapter. The container is the boundary for all three: no git credential, no engine socket, and only the run's directory and `/roles` (read-only) mounted. Codex's own sandbox is off because its bubblewrap cannot start in rootless podman. The network stays open for all three, because each must reach its provider. The hook denies the network tools, but that does not stop an interpreter from sending out what the container holds, the provider key included. Closing egress is an open question before M24 runs on a repository the owner does not control.
+The guard is the same `guard.sh`, copied byte-identical into each adapter. The container is the boundary for all three: no git credential, no engine socket, and only the run's directory and `/roles` (read-only) mounted. Codex's own sandbox is off because its bubblewrap cannot start in rootless podman.
+
+The network is closed except for one door (ADR 0046). Each harness sits on an internal `crew` network only. Its one way out is the `egress` proxy (stdlib Python on the workbench image, `core/egress.py`), which opens exact `host:port` pairs: the adapter's provider host (`EGRESS` in `adapters/<h>/conformance.env`) plus whatever the workload's contract lists in `crew-egress.txt`. `app` and `workloads/minimal` list PyPI's two read hosts, `pypi.org:443` and `files.pythonhosted.org:443`. Each listed host is an open channel. The worker has its own Postgres, `crew-postgres`, not the plane's. No plane service is reachable from it.
+
+Channels that remain:
+
+- The provider's own host. An injected attacker key can upload the container's key there, and the proxy cannot read TLS. Each `crew-egress.txt` host is one more of the same kind.
+- The pull request. `run.sh` greps the literal key. An encoded key passes.
+- DNS, where the engine forwards it from internal networks. It is closed only on docker 26.0.0 or later; case 9 checks it on every engine it runs on.
+- The guard's `/proc/self/environ` gap (an interpreter reading the environment) now reaches only the channels above.
 
 `MAX_TURNS`, `TOKEN_BUDGET` and `TIMEOUT_S` stop each harness, each read from the vendor's own signal. The budgets in `roles/` are Gemini measurements and bind every harness until recordings re-measure them.
 
-`./go harness-conformance` runs the real pinned CLI in its real container against a scripted model (`gates/harness-conformance/stub.py`). It needs no key and no account. The model is simulated: the far end of the wire is a script, not a vendor. The suite proves a harness's plumbing in nine cases (guard, budgets, artefacts, served model, no key in artefacts). It does not prove a model's ability or the real vendor wire. It builds three CLI images (about 350 MB of binaries for codex on arm64, about 560 MB of `node_modules` for claude-code) and is not part of `./go demo`. `./go ci` runs its engine-free half, `harness-shape` and `hooks`. The full suite is its own target and a workflow job.
+`./go harness-conformance` runs the real pinned CLI in its real container against a scripted model (`gates/harness-conformance/stub.py`). It needs no key and no account. The model is simulated: the far end of the wire is a script, not a vendor. The suite proves a harness's plumbing in ten cases, 0 to 9 (guard, budgets, artefacts, served model, no key in artefacts, confinement). Case 9 is the confinement: a probe inside the harness reads its own environment (the key canary) and tries eight ways out. All eight must be blocked. The suite proves it on docker in GitHub Actions on every push. Rootless podman is run by a separate workflow, `podman` (claude-code only). <!-- podman result: filled in after the run --> It does not prove a model's ability or the real vendor wire. It builds three CLI images (about 350 MB of binaries for codex on arm64, about 560 MB of `node_modules` for claude-code) and is not part of `./go demo`. `./go ci` runs its engine-free half, `harness-shape` and `hooks`. The full suite is its own target and a workflow job.
 
 Found while building it, three of them older than M19, and closed: a repository's own `.env` could point gemini-cli's `GOOGLE_GEMINI_BASE_URL`, key included, at another host; a repository's own `.claude/settings.json` (`disableAllHooks`) or `.codex/config.toml` (`[features] hooks = false`) switched the guard off; the worker mounted all of `.crew/`, including the release signing key.
 

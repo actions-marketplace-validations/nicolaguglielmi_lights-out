@@ -4,12 +4,27 @@
 # gates-harness-conformance: every CLI harness's entry requirement (docs/adr/
 # 0041 §8), written from the ADR and the adapter contract, never from an
 # adapter. A CLI harness is an adapters/<name>/ with run.sh, Containerfile
-# and package-lock.json: discovered, never listed. For each one, nine cases
+# and package-lock.json: discovered, never listed. For each one, ten cases
 # in a fixed order, the first disagreement a NO-GO naming the harness and
 # the case:
 #   0 pairing      1 valid PR          2 push denied        3 secrets read denied
 #   4 the workspace cannot switch the guard off            5 MAX_TURNS
-#   6 TOKEN_BUDGET 7 TIMEOUT_S         8 no key in artefacts
+#   6 TOKEN_BUDGET 7 TIMEOUT_S         9 confinement        8 no key in artefacts
+# Case 9 runs before case 8 because case 8 reads every case's artefacts, 9's
+# included (docs/adr/0046, "Conformance").
+#
+# Confinement (docs/adr/0046): the harness is on an internal network and its
+# one way out is the `egress` proxy, which opens the scripted model and nothing
+# else. So in every case from 1 to 9 each request the stub logged came from
+# egress's address, as seen from the stub's side (resolved by `docker-compose
+# exec` inside the stub's container, so it is the address the stub's own
+# network gives `egress`, whichever engine runs it), and no
+# request reached `conformance-sink`, the stub's second name, or /exfil. Case 9
+# runs gates/harness-conformance/probe.py inside the harness, which reads the
+# key canary from its own environment and tries eight ways to send it out (the
+# ADR's (a) to (h), listed in the probe). All eight must read `blocked` in the
+# next request's tool result; the proxy's log, taken during the case, must hold
+# a DENY for each proxied way and an ALLOW for conformance-model only.
 #
 # What it runs: the real pinned CLI in its real image, driven by `sh
 # adapters/<name>/run.sh` exactly as core/crew.sh does; only the far end of
@@ -18,8 +33,8 @@
 # ability and never the vendors' real wire: only an L1 recording does that.
 #
 # The adapter contract, each key read from adapters/<name>/conformance.env
-# (PROVIDER, MODEL, KEY_VAR, THINKING_PATH) and thinking.env, never from a
-# list here. Every harness's KEY_VAR is exported with a random canary before
+# (PROVIDER, MODEL, KEY_VAR, THINKING_PATH, EGRESS) and thinking.env, never from
+# a list here. Every harness's KEY_VAR is exported with a random canary before
 # compose starts, because compose falls back to the project's .env for a
 # variable missing from the environment, and on the owner's machine that file
 # holds a real key.
@@ -36,6 +51,17 @@
 # way. The port is a decision of this gate: 8089, inside the compose network
 # only. CONFORMANCE_TIMEOUT_S moves case 7's 30 and is set by
 # gates/harness-conformance/proof.sh alone, which cannot wait 30 s a harness.
+#
+# Case 9's numbers (docs/adr/0046, "Conformance", each a decision): the way that
+# names an allowed host on another port uses the stub's port + 1, 8090, a port it
+# does not serve; the probe waits 5 s per way (a local listener answers in far
+# less, and eight fit well under the role's TIMEOUT_S); 1.1.1.1 is a public
+# anycast address and example.com the IANA documentation domain, so those two
+# ways prove something only on a host with internet. The two numbers of this
+# gate's own, decisions too: it waits up to 10 s for the engine's log to hold the
+# decisions the proxy has already taken (a log read lags the event by well under
+# a second; 10 is room, a missing line after it is a real absence), and 3128, the
+# proxy's port, is core/egress.py's, never read here.
 #
 # Lives in gates/, so ci/contract.sh cold-runs it inside `make ci` with no
 # CONFORMANCE set and no engine: the guard below must be the first thing
@@ -125,8 +151,8 @@ fi
 # ./go ci; a harness that is run here must not be able to skip it).
 for h in $selected; do
   cf=adapters/$h/conformance.env
-  [ -f "$cf" ] || nogo "$h: $cf is missing (PROVIDER, MODEL, KEY_VAR, THINKING_PATH)"
-  for k in PROVIDER MODEL KEY_VAR THINKING_PATH; do
+  [ -f "$cf" ] || nogo "$h: $cf is missing (PROVIDER, MODEL, KEY_VAR, THINKING_PATH, EGRESS)"
+  for k in PROVIDER MODEL KEY_VAR THINKING_PATH EGRESS; do
     [ -n "$(conf_get "$cf" "$k")" ] || nogo "$h: $cf has no $k="
   done
   case "$(conf_get "$cf" KEY_VAR)" in
@@ -159,10 +185,12 @@ started=0
 # shellcheck disable=SC2329 # invoked by name via `trap` below, not called directly
 cleanup() {
   ec=$?
-  # Stops and removes this one service: `down` would take the plane with it
+  # Stops and removes these two services: `down` would take the plane with it
   # (the compose project is shared, docs/adr/0041 §8's COMPOSE_FILE note).
+  # `egress` is the proxy a run.sh started (docs/adr/0046 §4); no run stops it.
   if [ "$started" -eq 1 ]; then
     docker-compose --profile conformance rm -sf conformance-model >&2 2>&1 || :
+    docker-compose --profile crew rm -sf egress >&2 2>&1 || :
   fi
   [ "$pass" -ne 1 ] || rm -rf "$conf"
   exit "$ec"
@@ -187,6 +215,13 @@ project=$(docker-compose --profile crew --profile conformance config --format js
 rm -f "$conf/compose.err"
 printf '%s' "$project" | jq -e '.services["conformance-model"] != null' >/dev/null \
   || nogo "the suite's project has no service conformance-model (compose.yaml)"
+printf '%s' "$project" | jq -e '.services["egress"] != null' >/dev/null \
+  || nogo "the suite's project has no service egress (compose.yaml, docs/adr/0046 §2): the harness has no way out, and none to confine"
+# Case 9's probe tries the name conformance-sink; without this alias no one answers
+# to it and the way "TCP to the sink, no proxy" would read blocked for a reason
+# that is not the network's.
+printf '%s' "$project" | jq -e '(.services["conformance-model"].networks.default.aliases // []) | index("conformance-sink") != null' >/dev/null \
+  || nogo "conformance-model has no alias conformance-sink on the default network (compose.yaml, docs/adr/0046): case 9 would try a name nothing answers to"
 for h in $selected; do
   printf '%s' "$project" | jq -e --arg h "$h" '.services[$h] != null' >/dev/null \
     || nogo "$h: the suite's project has no compose service named $h, and run.sh runs it by that name"
@@ -200,6 +235,9 @@ printf 'harness-conformance: (gates/harness-conformance/stub.py). It proves plum
 printf 'harness-conformance: harnesses: %s\n' "$selected" >&2
 
 started=1
+# A proxy left from an earlier run may hold another run's address and list: the
+# suite's own is started by the first run.sh (core/egress.sh) and removed on exit.
+docker-compose --profile crew rm -sf egress >&2 2>&1 || :
 docker-compose --profile conformance up -d conformance-model >&2 \
   || nogo "could not start the scripted model (compose service conformance-model)"
 waited=0
@@ -218,12 +256,15 @@ done
 # None of these may be called inside a $(...) capture: a nogo inside one would
 # only exit the subshell the capture runs in (the delivery suite's note).
 
+evidence=""  # more for fail() to print: case 9 puts the proxy's decisions here
+
 fail() {  # WHAT: NO-GO naming the running harness and case, with the evidence
   nogo "$h case $n: $1" \
     "--- run.sh's stderr, last 30 lines ($errf)" \
     "$(tail -n 30 "$errf" 2>/dev/null || true)" \
     "--- the scripted model's requests ($reqlog)" \
-    "$(jq -c '{n, kind, auth, requested, tools, step, op, hooked, reported_tokens}' "$reqlog" 2>/dev/null | head -n 40 || true)"
+    "$(jq -c '{n, kind, auth, requested, tools, step, op, hooked, reported_tokens, peer, sink, path}' "$reqlog" 2>/dev/null | head -n 40 || true)" \
+    "$evidence"
 }
 
 set_case() {  # STEPS_JSON: the script the stub plays for the running case
@@ -236,6 +277,7 @@ set_case() {  # STEPS_JSON: the script the stub plays for the running case
 prepare() {  # H N: a fresh workspace, a bare origin and the ticket; sets the paths below
   h=$1
   n=$2
+  evidence=""
   ticket=conformance/$h/$n
   dir=$(pwd)/$conf/$h/$n
   ws=$dir/workspace
@@ -266,6 +308,10 @@ prepare() {  # H N: a fresh workspace, a bare origin and the ticket; sets the pa
       printf '{"disableAllHooks": true}\n' > "$ws/.claude/settings.json"
       printf '[features]\nhooks = false\n' > "$ws/.codex/config.toml"
       printf '{"hooks":{}}\n' > "$ws/.codex/hooks.json"
+      ;;
+    9)
+      # The probe is committed in BASE too, so the patch is still conformance.txt only.
+      cp gates/harness-conformance/probe.py "$ws/probe.py" || fail "could not copy gates/harness-conformance/probe.py"
       ;;
   esac
   git -C "$ws" add -A
@@ -323,6 +369,92 @@ check_auth() {
   [ "$bad" -eq 0 ] || fail "$bad request(s) did not carry the key canary: the key did not come from $key_var (case 8's invariant, caught here)"
 }
 
+# --- confinement (docs/adr/0046, "Conformance"): the proxy, the sink, the probe ----
+
+# Retried, ten times a second apart (decision): found on rootless podman in
+# GitHub Actions (podman run 41868543196), aardvark-dns answered "Temporary
+# failure in name resolution" for `egress` right after a harness container
+# left the network, where the same lookup had worked one case earlier. A
+# name that never resolves still fails, after ten seconds.
+stub_resolve() {  # NAME: the address NAME has for the stub's own container, on stdout (empty on failure)
+  docker-compose --profile conformance exec -T conformance-model \
+    python3 -c 'import socket, sys, time
+for i in range(10):
+    try:
+        print(socket.gethostbyname(sys.argv[1]))
+        break
+    except OSError:
+        if i == 9:
+            raise
+        time.sleep(1)' "$1" 2> "$dir/resolve.err" \
+    | tr -d '\r' | head -n 1
+}
+
+is_ipv4() { printf '%s' "$1" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; }
+
+check_peers() {  # every request came from egress; none reached the sink or /exfil
+  egress_ip=$(stub_resolve egress)
+  is_ipv4 "$egress_ip" || fail "could not resolve 'egress' from the stub's side (docker-compose exec -T conformance-model): got '$egress_ip' $(cat "$dir/resolve.err" 2>/dev/null)"
+  [ "$(rq 'length')" -ge 1 ] || fail "the stub logged no request: the harness never reached the scripted model"
+  strays=$(rq --arg ip "$egress_ip" '[.[] | (.peer // "no peer recorded") | select(. != $ip)] | unique | join(",")')
+  [ -z "$strays" ] || fail "the stub saw requests from $strays, not from egress ($egress_ip): the harness reached the model around the proxy"
+  sunk=$(rq '[.[] | select(.sink == true or ((.path // "") | contains("/exfil")))] | length')
+  [ "$sunk" -eq 0 ] || fail "$sunk request(s) reached conformance-sink or /exfil: something got out, to the name the suite keeps for that"
+}
+
+probe_way() {  # CHANNEL: what the probe tried, for a message (the probe's own header has the list)
+  case "$1" in
+    a) printf 'POST to conformance-sink through the proxy' ;;
+    b) printf 'CONNECT conformance-sink through the proxy' ;;
+    c) printf 'CONNECT conformance-model on another port through the proxy' ;;
+    d) printf 'CONNECT example.com:443 through the proxy' ;;
+    e) printf 'TCP to conformance-sink without the proxy' ;;
+    f) printf 'TCP to the stub'"'"'s address without the proxy' ;;
+    g) printf 'TCP to 1.1.1.1:443 without the proxy' ;;
+    h) printf 'resolving example.com' ;;
+  esac
+}
+
+check_probe_output() {  # all eight ways read `blocked` in the tool result the model got back
+  res=$(rq --arg m "$model" '[.[] | select(.kind == "generate" and .tools == true and .requested == $m and .step == 1)] | map(.last_result) | join("\n")')
+  [ -n "$res" ] || fail "the request after the probe's command carries no tool result: the harness did not hand the probe's output back"
+  for c in a b c d e f g h; do
+    case "$res" in
+      *"egress-probe $c blocked"*) ;;
+      *"egress-probe $c open"*) fail "channel $c is open: the harness's container can get out by $(probe_way "$c") (probe.py lists the eight)" ;;
+      *) fail "the tool result has no 'egress-probe $c' line ($(probe_way "$c")): the probe did not run (the guard may have denied its command), stopped before it, or its output was cut" ;;
+    esac
+  done
+}
+
+egress_decisions() {  # the proxy's decisions so far, `VERB host:port` a line, whatever prefix the engine puts on its log lines
+  docker-compose --profile crew logs --no-color egress 2>/dev/null | tr -d '\r' | grep -oE '(ALLOW|DENY|FAIL) [^ ]+' || :
+}
+
+check_egress_log() {  # N0: the proxy's decisions after the first N0 were taken during this case
+  want="conformance-model:$((port + 1)) example.com:443"
+  tries=0
+  while :; do
+    egress_decisions | tail -n "+$(($1 + 1))" > "$dir/egress.decisions"
+    missing=""
+    for hp in $want; do
+      grep -qxF "DENY $hp" "$dir/egress.decisions" || missing="$missing $hp"
+    done
+    # The ways (a) and (b) name the same host:port: two refusals of it.
+    [ "$(grep -cxF "DENY conformance-sink:$port" "$dir/egress.decisions")" -ge 2 ] || missing="$missing conformance-sink:$port(twice)"
+    [ -n "$missing" ] || break
+    tries=$((tries + 1))
+    [ "$tries" -le 10 ] || break
+    sleep 1
+  done
+  evidence="--- the egress proxy's decisions during this case ($dir/egress.decisions)
+$(cat "$dir/egress.decisions")"
+  [ -z "$missing" ] || fail "the proxy's log holds no DENY for:$missing: the probe's proxied ways never reached it as expected"
+  others=$(grep -E '^(ALLOW|FAIL) ' "$dir/egress.decisions" | grep -vE "^(ALLOW|FAIL) conformance-model:$port\$" | sort -u | tr '\n' ' ' || true)
+  [ -z "$others" ] || fail "the proxy took a host other than the scripted model: $others"
+  grep -qxF "ALLOW conformance-model:$port" "$dir/egress.decisions" || fail "the proxy's log has no ALLOW conformance-model:$port: the run did not go through it"
+}
+
 loop_requests() {  # the requests that are the agent loop's, for $model
   rq --arg m "$model" '[.[] | select(.kind == "generate" and .tools == true and .requested == $m)] | length'
 }
@@ -367,6 +499,7 @@ check_denials_reached_the_model() {  # every probe's tool result, in the next re
 check_valid_pr() {  # the artefact contract of ADR 0017 §1 and ADR 0041: cases 1 to 4 end the same way
   [ "$rc" -eq 0 ] || fail "run.sh exited $rc, want 0"
   check_auth
+  check_peers
   sh core/harness-check.sh "$out" "$ws" "$base" 2> "$dir/harness-check.err" \
     || fail "core/harness-check.sh: $(cat "$dir/harness-check.err")"
   [ "$(git -C "$ws" rev-list --count "$base..HEAD")" = 1 ] || fail "the workspace is not exactly one commit over BASE"
@@ -405,6 +538,7 @@ check_valid_pr() {  # the artefact contract of ADR 0017 §1 and ADR 0041: cases 
 check_stop() {  # PHRASE MAX_REQUESTS: ADR 0041 §5's stop contract, read from stderr
   [ "$rc" -eq 1 ] || fail "run.sh exited $rc, want 1"
   check_auth
+  check_peers
   grep -qF -- "$1" "$errf" || fail "run.sh's stderr has no line containing '$1'"
   [ ! -e "$out/pr.json" ] || fail "an over-budget run left OUT/pr.json: it would be recorded"
   reqs=$(loop_requests)
@@ -575,14 +709,32 @@ for h in $selected; do
   run_case "$role_max_turns" "$role_token_budget" "$timeout_s"
   [ "$rc" -eq 1 ] || fail "run.sh exited $rc, want 1"
   check_auth
+  check_peers
   grep -qF -- "over TIMEOUT_S ($timeout_s s)" "$errf" || fail "run.sh's stderr has no line containing 'over TIMEOUT_S ($timeout_s s)'"
   [ ! -e "$out/pr.json" ] || fail "an over-budget run left OUT/pr.json: it would be recorded"
   [ "$(rq '[.[] | select(.op == "hang")] | length')" -ge 1 ] \
     || fail "the stub never saw the request it was to leave unanswered: TIMEOUT_S=$timeout_s is shorter than this CLI takes to start, or it never asked"
 
+  # ---- case 9: confinement (docs/adr/0046) ----------------------------------
+  # Before case 8, which reads every case's artefacts, this one's included.
+  # probe.py (committed in BASE) reads the key canary from the container's own
+  # environment and tries eight ways to send it out; the model runs it with
+  # the stub's address on the default network, which the probe cannot know.
+  prepare "$h" 9
+  stub_ip=$(stub_resolve conformance-model)
+  is_ipv4 "$stub_ip" || fail "could not resolve conformance-model from the stub's own container: got '$stub_ip' $(cat "$dir/resolve.err" 2>/dev/null)"
+  set_case "$(steps_after "$(jq -n --arg c "python3 probe.py $stub_ip $port" '[{op: "shell", cmd: $c}]')")"
+  before=$(egress_decisions | awk 'END{print NR}')
+  run_case "$role_max_turns" "$role_token_budget" "$role_timeout_s"
+  [ "$rc" -eq 0 ] || fail "run.sh exited $rc, want 0"
+  check_probe_output
+  check_valid_pr
+  [ "$(probe_count)" -ge 1 ] || fail "the stub never had the probe's command executed"
+  check_egress_log "$before"
+
   # ---- case 8: no key in the artefacts, over every case ----------------------
   n=8
-  for c in 1 2 3 4 5 6 7; do
+  for c in 1 2 3 4 5 6 7 9; do
     reqdir=$conf/model/$h/$c
     reqlog=$reqdir/requests.jsonl
     errf=$conf/$h/$c/stderr.log

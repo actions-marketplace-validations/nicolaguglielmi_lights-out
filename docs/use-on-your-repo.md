@@ -288,15 +288,39 @@ The worker's services go under one anchor, so every harness gets them:
 
 ```yaml
 x-crew-worker: &crew-worker
-  depends_on: [db]
+  depends_on: [crew-db]
   environment:
-    DATABASE_URL: postgresql://app:app@db:5432/app
+    DATABASE_URL: postgresql://app:app@crew-db:5432/app
 
 services:
+  # The worker's own database, never the one your app runs on (ADR 0046 §6).
+  crew-db:
+    image: <the same pinned image as your app's database>
+    profiles: ["crew"]
+    networks: [crew]
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
   gemini-cli: *crew-worker
   claude-code: *crew-worker
   codex: *crew-worker
 ```
+
+A harness sits on the internal `crew` network, with one way out: the `egress`
+proxy, which opens only its provider's host (ADR 0046). A service a harness
+depends on must be on `crew` only (`networks: [crew]`, as `crew-db` above):
+give the worker its own copy, never the service your app uses, which sits on
+the plane's network with a route out. `./go ci` checks the rendered project.
+
+Optional `crew-egress.txt` in the contract: one `name:port` per line, for
+hosts the worker may reach besides its provider, such as
+`pypi.org:443`. The default is none, so `uv sync` fails without it. The plane
+reads it from the contract, never from the worker's workspace, and a change
+to it is high risk. Each host you list is an open channel for an injected
+instruction. Do not list `registry.npmjs.org`, or any host that accepts
+uploads, without reading why: `npm publish` with an injected token sends
+anything out through it.
 
 The rest of the port is ADR 0030 §3: three compose services (`backend`,
 `backend-canary` with profile `canary` and image `${CANARY_IMAGE}`, and
