@@ -24,6 +24,7 @@ Milestone M20 closed (gates anywhere, ADR 0042). Next, in plan §16's order: M21
 | seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
 | attach | M13 | ✓ `./go attach <path>` makes a repository of yours the workload, its contract in `.lights-out/`, its thresholds in `.lights-out/policy.env` (ADR 0037); `./go demo-seam` attaches `workloads/minimal/` as a repository of its own |
 | rework | M15 | ✓ a gates NO-GO or a CHANGES-REQUESTED review goes back to dev-worker with the verdict, up to four attempts (`policy/rework.env`), then `needs-human`; `./go demo-rework` on ticket 0013's hand-written attempts (ADR 0038) |
+| ops without the plane | M22 | ✓ `./go incident` and `./go postmortem` (ADR 0044); `./go verify METRICS_URL=…` on any Prometheus-compatible endpoint; `demo-postmortem` replays a recording the owner makes with `./go record-postmortem PROFILE=l1` |
 | gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
 
 | | |
@@ -42,7 +43,7 @@ Before merge, a NO-GO is not the end (ADR 0038). A gates NO-GO or a review's CHA
 
 Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the six gates run by the tower on the PR head (with the base's gates, Makefile and policy, and the ticket's perimeter checked again, ADR 0033) and posted as the `gates` commit status on the PR, not a Gitea Actions job — the runner's first job, from M8, is the release image build on `main`; the PR-gates job itself moves to the milestone that runs the tower on GCP. The canary the tower releases after the merge is a real build of the merge commit, signed by the `Registry` port and verified by the launchpad before it takes any traffic — `./go audit` prints the verified digest, not a placeholder. The bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
 
-Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset. Since M18 (ADR 0040) a recording and its `run.json` carry `provider` and the served `model`; all seven ADK recordings are Gemini's, and recording the roles on Claude or OpenAI is `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` (or `openai` / `gpt-6.1-sol`), a path implemented and not yet run.
+Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). Since M22 (ADR 0044) ops-triage has a fourth tool, `file_postmortem(title, timeline, causes, actions)`, answered once for an incident document; its recording does not exist until the owner runs `./go record-postmortem PROFILE=l1`. Each timeline entry carries one anchor that core checks against the document, and each action item becomes a ticket through the Tracker's `put` verb, with no `## Perimeter`. The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset. Since M18 (ADR 0040) a recording and its `run.json` carry `provider` and the served `model`; all seven ADK recordings are Gemini's, and recording the roles on Claude or OpenAI is `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` (or `openai` / `gpt-6.1-sol`), a path implemented and not yet run.
 
 Declared at L0 (ADR 0036, proposed): `CREW_HARNESS=network` makes the assign step fan a ticket's `## Network` section out to its members — each a run of the profile's harness in its own clone of the base, judged alone (exit code, the harness check, its own perimeter, no path shared with another member) and then integrated in the declared order into one PR, which the tower governs like any other. Only `core/crew.sh` reads the variable, so the review step keeps its own harness; a ticket without `## Network` runs as a single worker. Ticket 0012's two members (`impl`, `tests`) replay patches written by hand under `fixtures/0012/`, marked `hand_written` in their `run.json`: no network has been recorded at L1 yet, and `./go record` cannot save one.
 
@@ -81,6 +82,10 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go record-review   # record the review role's response at L1 (TICKET=<id> [ROLE=test-reviewer] PROFILE=l1)
 ./go triage          # run the ops-triage role on an alert: ALERT=<file>
 ./go demo-triage     # prove a fake alert becomes an incident with ranked hypotheses and a proposal (no plane)
+./go incident        # build an incident document from the release record: NAME= FROM= TO= [LOGS=<file>] [TICKET=<id>] (the plane only for TICKET)
+./go postmortem      # run ops-triage on an incident document: INCIDENT=<file>; writes .crew/postmortem/<name>/ and files a ticket per action item
+./go demo-postmortem # replay the post mortem of fixtures/incidents/demo-rollback.json, tickets into a copy of tickets/ (no plane); NO-GO until it is recorded
+./go record-postmortem # record that answer at L1 (PROFILE=l1); keeps the evalset and fixtures only if the eval passes
 ./go promote         # go-for-launch: the brief, then GO_FOR_LAUNCH=GO|NO-GO (or the terminal), then 100% or rollback
 ./go demo-launch     # prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
 ./go record-evals    # record the ADK roles' responses at L1 (PROFILE=l1)
@@ -111,7 +116,7 @@ Local first, cloud optional (ADR 0022): L0 and L1 are the whole product, no capa
 | **Registry and signing** | Zot local, local key, signature verified before staging (M8) | idem | Artifact Registry, KMS key, Binary Authorization | idem |
 | **App database** | Postgres in compose | idem | Cloud SQL — does not scale to zero, the one fixed cost; stop or delete it between runs (`infra/README.md`) | idem |
 | **Canary** | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + option GKE |
-| **Metrics** | Prometheus | Prometheus | Managed Prometheus + Cloud Monitoring | idem |
+| **Metrics** | `promql` on `METRICS_URL`; `prometheus` is its case at `http://$PLANE_HOST:9090` | idem | Managed Prometheus + Cloud Monitoring | idem |
 | **Flags** | flagd (file) | flagd | flagd on Cloud Run or Unleash | idem |
 | **Events and state** | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore | + adapter Cloud Workflows |
 | **Agent ADK** | Replay of recorded model responses (`fixtures/adk/`) | ADK 2.9.1 in workbench on the profile's model: Gemini natively, Claude and OpenAI through ADK's `LiteLlm` (`litellm` 1.106.6), thinking per role mapped in `adapters/adk/thinking.env` | ADK on Cloud Run | Agent Engine + BigQuery analytics |
@@ -198,7 +203,7 @@ A workload can also live in a repository of its own (ADR 0037). `./go attach <pa
 
 `./go <target>` builds `workbench/Containerfile` and runs `make <target>` inside it with the repo mounted at the same absolute path as on the host. The workbench image carries make, git, gcloud, terraform, and all verification tools, so the host needs only a container engine and a shell.
 
-Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env` (gitignored, template `.env.example`). L0 needs no `.env`.
+Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env` (gitignored, template `.env.example`). L0 needs no `.env`. Two optional keys serve `./go verify` on your own metrics (ADR 0044): `METRICS_URL`, the base that `/api/v1/query` is appended to, and `METRICS_AUTH_HEADER`, one header line such as `Authorization: Bearer …`, never printed. `./go demo` and the plane's own judge ignore both.
 
 ### Engine socket
 
@@ -234,7 +239,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, promote, record-evals, kill-switch, freeze, unfreeze, e2e, board
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, incident, postmortem, demo-postmortem, record-postmortem, promote, record-evals, kill-switch, freeze, unfreeze, e2e, board
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -249,6 +254,9 @@ lights-out/
 
   core/
     launchpad.sh            # release controller: stages, verify gates, automatic rollback
+    incident.sh             # M22: ./go incident, the incident document from the release record
+    postmortem.sh           # M22: ./go postmortem, runs the role, checks and files tickets
+    postmortem.py           # M22: the document and anchor checks
     risk.py                 # risk classifier: rules-based PR scoring
     tests/                  # unit tests for risk.py
 
@@ -332,7 +340,8 @@ lights-out/
   adapters/                 # one directory per adapter named in profiles/*.env
     adk/                    # M7: ADK roles, replay/recording model, evalsets
     envoy-canary/           # Containerfile, envoy.yaml, ready.sh, deploy.sh, shift.sh, rollback.sh
-    prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh
+    prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh (calls promql with http://$PLANE_HOST:9090)
+    promql/                 # M22: query.sh, any Prometheus-compatible endpoint at METRICS_URL
     gitea/                  # ready.sh, runner/Containerfile, runner/config.yaml
     flagd/                  # ready.sh
     zot/                    # ready.sh
@@ -343,7 +352,7 @@ lights-out/
   policy/                   # from M4: policy-as-code
   tickets/                  # project tickets, one per file; 0001 is the first bug found
   gates/                    # from M4: PR gates, identical at every level
-  fixtures/                 # M5: recorded agent responses at L1, replayed at L0; fixtures/adk/: recorded ADK model responses
+  fixtures/                 # M5: recorded agent responses at L1, replayed at L0; fixtures/adk/: recorded ADK model responses; fixtures/incidents/: the incident documents (M22)
   .crew/                    # M5: per-ticket workspace and output directory (gitignored)
   design/                   # from M11: Stitch artifacts for the console (ADR 0023)
   console/                  # from M11: the view over git and the state store (ADR 0023)
