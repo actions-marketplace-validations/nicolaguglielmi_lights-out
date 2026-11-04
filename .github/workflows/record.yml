@@ -1,0 +1,88 @@
+# Recordings at L1 on GitHub Actions, for an owner whose machine runs no
+# container engine (docs/plans/third-arc-execution.md, "Where the sessions
+# run"). Manual only: every run spends one of the owner's keys, so nothing
+# here runs on push. `provider` picks the pair the README names for each
+# vendor (gemini: the profile's gemini-cli and model; anthropic:
+# claude-code and claude-sonnet-5-5; openai: codex and gpt-6.1-sol). The
+# keys come from the repository secrets GEMINI_API_KEY, ANTHROPIC_API_KEY
+# and OPENAI_API_KEY, go into a gitignored .env for the run (the file
+# `./go record` already reads, .env.example) and are deleted at the end. The
+# recorded fixtures are uploaded as an artifact, never pushed: the owner
+# (or the parent session) reads them and commits them, as after a local
+# `./go record`. Each target keeps its own guards: `record` keeps a run only
+# if the gates said GO (docs/adr/0017 §6), `record-evals` and
+# `record-postmortem` only if the eval passes (docs/adr/0020 §2, 0044 §7),
+# and gemini-cli's run.sh refuses to record artefacts that contain the key.
+name: record
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: which recording
+        type: choice
+        options: [record, record-evals, record-postmortem]
+        default: record
+      ticket:
+        description: TICKET for `record` (four digits)
+        default: "0001"
+      provider:
+        description: whose model records
+        type: choice
+        options: [gemini, anthropic, openai]
+        default: gemini
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: the keys into .env, from the repository secrets
+        env:
+          PROVIDER: ${{ inputs.provider }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          case "$PROVIDER" in
+            gemini) need=GEMINI_API_KEY; have=$GEMINI_API_KEY ;;
+            anthropic) need=ANTHROPIC_API_KEY; have=$ANTHROPIC_API_KEY ;;
+            openai) need=OPENAI_API_KEY; have=$OPENAI_API_KEY ;;
+          esac
+          [ -n "$have" ] || { echo "NO-GO: record — the $need repository secret is not set"; exit 1; }
+          umask 077
+          : > .env
+          for k in GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY; do
+            eval "v=\${$k}"
+            [ -z "$v" ] || printf '%s=%s\n' "$k" "$v" >> .env
+          done
+      - name: record at L1
+        env:
+          CONTAINER_ENGINE: docker
+          TARGET: ${{ inputs.target }}
+          TICKET: ${{ inputs.ticket }}
+          PROVIDER: ${{ inputs.provider }}
+        run: |
+          case "$TICKET" in [0-9][0-9][0-9][0-9]) ;; *) echo "NO-GO: record — TICKET must be four digits"; exit 1 ;; esac
+          case "$PROVIDER" in
+            gemini) set -- ;;
+            anthropic) set -- AGENT_HARNESS=claude-code MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5 ;;
+            openai) set -- AGENT_HARNESS=codex MODEL_PROVIDER=openai MODEL=gpt-6.1-sol ;;
+          esac
+          ./go "$TARGET" PROFILE=l1 TICKET="$TICKET" "$@"
+      - if: always()
+        run: rm -f .env
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixtures-${{ inputs.target }}-${{ inputs.provider }}-${{ inputs.ticket }}-${{ github.run_id }}
+          path: |
+            fixtures/
+            adapters/adk/agents/*/evals/
+          retention-days: 14
