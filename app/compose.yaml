@@ -33,6 +33,15 @@ services:
       POSTGRES_PASSWORD: meetups
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # Readiness, not start: backend-test waits on it. Without it a cold
+    # runner started the suite before Postgres answered and all 29 tests
+    # errored at setup in 0.8 s (record run on Actions, 2026-11-04). 2 s x 30
+    # is a decision: a minute is longer than any start measured here.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "meetups", "-d", "meetups"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
 
   migrate:
     build:
@@ -124,7 +133,8 @@ services:
       target: test
     profiles: ["test"]
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       POSTGRES_MAINTENANCE_URL: postgresql://meetups:meetups@postgres:5432/postgres
       TEST_DATABASE_URL: postgresql://meetups:meetups@postgres:5432/meetups_test
