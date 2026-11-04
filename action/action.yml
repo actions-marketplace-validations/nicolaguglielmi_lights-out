@@ -1,0 +1,133 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# lights-out gates, as a GitHub Action (docs/adr/0045 §5). Runs the
+# lights-out wrapper of this same ref on the checked-out repository, so the
+# Action's tag and the image's version cannot drift, and posts the one
+# GO/NO-GO line as a check run named "lights-out gates". Linux runners
+# only (it needs docker). The caller grants `contents: read` and
+# `checks: write`, and checks out with `fetch-depth: 0`:
+#
+#   permissions:
+#     contents: read
+#     checks: write
+#   steps:
+#     - uses: actions/checkout@v4
+#       with:
+#         fetch-depth: 0
+#     - uses: nicolaguglielmi/lights-out/action@v0.1.0
+#
+# The token is used only after the container has exited, never passed into
+# it. On a pull request from a fork the token cannot write checks: the post
+# is skipped with a warning, and the job's own status carries the verdict.
+name: lights-out gates
+description: Judge a pull request with the lights-out gates and post the GO/NO-GO line as a check
+author: nicolaguglielmi
+branding:
+  icon: check-circle
+  color: gray-dark
+
+inputs:
+  base:
+    description: The base of the range judged. Default the pull request's base, else the parent of the checked-out commit.
+    required: false
+    default: ""
+  head:
+    description: The head of the range judged. Default the checked-out commit.
+    required: false
+    default: ""
+  sha:
+    description: The commit the check run is posted on. Default the pull request's head, else github.sha.
+    required: false
+    default: ""
+  path:
+    description: The repository's directory, relative to the workspace.
+    required: false
+    default: "."
+  image:
+    description: The lights-out image. Default the one this ref's wrapper names.
+    required: false
+    default: ""
+  name:
+    description: The check run's name.
+    required: false
+    default: lights-out gates
+  token:
+    description: The token that posts the check run.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  line:
+    description: The one GO/NO-GO line
+    value: ${{ steps.gates.outputs.line }}
+  verdict:
+    description: GO or NO-GO
+    value: ${{ steps.gates.outputs.verdict }}
+
+runs:
+  using: composite
+  steps:
+    - id: gates
+      shell: sh
+      env:
+        CONTAINER_ENGINE: docker
+        LIGHTS_OUT_IMAGE: ${{ inputs.image }}
+        LO_BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
+        LO_HEAD: ${{ inputs.head }}
+        LO_PATH: ${{ inputs.path }}
+        LO_OUT: ${{ runner.temp }}/lights-out
+      run: |
+        set -u
+        [ -n "$LIGHTS_OUT_IMAGE" ] || unset LIGHTS_OUT_IMAGE
+        cd "$GITHUB_WORKSPACE/$LO_PATH"
+        set --
+        [ -z "$LO_BASE" ] || set -- "$@" "BASE=$LO_BASE"
+        head=${LO_HEAD:-$(git rev-parse HEAD)}
+        set -- "$@" "HEAD=$head"
+        if [ -n "$LO_BASE" ] && ! git cat-file -e "$LO_BASE^{commit}" 2>/dev/null; then
+          line="NO-GO: gates — the base $LO_BASE is not in the checkout; check out with fetch-depth: 0"
+        else
+          line=$(LIGHTS_OUT_OUT="$LO_OUT" sh "$GITHUB_ACTION_PATH/../lights-out" gates "$@") || true
+          [ -n "$line" ] || line="NO-GO: gates — lights-out gave no verdict; see the log above"
+        fi
+        case "$line" in GO:*) verdict=GO ;; *) verdict=NO-GO ;; esac
+        printf '%s\n' "$line"
+        printf 'line=%s\n' "$line" >> "$GITHUB_OUTPUT"
+        printf 'verdict=%s\n' "$verdict" >> "$GITHUB_OUTPUT"
+        printf '### lights-out gates\n\n`%s`\n' "$line" >> "$GITHUB_STEP_SUMMARY"
+
+    - id: check
+      shell: sh
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        LO_SHA: ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }}
+        LO_NAME: ${{ inputs.name }}
+        LO_LINE: ${{ steps.gates.outputs.line }}
+        LO_VERDICT: ${{ steps.gates.outputs.verdict }}
+      run: |
+        set -u
+        conclusion=failure
+        [ "$LO_VERDICT" != GO ] || conclusion=success
+        body=$(jq -n --arg name "$LO_NAME" --arg sha "$LO_SHA" --arg c "$conclusion" --arg line "$LO_LINE" \
+          --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+          '{name: $name, head_sha: $sha, status: "completed", conclusion: $c,
+            details_url: $url, output: {title: ($line | .[0:255]), summary: $line}}')
+        resp=$(mktemp)
+        code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST \
+          -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/check-runs" -d "$body") || code=000
+        if [ "$code" = 201 ]; then
+          printf '%s: check run posted on %s, %s\n' "$LO_NAME" "$LO_SHA" "$conclusion"
+          printf 'check_url=%s\n' "$(jq -r .html_url "$resp")" >> "$GITHUB_OUTPUT"
+        else
+          printf '::warning title=lights-out gates::the check run was not posted (HTTP %s; a fork pull request has a read-only token, or checks: write is missing); the job status carries the verdict\n' "$code"
+          cat "$resp" >&2 || true
+        fi
+
+    - shell: sh
+      env:
+        LO_LINE: ${{ steps.gates.outputs.line }}
+        LO_VERDICT: ${{ steps.gates.outputs.verdict }}
+      run: |
+        [ "$LO_VERDICT" = GO ] || { printf '::error title=lights-out gates::%s\n' "$LO_LINE"; exit 1; }
