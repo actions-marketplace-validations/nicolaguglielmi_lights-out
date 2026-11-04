@@ -17,7 +17,7 @@ first time, with no environment variable, no `PYTHONPATH`, no symlink and
 no change to `conftest.py` or `pyproject.toml`. `flags/`, `fakes/` and
 `contracts/` are already reachable from `app/backend`, and
 `TEST_DATABASE_URL` and `POSTGRES_MAINTENANCE_URL` are already set,
-pointing at the plane's own Postgres. If a test fails, the cause is in the
+pointing at a Postgres of your own. If a test fails, the cause is in the
 code or the test, never in the environment: do not spend calls inspecting
 the interpreter, the venv or the path.
 
