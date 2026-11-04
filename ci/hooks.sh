@@ -58,6 +58,7 @@ for d in adapters/*/; do
   # names it (gemini: the guard.sh path; claude-code, codex: $guard).
   ep=adapters/$h/entrypoint.sh
   [ -f "$ep" ] || nogo "$ep not found: adapters/$h is a CLI harness and needs its entrypoint"
+  # shellcheck disable=SC2016 # a literal $guard to match, not to expand
   reg=$(grep -E 'matcher:.*(command: \$guard|guard\.sh)' "$ep" || true)
   [ -n "$reg" ] || nogo "$h: $ep registers no guard hook with a matcher (docs/adr/0041 §3)"
   matchers=$(printf '%s\n' "$reg" | sed -n 's/.*matcher: *"\([^"]*\)".*/\1/p')
@@ -72,6 +73,7 @@ done
 
 # The shell command a case stands for, for the shapes whose tool is a shell:
 # the forms the header comment lists. $c is the whole case, $i its tool_input.
+# shellcheck disable=SC2016 # a jq program; its $c and $i are jq's
 shell_form='def shell_form($c; $i):
   if $c.tool_name == "run_shell_command" then $i.command
   elif $c.tool_name == "grep_search" then "grep -rn " + ($i.pattern | @sh) + " " + ($i.dir_path // ".")

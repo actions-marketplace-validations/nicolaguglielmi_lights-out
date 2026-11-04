@@ -520,9 +520,9 @@ for h in $selected; do
   prepare "$h" 3
   # The probes: shell cat, the vendor's read, printenv, and on codex a code-mode
   # read that makes no nested tool call, so fires no hook (the stub renders it
-  # as a plain read everywhere else), and a grep of the key file: gemini-cli's
-  # grep_search takes a file as dir_path, a tool the old BeforeTool matcher did
-  # not name, so the canary reached the model. The jsread is the open point
+  # as a plain read everywhere else), and a grep of the key file: on gemini-cli,
+  # grep_search over the workspace with include_pattern signing.key, a tool the
+  # old BeforeTool matcher did not name, so the canary reached the model. The jsread is the open point
   # ADR 0041 §3 closes here, by the second canary not reaching the wire.
   set_case "$(steps_after '[
     {"op":"shell","cmd":"cat .env"},
