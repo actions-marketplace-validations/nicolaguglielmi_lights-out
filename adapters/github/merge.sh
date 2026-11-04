@@ -33,7 +33,7 @@ if [ "$(printf '%s' "$pr" | jq -r .merged)" != true ]; then
   esac
   pr=$(sh "$here/adapters/github/pr.sh" "$number") || exit 1
   [ "$(printf '%s' "$pr" | jq -r .merged)" = true ] \
-    || { printf 'merge-github: PR #%s still not merged after merge returned %s: %s\n' "$number" "$code" "$(jq -r '.message // empty' "$tmp" 2>/dev/null)" >&2; exit 1; }
+    || { printf 'merge-github: PR #%s not merged, GitHub answered %s (%s); usual causes: the repository setting "Allow merge commits" is off, or branch protection blocks it\n' "$number" "$code" "$(jq -r '.message // empty' "$tmp" 2>/dev/null)" >&2; exit 1; }
 fi
 merged_head=$(printf '%s' "$pr" | jq -r .head_sha)
 [ "$merged_head" = "$head" ] \

@@ -5,10 +5,11 @@
 # only calls the TRACKER, CODE_HOST and AGENT_HARNESS adapter scripts the
 # profile names, plus core/harness-check.sh's harness-independent success
 # check (docs/adr/0017 §1 owner addition: exit 0 alone is not success). No
-# Gitea word appears below, and one Gemini word: the key a user needs at L1
-# (docs/adr/0037 §8). The model never holds a credential:
-# bootstrap and push run here, in workbench, with the authenticated URL
-# passed as a command argument, never written to a .git/config.
+# code host vendor is named below (ci/vendor-free.sh). The model never
+# holds a credential: bootstrap and push run here, in workbench, and
+# authenticate the code host's way — a URL passed as a command argument,
+# or a credential helper given to git as environment-scoped config (docs/
+# adr/0043 §2) — never written to a .git/config.
 #
 # Not scanned by ci/contract.sh (core/, not ci/ gates/ verify/), but reuses
 # ci/lib.sh's go/nogo for the same GO:/NO-GO: line shape.
