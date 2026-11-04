@@ -11,9 +11,13 @@
 #     the same version and node_modules/<package> installs it;
 #   - thinking.env with <PROVIDER>_LOW, _MEDIUM and _HIGH, the provider
 #     upper-cased (docs/adr/0040 §2);
-#   - conformance.env with exactly PROVIDER, MODEL, KEY_VAR and THINKING_PATH,
-#     a provider no other CLI harness has (run.sh refuses any other and names
-#     the harness that fits), and a KEY_VAR that .env.example names;
+#   - conformance.env with exactly PROVIDER, MODEL, KEY_VAR, THINKING_PATH and
+#     EGRESS (the fifth, docs/adr/0046 §4), a provider no other CLI harness has
+#     (run.sh refuses any other and names the harness that fits), and a KEY_VAR
+#     that .env.example names. EGRESS is the only host:port the egress proxy
+#     opens for the harness besides the workload's own: one or more `name:port`,
+#     a lowercase DNS name with a dot, no IP literal, no `*`, a port from 1 to
+#     65535 (egress_flaw in ci/lib.sh);
 #   - hooks/guard.sh byte-identical to adapters/gemini-cli/hooks/guard.sh,
 #     the reference: each image's build context is its own directory, so the
 #     guard is copied, and `cmp` is what stops three lists drifting (§11).
@@ -85,11 +89,11 @@ shape_flaw() {
     cf=$a/conformance.env
     if [ ! -f "$cf" ]; then printf '%s: conformance.env is missing' "$h"; return; fi
     keys=$(grep -vE '^[[:space:]]*(#|$)' "$cf" | cut -d= -f1 | sort | tr '\n' ' ')
-    if [ "$keys" != "KEY_VAR MODEL PROVIDER THINKING_PATH " ]; then
-      printf '%s: conformance.env has the keys [%s], want exactly PROVIDER MODEL KEY_VAR THINKING_PATH' "$h" "${keys% }"
+    if [ "$keys" != "EGRESS KEY_VAR MODEL PROVIDER THINKING_PATH " ]; then
+      printf '%s: conformance.env has the keys [%s], want exactly PROVIDER MODEL KEY_VAR THINKING_PATH EGRESS' "$h" "${keys% }"
       return
     fi
-    for k in PROVIDER MODEL KEY_VAR THINKING_PATH; do
+    for k in PROVIDER MODEL KEY_VAR THINKING_PATH EGRESS; do
       if [ -z "$(conf_get "$cf" "$k")" ]; then printf '%s: conformance.env has an empty %s' "$h" "$k"; return; fi
     done
     provider=$(conf_get "$cf" PROVIDER)
@@ -112,6 +116,11 @@ shape_flaw() {
     fi
     if ! conf_get "$cf" THINKING_PATH | grep -q '^\.'; then
       printf '%s: conformance.env THINKING_PATH is not a jq path (it starts with a dot)' "$h"
+      return
+    fi
+    egress_bad=$(egress_flaw "$(conf_get "$cf" EGRESS)")
+    if [ -n "$egress_bad" ]; then
+      printf '%s: conformance.env EGRESS: %s (docs/adr/0046 §4: lowercase name.tld:port, no IP, no *)' "$h" "$egress_bad"
       return
     fi
 
@@ -171,8 +180,8 @@ cp -R adapters/gemini-cli "$good/adapters/gemini-cli"
 cp -R adapters/gemini-cli "$good/adapters/other-cli"
 cp .env.example "$good/.env.example"
 o=$good/adapters/other-cli
-grep -v '^PROVIDER=\|^KEY_VAR=' "$o/conformance.env" > "$o/conformance.env.new"
-printf 'PROVIDER=anthropic\nKEY_VAR=ANTHROPIC_API_KEY\n' >> "$o/conformance.env.new"
+grep -v '^PROVIDER=\|^KEY_VAR=\|^EGRESS=' "$o/conformance.env" > "$o/conformance.env.new"
+printf 'PROVIDER=anthropic\nKEY_VAR=ANTHROPIC_API_KEY\nEGRESS=api.other.example:443 cdn.other.example:8443\n' >> "$o/conformance.env.new"
 mv "$o/conformance.env.new" "$o/conformance.env"
 printf 'ANTHROPIC_LOW=low\nANTHROPIC_MEDIUM=medium\nANTHROPIC_HIGH=high\n' > "$o/thinking.env"
 for f in compose.yaml app/compose.yaml workloads/m/.lights-out/compose.yaml; do
@@ -197,6 +206,10 @@ fresh() { rm -rf "$bad"; cp -R "$good" "$bad"; }
 drop_line() {  # FILE ERE: FILE without its lines matching ERE
   grep -Ev "$2" "$1" > "$1.new" || true
   mv "$1.new" "$1"
+}
+set_conf() {  # KEY VALUE: other-cli's conformance.env with KEY=VALUE, the key's old line replaced
+  drop_line "$bad/adapters/other-cli/conformance.env" "^$1="
+  printf '%s=%s\n' "$1" "$2" >> "$bad/adapters/other-cli/conformance.env"
 }
 
 fresh
@@ -233,11 +246,73 @@ expect_flaw "a thinking map for another provider" "ANTHROPIC_LOW"
 
 fresh
 printf 'EXTRA=1\n' >> "$bad/adapters/other-cli/conformance.env"
-expect_flaw "a fifth conformance.env key" "conformance.env has the keys"
+expect_flaw "a sixth conformance.env key" "conformance.env has the keys"
 
 fresh
 drop_line "$bad/adapters/other-cli/conformance.env" '^THINKING_PATH='
 expect_flaw "a conformance.env without THINKING_PATH" "conformance.env has the keys"
+
+fresh
+drop_line "$bad/adapters/other-cli/conformance.env" '^EGRESS='
+expect_flaw "a conformance.env without EGRESS" "conformance.env has the keys"
+
+fresh
+set_conf EGRESS ""
+expect_flaw "an empty EGRESS" "conformance.env has an empty EGRESS"
+
+# EGRESS's shape (docs/adr/0046 §4), one planted defect per rule, each named; the last
+# one hides the bad entry behind a good one, because every entry of the list is judged.
+fresh
+set_conf EGRESS "1.1.1.1:443"
+expect_flaw "an IP literal in EGRESS" "is an IP literal"
+
+fresh
+set_conf EGRESS "*.example.com:443"
+expect_flaw "a wildcard in EGRESS" "has a wildcard"
+
+fresh
+set_conf EGRESS "api.other.example:0"
+expect_flaw "port 0 in EGRESS" "port outside 1-65535"
+
+fresh
+set_conf EGRESS "api.other.example:65536"
+expect_flaw "port 65536 in EGRESS" "port outside 1-65535"
+
+fresh
+set_conf EGRESS "api.other.example"
+expect_flaw "an EGRESS entry with no port" "has no port"
+
+fresh
+set_conf EGRESS "api.other.example:https"
+expect_flaw "a port that is not a number in EGRESS" "port that is not a number"
+
+fresh
+set_conf EGRESS "[::1]:443"
+expect_flaw "an IPv6 literal in EGRESS" "more than one colon"
+
+fresh
+set_conf EGRESS "API.other.example:443"
+expect_flaw "an uppercase name in EGRESS" "is not lowercase"
+
+fresh
+set_conf EGRESS "localhost:443"
+expect_flaw "a name with no dot in EGRESS" "name with no dot"
+
+fresh
+set_conf EGRESS "-a.other.example:443"
+expect_flaw "a name that starts with a hyphen in EGRESS" "is not a DNS name"
+
+fresh
+set_conf EGRESS "api_z.other.example:443"
+expect_flaw "a character outside a DNS name in EGRESS" "is not a DNS name"
+
+fresh
+set_conf EGRESS "api..other.example:443"
+expect_flaw "an empty label in EGRESS" "is not a DNS name"
+
+fresh
+set_conf EGRESS "api.other.example:443 10.0.0.5:80"
+expect_flaw "a good entry followed by an IP literal in EGRESS" "is an IP literal"
 
 fresh
 rm "$bad/adapters/other-cli/conformance.env"
