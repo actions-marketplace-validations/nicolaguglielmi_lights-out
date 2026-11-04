@@ -9,12 +9,12 @@ The core knows no vendor. Every integration sits behind a port with at least two
 | `Workload` | `app`, any repository attached with `./go attach <path>` (`workloads/minimal` is one), or the gates half alone, drafted by `./go init` | What the platform operates on; chosen by `WORKLOAD=<dir>` (default the attached clone, else `app`), not by profile; an attached repository keeps its contract in `.lights-out/`, with a `worker.md` and an optional `policy.env` (ADR 0037); defines compose services, environment keys, /healthz and /metrics on :8000, flags, smoke/load/test scripts, fixtures; unnamed in core/, gates/, verify/, adapters/ (verified by ci/app-free.sh); proven by ./go demo-seam (ADR 0030) |
 | `AgentHarness` | `replay`, `gemini-cli`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events; coding roles produce `OUT/patch`, `pr.json`, `run.json`; review roles produce `OUT/final.md` (first line APPROVED or CHANGES-REQUESTED, rest reason), `input_sha256` (sha256 of the document), `run.json`; `adk`: no workspace; `INPUT` file → `OUT/calls.json`, `final.md`, `run.json`; a role selects it with `HARNESS=adk` in its role.env (ADR 0020 §1); review roles use `HARNESS=gemini-cli` (ADR 0021 §3) |
 | `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr, status, merge, pr; `github`: branch, PR, comments, merge |
-| `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md`; others read from external service |
+| `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md` (`get.sh`) and writes a new one (`put.sh <title> <origin>`, body on stdin, idempotent on the origin; M22); others read from external service |
 | `EventBus` | `pubsub-emulator`, `pubsub` | Verbs: `publish`, `pull`, `ack` |
 | `StateStore` | `firestore-emulator`, `firestore` | Verbs: `get`, `put`, `delete` |
 | `Orchestrator` | `inproc`, `cloud-workflows` | Verbs: `inproc/run.sh` |
 | `Delivery` | `envoy-canary`, `cloud-deploy` | Stages, promote, rollback |
-| `Metrics` | `prometheus`, `managed-prometheus` | Same PromQL query |
+| `Metrics` | `promql`, `prometheus`, `managed-prometheus` | Same PromQL query; `promql` asks `METRICS_URL`, any Prometheus-compatible endpoint; `prometheus` is its case at `http://$PLANE_HOST:9090` (M22) |
 | `Flags` | `flagd`, `unleash` | OpenFeature SDK unchanged |
 | `Registry` | `zot`, `artifact-registry` | Sign and verify |
 
@@ -128,6 +128,8 @@ The canary revision is the same image as stable, with the workload's kill-switch
 See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](adr/0013-launchpad-canary-verify-rollback-at-l0.md), [ADR 0014](adr/0014-prove-the-go-branch-with-demo-hold.md).
 
 ## Status
+
+M22 — Ops without the plane (ADR 0044): `./go incident` builds an incident document from the release record, `./go postmortem` runs ops-triage on it through a fourth tool, `file_postmortem`, checks every timeline anchor against the document and files each action item as a ticket through `adapters/file/put.sh`. The Metrics port gains `promql`, so `./go verify METRICS_URL=…` judges any Prometheus-compatible endpoint. None of the new targets takes the socket. `./go demo-postmortem` is NO-GO until the owner runs `./go record-postmortem PROFILE=l1`.
 
 M20 — Gates anywhere (ADR 0042): `workload.env` has eleven keys. The three toolchain gates (`test`, `sast`, `mutation`) run the workload's declared command where `TOOLCHAIN_IMAGE` says (`workbench`, `compose:<service>` or an image) and name it on their line. `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone, with a measured `MUTATION_BASELINE`, and `./go gates` needs no engine socket on the workbench form. `./go demo-init` proves attach, init and gates on `workloads/minimal` and `workloads/minimal-js` without the plane. The 300 s budget is proven for small suites only.
 

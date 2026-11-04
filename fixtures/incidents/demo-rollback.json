@@ -1,0 +1,50 @@
+{
+  "kind": "incident",
+  "name": "demo-rollback",
+  "window": {
+    "from": "2026-11-04T10:32:07Z",
+    "to": "2026-11-04T10:33:33Z"
+  },
+  "release": {
+    "version": "0.2.0-waitlist",
+    "stable": "0.1.0-m2",
+    "stages": [
+      {
+        "pct": 5,
+        "verdict": "NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010",
+        "numbers": [
+          "slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800",
+          "slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data",
+          "slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046"
+        ]
+      }
+    ],
+    "verdict": "rolled-back",
+    "held_at": null,
+    "image": "lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc"
+  },
+  "alerts": [
+    {
+      "headline": "NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010",
+      "version": "0.2.0-waitlist",
+      "stable": "0.1.0-m2",
+      "stage": {
+        "pct": 5,
+        "verdict": "NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010",
+        "numbers": [
+          "slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800",
+          "slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data",
+          "slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046"
+        ]
+      }
+    }
+  ],
+  "logs": [
+    "[demo-rollback] stable is 0.1.0-m2; releasing 0.2.0-waitlist (waitlist targeted on)",
+    "[launchpad] staging: deploying 0.2.0-waitlist at lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc (stable is 0.1.0-m2)",
+    "slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800",
+    "slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data",
+    "slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046"
+  ],
+  "chain": null
+}
