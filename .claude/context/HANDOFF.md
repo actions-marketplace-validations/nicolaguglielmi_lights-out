@@ -1,3 +1,65 @@
+# Handoff: the tutorial, 2026-11-04, branch `claude/epic-knuth-xpqi19`, pushed, no pull request, not merged
+
+Task from the parent session: write `docs/tutorial.md`, add `docs/README.md` (an index of the docs), and one link to the tutorial from the README's "Next" section. The diff is those three files and this one. No other README change, no code, no workflow change.
+
+## What was written
+
+- `docs/tutorial.md`, five steps in the order asked: (1) `./go demo` read stage by stage (ci, up, smoke, verify, `demo-rollback`, then `e2e`: ticket, PR, the six gates, merge, signed image, canary 5%, verify NO-GO, rollback), `./go demo-gates`, `./go board`, `./go audit`; (2) `demo-rework`, `demo-triage`, `demo-postmortem`, `demo-launch`; (3) `./go init` and `./go gates`, the draft's provenance, the wrapper (the image is said to be unpublished) and the Action; (4) a ticket with perimeter and acceptance criteria, assigned at L1 with each of the three harnesses, what it costs, what is not proven; (5) `./go incident`, `./go postmortem`, `./go verify METRICS_URL=…`.
+- `docs/README.md`: README, tutorial, use-on-your-repo, reference, ARCHITECTURE, ADRs, `launch/checklist.md`, `launch/good-first-issues.md`, then PLAN.md, `plans/`, ROADMAP, CONTRIBUTING, SECURITY.
+- README "Next": one line, the first, linking the tutorial.
+
+## Where every output comes from
+
+Every output block is real and carries an HTML comment naming its source, plus a visible caption.
+
+```
+ci      41866972654 (main, ee2f679): engine-compat (126703546061) → ci, up, smoke, verify, demo-rollback, e2e, audit, GO: demo 716s
+                                     gates (126703546044)         → demo-gates, the six fixture lines and the fake-test survivors
+                                     launch (126703545476)        → demo-launch, the brief, go-for-launch
+                                     init (126703545986)          → demo-init on minimal-js: init, then gates
+                                     harness-conformance (126703545920) → its GO line, quoted inline
+package 41866972365 (main, ee2f679): package (126703545895)       → demo-package
+                                     action (126703546538)        → the GO and NO-GO check runs
+committed files, printed here with cat or jq: fixtures/0013/dev-worker/run.json,
+  adapters/adk/agents/ops_triage/evals/alerts.evalset.json, fixtures/adk/ops-triage/*.json,
+  workloads/minimal/.lights-out/tickets/0001.md, fixtures/incidents/demo-rollback.json
+```
+
+Blocks with lines left out (cosign's JSON, compose's container lines, tool output) say so in the comment and the caption. No line was edited inside a block.
+
+**No real output exists, so none is shown** for: `demo-rework`, `demo-triage` and `demo-postmortem` (no Actions job runs them; the tutorial shows the fixtures they replay instead, and quotes PLAN.md's M15 note for `GO: demo-rework` in 404 s); `./go board` (a page); a draft `workload.env` (`demo-init` and `demo-package` never print it); everything at L1 (`./go assign`, `./go e2e PROFILE=l1`, the three harnesses on real APIs); `./go incident` and `./go postmortem` on your own data; `./go verify METRICS_URL=` against an endpoint other than the plane's. The cheapest fix: a GitHub-only job that runs `./go demo-triage` and `./go demo-postmortem` (no plane, no key) would give the tutorial their real output.
+
+## Runs on this branch
+
+```
+ci      41872194035, package 41872194225 (3440075, first commit): cancelled by me, superseded by the next commit
+ci      41872443579 (689fe50, the last content commit): success — ci (126722875483: GO: help, GO: readme, GO: ci),
+                                engine-compat (126722875197: GO: demo, milestone M9, 731s to rollback), gates,
+                                launch, init, seam, harness-conformance; image skipped (Gitea-only)
+package 41872443611 (689fe50): success
+```
+
+The handoff commit itself changes only this file; its own `ci` run is on the branch's Actions page for that sha.
+
+## Disagreements between the docs (the code wins; none fixed here, the diff is limited to the tutorial)
+
+1. **`docs/reference.md` says the ticket 0001 fixture is recorded on `gemini-3.5-flash`** ("Model reality check"). `fixtures/0001/dev-worker/run.json` says `gemini-3.8-flash` (the M9 re-record, 2,435,115 tokens, `roles/dev-worker/role.env`), and the audit in run 41866972654 prints `model gemini-3.8-flash`. The tutorial follows the fixture.
+2. **`docs/reference.md` "PR gates" says the six fixtures prove "risk, SAST, deps, test, mutation, and secrets"**, and the Status table says the same. `app/fixtures/gates/` has no secrets fixture (failing-test, fake-test, honest-fix, migration, sast-finding, vulnerable-dep); the secrets gate is `ci/secrets.sh` (gitleaks), which runs GO in `e2e` and has no NO-GO fixture. The tutorial says four gates say NO-GO and risk routes to review.
+3. **`docs/reference.md` "Levels" ends "Only L0 exists today. Levels L1–L3 describe the plan."** L1 exists: recordings were made at L1 (ticket 0001, the ADK roles, the post mortem on 2026-11-04), and README's "What is real" describes L1 as live with a key.
+4. **`docs/use-on-your-repo.md` says agents need "L1 and a Gemini API key"** (Known limits, section 4). Since M19 any of the three keys works with the matching harness; `core/crew.sh` says "the key of MODEL_PROVIDER". The tutorial gives the three.
+5. **`docs/use-on-your-repo.md` section 4 does not say that `./go assign` needs the plane up**, hence the plane half: `core/crew.sh` bootstraps the code host (Gitea in the plane) before anything else, and `./go up` refuses a contract without `compose.yaml`. A repository with only `./go init`'s draft cannot be assigned a ticket. The tutorial says so and points at a throwaway repository made from `workloads/minimal`.
+6. **README "Shorter looks" still says `demo-postmortem` "needs a recording, see below"**; "What is real" says it was recorded on 2026-11-04 and prints GO. The recording exists (`fixtures/adk/ops-triage/e3b939ad….json`, `postmortem.evalset.json`).
+7. **`docs/reference.md` Levels note: "Whether a free-tier key still works with Gemini CLI is verified at M5."** The phrasing is stale (M5 is long past) and says neither yes nor no. The tutorial leaves it out.
+8. demo-init timings differ by source, as measurements do: reference 32 s and 7 s warm (2026-11-03), PLAN 40 s and 8 s, run 41866972654 44 s and 23 s. The tutorial quotes the run.
+
+## Things to know before merging
+
+- `docs/README.md` links `docs/launch/checklist.md` and `docs/launch/good-first-issues.md`, which are on `merge/prelaunch` (c961848) and not yet on main. The links resolve once that merge lands; merge this branch after it.
+- `merge/prelaunch` changes the README's troubleshooting rows for the demo budget (a first run reports its time instead of failing). The tutorial quotes the CI line `GO: demo, milestone M9, 716s to rollback (budget 900s, plan §2)` as CI's, which stays true. No conflict expected: this branch touches only the README's "Next" list.
+- If the parallel stranger-onboarding session changes `./go doctor`'s output or the README's "Try it", the tutorial's section 0 describes doctor in prose only (from the README), with no output block, so it stays true unless the items change.
+
+---
+
 # Handoff: M23 "one command, one package", 2026-11-04, branch `claude/kind-gauss-tzw1q7`, pushed, no pull request, not merged
 
 The owner reviews and merges (the parent session resolves the expected conflicts with M21 on `Makefile`, `go`, README and `docs/PLAN.md`). Plan: `docs/PLAN.md` §16 M23 (status note added); decision: `docs/adr/0045-one-command-one-package.md`; file-by-file plan: `docs/plans/m23.md` (committed before the build, plan mode was not available).
