@@ -181,7 +181,7 @@ Gitea runner reads `.github/workflows/` too (ADR 0039).
 - `core/steps/ci.sh` restores `workload.env` and `policy.env` but not
   `runners/` (ADR 0042 came after ADR 0037 §4): the tower has the gap §3
   closes here; the risk gate's `.lights-out/*` → high still stops an
-  auto-merge. Its own fix.
+  auto-merge. Its own fix: closed by ADR 0033's amendment of 2026-11-04.
 
 ## Golden-rule check
 
