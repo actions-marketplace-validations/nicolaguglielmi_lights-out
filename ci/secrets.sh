@@ -66,8 +66,12 @@ for exempt in .crew/cosign.key .env .attached .crew/cache; do
   fi
 done
 
+# The history judged is HEAD's: the commits that reach this checkout's
+# tree. gitleaks' default log is `--all`, and a CI checkout with full depth
+# fetches every branch, so another branch's commit (a work-in-progress
+# session, 2026-11-04) turned this check red on unrelated pushes.
 if git rev-parse HEAD >/dev/null 2>&1; then
-  gitleaks git --no-banner --no-color --redact . >&2 || nogo "gitleaks found a secret in git history"
+  gitleaks git --log-opts=HEAD --no-banner --no-color --redact . >&2 || nogo "gitleaks found a secret in git history"
 else
   printf '%s: empty repository, no commits yet; scanning the working tree only\n' "$name" >&2
 fi
