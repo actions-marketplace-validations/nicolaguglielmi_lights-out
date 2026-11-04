@@ -1,0 +1,37 @@
+{
+  "eval_set_id": "postmortems",
+  "name": "postmortems",
+  "description": "The ops-triage role: the post mortem of an incident document captured from a real release (fixtures/incidents/, docs/adr/0044 §7). The expected trajectory is one file_postmortem call, written from the ADR.",
+  "eval_cases": [
+    {
+      "eval_id": "demo-rollback",
+      "conversation": [
+        {
+          "invocation_id": "demo-rollback",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "{\n  \"kind\": \"incident\",\n  \"name\": \"demo-rollback\",\n  \"window\": {\n    \"from\": \"2026-11-04T10:32:07Z\",\n    \"to\": \"2026-11-04T10:33:33Z\"\n  },\n  \"release\": {\n    \"version\": \"0.2.0-waitlist\",\n    \"stable\": \"0.1.0-m2\",\n    \"stages\": [\n      {\n        \"pct\": 5,\n        \"verdict\": \"NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010\",\n        \"numbers\": [\n          \"slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800\",\n          \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data\",\n          \"slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046\"\n        ]\n      }\n    ],\n    \"verdict\": \"rolled-back\",\n    \"held_at\": null,\n    \"image\": \"lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc\"\n  },\n  \"alerts\": [\n    {\n      \"headline\": \"NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010\",\n      \"version\": \"0.2.0-waitlist\",\n      \"stable\": \"0.1.0-m2\",\n      \"stage\": {\n        \"pct\": 5,\n        \"verdict\": \"NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010\",\n        \"numbers\": [\n          \"slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800\",\n          \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data\",\n          \"slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046\"\n        ]\n      }\n    }\n  ],\n  \"logs\": [\n    \"[demo-rollback] stable is 0.1.0-m2; releasing 0.2.0-waitlist (waitlist targeted on)\",\n    \"[launchpad] staging: deploying 0.2.0-waitlist at lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc (stable is 0.1.0-m2)\",\n    \"slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800\",\n    \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data\",\n    \"slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046\"\n  ],\n  \"chain\": null\n}\n"
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "file_postmortem",
+                "args": {}
+              }
+            ],
+            "intermediate_responses": []
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "ops_triage",
+        "user_id": "lights-out",
+        "state": {}
+      }
+    }
+  ]
+}

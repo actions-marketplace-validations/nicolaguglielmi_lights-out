@@ -1,0 +1,94 @@
+{
+  "input": "{\n  \"alerts\": [\n    {\n      \"headline\": \"NO-GO: slo \\u2014 error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010\",\n      \"stable\": \"0.1.0-m2\",\n      \"stage\": {\n        \"numbers\": [\n          \"slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800\",\n          \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data\",\n          \"slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046\"\n        ],\n        \"pct\": 5,\n        \"verdict\": \"NO-GO: slo \\u2014 error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010\"\n      },\n      \"version\": \"0.2.0-waitlist\"\n    }\n  ],\n  \"chain\": null,\n  \"kind\": \"incident\",\n  \"logs\": [\n    \"[demo-rollback] stable is 0.1.0-m2; releasing 0.2.0-waitlist (waitlist targeted on)\",\n    \"[launchpad] staging: deploying 0.2.0-waitlist at lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc (stable is 0.1.0-m2)\",\n    \"slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800\",\n    \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data\",\n    \"slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046\"\n  ],\n  \"name\": \"demo-rollback\",\n  \"release\": {\n    \"held_at\": null,\n    \"image\": \"lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc\",\n    \"stable\": \"0.1.0-m2\",\n    \"stages\": [\n      {\n        \"numbers\": [\n          \"slo: traffic canary(0.2.0-waitlist)=0.285 stable(0.1.0-m2)=3.800\",\n          \"slo: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=no data\",\n          \"slo: latency_p95 canary(0.2.0-waitlist)=0.064 stable(0.1.0-m2)=0.046\"\n        ],\n        \"pct\": 5,\n        \"verdict\": \"NO-GO: slo \\u2014 error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010\"\n      }\n    ],\n    \"verdict\": \"rolled-back\",\n    \"version\": \"0.2.0-waitlist\"\n  },\n  \"window\": {\n    \"from\": \"2026-11-04T10:32:07Z\",\n    \"to\": \"2026-11-04T10:33:33Z\"\n  }\n}",
+  "instruction_sha256": "15cd4ade950dfc63533fb4549d1f74b55844e0ac84b233797f16a31e9bdd2ae8",
+  "model": "gemini-3.8-flash",
+  "provider": "gemini",
+  "recorded_at": "2026-11-04T10:59:27Z",
+  "responses": [
+    {
+      "content": {
+        "parts": [
+          {
+            "function_call": {
+              "args": {
+                "actions": [
+                  {
+                    "acceptance": "Given 0.2.0-waitlist receives canary traffic, when requests are processed, then error_rate remains within the allowed threshold (delta <= 0.010).",
+                    "problem": "Canary release 0.2.0-waitlist fails 100% of incoming requests upon deployment.",
+                    "title": "Fix waitlist service endpoint failures on canary"
+                  }
+                ],
+                "causes": [
+                  {
+                    "cause": "Canary release 0.2.0-waitlist experienced a 100% error rate upon receiving traffic at stage 5%.",
+                    "evidence": "log:4 shows slo: error_rate canary(0.2.0-waitlist)=1.000 while stable(0.1.0-m2)=no data"
+                  }
+                ],
+                "timeline": [
+                  {
+                    "anchor": "log:1",
+                    "event": "Stable confirmed at 0.1.0-m2 and release 0.2.0-waitlist initiated."
+                  },
+                  {
+                    "anchor": "release:0.2.0-waitlist",
+                    "event": "Release 0.2.0-waitlist deployed to staging using image lights-out-backend@sha256:ab76e8057597500f4c290834014aba7e5031bea11938076cd516f8bef16eaacc."
+                  },
+                  {
+                    "anchor": "release:0.2.0-waitlist@5",
+                    "event": "Canary reached 5% traffic and breached error rate SLO with verdict NO-GO."
+                  },
+                  {
+                    "anchor": "alert:1",
+                    "event": "Alert fired for SLO breach on error_rate canary(0.2.0-waitlist)=1.000 exceeding delta max 0.010."
+                  }
+                ],
+                "title": "Postmortem: 0.2.0-waitlist canary rollback on 100% error rate"
+              },
+              "id": "call_78928",
+              "name": "file_postmortem"
+            },
+            "thought_signature": "EmkKZwFpFH0Tk0a8TwwD2zvTDO6kDXAteN4vdUTNs47s22hiyo1jTaTdPoIU-6z0treIiB4QTuFvEAjqEkcGXHLnPnXazTTawSxz6iORb_u0VsypfdxQ9WgNEV3UuRBMChuGT5MY-25ZW88="
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 436,
+        "prompt_token_count": 2607,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 2607
+          }
+        ],
+        "total_token_count": 3043
+      }
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Postmortem filed: Postmortem: 0.2.0-waitlist canary rollback on 100% error rate.",
+            "thought_signature": "EmkKZwFpFH0TAZWnUhpfw-A7Ol7aD_Idai_l8Seflbqwbpzu8Ck3gLdEVtU7md3vz7IItvNf6ZfqRjnqiapsGEdA0PN6aBddSxMc9eWIlpmubJesDjRQJPH-JUydUJwbKx5A6N1CZvjNaAE="
+          }
+        ],
+        "role": "model"
+      },
+      "finish_reason": "STOP",
+      "model_version": "gemini-3.8-flash",
+      "usage_metadata": {
+        "candidates_token_count": 27,
+        "prompt_token_count": 3483,
+        "prompt_tokens_details": [
+          {
+            "modality": "TEXT",
+            "token_count": 3483
+          }
+        ],
+        "total_token_count": 3510
+      }
+    }
+  ]
+}
