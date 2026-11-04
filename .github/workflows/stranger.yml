@@ -61,20 +61,40 @@ jobs:
         run: |
           [ -z "${CONTAINER_ENGINE:-}" ] || { echo "CONTAINER_ENGINE is set; a stranger has none"; exit 1; }
           s=$(date +%s)
-          rc=0; ./go demo || rc=$?
+          # Each line prefixed with the seconds since ./go demo started.
+          ./go demo 2>&1 | perl -pe 'BEGIN { $| = 1; $t0 = time } $_ = sprintf("%4ds %s", time - $t0, $_)' | tee "$RUNNER_TEMP/demo.log"
+          rc=${PIPESTATUS[0]}
           echo "./go demo: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
           exit "$rc"
       - if: always()
-        name: Wall time of each step
-        run: |
-          cat "$TIMES" || true
-          { echo '### stranger: demo (podman)'; echo '```'; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - if: always()
-        name: The plane's logs, for the findings
+        name: The plane, as the demo left it
         run: |
           podman ps -a --format '{{.Names}} {{.Status}}' || true
-          podman logs --tail 80 lights-out-runner-1 || true
-          podman logs --tail 40 lights-out-envoy-1 || true
+          podman logs --tail 40 lights-out-runner-1 || true
+      # verify's judgement reads target_info joined on (job, instance): a
+      # 422 from Prometheus is two target_info series on one side.
+      - if: always()
+        name: Prometheus, target_info and the traffic query
+        run: |
+          curl -sS -G localhost:9090/api/v1/query --data-urlencode 'query=target_info' | jq -c '.data.result[] | .metric' || true
+          curl -sS -G localhost:9090/api/v1/query --data-urlencode 'query=count by (job, instance) (target_info)' | jq -c '.data.result[]' || true
+          q=$(sed -n '/^# name: traffic$/{n;p;}' lights-out/verify/slo.promql)
+          curl -sS -G localhost:9090/api/v1/query --data-urlencode "query=$q" | jq -c . || true
+          curl -sS -G localhost:9090/api/v1/targets | jq -c '.data.activeTargets[] | {job: .labels.job, instance: .labels.instance, health, lastError}' || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stranger-demo-log
+          path: ${{ runner.temp }}/demo.log
+          if-no-files-found: ignore
+      # Last, so the tail of the job log is the digest: every verdict and
+      # stage line of ./go demo, with its second, and each step's wall time.
+      - if: always()
+        name: Digest, and the wall time of each step
+        run: |
+          grep -E '^ *[0-9]+s (GO|NO-GO)|^ *[0-9]+s (go|doctor|engine-compat):|^ *[0-9]+s \[(demo|tower|launchpad|ci)\]|^ *[0-9]+s (deploy|slo:| +slo:)|building workbench|rolled back' "$RUNNER_TEMP/demo.log" | cut -c1-240 || true
+          cat "$TIMES" || true
+          { echo '### stranger: demo (podman)'; echo '```'; cat "$TIMES" || true; grep -E '^ *[0-9]+s (GO|NO-GO): demo' "$RUNNER_TEMP/demo.log" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # README "On your repository, without cloning lights-out", as far as it
   # works with no published image: ./go package from a clone, the wrapper
@@ -115,16 +135,19 @@ jobs:
           cp lights-out/lights-out "$HOME/.local/bin/lights-out"
           chmod +x "$HOME/.local/bin/lights-out"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      # workloads/minimal's tests read .lights-out/flags/, its own data, so
-      # that stays; the contract (workload.env, policy.env) goes, so the
-      # repository is a stranger's: no contract yet.
+      # workloads/minimal's tests read .lights-out/flags/flags.json, its own
+      # data, so that stays; the rest of .lights-out/ (the contract and the
+      # plane half) goes, so the repository is a stranger's: no contract yet.
+      # Leaving the plane half without workload.env makes init's draft fail
+      # the contract check (docs/launch/onboarding-findings.md).
       - name: A repository of your own (workloads/minimal, fresh git, no contract)
         run: |
           set -eu
           repo="$HOME/code/your-repo"
           mkdir -p "$repo"
           cp -R lights-out/workloads/minimal/. "$repo/"
-          rm -f "$repo/.lights-out/workload.env" "$repo/.lights-out/policy.env"
+          find "$repo/.lights-out" -mindepth 1 -maxdepth 1 ! -name flags -exec rm -rf {} +
+          ls -A "$repo/.lights-out"
           git -C "$repo" init -q -b main
           git -C "$repo" config user.name stranger
           git -C "$repo" config user.email stranger@lights-out.invalid
