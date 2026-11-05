@@ -132,8 +132,8 @@ the image, the issues and the announcement (plan §14, §15).
   `uses: nicolaguglielmi/lights-out/action@v0.1.0`, and `lights-out gates`
   on a clean machine that pulls the published image. The 300 s does not
   count the first pull (about 1.8 GB uncompressed).
-- [ ] **Update the README's "Not published yet" paragraph** once the image
-  and the package are public.
+- [x] **Update the README's "Not published yet" paragraph** once the image
+  and the package are public. Done 2026-11-05 with `v0.1.0`.
 
 ### The README's front page
 

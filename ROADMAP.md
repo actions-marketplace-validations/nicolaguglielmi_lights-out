@@ -24,14 +24,14 @@ wins when the two disagree. Decisions behind each step are in
 | M20 | Gates anywhere: `./go init <repo>` drafts `.lights-out/` from the repository itself, and `test`, `sast` and `mutation` run the commands the contract declares, in the workbench, a compose service or an image; init and gates in 40 s on `workloads/minimal`, 8 s on `workloads/minimal-js`, under the 300 s rule; JavaScript with Stryker as the second stack (ADR 0042, *proposed*) |
 | M21 | GitHub as code host: `adapters/github/`, the eight CodeHost verbs on the REST API, the token never in argv or a `.git/config`; an attached repository's merge is built, signed and released; `./go codehost-conformance` against Gitea on every push and against GitHub in a nightly (ADR 0043). The end-to-end run on GitHub is the owner's, not yet run |
 | M22 | Ops without the plane: `./go incident` and `./go postmortem`, a post mortem whose timeline is anchored to the audit chain and whose action items are tickets; the `Metrics` port reads any Prometheus-compatible endpoint (`METRICS_URL`); `./go demo-postmortem` replays a recorded answer, still six roles (ADR 0044, *proposed*) |
-| M23 | One command, one package: the `lights-out` wrapper (`init`, `gates`, `triage`, `postmortem`, `doctor`) on any repository from one image, mounted read-only and never given the engine socket; `./go doctor`; a GitHub Action that posts the gates' line as a check run (ADR 0045, *proposed*). Built and tested in Actions, not yet published |
+| M23 | One command, one package: the `lights-out` wrapper (`init`, `gates`, `triage`, `postmortem`, `doctor`) on any repository from one image, mounted read-only and never given the engine socket; `./go doctor`; a GitHub Action that posts the gates' line as a check run (ADR 0045, *proposed*). Built and tested in Actions, published as `v0.1.0` on 2026-11-05 |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
 
 The third arc (plan §16) is built, except for the runs that are the
-owner's: the Claude and OpenAI recordings, the L1 end-to-end on GitHub
-and the first publish of the image. Two things close before M24, each in
+owner's: the OpenAI recording, a committed Claude recording and the L1
+end-to-end on GitHub. Two things close before M24, each in
 a session of its own: egress for the harnesses, and the tower restoring
 `.lights-out/runners/` from the base.
 

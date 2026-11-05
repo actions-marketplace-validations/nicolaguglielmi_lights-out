@@ -1,6 +1,6 @@
 # M24 step 1: a shortlist of legacy repositories
 
-- Status: a proposal for the owner to pick from. Nothing is decided here.
+- Status: decided 2026-11-05 by the owner: andialbrecht/sqlparse (rank 1). The ranking and the other candidates stay as they were proposed.
 - Date: 2026-11-04, one cloud session, branch `claude/admiring-shannon-7qlb8s`.
 - Scope: step 1 of M24 in [third-arc-execution.md](third-arc-execution.md)
   ("Pick the repository and the ticket batch"), against
