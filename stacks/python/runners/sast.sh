@@ -9,7 +9,9 @@
 #
 # <scope> is the package directory to scan, relative to the directory the
 # command runs from; tests are not scanned (bandit flags every `assert`,
-# B101, which is no signal in a test). Any finding is a finding: a
+# B101, which is no signal in a test), including a tests/ directory or a
+# test_*.py file inside the package (found on lights-out's own core/,
+# docs/adr/0049). Any finding is a finding: a
 # severity floor is a number with no provenance; a `# nosec <reason>`
 # comment on the flagged line is the escape hatch, reviewed per finding.
 #
@@ -32,7 +34,7 @@ log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 
 rc=0
-"$tools/bin/bandit" -r "$scope" -q >"$log" 2>&1 || rc=$?
+"$tools/bin/bandit" -r "$scope" -q -x "*/tests/*,*/test_*.py" >"$log" 2>&1 || rc=$?
 
 cat "$log" >&2
 

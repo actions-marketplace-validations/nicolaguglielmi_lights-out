@@ -32,17 +32,49 @@ name=secrets
 . ci/lib.sh
 
 # As a PR gate on an attached repository's range (docs/adr/0037 §3, amended
-# by docs/adr/0042 §4): that repository's history is scanned, with the
-# platform's config (ci/gitleaks-attached.toml: the default rules, no
-# allowlist, and never the repository's own .gitleaks.toml, which a PR
-# could write) and inline `gitleaks:allow` comments ignored. Not its
-# working tree: the clone is HEAD plus what lights-out put there (the init
-# draft, a venv, node_modules), and every line at HEAD is in the commit
-# that added it. The exemptions below are this checkout's local files.
+# by docs/adr/0042 §4 and docs/adr/0049 §4): that repository's whole
+# history, as reachable from HEAD, is scanned with the platform's config
+# (ci/gitleaks-attached.toml: the default rules, no allowlist, and never
+# the repository's own .gitleaks.toml, which a PR could write) and inline
+# `gitleaks:allow` comments ignored. A key in history is live until it is
+# rotated, so the history gates, not just the range. A finding a human has
+# excused stays excused only by fingerprint, in gitleaks' own
+# .gitleaksignore format, read from the BASE commit's
+# .lights-out/.gitleaksignore and never from HEAD: a change cannot excuse
+# its own finding. gitleaks also loads a .gitleaksignore from the root of
+# the directory it scans (cmd/root.go, 8.30.1), so it scans the git
+# directory, which has no working tree and so no HEAD copy of the file.
+# Each excused finding is still reported on stderr. Not the working tree:
+# the clone is HEAD plus what lights-out put there (the init draft, a
+# venv, node_modules), and every line at HEAD is in the commit that added
+# it. The exemptions below are this checkout's local files.
 if [ -n "${WORKLOAD_ATTACHED:-}" ] && [ -n "${BASE:-}" ] && [ -n "${HEAD:-}" ]; then
-  gitleaks git -c ci/gitleaks-attached.toml --ignore-gitleaks-allow \
-      --no-banner --no-color --redact "$WORKLOAD" >&2 \
-    || nogo "gitleaks found a secret in the attached repository's history"
+  require_range
+  scan_tmp=$(mktemp -d)
+  trap 'rm -rf "$scan_tmp"' EXIT
+  mkdir "$scan_tmp/none" "$scan_tmp/base"
+  if [ "$(git -C "$WORKLOAD" cat-file -t "$base")" = commit ] \
+     && git -C "$WORKLOAD" cat-file -e "$base:./.lights-out/.gitleaksignore" 2>/dev/null; then
+    git -C "$WORKLOAD" show "$base:./.lights-out/.gitleaksignore" > "$scan_tmp/base/.gitleaksignore"
+  fi
+  git_dir=$(git -C "$WORKLOAD" rev-parse --absolute-git-dir) || nogo "$WORKLOAD is not a git repository"
+  # scan <.gitleaksignore dir> <report>: gitleaks' exit code.
+  scan() {
+    gitleaks git -c ci/gitleaks-attached.toml --ignore-gitleaks-allow -i "$1" --log-opts="$head" \
+      --no-banner --no-color --redact --report-format json --report-path "$2" "$git_dir" >&2
+  }
+  rc=0
+  scan "$scan_tmp/base" "$scan_tmp/judged.json" || rc=$?
+  if [ -s "$scan_tmp/base/.gitleaksignore" ]; then
+    scan "$scan_tmp/none" "$scan_tmp/all.json" || :
+    jq -r --slurpfile judged "$scan_tmp/judged.json" \
+      '[$judged[0][].Fingerprint] as $kept | .[] | .Fingerprint | select(. as $f | $kept | index($f) | not)' \
+      "$scan_tmp/all.json" | while IFS= read -r fp; do
+        printf '%s: %s excused by base %s (.lights-out/.gitleaksignore)\n' "$name" "$fp" "$(printf '%s' "$base" | cut -c1-7)" >&2
+      done
+  fi
+  [ "$rc" -eq 0 ] \
+    || nogo "gitleaks found a secret in the attached repository's history that the base's .lights-out/.gitleaksignore does not excuse"
   go
 fi
 
