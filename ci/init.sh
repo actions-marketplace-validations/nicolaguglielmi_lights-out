@@ -289,9 +289,13 @@ python3 core/init.py --set-baseline "$t/py-out/workload.env" 0.5 "re-measured by
   && ! grep -q 'measured by the test: 12 mutants' "$t/py-out/workload.env"; } \
   || fail_case f-again "a second --set-baseline did not replace the first value and its provenance"
 
-# (g) the committed example does not drift from what init copies.
+# (g) the committed examples do not drift from what init copies: minimal-js,
+# and lights-out's own contract (docs/adr/0049), whose one extra runner is
+# its TEST_CMD.
 diff -r stacks/javascript/runners workloads/minimal-js/.lights-out/runners >"$t/diff" 2>&1 \
   || { fail_case g-runners "workloads/minimal-js/.lights-out/runners differs from stacks/javascript/runners"; cat "$t/diff" >&2; }
+diff -r -x self-checks.sh stacks/python/runners .lights-out/runners >"$t/diff" 2>&1 \
+  || { fail_case g-self "lights-out's own .lights-out/runners differs from stacks/python/runners"; cat "$t/diff" >&2; }
 
 # (h) a committed contract: the plane keys are kept, the rest is the draft's.
 hr="$t/committed"
