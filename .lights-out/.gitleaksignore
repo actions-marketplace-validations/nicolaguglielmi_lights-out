@@ -1,0 +1,10 @@
+# Findings in lights-out's own history excused by fingerprint (docs/adr/0049
+# §4), gitleaks' own format. The secrets gate reads this file from the base
+# of the range it judges, never from the change. One line per finding,
+# each under the reason a human judged it a false positive.
+
+# docs/adr/0025 quotes the header line of a cosign private key, in prose:
+# no key follows it. Excused inline with gitleaks:allow in 3fb56bf, which
+# the attached scan ignores by design. Listed by core/history-findings.sh
+# on Actions, 2026-11-05.
+3fb56bf3fdb13a95b9c88f9c5d57fa2c2cb139a0:docs/adr/0025-release-artefact-build-sign-verify.md:private-key:167
