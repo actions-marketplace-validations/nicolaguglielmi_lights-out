@@ -103,6 +103,15 @@ command writes to your repository.
 | `policy.env` | Your thresholds. A draft overrides none: every threshold is the platform default (section 3) |
 | `runners/` | The stack's runners, copied from `stacks/<stack>/runners/`: cosmic-ray and bandit for python, StrykerJS and eslint with eslint-plugin-security for javascript. Each set is pinned by its own lockfile |
 
+Init also lists, on stderr, every secret gitleaks finds in your history,
+each with its fingerprint. The secrets gate judges the whole history: a key
+in history is live until it is rotated. Rotate a real one. A finding you
+judge a false positive is excused by its fingerprint in
+`.lights-out/.gitleaksignore` (gitleaks' own format), which init never
+writes. The gate reads that file from the base of the range, never from
+the change it judges, so a change cannot excuse its own finding, and it
+still prints each excused finding on stderr ([ADR 0049](adr/0049-lights-out-judges-itself.md)).
+
 The plane half is in section 2.
 
 ### The eleven keys
