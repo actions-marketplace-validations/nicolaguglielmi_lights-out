@@ -93,10 +93,15 @@ From a clone of lights-out:
 
 A toolchain gate's GO line says where it ran: `in workbench`, or the image or service the contract names. On the workbench, `./go gates` runs your repository's tests in lights-out's toolchain container, on this machine. Attach only a repository you would run here.
 
-**Without cloning lights-out, from inside your repository.** The `lights-out` wrapper runs the same init and gates from an image. The image is not published yet, so build it once from a clone: `./go package` builds `localhost/lights-out:dev`, then copy the file `lights-out` onto your PATH. You need podman or docker, and git.
+**Without cloning lights-out, from inside your repository.** The `lights-out` wrapper runs the same init and gates from the published image, `ghcr.io/nicolaguglielmi/lights-out:0.1.0` (amd64 and arm64). You need podman or docker, and git. The first run pulls the image, about 1.8 GB unpacked.
 
 ```sh
-export LIGHTS_OUT_IMAGE=localhost/lights-out:dev   # until the image is published
+mkdir -p ~/.local/bin   # any directory on your PATH
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+chmod +x ~/.local/bin/lights-out
+```
+
+```sh
 cd ~/code/your-repo
 lights-out doctor                  # engine, image, key: one line each
 lights-out init                    # drafts .lights-out/ outside your repository
@@ -105,7 +110,7 @@ git add .lights-out && git commit -m "add lights-out contract"
 lights-out gates                   # judges the last commit
 ```
 
-`lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
+Tags are mutable and the image is unsigned: to pin it, set `LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d1a227d4b3ebfa47b0c21268276279ee80e5c7ffdc345e4cde49ae866e8cc840`. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
 
 The plane comes next: attach, up, smoke, verify and rollback on your repository. It needs more of the contract: a compose file, a flag file, and smoke and load scripts.
 
@@ -122,7 +127,7 @@ What works today, and what does not yet:
 
 - **Real:** the gates, the signed build, the canary, the metrics, the rollback and the audit chain. Nothing in them is simulated.
 - **Recorded:** without a key no model is called. The agents replay answers recorded once against the Gemini API (`fixtures/`), and `./go demo-rework` and `./go demo-network` replay patches written by hand and say `model none`. With a key and `PROFILE=l1` the agents run live. The first live run on Claude (`claude-code` 2.1.311, `claude-sonnet-5-5`, ticket 0001, 2026-11-04) is the gates doing their job: the three ADK roles passed their evals, and the coding role's change was stopped by the mutation gate, 5 of 8 mutants killed on the changed lines, 0.625 under the 0.666 threshold. Nothing merged.
-- **Not yet:** the image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` is not published; nothing is proven yet on a codebase that was not written for lights-out; the Google Cloud profiles are designed, not run; the coding harnesses' network stays open, because each must reach its provider. For plane commands `./go` hands its toolchain container your engine's socket, which means full control of the engine: run it where that is acceptable.
+- **Not yet:** the GitHub Action is proven in lights-out's own workflow only; nothing is proven yet on a codebase that was not written for lights-out; the Google Cloud profiles are designed, not run; the coding harnesses' network stays open, because each must reach its provider. For plane commands `./go` hands its toolchain container your engine's socket, which means full control of the engine: run it where that is acceptable.
 
 Every item, level by level: [what is real and what is recorded, in full](docs/reference.md#what-is-real-and-what-is-recorded).
 

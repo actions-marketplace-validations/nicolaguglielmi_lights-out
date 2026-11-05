@@ -612,15 +612,13 @@ run here.
 
 The same gates run from one script, `lights-out`, and an image.
 
-**The image is not published yet.**
-`ghcr.io/nicolaguglielmi/lights-out:0.1.0` does not exist on any
-registry. CI builds and tests it on every push. Publishing it is the
-owner's act. Until then, build it from a clone:
+The image is published: `ghcr.io/nicolaguglielmi/lights-out:0.1.0`.
+Install the wrapper of the same version:
 
 ```sh
-./go package
-cp lights-out ~/.local/bin/
-export LIGHTS_OUT_IMAGE=localhost/lights-out:dev
+mkdir -p ~/.local/bin   # any directory on your PATH
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+chmod +x ~/.local/bin/lights-out
 ```
 
 Then, in your repository:

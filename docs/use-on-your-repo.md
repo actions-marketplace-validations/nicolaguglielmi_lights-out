@@ -20,8 +20,8 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The platform reads only your `.lights-out/`, and never names your repository | Proven: `ci/attach.sh` and `ci/app-free.sh` run in `./go ci` |
 | A PR is judged by your base branch's policy and runners, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
 | The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
-| The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository, which needs the first publish |
-| The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` published | **No.** CI builds and tests it on every push. Publishing is the owner's act, on a `v*` tag or a manual dispatch, and the package is private until then |
+| The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository |
+| The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` published | **Yes**, 2026-11-05, tag `v0.1.0`, public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | **Not run** in this repository. The shapes come from ADR 0045 "Verified while writing"; some parts are unverified, and the recipes say which |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
@@ -222,20 +222,19 @@ copied out. `./go detach` drops it.
 The gates half also runs from the `lights-out` wrapper, with no clone of
 lights-out. The host needs podman or docker, and git.
 
-**Not published yet.** The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0`
-does not exist on a registry. `.github/workflows/package.yml` builds and
-tests it on every push. It publishes only on a `v*` tag or a manual
-dispatch, which is the owner's act, and the package is private until the
-owner makes it public. Until then, from a clone of lights-out:
+The image is `ghcr.io/nicolaguglielmi/lights-out:0.1.0`, public, for amd64
+and arm64. Install the wrapper of the same version:
 
 ```sh
-./go package                                  # builds localhost/lights-out:dev
-cp lights-out ~/.local/bin/                   # any directory on your PATH
-export LIGHTS_OUT_IMAGE=localhost/lights-out:dev
+mkdir -p ~/.local/bin   # any directory on your PATH
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+chmod +x ~/.local/bin/lights-out
 ```
 
-Downloading the wrapper by raw URL works only once the repository is
-public.
+Tags are mutable and the image is unsigned. To pin it, set
+`LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d1a227d4b3ebfa47b0c21268276279ee80e5c7ffdc345e4cde49ae866e8cc840`.
+From a clone of lights-out, `./go package` builds
+`localhost/lights-out:dev` instead, for `LIGHTS_OUT_IMAGE`.
 
 Then, in your repository:
 
@@ -472,7 +471,7 @@ steps:
   the `image` input.
 - **Not proven on another repository.** It is proven in lights-out's own
   workflow, with `uses: ./action` on a scratch repository (a GO and a NO-GO
-  check run). `@v0.1.0` needs the first publish, which has not happened.
+  check run). `@v0.1.0` is published and not yet run on another repository.
 
 ### Hook recipes for coding agents
 
