@@ -1,0 +1,711 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  The lights-out landing page (docs/adr/0048). One file, no build, nothing
+  loaded from anyone else: no font, script, tracker or analytics. The media/
+  directory is rendered from board/index.html in CI by site/render.py and
+  never committed; board/ is a copy of board/index.html, served alone.
+  Every figure on this page is in README.md or docs/reference.md.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>lights-out · the safety system for a dark factory of AI coding agents</title>
+<meta name="description" content="Guardrails for AI coding agents: six numeric gates on every PR, a per-ticket perimeter, a signed canary that rolls itself back, and one human gate before 100%. Runs complete on your laptop with no account and no API key.">
+<link rel="canonical" href="https://nicolaguglielmi.github.io/lights-out/">
+<meta name="theme-color" content="#05080c">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="lights-out">
+<meta property="og:title" content="lights-out: the safety system for a dark factory of AI coding agents">
+<meta property="og:description" content="Six numeric gates, a per-ticket perimeter, a canary that rolls itself back, one human gate. Claude Code, Gemini CLI or Codex at the keyboard. Open source, Apache-2.0.">
+<meta property="og:url" content="https://nicolaguglielmi.github.io/lights-out/">
+<meta property="og:image" content="https://nicolaguglielmi.github.io/lights-out/assets/lights-out.jpg">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="lights-out: six agents ship it, one human turns the lights back on. Rows of green lights across a dark field at night, one row amber.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="lights-out: the safety system for a dark factory of AI coding agents">
+<meta name="twitter:description" content="Six numeric gates, a per-ticket perimeter, a canary that rolls itself back, one human gate. Open source, Apache-2.0.">
+<meta name="twitter:image" content="https://nicolaguglielmi.github.io/lights-out/assets/lights-out.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2305080c'/%3E%3Ccircle cx='10' cy='22' r='3' fill='%233fb950'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%233fb950'/%3E%3Ccircle cx='22' cy='10' r='3' fill='%23e3b341'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#05080c;--bg2:#0a0f16;--panel:#0d131b;--panel2:#111923;--line:#1c2733;--line2:#26333f;
+  --ink:#e8eef4;--ink2:#b4c0cc;--mute:#7b8896;--dim:#4c5a68;
+  --green:#3fb950;--green2:#56d364;--red:#f85149;--amber:#e3b341;--blue:#58a6ff;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  --gut:clamp(16px,4vw,48px);--max:1180px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--sans);overflow-x:hidden}
+a{color:inherit}
+code,pre,kbd{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
+.skip{position:absolute;left:-999px;top:8px;background:var(--green);color:#000;padding:8px 12px;border-radius:6px;z-index:100}
+.skip:focus{left:8px}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
+.mark{font-family:var(--mono);font-weight:700;letter-spacing:.5px;text-decoration:none;white-space:nowrap}
+.mark i{font-style:normal;color:var(--green)}
+.eyebrow{font:600 12px/1 var(--mono);letter-spacing:2.6px;text-transform:uppercase;color:var(--mute)}
+.eyebrow .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);margin-right:10px;vertical-align:1px}
+h1,h2,h3{font-weight:700;letter-spacing:-.02em;line-height:1.08;margin:0}
+h2{font-size:clamp(30px,4.4vw,52px)}
+.lead{font-size:clamp(17px,1.6vw,20px);color:var(--ink2);max-width:62ch}
+.btn{display:inline-flex;align-items:center;gap:10px;font:600 15px/1 var(--sans);padding:14px 18px;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);text-decoration:none;cursor:pointer;transition:border-color .2s,transform .2s,background .2s}
+.btn:hover{border-color:var(--green);transform:translateY(-1px)}
+.btn.primary{background:var(--green);border-color:var(--green);color:#03140a}
+.btn.primary:hover{background:var(--green2)}
+.btn svg{width:16px;height:16px;flex:none}
+section{position:relative}
+.sec{padding:clamp(80px,12vw,150px) 0 0}
+.sec-head{display:grid;gap:18px;margin-bottom:clamp(36px,5vw,64px)}
+
+/* nav */
+nav{position:fixed;inset:0 0 auto;z-index:40;transition:background .3s,border-color .3s;border-bottom:1px solid transparent}
+nav.solid{background:rgba(5,8,12,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-color:var(--line)}
+nav .wrap{display:flex;align-items:center;gap:28px;height:60px}
+nav .mark{font-size:18px}
+nav ul{display:flex;gap:22px;list-style:none;margin:0 0 0 auto;padding:0}
+nav ul a{font-size:14px;color:var(--ink2);text-decoration:none}
+nav ul a:hover{color:var(--ink)}
+nav .gh{font-size:14px;padding:9px 12px}
+@media (max-width:820px){nav ul{display:none}nav .gh{margin-left:auto}}
+
+/* hero */
+.hero{min-height:100vh;min-height:100svh;display:flex;flex-direction:column;justify-content:center;padding:110px 0 70px;overflow:hidden;isolation:isolate}
+.field{position:absolute;inset:0;z-index:-2;background:
+  repeating-linear-gradient(-35deg,transparent 0 46px,rgba(120,150,170,.035) 46px 47px),
+  radial-gradient(900px 600px at 78% 62%,rgba(30,90,50,.22),transparent 65%),var(--bg)}
+.field svg{position:absolute;inset:0;width:100%;height:100%}
+.field::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--bg) 18%,rgba(5,8,12,.75) 42%,rgba(5,8,12,0) 72%),linear-gradient(0deg,var(--bg),rgba(5,8,12,0) 30%)}
+.house{position:absolute;right:6%;top:15%;width:10px;height:7px;border-radius:2px;background:#f2b14a;box-shadow:0 0 18px 6px rgba(242,177,74,.35),0 0 60px 18px rgba(242,177,74,.12);opacity:.85}
+.hero>.wrap{width:100%}
+.hero h1{font-size:clamp(40px,6.6vw,86px);max-width:15ch;margin:26px 0 24px}
+.hero h1 em{font-style:normal;color:var(--green);text-shadow:0 0 34px rgba(63,185,80,.45)}
+.hero .lead{max-width:56ch}
+.hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin:34px 0 20px}
+.hero .note{font:13px/1.5 var(--mono);color:var(--mute)}
+.hero .note b{color:var(--ink2);font-weight:400}
+
+/* the monitor: hero video */
+.monitor{margin-top:clamp(48px,7vw,84px);border:1px solid var(--line2);border-radius:14px;background:#070b10;box-shadow:0 30px 120px -20px rgba(63,185,80,.18),0 0 0 1px rgba(255,255,255,.02) inset;overflow:hidden}
+.monitor .top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font:12px/1.3 var(--mono);color:var(--mute)}
+.monitor .top i{width:10px;height:10px;border-radius:50%;background:#1d2733;flex:none}
+.monitor .top span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.monitor .top a{margin-left:auto;color:var(--ink2);text-decoration:none;white-space:nowrap}
+.monitor .top a:hover{color:var(--green)}
+.monitor .screen{position:relative;aspect-ratio:1200/412;background:#0b1017 center/cover no-repeat}
+.monitor video{position:relative;z-index:1;display:block;width:100%;height:100%;object-fit:cover}
+/* Behind the video: seen only where neither a frame nor the poster is drawn. */
+.monitor .fallback{position:absolute;inset:0;z-index:0;display:grid;place-items:center;padding:20px;text-align:center;font:13px/1.5 var(--mono);color:var(--mute)}
+
+/* ticker */
+.ticker{border-block:1px solid var(--line);background:var(--bg2);overflow:hidden;white-space:nowrap;font:13px/1 var(--mono);padding:14px 0;mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.ticker div{display:inline-flex;gap:44px;padding-right:44px;animation:tick 70s linear infinite}
+.ticker span{color:var(--ink2)}
+.ticker .g{color:var(--green)}.ticker .r{color:var(--red)}
+@keyframes tick{to{transform:translateX(-100%)}}
+
+/* how it works */
+.how{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.15fr);gap:clamp(32px,5vw,72px);align-items:start}
+.stage{grid-column:2;grid-row:1;position:sticky;top:max(90px,12vh);height:min(76vh,640px);align-self:start}
+.steps{grid-column:1;grid-row:1;list-style:none;margin:0;padding:0 0 0 34px;position:relative}
+.steps::before{content:"";position:absolute;left:7px;top:12vh;bottom:30vh;width:2px;background:linear-gradient(var(--line2),var(--line2))}
+.step{min-height:82vh;display:flex;flex-direction:column;justify-content:center;position:relative;scroll-margin-top:80px}
+.step::before{content:"";position:absolute;left:-34px;top:50%;width:16px;height:16px;margin-top:-8px;border-radius:50%;background:var(--bg);border:2px solid var(--line2);transition:.4s}
+.step.on::before{background:var(--green);border-color:var(--green);box-shadow:0 0 16px var(--green)}
+.step.human.on::before{background:var(--amber);border-color:var(--amber);box-shadow:0 0 16px var(--amber)}
+.step .n{font:600 13px/1 var(--mono);color:var(--mute);letter-spacing:2px}
+.step h3{font-size:clamp(26px,3vw,38px);margin:14px 0 16px}
+.step p{color:var(--ink2);margin:0 0 12px;max-width:52ch}
+.step p code{font-size:.88em;color:var(--ink);background:#141c26;padding:1px 6px;border-radius:5px}
+.step .src{font:12px/1.5 var(--mono);color:var(--dim)}
+.step .src a{color:var(--mute)}
+.step{opacity:.38;transition:opacity .5s}
+.step.on{opacity:1}
+
+.scene{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:16px;opacity:0;visibility:hidden;transform:translateY(18px) scale(.985);transition:opacity .55s,transform .55s,visibility 0s .55s}
+.scene.on{opacity:1;visibility:visible;transform:none;transition:opacity .55s,transform .55s,visibility 0s}
+.win{border:1px solid var(--line2);border-radius:12px;background:#080c12;box-shadow:0 24px 80px -30px rgba(0,0,0,.9);overflow:hidden}
+.win .bar{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--line);font:12px/1 var(--mono);color:var(--mute)}
+.win .bar i{width:10px;height:10px;border-radius:50%;background:#1d2733}
+.win .bar span{margin-left:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.win .bar b{margin-left:auto;font-weight:400;color:var(--dim);white-space:nowrap}
+.win pre{margin:0;padding:16px 18px;font-size:clamp(11px,1.05vw,13.5px);line-height:1.7;color:var(--ink2);white-space:pre-wrap;word-break:break-word}
+.ln{display:block;opacity:0}
+.scene.on .ln{animation:show .01s steps(1) forwards;animation-delay:calc(var(--i,0) * .42s + .3s)}
+@keyframes show{to{opacity:1}}
+.k{color:var(--blue)}.g{color:var(--green)}.r{color:var(--red)}.a{color:var(--amber)}.m{color:var(--dim)}
+.cap{font:12.5px/1.55 var(--mono);color:var(--mute)}
+.cap b{color:var(--ink2);font-weight:400}
+.tag{display:inline-block;font:11px/1 var(--mono);letter-spacing:1px;color:var(--amber);border:1px solid rgba(227,179,65,.35);border-radius:999px;padding:4px 9px}
+
+/* scene 1: ticket */
+.peri{display:block;border-radius:4px;margin:0 -6px;padding:0 6px;transition:background .3s}
+.scene.on .peri{animation:peri 1.6s ease forwards;animation-delay:calc(var(--i) * .25s + .8s)}
+@keyframes peri{0%{background:transparent}30%{background:rgba(63,185,80,.18)}100%{background:rgba(63,185,80,.07)}}
+.stray{opacity:0;transform:translateX(-8px)}
+.scene.on .stray{animation:stray .5s 3s forwards}
+@keyframes stray{to{opacity:1;transform:none}}
+
+/* scene 2: roles */
+.roles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.role{border:1px solid var(--line2);border-radius:12px;background:var(--panel);padding:14px;opacity:0;transform:translateY(10px)}
+.scene.on .role{animation:rise .5s forwards;animation-delay:calc(var(--i) * .16s + .2s)}
+@keyframes rise{to{opacity:1;transform:none}}
+.role b{display:block;font:600 14px/1.2 var(--mono);color:var(--ink);margin-bottom:6px}
+.role b::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);margin-right:8px;vertical-align:2px}
+.role span{font-size:13px;line-height:1.45;color:var(--mute)}
+.role.dev{border-color:rgba(63,185,80,.55);background:linear-gradient(180deg,rgba(63,185,80,.09),var(--panel))}
+.harness{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:12.5px/1 var(--mono);color:var(--mute)}
+.harness code{color:var(--ink);background:#141c26;border:1px solid var(--line2);padding:6px 9px;border-radius:7px}
+@media (max-width:560px){.roles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.role{padding:10px}.role span{font-size:11.5px}}
+
+/* scene 3: gates */
+.lights{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.light{text-align:center;font:11.5px/1 var(--mono);color:var(--mute)}
+.light i{display:block;width:22px;height:22px;margin:0 auto 9px;border-radius:50%;background:#1a2430;border:1px solid var(--line2)}
+.scene.on .light i{animation:lit .25s forwards;animation-delay:calc(var(--i) * .42s + .3s)}
+.scene.on .light.no i{animation-name:litno}
+@keyframes lit{to{background:var(--green);border-color:var(--green);box-shadow:0 0 18px var(--green)}}
+@keyframes litno{to{background:var(--red);border-color:var(--red);box-shadow:0 0 22px var(--red)}}
+
+/* scene 4: canary */
+.traffic{display:grid;gap:10px}
+.bar2{position:relative;height:38px;border-radius:9px;overflow:hidden;background:#123222;border:1px solid var(--line2);font:12px/38px var(--mono)}
+.bar2 .s{position:absolute;inset:0;padding-left:12px;color:#9be3b0}
+.bar2 .c{position:absolute;top:0;right:0;bottom:0;width:0;background:repeating-linear-gradient(-45deg,#4a3b0e 0 8px,#3a2f0e 8px 16px);color:#f2d27a;text-align:center;overflow:hidden;white-space:nowrap}
+.scene.on .bar2 .c{animation:canary 5s ease forwards .4s}
+@keyframes canary{0%{width:0}18%{width:max(5%,40px)}50%{width:max(5%,40px);background:repeating-linear-gradient(-45deg,#4a3b0e 0 8px,#3a2f0e 8px 16px)}54%{width:max(5%,40px);background:#7a2226}66%{width:0;background:#7a2226}100%{width:0}}
+.legend2{display:flex;justify-content:space-between;font:12px/1 var(--mono);color:var(--mute)}
+.chart{height:110px;border:1px solid var(--line);border-radius:10px;background:#080c12;position:relative;overflow:hidden}
+.chart svg{width:100%;height:100%;display:block}
+.chart .grid line{stroke:#141c26}
+.chart .st{fill:none;stroke:var(--green);stroke-width:2}
+.chart .ca{fill:none;stroke:var(--red);stroke-width:2.4;stroke-dasharray:700;stroke-dashoffset:700}
+.scene.on .chart .ca{animation:draw 2.6s ease forwards 1.4s}
+@keyframes draw{to{stroke-dashoffset:0}}
+.chart .lbl{position:absolute;left:10px;top:8px;font:11px/1.4 var(--mono);color:var(--mute)}
+
+/* scene 5: human */
+.lamp{display:flex;align-items:center;gap:18px}
+.lamp button{font:700 clamp(15px,1.5vw,18px)/1 var(--mono);letter-spacing:3px;color:#1a1204;background:var(--amber);border:0;border-radius:12px;padding:20px 26px;box-shadow:0 0 0 0 rgba(227,179,65,.55);cursor:default}
+.scene.on .lamp button{animation:beacon 2.2s ease-out infinite 1.6s}
+@keyframes beacon{0%{box-shadow:0 0 0 0 rgba(227,179,65,.55)}70%{box-shadow:0 0 0 22px rgba(227,179,65,0)}100%{box-shadow:0 0 0 0 rgba(227,179,65,0)}}
+.lamp span{font:13px/1.5 var(--mono);color:var(--mute)}
+.outcomes{display:grid;gap:8px}
+.outcomes div{display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:baseline;border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--panel);font:13px/1.45 var(--mono);opacity:0}
+.scene.on .outcomes div{animation:rise .5s forwards;animation-delay:calc(var(--i) * .3s + 2s)}
+.outcomes b{font-weight:600}
+.cursor{display:inline-block;width:.6em;height:1.1em;background:var(--amber);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* stage on phones: sticky above the text */
+@media (max-width:900px){
+  .how{display:block}
+  .stage{position:sticky;top:60px;height:min(54vh,430px);z-index:5;margin:0 calc(-1 * var(--gut));padding:12px var(--gut);background:linear-gradient(var(--bg) 88%,rgba(5,8,12,0))}
+  .scene{inset:12px var(--gut) 18px}
+  .steps{padding-left:26px}
+  .steps::before{left:5px}
+  .step::before{left:-26px;width:13px;height:13px;margin-top:-6px}
+  .step{min-height:64vh;justify-content:flex-start;padding-top:30px}
+  .step h3{font-size:26px}
+  .win pre{padding:12px 14px}
+  .lights{gap:4px}.light{font-size:10px}.light i{width:16px;height:16px}
+  .chart{height:80px}
+  .outcomes div{grid-template-columns:84px 1fr;padding:8px 10px;font-size:11.5px}
+  .scene .cap{display:none}
+  .code pre{padding-top:42px}
+}
+
+/* scenarios */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:18px}
+.scn{all:unset;box-sizing:border-box;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden;cursor:pointer;transition:border-color .25s,transform .25s}
+.scn:hover,.scn:focus-visible{border-color:var(--green);transform:translateY(-3px)}
+.scn:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+.scn .pic{position:relative;aspect-ratio:16/9;background:#0b1017 center/cover no-repeat}
+.scn .pic::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(5,8,12,.7),transparent 55%)}
+.scn .play{position:absolute;left:14px;bottom:12px;z-index:1;display:flex;align-items:center;gap:8px;font:12px/1 var(--mono);color:var(--ink)}
+.scn .play i{width:30px;height:30px;border-radius:50%;background:rgba(63,185,80,.92);display:grid;place-items:center}
+.scn .play i::before{content:"";border-left:10px solid #03140a;border-block:6px solid transparent;margin-left:3px}
+.scn .txt{padding:14px 16px 18px}
+.scn b{display:block;font-size:17px;margin-bottom:4px}
+.scn span{font-size:14px;color:var(--mute)}
+.scn.feature{grid-column:1/-1;flex-direction:row;align-items:stretch}
+.scn.feature .pic{flex:1.4;aspect-ratio:auto;min-height:260px}
+.scn.feature .txt{flex:1;display:flex;flex-direction:column;justify-content:center;padding:28px}
+.scn.feature b{font-size:clamp(22px,2.6vw,30px);margin-bottom:10px}
+@media (max-width:760px){.scn.feature{flex-direction:column}.scn.feature .pic{aspect-ratio:16/9;min-height:0}}
+.board-link{margin-top:28px;display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center;border:1px dashed var(--line2);border-radius:14px;padding:20px 22px;color:var(--ink2)}
+.board-link p{margin:0;flex:1 1 380px}
+.empty{grid-column:1/-1;border:1px dashed var(--line2);border-radius:14px;padding:22px;color:var(--mute);font:13px/1.6 var(--mono)}
+dialog{border:1px solid var(--line2);border-radius:14px;background:#06090d;color:var(--ink);padding:0;width:min(1200px,94vw);max-height:92vh;overflow:hidden}
+dialog::backdrop{background:rgba(2,4,6,.86);backdrop-filter:blur(4px)}
+dialog .top{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);font:13px/1.3 var(--mono);color:var(--mute)}
+dialog .top b{color:var(--ink);font-weight:600}
+dialog .top button{margin-left:auto;all:unset;cursor:pointer;color:var(--ink2);padding:4px 8px;border-radius:6px;font:16px/1 var(--mono)}
+dialog .top button:hover{color:var(--ink);background:var(--panel2)}
+dialog video{display:block;width:100%;max-height:calc(92vh - 50px);background:#000}
+
+/* proof */
+.proof{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px}
+.stat{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel2),var(--panel));padding:24px 22px 22px}
+.stat .v{font:700 clamp(34px,4vw,48px)/1 var(--mono);letter-spacing:-.03em;color:var(--ink);white-space:nowrap}
+.stat .v small{font-size:.5em;color:var(--mute);letter-spacing:0}
+.stat.red .v{color:var(--red)}
+.stat p{margin:14px 0 12px;font-size:15px;color:var(--ink2)}
+.stat a{font:12px/1 var(--mono);color:var(--mute)}
+
+/* real / recorded */
+.real{display:grid;gap:14px}
+.real div{display:grid;grid-template-columns:150px 1fr;gap:18px;align-items:baseline;border-top:1px solid var(--line);padding:22px 0 8px}
+.real b{font:600 14px/1 var(--mono);letter-spacing:2px;text-transform:uppercase}
+.real b::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:10px;vertical-align:1px}
+.real .y b::before{background:var(--green);box-shadow:0 0 10px var(--green)}
+.real .rec b::before{background:var(--blue);box-shadow:0 0 10px var(--blue)}
+.real .no b::before{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.real p{margin:0;color:var(--ink2);font-size:17px}
+.real code{font-size:.85em;background:#141c26;padding:1px 6px;border-radius:5px;color:var(--ink)}
+.more{display:inline-block;margin-top:22px;color:var(--green);text-decoration:none;font:600 15px/1 var(--sans)}
+.more:hover{text-decoration:underline}
+@media (max-width:640px){.real div{grid-template-columns:1fr;gap:10px}}
+
+/* try it */
+.try{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px}
+.panel{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:24px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel h3{font-size:22px}
+.panel p{margin:0;color:var(--ink2);font-size:15px}
+.code{position:relative;border:1px solid var(--line2);border-radius:12px;background:#06090d}
+.code pre{margin:0;padding:16px 18px;overflow-x:auto;font-size:13.5px;line-height:1.75;color:var(--ink)}
+.code pre .m{color:var(--dim)}
+.code pre .p{color:var(--green);user-select:none}
+.copy{position:absolute;top:8px;right:8px;font:12px/1 var(--mono);color:var(--ink2);background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:7px 9px;cursor:pointer}
+.copy:hover{border-color:var(--green);color:var(--ink)}
+.panel .fine{font:12.5px/1.6 var(--mono);color:var(--mute)}
+.panel .fine a{color:var(--ink2)}
+
+/* footer */
+footer{margin-top:clamp(90px,12vw,160px);border-top:1px solid var(--line);padding:46px 0 60px;color:var(--mute);font-size:14px}
+footer .wrap{display:grid;grid-template-columns:1.2fr 2fr;gap:30px}
+footer ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 20px}
+footer a{text-decoration:none;color:var(--ink2)}
+footer a:hover{color:var(--green)}
+footer .mark{font-size:20px;color:var(--ink)}
+footer p{margin:12px 0 0;max-width:40ch}
+@media (max-width:700px){footer .wrap{grid-template-columns:1fr}}
+
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .8s,transform .8s}
+.reveal.seen{opacity:1;transform:none}
+html:not(.js) .reveal{opacity:1;transform:none}
+html:not(.js) .scene:first-child{opacity:1;visibility:visible;transform:none}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0s!important}
+  .ticker div{animation:none}
+  .field .rabbit{display:none}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#how">Skip to how it works</a>
+
+<nav id="nav" aria-label="Main">
+  <div class="wrap">
+    <a class="mark" href="#top" aria-label="lights-out, top of the page">lights<i>-</i>out</a>
+    <ul>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#scenarios">Scenarios</a></li>
+      <li><a href="#real">Real vs recorded</a></li>
+      <li><a href="#try">Try it</a></li>
+    </ul>
+    <a class="btn gh" href="https://github.com/nicolaguglielmi/lights-out"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="field" aria-hidden="true"><svg id="runway" viewBox="0 0 1600 1000" preserveAspectRatio="xMaxYMid slice"></svg><div class="house"></div></div>
+  <div class="wrap">
+    <div class="eyebrow"><span class="dot"></span>GO / NO-GO · v0.1.0 · Apache-2.0</div>
+    <h1>The safety system for a <em>dark factory</em> of AI coding agents.</h1>
+    <p class="lead">A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system: the guardrails for agents that write and ship code, with Claude Code, Gemini CLI or Codex at the keyboard.</p>
+    <div class="cta">
+      <button class="btn primary" type="button" data-play="overview" data-name="The tour" data-blurb="from ticket to rollback, on the board"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>Watch the tour<span data-len="overview"></span></button>
+      <a class="btn" href="#try">Try it: <code>./go demo</code></a>
+    </div>
+    <p class="note">Runs complete on your laptop: <b>no account, no API key, no cloud.</b></p>
+
+    <div class="monitor">
+      <div class="top"><i></i><i></i><i></i><span>the board · scripted walk over the real code paths · example versions and numbers</span><a href="board/">open the board ↗</a></div>
+      <div class="screen">
+        <video id="hero-video" muted loop playsinline preload="metadata" poster="media/hero.jpg" aria-label="The board: six gates light up GO, then a canary at 5% says NO-GO and rolls itself back">
+          <source src="media/hero.webm" type="video/webm">
+          <source src="media/hero.mp4" type="video/mp4">
+        </video>
+        <div class="fallback">The hero loop is rendered from the board in CI (site/render.py). <a href="board/">Open the board</a> to play it.</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="ticker" aria-hidden="true"><div id="tick"></div></div>
+
+<main>
+<section class="sec" id="how" aria-labelledby="how-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">How it works</div>
+      <h2 id="how-h">From ticket to production,<br>with the lights out.</h2>
+      <p class="lead">Five steps. Numbers decide four of them. A person decides the last one, and silence never counts as a yes.</p>
+    </div>
+
+    <div class="how">
+      <div class="stage" id="stage" aria-hidden="true">
+        <div class="scene on" data-scene="1">
+          <div class="win">
+            <div class="bar"><i></i><i></i><i></i><span>tickets/0001.md</span><b>a real ticket</b></div>
+<pre><span class="k"># 0001 — Unknown venue makes POST /api/meetups answer 500 instead of the documented 502</span>
+
+<span class="k">## Acceptance criteria</span>
+Given a venue that no geocoder example knows
+When a logged-in user posts it to POST /api/meetups
+Then the response is not 500 …
+
+<span class="k">## Perimeter</span>
+<span class="peri" style="--i:0">- app/backend/meetups/geocoder_client.py</span><span class="peri" style="--i:1">- app/fakes/geocoder/server.py</span><span class="peri" style="--i:2">- app/contracts/geocoder/examples.json</span><span class="peri" style="--i:3">- app/backend/tests/test_geocoder_*.py</span><span class="peri" style="--i:4">- app/README.md</span></pre>
+          </div>
+          <div class="win stray"><pre><span class="r">NO-GO: crew — app/backend/meetups/auth.py is outside the ticket's declared perimeter</span>
+<span class="m">no pull request is opened</span></pre></div>
+        </div>
+
+        <div class="scene" data-scene="2">
+          <div class="roles">
+            <div class="role" style="--i:0"><b>product</b><span>confirms the acceptance criteria before any code</span></div>
+            <div class="role dev" style="--i:1"><b>dev-worker</b><span>writes the change in a throwaway sandbox, with a token for that role only</span></div>
+            <div class="role" style="--i:2"><b>test-reviewer</b><span>a blind second read of a risky diff</span></div>
+            <div class="role" style="--i:3"><b>architect</b><span>judges a risky diff for its structural cost</span></div>
+            <div class="role" style="--i:4"><b>release</b><span>writes the promotion brief for the human</span></div>
+            <div class="role" style="--i:5"><b>ops-triage</b><span>turns an alert into ranked hypotheses, an incident into a post mortem</span></div>
+          </div>
+          <div class="harness">at the keyboard: <code>claude-code</code><code>gemini-cli</code><code>codex</code></div>
+          <p class="cap">No agent holds production credentials, at any level. Every handoff is a file, never a conversation.</p>
+        </div>
+
+        <div class="scene" data-scene="3">
+          <div class="lights">
+            <div class="light" style="--i:1"><i></i>risk</div>
+            <div class="light" style="--i:2"><i></i>secrets</div>
+            <div class="light" style="--i:3"><i></i>deps</div>
+            <div class="light" style="--i:4"><i></i>sast</div>
+            <div class="light" style="--i:5"><i></i>test</div>
+            <div class="light no" style="--i:6"><i></i>mutation</div>
+          </div>
+          <div class="win">
+            <div class="bar"><i></i><i></i><i></i><span>one line per gate on stdout</span><b>ticket 0001 · claude-code</b></div>
+<pre><span class="ln g" style="--i:0">GO: crew</span><span class="ln g" style="--i:1">GO: risk</span><span class="ln g" style="--i:2">GO: secrets</span><span class="ln g" style="--i:3">GO: deps</span><span class="ln g" style="--i:4">GO: sast</span><span class="ln g" style="--i:5">GO: test</span><span class="ln r" style="--i:6">NO-GO: mutation — 5/8 mutants on changed lines killed (0.625 &lt; 0.666); survivors on stderr</span><span class="ln m" style="--i:7">nothing merged</span></pre>
+          </div>
+          <p class="cap">The last line is what stopped <b>Claude Code's first live run</b>, on ticket 0001, 2026-11-04: its tests passed, and three mutants of the changed lines survived them.</p>
+        </div>
+
+        <div class="scene" data-scene="4">
+          <div class="traffic">
+            <div class="bar2"><div class="s">stable 0.1.0</div><div class="c">5%</div></div>
+            <div class="legend2"><span>canary 0.2.0 · Envoy, the Delivery port</span><span>5% → verify → 25% → verify</span></div>
+          </div>
+          <div class="chart">
+            <div class="lbl">error_rate · canary vs stable</div>
+            <svg viewBox="0 0 600 110" preserveAspectRatio="none"><g class="grid"><line x1="0" y1="36" x2="600" y2="36"/><line x1="0" y1="72" x2="600" y2="72"/></g>
+              <polyline class="st" points="0,92 600,92"/><polyline class="ca" points="0,92 120,92 170,90 200,60 240,24 300,18 380,20 450,16 520,22 600,18"/></svg>
+          </div>
+          <div class="win">
+            <div class="bar"><i></i><i></i><i></i><span>verify/slo.sh · verify/slo.promql</span><b class="a">example numbers</b></div>
+<pre><span class="ln m" style="--i:1"># name: error_rate</span><span class="ln m" style="--i:2">sum by (service_version) (rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[1m]) …</span><span class="ln r" style="--i:5">NO-GO: slo — error_rate canary(0.2.0)=1.000 stable(0.1.0)=0.000 delta=1.000 max=0.010</span><span class="ln r" style="--i:7">NO-GO: launchpad — 5%: … → rolled back</span><span class="ln m" style="--i:8">weight 0 · canary stopped · nobody paged</span></pre>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="5">
+          <div class="win">
+            <div class="bar"><i></i><i></i><i></i><span>./go promote</span><b class="a">example version</b></div>
+<pre><span class="ln m" style="--i:0">release record: held at 25%, every stage GO</span><span class="ln" style="--i:1">[go-for-launch] promotion brief for 0.2.0 …</span><span class="ln a" style="--i:2">go-for-launch 0.2.0 to 100%? [GO/NO-GO] <i class="cursor"></i></span></pre>
+          </div>
+          <div class="lamp"><button type="button" tabindex="-1">GO FOR LAUNCH</button><span>the only human gate</span></div>
+          <div class="outcomes">
+            <div style="--i:0"><b class="g">GO</b><span>the canary takes every request</span></div>
+            <div style="--i:1"><b class="r">NO-GO</b><span>rolled back through the Delivery port</span></div>
+            <div style="--i:2"><b class="a">no answer</b><span>NO-GO: go-for-launch — no human answer (…); nothing moved</span></div>
+          </div>
+        </div>
+      </div>
+
+      <ol class="steps">
+        <li class="step on" id="how-1" data-step="1">
+          <span class="n">01 · TICKET</span>
+          <h3>A ticket draws the perimeter.</h3>
+          <p>A markdown file: the problem, Given/When/Then criteria and a <code>## Perimeter</code> listing the files the change may touch.</p>
+          <p>Every path the agent changes must match it, checked before a pull request exists. One file outside, and no PR is ever opened.</p>
+          <span class="src">core/perimeter.sh</span>
+        </li>
+        <li class="step" id="how-2" data-step="2">
+          <span class="n">02 · SIX ROLES</span>
+          <h3>Six roles, each in its own box.</h3>
+          <p>One role writes code, in a throwaway sandbox with a token for that role only. The others confirm the ticket, read risky diffs, brief the human and watch production. Each has its own prompt and budget.</p>
+          <p>Your model, your coding CLI: Gemini, Claude or OpenAI, through <code>gemini-cli</code>, <code>claude-code</code> or <code>codex</code>, all behind the same guard.</p>
+          <span class="src">roles/ · core/crew.sh</span>
+        </li>
+        <li class="step" id="how-3" data-step="3">
+          <span class="n">03 · SIX GATES</span>
+          <h3>Six gates judge every pull request.</h3>
+          <p>Risk, secrets, dependencies, static analysis, tests, mutation. Each prints one line, <code>GO</code> or <code>NO-GO</code> with the reason, and every threshold says where it comes from.</p>
+          <p>A PR is judged by its base's policy, never its own: it cannot edit the gates that judge it. Mutation testing tells an honest test from one that passes and catches nothing.</p>
+          <span class="src">gates/ · docs/adr/0033</span>
+        </li>
+        <li class="step" id="how-4" data-step="4">
+          <span class="n">04 · THE CANARY</span>
+          <h3>A signed canary, judged by numbers.</h3>
+          <p>One signed image per merge takes 5%, then 25% of real traffic. One PromQL file compares it with stable on errors and p95 latency.</p>
+          <p>A bad number rolls it back with nobody paged. No model decides whether a canary is healthy.</p>
+          <span class="src">verify/slo.promql · core/launchpad.sh</span>
+        </li>
+        <li class="step human" id="how-5" data-step="5">
+          <span class="n">05 · ONE HUMAN</span>
+          <h3>One human turns the lights back on.</h3>
+          <p>The step to 100% waits for a person's GO, after a brief built from the release record. NO-GO rolls back.</p>
+          <p>Silence never promotes: with no answer, nothing moves.</p>
+          <span class="src">core/promote.sh</span>
+        </li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="scenarios" aria-labelledby="scn-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Scenarios</div>
+      <h2 id="scn-h">Every way a change can go.</h2>
+      <p class="lead">A clean release, a canary that rolls itself back, a fake test, a NO-GO the agent fixes, a risky diff, a freeze, a human who says no, a change out of bounds, a kill switch. Each is a path the code really takes.</p>
+    </div>
+    <div class="gallery" id="gallery">
+      <div class="empty">The clips are rendered from the board in CI and published with this page. Here, <a href="board/">open the board</a> and play any scenario yourself.</div>
+    </div>
+    <div class="board-link reveal">
+      <p><b>Step through it yourself.</b> The board plays every scenario station by station: what each step does, which file does it and the line it prints. These are scripted walks over the real code paths, with example versions and numbers. Run <code>./go board</code> with the plane up and it shows your own release live.</p>
+      <a class="btn" href="board/">Open the board ↗</a>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="proof" aria-labelledby="proof-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Measured</div>
+      <h2 id="proof-h">Numbers, with where they come from.</h2>
+    </div>
+    <div class="proof">
+      <div class="stat reveal"><div class="v">434<small> s</small></div><p><code>./go demo</code> from a clone to the canary's automatic rollback, after the first run, measured on a MacBook with podman. The first run downloads about 1.2 GB: expect 10–15 minutes.</p><a href="https://github.com/nicolaguglielmi/lights-out#try-it">README · Try it</a></div>
+      <div class="stat reveal"><div class="v">65<small> s</small> · 72<small> s</small></div><p><code>lights-out doctor</code>, <code>init</code> and <code>gates</code> from the published image on clean GitHub runners, amd64 and arm64, first pull included.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md">docs/reference.md · the image</a></div>
+      <div class="stat red reveal"><div class="v">0.625<small> &lt; 0.666</small></div><p>Claude Code's first live run, ticket 0001: 5 of 8 mutants killed on the changed lines. The mutation gate said NO-GO. Nothing merged.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">docs/reference.md · live, on Claude</a></div>
+      <div class="stat reveal"><div class="v">0<small> keys</small></div><p>The demo needs no account, no API key and no cloud. Without a key no model is called: the agents replay answers recorded once.</p><a href="https://github.com/nicolaguglielmi/lights-out#what-is-real-and-what-is-recorded">README · what is recorded</a></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="real" aria-labelledby="real-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Plainly</div>
+      <h2 id="real-h">What is real, and what is recorded.</h2>
+    </div>
+    <div class="real reveal">
+      <div class="y"><b>Real</b><p>The gates, the signed build, the canary, the metrics, the rollback and the audit chain. Nothing in them is simulated.</p></div>
+      <div class="rec"><b>Recorded</b><p>Without a key the agents replay answers recorded once against the Gemini API; with a key and <code>PROFILE=l1</code> they run live. The videos on this page are the board's scripted walks, with example versions and numbers.</p></div>
+      <div class="no"><b>Not yet</b><p>Nothing is proven yet on a codebase that was not written for lights-out. The Google Cloud profiles are designed, not run.</p></div>
+    </div>
+    <a class="more" href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">Every item, level by level →</a>
+  </div>
+</section>
+
+<section class="sec" id="try" aria-labelledby="try-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">Try it</div>
+      <h2 id="try-h">Watch a canary roll itself back.</h2>
+      <p class="lead">You need podman (or Docker on Linux) and git. Nothing else on your machine.</p>
+    </div>
+    <div class="try">
+      <div class="panel reveal">
+        <h3>The demo</h3>
+        <p>An agent turns a ticket into a pull request, six gates judge it, it merges, builds, signs and takes 5% of the traffic. Verify sees the errors and rolls it back on its own. The run ends with <code>GO: demo</code>.</p>
+        <div class="code"><button class="copy" type="button" data-copy="git clone https://github.com/nicolaguglielmi/lights-out.git&#10;cd lights-out&#10;./go demo">copy</button>
+<pre><span class="p">$ </span>git clone https://github.com/nicolaguglielmi/lights-out.git
+<span class="p">$ </span>cd lights-out
+<span class="p">$ </span>./go demo</pre></div>
+        <p class="fine">First run 10–15 minutes (it downloads about 1.2 GB and builds the toolchain), then about 7. <a href="https://github.com/nicolaguglielmi/lights-out#try-it">Installing podman →</a></p>
+      </div>
+      <div class="panel reveal">
+        <h3>Gates on your repository</h3>
+        <p>The <code>lights-out</code> wrapper runs init and the six gates from the published image, inside your repository, without cloning lights-out.</p>
+        <div class="code"><button class="copy" type="button" data-copy="mkdir -p ~/.local/bin&#10;curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out&#10;chmod +x ~/.local/bin/lights-out">copy</button>
+<pre><span class="p">$ </span>mkdir -p ~/.local/bin
+<span class="p">$ </span>curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+<span class="p">$ </span>chmod +x ~/.local/bin/lights-out</pre></div>
+        <div class="code"><button class="copy" type="button" data-copy="cd ~/code/your-repo&#10;lights-out doctor&#10;lights-out init&#10;cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/&#10;git add .lights-out &amp;&amp; git commit -m &quot;add lights-out contract&quot;&#10;lights-out gates">copy</button>
+<pre><span class="p">$ </span>cd ~/code/your-repo
+<span class="p">$ </span>lights-out doctor    <span class="m"># engine, image, key: one line each</span>
+<span class="p">$ </span>lights-out init      <span class="m"># drafts .lights-out/ outside your repository</span>
+<span class="p">$ </span>cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
+<span class="p">$ </span>git add .lights-out &amp;&amp; git commit -m "add lights-out contract"
+<span class="p">$ </span>lights-out gates     <span class="m"># judges the last commit</span></pre></div>
+        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out:0.1.0</code>, amd64 and arm64, about 1.8 GB unpacked. Tags are mutable and the image is unsigned: <a href="https://github.com/nicolaguglielmi/lights-out#on-your-own-repository">pin it by digest</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="mark" href="#top">lights<i>-</i>out</a>
+      <p>Apache License 2.0. This page loads nothing from anyone else: no fonts, no scripts, no trackers.</p>
+    </div>
+    <ul>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out">Repository</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/releases/tag/v0.1.0">Release v0.1.0</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/discussions">Discussions</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/tutorial.md">Tutorial</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md">Reference</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/tree/main/docs/adr">Decisions (ADRs)</a></li>
+      <li><a href="board/">The board</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/LICENSE">License</a></li>
+    </ul>
+  </div>
+</footer>
+
+<dialog id="player" aria-labelledby="player-name">
+  <div class="top"><b id="player-name"></b><span id="player-blurb"></span><button type="button" id="player-close" aria-label="Close the video">✕</button></div>
+  <video id="player-video" controls playsinline preload="none"></video>
+</dialog>
+
+<script>
+"use strict";
+document.documentElement.classList.add("js");
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---- the field: rows of runway lights, one amber, a pulse running up each
+(function runway() {
+  const svg = document.getElementById("runway"), NS = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return (parent || svg).appendChild(e); };
+  const defs = mk("defs", {});
+  const rows = 7, amber = 4, len = 1300;
+  for (let r = 0; r < rows; r++) {
+    const x1 = 470 + r * 150, y1 = 1060, x2 = x1 + 760, y2 = 0;
+    const color = r === amber ? "#e3b341" : "#3fb950";
+    mk("line", {x1, y1, x2, y2, stroke: color, "stroke-opacity": .38, "stroke-width": 4, "stroke-linecap": "round", "stroke-dasharray": "0 17"});
+    const m = mk("mask", {id: "rab" + r, maskUnits: "userSpaceOnUse", x: 0, y: 0, width: 1600, height: 1000}, defs);
+    const ml = mk("line", {x1, y1, x2, y2, stroke: "#fff", "stroke-width": 30, "stroke-dasharray": `220 ${len * 2}`}, m);
+    ml.animate([{strokeDashoffset: 220}, {strokeDashoffset: -len}], {duration: (r === amber ? 5200 : 3000) + r * 260, delay: r * 430, iterations: Infinity, easing: "cubic-bezier(.4,0,.6,1)"});
+    const g = mk("g", {mask: `url(#rab${r})`, class: "rabbit", style: `filter:drop-shadow(0 0 6px ${color})`});
+    mk("line", {x1, y1, x2, y2, stroke: r === amber ? "#ffd479" : "#7ef29a", "stroke-width": 5, "stroke-linecap": "round", "stroke-dasharray": "0 17"}, g);
+  }
+  if (still) document.getAnimations().forEach(a => a.cancel());
+})();
+
+// ---- nav background once the hero scrolls away
+const nav = document.getElementById("nav");
+const onScroll = () => nav.classList.toggle("solid", scrollY > 40);
+addEventListener("scroll", onScroll, {passive: true}); onScroll();
+
+// ---- the ticker: the lines the gates really print (their formats)
+(function ticker() {
+  const lines = ["GO: risk", "GO: secrets", "GO: deps", "GO: sast", "GO: test",
+    "NO-GO: mutation — 5/8 mutants on changed lines killed (0.625 < 0.666); survivors on stderr",
+    "NO-GO: crew — app/backend/meetups/auth.py is outside the ticket's declared perimeter",
+    "GO: slo", "NO-GO: launchpad — release-freeze is on", "GO: launchpad",
+    "NO-GO: go-for-launch — no human answer (set GO_FOR_LAUNCH=GO or answer on the terminal); nothing moved",
+    "GO: go-for-launch", "GO: kill-switch", "GO: demo"];
+  const html = lines.map(l => { const no = l.startsWith("NO-GO"); const i = l.indexOf(":");
+    return `<span><span class="${no ? "r" : "g"}">${l.slice(0, i + 1)}</span>${l.slice(i + 1).replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>`; }).join("");
+  const t = document.getElementById("tick");
+  t.innerHTML = html;
+  t.parentNode.appendChild(t.cloneNode(true)).removeAttribute("id");
+})();
+
+// ---- the hero loop
+(function hero() {
+  const v = document.getElementById("hero-video");
+  if (!still) { v.autoplay = true; v.play().catch(() => {}); }
+})();
+
+// ---- how it works: the step in view picks the scene
+(function how() {
+  const steps = [...document.querySelectorAll(".step")], scenes = [...document.querySelectorAll(".scene")];
+  let cur = 1;
+  const set = n => {
+    if (n === cur) return; cur = n;
+    steps.forEach(s => s.classList.toggle("on", +s.dataset.step === n));
+    scenes.forEach(s => s.classList.toggle("on", +s.dataset.scene === n));
+  };
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) set(+e.target.dataset.step); }),
+    {rootMargin: matchMedia("(max-width: 900px)").matches ? "-62% 0px -30% 0px" : "-45% 0px -45% 0px"});
+  steps.forEach(s => io.observe(s));
+})();
+
+// ---- reveal on scroll
+(function reveal() {
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } }), {rootMargin: "0px 0px -8% 0px"});
+  document.querySelectorAll(".reveal").forEach(e => io.observe(e));
+})();
+
+// ---- the player
+const player = document.getElementById("player"), pv = document.getElementById("player-video");
+function play(id, name, blurb) {
+  document.getElementById("player-name").textContent = name;
+  document.getElementById("player-blurb").textContent = blurb ? "· " + blurb : "";
+  pv.poster = `media/${id}.jpg`; pv.src = `media/${id}.mp4`;
+  player.showModal(); pv.play().catch(() => {});
+}
+function closePlayer() { pv.pause(); pv.removeAttribute("src"); pv.load(); if (player.open) player.close(); }
+document.getElementById("player-close").onclick = closePlayer;
+player.addEventListener("click", e => { if (e.target === player) closePlayer(); });
+player.addEventListener("close", () => { pv.pause(); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-play]");
+  if (b) play(b.dataset.play, b.dataset.name, b.dataset.blurb);
+});
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+(function tourLength() {
+  const v = document.createElement("video"); v.preload = "metadata"; v.src = "media/overview.mp4";
+  v.onloadedmetadata = () => document.querySelectorAll('[data-len="overview"]').forEach(s => s.textContent = " · " + mmss(v.duration));
+})();
+
+// ---- the scenarios, as rendered in CI (media/scenarios.json)
+(async function gallery() {
+  let list;
+  try { const r = await fetch("media/scenarios.json"); if (!r.ok) return; list = await r.json(); } catch (e) { return; }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  const card = (s, feature) => `<button class="scn${feature ? " feature" : ""}" type="button" data-play="${esc(s.id)}" data-name="${esc(s.name)}" data-blurb="${esc(s.blurb)}">
+    <div class="pic" style="background-image:url('media/${esc(s.id)}.jpg')"><span class="play"><i></i>${mmss(s.seconds)}</span></div>
+    <div class="txt"><b>${esc(s.name)}</b><span>${esc(s.blurb)}</span></div></button>`;
+  const tour = {id: "overview", name: "The tour", blurb: "seven chapters, from a ticket to a human's GO: the board's scripted walk with captions"};
+  const g = document.getElementById("gallery");
+  g.innerHTML = `<button class="scn feature" type="button" data-play="overview" data-name="The tour" data-blurb="from ticket to rollback, on the board">
+    <div class="pic" style="background-image:url('media/overview.jpg')"><span class="play"><i></i><span data-len="overview">the tour</span></span></div>
+    <div class="txt"><span class="eyebrow">Start here</span><b>${tour.name}</b><span>${tour.blurb}.</span></div></button>` + list.map(s => card(s)).join("");
+  const v = document.createElement("video"); v.preload = "metadata"; v.src = "media/overview.mp4";
+  v.onloadedmetadata = () => g.querySelectorAll('[data-len="overview"]').forEach(s => s.textContent = mmss(v.duration));
+})();
+
+// ---- copy buttons
+document.querySelectorAll("[data-copy]").forEach(b => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "copied"; }
+  catch (e) { b.textContent = "select and copy"; }
+  setTimeout(() => b.textContent = "copy", 1600);
+}));
+</script>
+</body>
+</html>
