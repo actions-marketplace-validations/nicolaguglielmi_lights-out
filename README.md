@@ -2,7 +2,7 @@
 
 ![lights-out: six agents ship it, one human turns the lights back on](docs/assets/lights-out.jpg)
 
-**The safety system for a dark factory of coding agents.** A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system for agents that write and ship code.
+**The safety system for a dark factory of AI coding agents.** A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system, the guardrails for agents that write and ship code, with Claude Code, Gemini CLI or Codex at the keyboard.
 
 **Autonomous agents take a ticket to production on a codebase you do not trust. Numeric gates decide, the ticket's perimeter holds, a failing canary rolls itself back, and one human approves the last step.**
 
