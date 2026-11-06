@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The local cluster the argo-rollouts adapter is proved on (docs/adr/0051
+# §4): one k3s node as a plane service, merged after the plane's and the
+# workload's compose files only by `make argo-conformance` (through
+# adapters/argo-rollouts/cluster.sh), never by `./go up`, so the L0 plane
+# and `./go demo` do not know it exists. On the plane's default network:
+# the node resolves zot (registries.yaml), and Prometheus scrapes both
+# revisions through its Traefik by the service name `k8s`. Privileged,
+# as k3s in a container needs; under podman that takes a rootful engine,
+# because a rootless podman machine does not delegate the cpuset
+# controller k3s requires (measured 2026-11-06, docs/adr/0051 §4). k3s
+# bundles Traefik v3, the traffic router of the local cluster.
+services:
+  k8s:
+    image: docker.io/rancher/k3s:v1.37.2-k3s1@sha256:21ea6e0fac4e3930c2ce8aa40ddd41a8b18cb3e9a0222c030dc005e7e88c4332
+    profiles: ["argo"]
+    privileged: true
+    command:
+      - server
+      - --disable=metrics-server,local-storage
+      - --tls-san=${PLANE_HOST:-host.containers.internal}
+      - --write-kubeconfig-mode=644
+    environment:
+      K3S_KUBECONFIG_OUTPUT: /output/kubeconfig.yaml
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - ./.crew/argo:/output
+      - ./adapters/argo-rollouts/registries.yaml:/etc/rancher/k3s/registries.yaml:ro
+    security_opt:
+      - label=disable
+    # Host side: the API server for the workbench's kubectl, and Traefik's
+    # web entrypoint, which is APP_URL while the suite runs.
+    ports:
+      - "${ARGO_API_PORT:-6443}:6443"
+      - "${ARGO_APP_PORT:-8180}:80"

@@ -130,6 +130,30 @@ jobs:
       - if: always()
         run: docker logs --tail 80 lights-out-envoy-1 || true; docker logs --tail 80 lights-out-backend-1 || true
 
+  # The argo-rollouts Delivery adapter's proof (docs/adr/0051 §6): the six-
+  # case conformance suite, unchanged, against a k3s node beside the plane.
+  # Docker on the runner is rootful, which k3s in a container needs.
+  argo:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - run: ./go up
+        env:
+          CONTAINER_ENGINE: docker
+      # KEEP_CLUSTER=1 leaves the node up for the evidence step below.
+      - run: ./go argo-conformance KEEP_CLUSTER=1
+        env:
+          CONTAINER_ENGINE: docker
+      # The node and the controller are the evidence when a case NO-GOes.
+      - if: always()
+        run: |
+          docker logs --tail 80 lights-out-k8s-1 || true
+          docker exec lights-out-k8s-1 kubectl get rollout,pods,svc,endpointslices -A -o wide || true
+          docker exec lights-out-k8s-1 kubectl -n argo-rollouts logs deploy/argo-rollouts --tail 80 || true
+
   # The Workload port's own acceptance (docs/adr/0030 §7), and attach's
   # since M13 (docs/adr/0037 §10): workloads/minimal/ copied into a fresh
   # git repository, attached, then down, up, smoke, verify, demo-rollback,

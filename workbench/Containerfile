@@ -53,6 +53,13 @@ ARG COSIGN_VERSION=3.1.3
 ARG COSIGN_SHA256_AMD64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
 ARG COSIGN_SHA256_ARM64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
 
+# docs/adr/0051 §2: the argo-rollouts Delivery adapter talks to a cluster
+# through kubectl alone, no plugin. The release dl.k8s.io calls stable on
+# 2026-11-06, the same minor as the k3s the local proof runs.
+ARG KUBECTL_VERSION=1.37.2
+ARG KUBECTL_SHA256_AMD64=c04487523e7aa7d1493f7808174c899db93d7a9cf57531420cd76b9bd415f8f4
+ARG KUBECTL_SHA256_ARM64=fcc16f63186659d9722014b7e02d5fdd2d4e669cb8c0ab66365d7d3b8ba03509
+
 # procps: `ps`, which Stryker's command runner needs to end each test run
 # (tree-kill) when a javascript workload's gates run in the workbench
 # (docs/adr/0042 §2; found 2026-11-03, debian slim ships none).
@@ -69,12 +76,12 @@ RUN chmod 0755 /usr/local/bin/fetch
 RUN set -eu; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     case "$arch" in \
-      amd64) node_arch=x64;   uv_arch=x86_64;  compose_arch=x86_64;  tf_arch=amd64; gcloud_arch=x86_64; gl_arch=x64;   al_arch=amd64; sc_arch=x86_64; osv_arch=amd64; cosign_arch=amd64; \
+      amd64) node_arch=x64;   uv_arch=x86_64;  compose_arch=x86_64;  tf_arch=amd64; gcloud_arch=x86_64; gl_arch=x64;   al_arch=amd64; sc_arch=x86_64; osv_arch=amd64; cosign_arch=amd64; kubectl_arch=amd64; \
              NODE_SHA=$NODE_SHA256_AMD64; UV_SHA=$UV_SHA256_AMD64; COMPOSE_SHA=$COMPOSE_SHA256_AMD64; TF_SHA=$TERRAFORM_SHA256_AMD64; \
-             GCLOUD_SHA=$GCLOUD_SHA256_AMD64; GL_SHA=$GITLEAKS_SHA256_AMD64; AL_SHA=$ACTIONLINT_SHA256_AMD64; SC_SHA=$SHELLCHECK_SHA256_AMD64; OSV_SHA=$OSV_SCANNER_SHA256_AMD64; COSIGN_SHA=$COSIGN_SHA256_AMD64 ;; \
-      arm64) node_arch=arm64; uv_arch=aarch64; compose_arch=aarch64; tf_arch=arm64; gcloud_arch=arm;    gl_arch=arm64; al_arch=arm64; sc_arch=aarch64; osv_arch=arm64; cosign_arch=arm64; \
+             GCLOUD_SHA=$GCLOUD_SHA256_AMD64; GL_SHA=$GITLEAKS_SHA256_AMD64; AL_SHA=$ACTIONLINT_SHA256_AMD64; SC_SHA=$SHELLCHECK_SHA256_AMD64; OSV_SHA=$OSV_SCANNER_SHA256_AMD64; COSIGN_SHA=$COSIGN_SHA256_AMD64; KUBECTL_SHA=$KUBECTL_SHA256_AMD64 ;; \
+      arm64) node_arch=arm64; uv_arch=aarch64; compose_arch=aarch64; tf_arch=arm64; gcloud_arch=arm;    gl_arch=arm64; al_arch=arm64; sc_arch=aarch64; osv_arch=arm64; cosign_arch=arm64; kubectl_arch=arm64; \
              NODE_SHA=$NODE_SHA256_ARM64; UV_SHA=$UV_SHA256_ARM64; COMPOSE_SHA=$COMPOSE_SHA256_ARM64; TF_SHA=$TERRAFORM_SHA256_ARM64; \
-             GCLOUD_SHA=$GCLOUD_SHA256_ARM64; GL_SHA=$GITLEAKS_SHA256_ARM64; AL_SHA=$ACTIONLINT_SHA256_ARM64; SC_SHA=$SHELLCHECK_SHA256_ARM64; OSV_SHA=$OSV_SCANNER_SHA256_ARM64; COSIGN_SHA=$COSIGN_SHA256_ARM64 ;; \
+             GCLOUD_SHA=$GCLOUD_SHA256_ARM64; GL_SHA=$GITLEAKS_SHA256_ARM64; AL_SHA=$ACTIONLINT_SHA256_ARM64; SC_SHA=$SHELLCHECK_SHA256_ARM64; OSV_SHA=$OSV_SCANNER_SHA256_ARM64; COSIGN_SHA=$COSIGN_SHA256_ARM64; KUBECTL_SHA=$KUBECTL_SHA256_ARM64 ;; \
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     cd /tmp; \
@@ -98,6 +105,8 @@ RUN set -eu; \
     chmod 0755 /usr/local/bin/osv-scanner; \
     fetch "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-${cosign_arch}" "$COSIGN_SHA" /usr/local/bin/cosign; \
     chmod 0755 /usr/local/bin/cosign; \
+    fetch "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/${kubectl_arch}/kubectl" "$KUBECTL_SHA" /usr/local/bin/kubectl; \
+    chmod 0755 /usr/local/bin/kubectl; \
     rm -rf /tmp/*
 
 # The workbench's Python deps (docs/adr/0020 §5): google-adk and what
@@ -121,6 +130,6 @@ ENV PATH=/opt/workbench-venv/bin:/opt/google-cloud-sdk/bin:$PATH \
 
 RUN node --version && uv --version && docker-compose version && terraform version \
  && gcloud version && gitleaks version && actionlint -version && shellcheck --version \
- && osv-scanner --version && cosign version && adk --version </dev/null
+ && osv-scanner --version && cosign version && kubectl version --client && adk --version </dev/null
 
 CMD ["make", "help"]
