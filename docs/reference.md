@@ -166,7 +166,7 @@ Channels that remain:
 
 - The provider's own host. An injected attacker key can upload the container's key there, and the proxy cannot read TLS. Each `crew-egress.txt` host is one more of the same kind.
 - The pull request. `run.sh` greps the literal key. An encoded key passes.
-- DNS, where the engine forwards it from internal networks. It is closed only on docker 26.0.0 or later; case 9 checks it on every engine it runs on.
+- DNS is closed: the engine's resolver still answers the names on `crew`, but every service there has `dns: 192.0.2.1`, a documentation address that never answers, as its upstream (ADR 0046 §7). Before that, rootless podman on GitHub's Ubuntu runner resolved `example.com` from the internal network; case 9 caught it.
 - The guard's `/proc/self/environ` gap (an interpreter reading the environment) now reaches only the channels above.
 
 `MAX_TURNS`, `TOKEN_BUDGET` and `TIMEOUT_S` stop each harness, each read from the vendor's own signal. The budgets in `roles/` are Gemini measurements and bind every harness until recordings re-measure them.
