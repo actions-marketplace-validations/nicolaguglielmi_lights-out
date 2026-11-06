@@ -26,12 +26,24 @@ done
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
+# The Pages workflow (docs/adr/0048) needs an environment and id-token:
+# write to deploy, and Pages has no Gitea counterpart. Those two checks are
+# lifted for that file alone, on one condition: every job in it carries the
+# github.com guard (ADR 0039), so the Gitea runner skips all of it.
+github_only=.github/workflows/site.yml
+
 for f in $workflows; do
   {
-    grep -n -E 'environment:' "$f" | sed "s#^#$f:#" \
-      | sed 's/$/\t-- environment: at job level is not supported by Gitea Actions/'
-    grep -n -E 'id-token' "$f" | sed "s#^#$f:#" \
-      | sed 's/$/\t-- id-token is not supported by Gitea Actions/'
+    if [ "$f" = "$github_only" ]; then
+      jobs=$(grep -c -E '^[[:space:]]*runs-on:' "$f" || true)
+      guarded=$(grep -c -E "^[[:space:]]*if: github\.server_url == 'https://github\.com'" "$f" || true)
+      [ "$jobs" = "$guarded" ] || printf '%s:1:\t-- %s jobs, %s with the github.com guard: a job without it would run on Gitea\n' "$f" "$jobs" "$guarded"
+    else
+      grep -n -E 'environment:' "$f" | sed "s#^#$f:#" \
+        | sed 's/$/\t-- environment: at job level is not supported by Gitea Actions/'
+      grep -n -E 'id-token' "$f" | sed "s#^#$f:#" \
+        | sed 's/$/\t-- id-token is not supported by Gitea Actions/'
+    fi
     grep -n -E '(success|failure|cancelled)\(\)' "$f" | sed "s#^#$f:#" \
       | sed 's/$/\t-- status function not supported by Gitea Actions (only always())/'
     grep -n -E '^[[:space:]]*runs-on:[[:space:]]*$' "$f" | sed "s#^#$f:#" \

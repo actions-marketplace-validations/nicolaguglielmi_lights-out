@@ -29,6 +29,8 @@ trap 'rm -f "$tmp"' EXIT
     [ -d "$d" ] && find "$d" -type f -name '*.sh'
   done
   [ -d stacks ] && find stacks -path '*/runners/*.sh' -type f
+  # lights-out's own contract (docs/adr/0049).
+  [ -d .lights-out/runners ] && find .lights-out/runners -name '*.sh' -type f
   # A workload laid out to be attached keeps these in .lights-out/
   # (docs/adr/0037 §2).
   for w in app workloads/*; do

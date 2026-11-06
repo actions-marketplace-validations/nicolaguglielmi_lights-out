@@ -241,6 +241,9 @@ else
     [ -e "$f" ] || continue
     pairs="$pairs ${f%/.lights-out/workload.env}:$(dirname "$f")"
   done
+  # lights-out's own contract, the one its self-judgement reads
+  # (docs/adr/0049): the repository root is the workload.
+  [ ! -e .lights-out/workload.env ] || pairs="$pairs .:.lights-out"
 fi
 [ -n "$pairs" ] || nogo "no */workload.env or workloads/*/.lights-out/workload.env found"
 

@@ -1,0 +1,45 @@
+# lights-out judges its own changes with its own gates (docs/adr/0049):
+# the Action in ./action, on this repository, with the contract committed
+# in .lights-out/. Every push judges its commit against its parent; a pull
+# request, GitHub's merge commit against its first parent, the PR's base.
+# The judge is built from the base, in this run: the base's image with
+# the base's contract (the entrypoint takes .lights-out/ from the base,
+# docs/adr/0033), so a change never runs the gates it rewrites. The
+# verdict is the step's line, the run's summary and a check run named
+# "lights-out gates" on the commit. GitHub-only: the L0 Gitea runner reads
+# this directory too and holds the engine socket (docs/adr/0039).
+name: self
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: The range, and the judge built from its base
+        id: range
+        run: |
+          set -eu
+          base=$(git rev-parse HEAD^1)
+          head=$(git rev-parse HEAD)
+          printf 'base=%s\nhead=%s\n' "$base" "$head" >> "$GITHUB_OUTPUT"
+          git worktree add -q --detach "$RUNNER_TEMP/judge" "$base"
+          sh "$RUNNER_TEMP/judge/package/build.sh" docker localhost/lights-out:judge
+      - name: lights-out gates on this change
+        uses: ./action
+        with:
+          base: ${{ steps.range.outputs.base }}
+          head: ${{ steps.range.outputs.head }}
+          image: localhost/lights-out:judge
