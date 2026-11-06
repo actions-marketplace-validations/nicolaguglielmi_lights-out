@@ -142,7 +142,11 @@ def main():
     port = int(sys.argv[1])
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("0.0.0.0", port))
+    # All interfaces, on purpose: the engine assigns egress's addresses on
+    # crew and default at start, the harnesses reach it on crew, and it
+    # publishes no port (docs/adr/0046 §2), so nothing off those two
+    # networks can connect; whatever can is held to the allowlist.
+    s.bind(("0.0.0.0", port))  # nosec B104 - container-internal, no published port, ADR 0046 §2
     s.listen(128)
     tmp = os.path.join(DIR, "ready.tmp")
     with open(tmp, "w") as f:
