@@ -17,8 +17,13 @@ Exit 0 prints the document's path on stdout and a summary on stderr; exit
 import json
 import os
 import re
-import subprocess
+import subprocess  # nosec B404 - only for PIPE; tower.py's sh() runs the verbs
 import sys
+
+try:
+    from core.tower import sh
+except ImportError:  # run as a script: core/ is sys.path[0]
+    from tower import sh
 
 NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 STAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
@@ -71,8 +76,7 @@ def alerts(record):
 
 def chain(ticket, store, version):
     """{ticket, pr, merge} from the tower's document, which must be about this release."""
-    got = subprocess.run(["sh", f"adapters/{store}/get.sh", "tickets", ticket],
-                         stdout=subprocess.PIPE, text=True, check=False)
+    got = sh(f"adapters/{store}/get.sh", "tickets", ticket, stdout=subprocess.PIPE, text=True)
     try:
         doc = json.loads(got.stdout) if got.returncode == 0 else None
     except ValueError:

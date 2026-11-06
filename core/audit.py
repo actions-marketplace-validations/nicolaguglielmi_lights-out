@@ -17,13 +17,13 @@ the code host through their adapter verbs; vendor-free.
 
 import json
 import os
-import subprocess
+import subprocess  # nosec B404 - only for PIPE; tower.py's sh() runs the verbs
 import sys
 
 try:
-    from core.tower import dig, text
+    from core.tower import dig, sh, text
 except ImportError:  # run as a script: core/ is sys.path[0]
-    from tower import dig, text
+    from tower import dig, sh, text
 
 # States past each point of the chain, so the links it needs.
 RELEASED = ("rolled-back", "held")
@@ -48,7 +48,7 @@ def interpolated(value):
 
 
 def adapter_json(argv, unreachable):
-    got = subprocess.run(argv, stdout=subprocess.PIPE, text=True, check=False)
+    got = sh(*argv, stdout=subprocess.PIPE, text=True)
     if got.returncode != 0:
         raise Refused(unreachable)
     try:
@@ -149,14 +149,14 @@ def audit(env):
         if not env.get(var):
             raise Refused(f"{var} not set; run this via {how}")
     ticket, store, code_host = env["TICKET"], env["STATE_STORE"], env["CODE_HOST"]
-    doc = adapter_json(["sh", f"adapters/{store}/get.sh", "tickets", ticket],
+    doc = adapter_json([f"adapters/{store}/get.sh", "tickets", ticket],
                        f"no document for ticket {ticket} in {store}")
     missing = missing_links(doc, ticket)
     if missing:
         raise Refused("missing link(s) in the record: " + " ".join(missing))
     check(doc, None)
     number = field(doc, ".pr.number")
-    host = adapter_json(["sh", f"adapters/{code_host}/pr.sh", number],
+    host = adapter_json([f"adapters/{code_host}/pr.sh", number],
                         f"code host {code_host} unreachable or PR #{number} unknown to it")
     check(doc, host)
     return chain(doc, ticket)
