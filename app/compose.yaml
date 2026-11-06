@@ -168,6 +168,7 @@ services:
   gemini-cli: *crew-worker
   claude-code: *crew-worker
   codex: *crew-worker
+  antigravity-cli: *crew-worker
 
 volumes:
   postgres-data:

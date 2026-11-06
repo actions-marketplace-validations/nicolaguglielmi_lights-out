@@ -12,7 +12,8 @@ name: lights-out
 
 # What every CLI AgentHarness worker shares (docs/adr/0017 §3, 0041 §1,
 # §3, §4): the workload's toolchain image (or the workbench, docs/adr/0042
-# §8) plus the vendor CLI, pinned by the adapter's package-lock.json. No
+# §8) plus the vendor CLI, pinned by the adapter's package-lock.json or, for a
+# release binary, its release.env (docs/adr/0050 §2). No
 # engine socket, no git credential. The only mounts are the roles,
 # read-only, and what each adapter's run.sh adds with `run -v`: the run's
 # own directory under .crew/ and the uv cache, never .crew/ itself (it
@@ -103,6 +104,20 @@ services:
     environment:
       <<: *crew-env
       CODEX_API_KEY: ${OPENAI_API_KEY:-}
+
+  # The antigravity-cli AgentHarness worker (docs/adr/0050): Gemini, optional
+  # and experimental beside gemini-cli, chosen only by AGENT_HARNESS. Its
+  # image holds a proprietary binary downloaded at build (release.env): it
+  # is built where it runs and never pushed (docs/adr/0050 §6).
+  antigravity-cli:
+    <<: *crew-worker
+    build:
+      context: ./adapters/antigravity-cli
+      dockerfile: Containerfile
+      args: *crew-build-args
+    environment:
+      <<: *crew-env
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
 
   # The one way out of `crew` (docs/adr/0046 §2): a forward proxy that
   # opens only the host:port pairs listed in .crew/egress/allow, re-read
