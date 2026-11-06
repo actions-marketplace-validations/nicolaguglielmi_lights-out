@@ -67,16 +67,17 @@ trap 'rm -rf "$err_log" "$policy_out" "$egress_files"' EXIT
 expected_keys='CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT TOOLCHAIN_IMAGE TEST_CMD SAST_CMD MUTATION_CMD'
 
 # The CLI harnesses, discovered as ci/harness-shape.sh discovers them: an
-# adapters/<name>/ with run.sh, Containerfile and package.json or
-# package-lock.json. Their compose services carry the adapter's name.
+# adapters/<name>/ with run.sh, Containerfile and a pin, package.json or
+# package-lock.json, or release.env (docs/adr/0050 §2). Their compose
+# services carry the adapter's name.
 harnesses=""
 for d in adapters/*/; do
   h=$(basename "$d")
-  if [ -f "adapters/$h/run.sh" ] && [ -f "adapters/$h/Containerfile" ] && { [ -f "adapters/$h/package.json" ] || [ -f "adapters/$h/package-lock.json" ]; }; then
+  if [ -f "adapters/$h/run.sh" ] && [ -f "adapters/$h/Containerfile" ] && { [ -f "adapters/$h/package.json" ] || [ -f "adapters/$h/package-lock.json" ] || [ -f "adapters/$h/release.env" ]; }; then
     harnesses="$harnesses $h"
   fi
 done
-[ -n "$harnesses" ] || nogo "no CLI harness under adapters/ (a directory with run.sh, Containerfile and package.json)"
+[ -n "$harnesses" ] || nogo "no CLI harness under adapters/ (a directory with run.sh, Containerfile and package.json or release.env)"
 
 # (f), as a Python program: argv are the rendered project (JSON), the harnesses,
 # and "check" or "selfcheck". `check` prints the first flaw and exits 1;

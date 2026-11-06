@@ -21,17 +21,27 @@ The script of the running case is /work/case.json, read on every request:
                {"op": "hang"}]}
 
 A step is abstract and is rendered as each vendor's own tool call: Bash, Read and
-Write for Anthropic; run_shell_command, read_file and write_file for Gemini; a
-shell command for OpenAI (`read` is `cat`, `write` is `printf > file`). `grep` is
+Write for Anthropic; run_shell_command, read_file and write_file for Gemini CLI;
+run_command, read_file and write_file for Antigravity CLI, which speaks the same
+Gemini wire with its own tools (told apart by the run_command it declares, docs/
+adr/0050); a shell command for OpenAI (`read` is `cat`, `write` is `printf >
+file`). `grep` is
 grep_search for Gemini, over the workspace with the file named as include_pattern
 (found in the suite: gemini-cli 0.61.0-preview.0's fallback grep, used when ripgrep
 is not usable, refuses a file as dir_path before BeforeTool fires), and `grep -rn`
-through Bash and the shell for the others. `jsread`
+through Bash, run_command and the shell for the others. `jsread`
 is the one probe of OpenAI's code mode: JavaScript that tries to read a file and
 the environment itself, with no nested tool call, so no hook fires; on every
 other surface it is a `read`. `hang` never answers.
 
-The step a request gets is the number of tool results already in it. Requests
+The step a request gets is the number of tool results already in it. One
+exception, Antigravity's: a command still running after 10 s comes back as "Tool is
+running as a background task", and agy wants the model to end its turn; it then
+waits and sends the command's output as a user `<SYSTEM_MESSAGE>`. So a request
+whose last part is that notice is answered with a short text, as a step of its own
+kind (`wait`) that the script does not count, and the next request's `last_result`
+is the message that carries the output (verified against agy 1.5.1, 2026-11-06).
+Requests
 that carry no tools are the CLI's own side requests (a title, a classification):
 they get a short text answer, count as no step, and report 0 tokens. Every
 answered request that carries tools reports exactly 1,000 tokens, split 900
@@ -69,6 +79,9 @@ SUFFIX = "-conformance"
 SINK = "conformance-sink"  # compose.yaml's alias for this container, the name case 9's probe tries
 IN_TOKENS, OUT_TOKENS = 900, 100
 LAST_RESULT_MAX = 4000
+AGY_WAIT_MS = 10000  # run_command's WaitMsBeforeAsync: its documented maximum; 60000 was clamped to it (verified)
+AGY_BACKGROUND = "running as a background task"
+AGY_FINISHED = "finished with result:"
 
 LOCK = threading.Lock()
 IDS = itertools.count(1)
@@ -203,6 +216,37 @@ def tool_results(proto, body):
     return out
 
 
+def gemini_tool_names(body):
+    names = set()
+    for t in body.get("tools") or []:
+        if isinstance(t, dict):
+            for d in t.get("functionDeclarations") or t.get("function_declarations") or []:
+                if isinstance(d, dict):
+                    names.add(d.get("name"))
+    return names
+
+
+def agy_waiting(proto, body):
+    """True when the request's last part is Antigravity's background-task notice."""
+    if proto != "gemini":
+        return False
+    contents = body.get("contents") or []
+    parts = (contents[-1].get("parts") or []) if contents and isinstance(contents[-1], dict) else []
+    last = parts[-1] if parts and isinstance(parts[-1], dict) else {}
+    return "functionResponse" in last and AGY_BACKGROUND in json.dumps(last["functionResponse"])
+
+
+def agy_finished(proto, body):
+    """The text of Antigravity's background-task result, when it is the request's last part."""
+    if proto != "gemini":
+        return ""
+    contents = body.get("contents") or []
+    if not contents or not isinstance(contents[-1], dict) or contents[-1].get("role") != "user":
+        return ""
+    text = "\n".join(p.get("text", "") for p in contents[-1].get("parts") or [] if isinstance(p, dict))
+    return text if AGY_FINISHED in text else ""
+
+
 # --- the script, rendered as each vendor's tool calls -----------------------
 
 
@@ -296,6 +340,14 @@ def render(proto, step, cwd, body):
         if op in ("read", "jsread"):
             return op, True, ("tool", "Read", {"file_path": absolute(step["path"], cwd)})
         return op, True, ("tool", "Write", {"file_path": absolute(step["path"], cwd), "content": step["content"]})
+    if proto == "gemini" and "run_command" in gemini_tool_names(body):
+        cmd = grep_cmd(step) if op == "grep" else step.get("cmd")
+        if op in ("shell", "grep"):
+            return op, True, ("tool", "run_command", {"CommandLine": cmd, "toolSummary": "Conformance step",
+                                                      "WaitMsBeforeAsync": AGY_WAIT_MS})
+        if op in ("read", "jsread"):
+            return op, True, ("tool", "read_file", {"Path": absolute(step["path"], cwd)})
+        return op, True, ("tool", "write_file", {"Path": absolute(step["path"], cwd), "Content": step["content"]})
     if proto == "gemini":
         if op == "shell":
             return op, True, ("tool", "run_shell_command", {"command": step["cmd"]})
@@ -524,6 +576,9 @@ class Handler(BaseHTTPRequestHandler):
         results = tool_results(proto, body)
         if results:
             rec["last_result"] = results[-1][:LAST_RESULT_MAX]
+        finished = agy_finished(proto, body)
+        if finished:
+            rec["last_result"] = finished[:LAST_RESULT_MAX]
         if auth != "ok":
             log_request(case, raw, rec)
             raise Fault(401, "the request carried %s key; the suite exports its canary into every key variable "
@@ -543,7 +598,10 @@ class Handler(BaseHTTPRequestHandler):
                 log_request(case, raw, rec)
                 time.sleep(3600)
                 return
-            op, hooked, rendering = render(proto, step, cwd, body)
+            if agy_waiting(proto, body):
+                op, hooked, rendering = "wait", False, ("text", "Waiting for the command to finish.")
+            else:
+                op, hooked, rendering = render(proto, step, cwd, body)
             rec["op"], rec["hooked"] = op, hooked
             tokens = (IN_TOKENS, OUT_TOKENS)
             rec["reported_tokens"] = IN_TOKENS + OUT_TOKENS

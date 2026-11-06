@@ -4,16 +4,22 @@
 # ci-harness-shape: the engine-free half of every CLI harness's entry
 # requirement (docs/adr/0041 §9, §11); the engine half is `./go
 # harness-conformance`. A CLI harness is an adapters/<name>/ with run.sh,
-# Containerfile and package.json or package-lock.json: discovered, never
-# listed. Each one must have
-#   - package.json pinning every dependency to an exact version (no ^, no ~,
-#     no range) and a package-lock.json that agrees: the root entry asks for
-#     the same version and node_modules/<package> installs it;
+# Containerfile and a pin, package.json or package-lock.json, or release.env:
+# discovered, never listed. Each one must have exactly one pin:
+#   - an npm package: package.json pinning every dependency to an exact
+#     version (no ^, no ~, no range) and a package-lock.json that agrees: the
+#     root entry asks for the same version and node_modules/<package> installs
+#     it;
+#   - or a release binary (docs/adr/0050 §2): release.env with exactly
+#     VERSION, an exact version, and per architecture (AMD64, ARM64) URL_<arch>,
+#     an https URL that names VERSION as a path segment, and SHA256_<arch>, 64
+#     lowercase hex digits;
 #   - thinking.env with <PROVIDER>_LOW, _MEDIUM and _HIGH, the provider
 #     upper-cased (docs/adr/0040 §2);
 #   - conformance.env with exactly PROVIDER, MODEL, KEY_VAR, THINKING_PATH and
-#     EGRESS (the fifth, docs/adr/0046 §4), a provider no other CLI harness has
-#     (run.sh refuses any other and names the harness that fits), and a KEY_VAR
+#     EGRESS (the fifth, docs/adr/0046 §4), a provider among gemini, anthropic
+#     and openai (one per harness; a provider may have more than one harness
+#     since docs/adr/0050 §1, AGENT_HARNESS chooses), and a KEY_VAR
 #     that .env.example names. EGRESS is the only host:port the egress proxy
 #     opens for the harness besides the workload's own: one or more `name:port`,
 #     a lowercase DNS name with a dot, no IP literal, no `*`, a port from 1 to
@@ -46,12 +52,12 @@ shape_flaw() {
     [ -d "$d" ] || continue
     h=$(basename "$d")
     a=$root/adapters/$h
-    if [ -f "$a/run.sh" ] && [ -f "$a/Containerfile" ] && { [ -f "$a/package.json" ] || [ -f "$a/package-lock.json" ]; }; then
+    if [ -f "$a/run.sh" ] && [ -f "$a/Containerfile" ] && { [ -f "$a/package.json" ] || [ -f "$a/package-lock.json" ] || [ -f "$a/release.env" ]; }; then
       harnesses="$harnesses $h"
     fi
   done
   if [ -z "$harnesses" ]; then
-    printf 'no CLI harness under adapters/ (a directory with run.sh, Containerfile and package.json)'
+    printf 'no CLI harness under adapters/ (a directory with run.sh, Containerfile and package.json or release.env)'
     return
   fi
   ref=$root/adapters/gemini-cli/hooks/guard.sh
@@ -60,30 +66,62 @@ shape_flaw() {
     return
   fi
 
-  providers=""
   for h in $harnesses; do
     a=$root/adapters/$h
 
-    # The version, pinned and locked.
-    if [ ! -f "$a/package.json" ]; then printf '%s: package.json is missing' "$h"; return; fi
-    if [ ! -f "$a/package-lock.json" ]; then printf '%s: package-lock.json is missing' "$h"; return; fi
-    pin=$(jq -r --slurpfile lock "$a/package-lock.json" '
-      ($lock[0].packages // {}) as $p
-      | ([($p[""].dependencies // {}), ($p[""].optionalDependencies // {}), ($p[""].devDependencies // {})] | add // {}) as $root
-      | ([(.dependencies // {}), (.optionalDependencies // {}), (.devDependencies // {})] | add // {}) as $d
-      | if ($d | length) == 0 then "package.json pins no dependency"
-        else
-          [ $d | to_entries[] | . as $e
-            | if ($e.value | test("^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$") | not)
-                then "\($e.key) is \($e.value | tojson) in package.json, not an exact version"
-              elif ($root[$e.key] // null) != $e.value
-                then "package-lock.json asks \($root[$e.key] // "nothing" | tostring) of \($e.key), package.json pins \($e.value)"
-              elif ($p["node_modules/" + $e.key].version // null) != $e.value
-                then "package-lock.json installs \($p["node_modules/" + $e.key].version // "nothing" | tostring) of \($e.key), package.json pins \($e.value)"
-              else empty end
-          ] | .[0] // empty
-        end' "$a/package.json" 2>/dev/null) || { printf '%s: package.json or package-lock.json is not JSON' "$h"; return; }
-    if [ -n "$pin" ]; then printf '%s: %s' "$h" "$pin"; return; fi
+    # A release binary: one version, one digest per architecture.
+    if [ -f "$a/release.env" ]; then
+      if [ -f "$a/package.json" ] || [ -f "$a/package-lock.json" ]; then
+        printf '%s: release.env beside package.json or package-lock.json; a harness has one pin (docs/adr/0050 §2)' "$h"
+        return
+      fi
+      rel=$a/release.env
+      keys=$(grep -vE '^[[:space:]]*(#|$)' "$rel" | cut -d= -f1 | sort | tr '\n' ' ')
+      if [ "$keys" != "SHA256_AMD64 SHA256_ARM64 URL_AMD64 URL_ARM64 VERSION " ]; then
+        printf '%s: release.env has the keys [%s], want exactly VERSION URL_AMD64 SHA256_AMD64 URL_ARM64 SHA256_ARM64' "$h" "${keys% }"
+        return
+      fi
+      version=$(conf_get "$rel" VERSION)
+      if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+        printf '%s: release.env VERSION is "%s", not an exact version' "$h" "$version"
+        return
+      fi
+      for arch in AMD64 ARM64; do
+        url=$(conf_get "$rel" "URL_$arch")
+        case "$url" in
+          https://*/"$version"/*) ;;
+          https://*) printf '%s: release.env URL_%s does not name VERSION %s as a path segment' "$h" "$arch" "$version"; return ;;
+          *) printf '%s: release.env URL_%s is not an https URL' "$h" "$arch"; return ;;
+        esac
+        if ! conf_get "$rel" "SHA256_$arch" | grep -Eq '^[0-9a-f]{64}$'; then
+          printf '%s: release.env SHA256_%s is not a sha256 (64 lowercase hex digits)' "$h" "$arch"
+          return
+        fi
+      done
+    fi
+
+    # An npm package: the version, pinned and locked.
+    if [ ! -f "$a/release.env" ]; then
+      if [ ! -f "$a/package.json" ]; then printf '%s: package.json is missing' "$h"; return; fi
+      if [ ! -f "$a/package-lock.json" ]; then printf '%s: package-lock.json is missing' "$h"; return; fi
+      pin=$(jq -r --slurpfile lock "$a/package-lock.json" '
+        ($lock[0].packages // {}) as $p
+        | ([($p[""].dependencies // {}), ($p[""].optionalDependencies // {}), ($p[""].devDependencies // {})] | add // {}) as $root
+        | ([(.dependencies // {}), (.optionalDependencies // {}), (.devDependencies // {})] | add // {}) as $d
+        | if ($d | length) == 0 then "package.json pins no dependency"
+          else
+            [ $d | to_entries[] | . as $e
+              | if ($e.value | test("^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$") | not)
+                  then "\($e.key) is \($e.value | tojson) in package.json, not an exact version"
+                elif ($root[$e.key] // null) != $e.value
+                  then "package-lock.json asks \($root[$e.key] // "nothing" | tostring) of \($e.key), package.json pins \($e.value)"
+                elif ($p["node_modules/" + $e.key].version // null) != $e.value
+                  then "package-lock.json installs \($p["node_modules/" + $e.key].version // "nothing" | tostring) of \($e.key), package.json pins \($e.value)"
+                else empty end
+            ] | .[0] // empty
+          end' "$a/package.json" 2>/dev/null) || { printf '%s: package.json or package-lock.json is not JSON' "$h"; return; }
+      if [ -n "$pin" ]; then printf '%s: %s' "$h" "$pin"; return; fi
+    fi
 
     # The facts the suite reads.
     cf=$a/conformance.env
@@ -101,10 +139,6 @@ shape_flaw() {
       gemini|anthropic|openai) ;;
       *) printf '%s: conformance.env PROVIDER is %s, want gemini, anthropic or openai' "$h" "$provider"; return ;;
     esac
-    case " $providers " in
-      *" $provider "*) printf '%s: provider %s belongs to another CLI harness too; run.sh names the one harness that fits a provider' "$h" "$provider"; return ;;
-    esac
-    providers="$providers $provider"
     key_var=$(conf_get "$cf" KEY_VAR)
     if ! printf '%s' "$key_var" | grep -Eq '^[A-Z][A-Z0-9_]*$'; then
       printf '%s: conformance.env KEY_VAR %s is not a variable name' "$h" "$key_var"
@@ -168,9 +202,10 @@ flaw=$(shape_flaw .)
 [ -z "$flaw" ] || nogo "$flaw"
 
 # --- the check must be able to fail ---------------------------------------------
-# A good tree with two harnesses (the real gemini-cli and a copy of it that
-# speaks another provider), then one defect at a time. Each must be named; a
-# defect that goes unnoticed turns this check into a NO-GO of its own.
+# A good tree with three harnesses (the real gemini-cli, a copy of it that
+# speaks another provider, and the real antigravity-cli as bin-cli: a release
+# pin, and a second harness on gemini), then one defect at a time. Each must be
+# named; a defect that goes unnoticed turns this check into a NO-GO of its own.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -178,6 +213,7 @@ good=$work/good
 mkdir -p "$good/adapters" "$good/app" "$good/workloads/m/.lights-out"
 cp -R adapters/gemini-cli "$good/adapters/gemini-cli"
 cp -R adapters/gemini-cli "$good/adapters/other-cli"
+cp -R adapters/antigravity-cli "$good/adapters/bin-cli"
 cp .env.example "$good/.env.example"
 o=$good/adapters/other-cli
 grep -v '^PROVIDER=\|^KEY_VAR=\|^EGRESS=' "$o/conformance.env" > "$o/conformance.env.new"
@@ -185,7 +221,7 @@ printf 'PROVIDER=anthropic\nKEY_VAR=ANTHROPIC_API_KEY\nEGRESS=api.other.example:
 mv "$o/conformance.env.new" "$o/conformance.env"
 printf 'ANTHROPIC_LOW=low\nANTHROPIC_MEDIUM=medium\nANTHROPIC_HIGH=high\n' > "$o/thinking.env"
 for f in compose.yaml app/compose.yaml workloads/m/.lights-out/compose.yaml; do
-  printf 'services:\n  gemini-cli:\n    image: x\n  other-cli: &worker\n    image: x\n' > "$good/$f"
+  printf 'services:\n  gemini-cli:\n    image: x\n  other-cli: &worker\n    image: x\n  bin-cli: *worker\n' > "$good/$f"
 done
 
 control=$(shape_flaw "$good")
@@ -319,10 +355,43 @@ rm "$bad/adapters/other-cli/conformance.env"
 expect_flaw "no conformance.env" "conformance.env is missing"
 
 fresh
-grep -v '^PROVIDER=' "$bad/adapters/other-cli/conformance.env" > "$bad/c.new"
-printf 'PROVIDER=gemini\n' >> "$bad/c.new"
-mv "$bad/c.new" "$bad/adapters/other-cli/conformance.env"
-expect_flaw "two harnesses on one provider" "belongs to another CLI harness"
+set_conf PROVIDER mistral
+expect_flaw "a provider outside the three" "want gemini, anthropic or openai"
+
+# The release pin (docs/adr/0050 §2), on bin-cli.
+set_rel() {  # KEY VALUE: bin-cli's release.env with KEY=VALUE, the key's old line replaced
+  drop_line "$bad/adapters/bin-cli/release.env" "^$1="
+  printf '%s=%s\n' "$1" "$2" >> "$bad/adapters/bin-cli/release.env"
+}
+rel_get() { conf_get "$good/adapters/bin-cli/release.env" "$1"; }
+
+fresh
+set_rel VERSION 1.5
+expect_flaw "a release VERSION that is not exact" "not an exact version"
+
+fresh
+set_rel SHA256_ARM64 "$(rel_get SHA256_ARM64 | cut -c1-40)"
+expect_flaw "a truncated digest" "SHA256_ARM64 is not a sha256"
+
+fresh
+set_rel SHA256_AMD64 "$(rel_get SHA256_AMD64 | tr '[:lower:]' '[:upper:]')"
+expect_flaw "an uppercase digest" "SHA256_AMD64 is not a sha256"
+
+fresh
+set_rel URL_AMD64 "$(rel_get URL_AMD64 | sed "s|/$(rel_get VERSION)/|/latest/|")"
+expect_flaw "a release URL that does not name the version" "does not name VERSION"
+
+fresh
+set_rel URL_ARM64 "$(rel_get URL_ARM64 | sed 's|^https:|http:|')"
+expect_flaw "a release URL over http" "URL_ARM64 is not an https URL"
+
+fresh
+drop_line "$bad/adapters/bin-cli/release.env" '^URL_ARM64='
+expect_flaw "a release pin without one architecture" "release.env has the keys"
+
+fresh
+cp "$good/adapters/gemini-cli/package.json" "$bad/adapters/bin-cli/package.json"
+expect_flaw "a release pin beside a package pin" "a harness has one pin"
 
 fresh
 grep -v '^KEY_VAR=' "$bad/adapters/other-cli/conformance.env" > "$bad/c.new"
