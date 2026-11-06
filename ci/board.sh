@@ -5,8 +5,8 @@
 # (docs/adr/0035), cold: no plane, no socket. Written from ADR 0035 §2-§4,
 # not from board/.
 #   a. The transition table board/index.html embeds (the explainer's
-#      scenarios are validated against it) equals core/tower.sh's
-#      precondition() and next() tables.
+#      scenarios are validated against it) equals core/tower.py's
+#      PRECONDITION and NEXT tables (docs/adr/0052 §3).
 #   b. With nothing to read, every probe in /state.json answers ok:false
 #      with a non-empty error and no value: no default ever stands in for
 #      the plane.
@@ -29,17 +29,13 @@ m = re.search(r'<script type="application/json" id="tower-machine">(.*?)</script
 if not m:
     sys.exit("board/index.html embeds no tower-machine table")
 board = json.loads(m.group(1))
-tower = open("core/tower.sh", encoding="utf-8").read()
-def table(fn):
-    body = re.search(fn + r'\(\) \{\n  case "\$1" in\n(.*?)\n  esac', tower, re.S)
-    if not body:
-        sys.exit(f"core/tower.sh has no {fn}() case table")
-    return dict(re.findall(r"^\s*([a-z-]+)\) printf '([a-z-]+)' ;;", body.group(1), re.M))
-for fn in ("precondition", "next"):
-    if board.get(fn) != table(fn):
-        sys.exit(f"{fn}: board {board.get(fn)} vs core/tower.sh {table(fn)}")
+sys.path.insert(0, "core")
+import tower
+for fn, table in (("precondition", tower.PRECONDITION), ("next", tower.NEXT)):
+    if board.get(fn) != table:
+        sys.exit(f"{fn}: board {board.get(fn)} vs core/tower.py {table}")
 PY
-) || nogo "the board's tower table disagrees with core/tower.sh" "$out"
+) || nogo "the board's tower table disagrees with core/tower.py" "$out"
 
 # b.
 tmp=$(mktemp -d)
