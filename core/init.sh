@@ -31,6 +31,10 @@ reason=$(python3 core/init.py --repo "$WORKLOAD" --out "$WORKLOAD_CONTRACT" --st
   --commit "$commit" --today "$today") || nogo "cannot draft $WORKLOAD: $reason"
 stack=${reason#STACK=}
 
+# What the secrets gate will find in the history (docs/adr/0049 §4): listed,
+# never excused here.
+sh core/history-findings.sh || printf 'init: the history scan could not run (see above); the secrets gate still scans it on every judgement\n' >&2
+
 draft="$WORKLOAD_CONTRACT/workload.env"
 # The draft's own keys, for the measurement below: the enclosing make
 # could not include them (there was no contract when it started).

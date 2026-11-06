@@ -1,0 +1,19 @@
+# The python stack's gate runners (docs/adr/0042 §6, resolved 7): the two
+# tools .lights-out/runners/mutation.sh and sast.sh run, pinned here and
+# locked in uv.lock, synced into an environment of their own, never into
+# the repository's. cosmic-ray parses the files it mutates and runs the
+# repository's own test command; bandit reads sources. Neither needs the
+# repository's packages. Same versions as the bundled app's test image
+# (app/backend/pyproject.toml); bump in a dedicated commit whose eval is
+# ./go demo-init.
+[project]
+name = "lights-out-python-runners"
+version = "0"
+requires-python = ">=3.11"
+dependencies = [
+  "cosmic-ray==8.7.0",
+  "bandit==1.9.4",
+]
+
+[tool.uv]
+package = false

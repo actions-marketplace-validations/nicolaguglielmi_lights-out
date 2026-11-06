@@ -1,0 +1,17 @@
+# Third-party actions are pinned by commit SHA, with the release tag in a
+# comment: a moved tag cannot change what runs next to the repository's
+# secrets (record.yml) or its packages: write token (package.yml).
+# Dependabot keeps the pins current; each bump is a pull request that CI
+# judges like any other. Images and toolchain versions stay manual
+# (docs/adr/0002, docs/adr/0004).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "[ci]"

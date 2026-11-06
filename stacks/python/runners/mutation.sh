@@ -25,6 +25,11 @@
 # an environment of their own (/tmp, per container), never into the
 # repository's.
 #
+# Tests inside the package (a tests/ directory, a test_*.py file) are not
+# mutated: a mutant in the suite measures the suite against itself, and
+# lights-out's own core/ scored 0.55 with them, 0.39 without
+# (docs/adr/0049).
+#
 # timeout: 10 x the clean run measured here, floor 1 s before the factor
 # (docs/adr/0015 §3's rule, measured at every run instead of once because
 # the suite is not ours to know). The operators filter is the one
@@ -73,7 +78,7 @@ def toml_str(s):
 lines = [
     "[cosmic-ray]",
     f"module-path = {toml_str(module)}",
-    "excluded-modules = []",
+    "excluded-modules = [" + toml_str(module + "/**/tests/**/*.py") + ", " + toml_str(module + "/**/test_*.py") + "]",
     f"test-command = {toml_str(test_cmd)}",
     f"timeout = {timeout}",
     "",
