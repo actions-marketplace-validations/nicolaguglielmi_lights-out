@@ -1,0 +1,194 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# This instance on Kubernetes (docs/adr/0051 §5): the optional k8s/ part
+# of the Workload contract, what the argo-rollouts Delivery adapter is
+# proved against. The same services as this instance's compose.yaml, with
+# the backend as a Rollout instead of backend/backend-canary.
+#
+# - @STABLE_IMAGE@ is replaced by adapters/argo-rollouts/cluster.sh with
+#   the digest the Registry port verified, so the cluster starts on the
+#   same bytes the plane's backend runs.
+# - The version is the pod-template annotation lights-out.dev/version,
+#   read into APP_VERSION through the downward API: one image, two
+#   versions, as compose does with APP_VERSION/CANARY_VERSION. deploy.sh
+#   sets the annotation; 0.1.0-m2 is the stable compose's own.
+# - One replica per revision, so each of the two Services below fronts
+#   exactly one pod and Prometheus's scrape of it is one series.
+# - Prometheus scrapes each revision through Traefik, at
+#   /lights-out/stable/metrics and /lights-out/canary/metrics: Traefik
+#   sends every request to the Service's current pod, where a NodePort
+#   scrape keeps its keep-alive connection on whichever pod the Service
+#   selected when it opened, and so scraped stable as the canary
+#   (found 2026-11-06, docs/adr/0051 §4).
+# - The steps are what the adapter's verbs drive: a staging pause at
+#   weight 0 with one canary pod, then 5, 25 and 100, each held until the
+#   launchpad promotes (adapters/argo-rollouts/README.md).
+# - postgres, geocoder and flagd have no selector: cluster.sh bridges each
+#   to the plane's compose service of the same name.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+      annotations:
+        lights-out.dev/version: 0.1.0-m2
+    spec:
+      containers:
+        - name: backend
+          image: "@STABLE_IMAGE@"
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: APP_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['lights-out.dev/version']
+            - name: DATABASE_URL
+              value: postgresql://meetups:meetups@postgres:5432/meetups
+            - name: GEOCODER_URL
+              value: http://geocoder:8001
+            - name: FLAGD_RESOLVER
+              value: in-process
+            - name: FLAGD_HOST
+              value: flagd
+            - name: FLAGD_SYNC_PORT
+              value: "8015"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+  strategy:
+    canary:
+      stableService: backend-stable
+      canaryService: backend-canary
+      trafficRouting:
+        traefik:
+          weightedTraefikServiceName: backend
+      steps:
+        - setCanaryScale:
+            replicas: 1
+        - pause: {}
+        - setWeight: 5
+        - pause: {}
+        - setWeight: 25
+        - pause: {}
+        - setWeight: 100
+        - pause: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-stable
+spec:
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-canary
+spec:
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: backend
+spec:
+  weighted:
+    services:
+      - name: backend-stable
+        port: 8000
+      - name: backend-canary
+        port: 8000
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: backend
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`/`)
+      kind: Rule
+      services:
+        - name: backend
+          kind: TraefikService
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: revision-metrics
+spec:
+  stripPrefix:
+    prefixes:
+      - /lights-out/stable
+      - /lights-out/canary
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: revision-metrics
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Path(`/lights-out/stable/metrics`)
+      kind: Rule
+      middlewares:
+        - name: revision-metrics
+      services:
+        - name: backend-stable
+          port: 8000
+    - match: Path(`/lights-out/canary/metrics`)
+      kind: Rule
+      middlewares:
+        - name: revision-metrics
+      services:
+        - name: backend-canary
+          port: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  ports:
+    - port: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: geocoder
+spec:
+  ports:
+    - port: 8001
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagd
+spec:
+  ports:
+    - port: 8015

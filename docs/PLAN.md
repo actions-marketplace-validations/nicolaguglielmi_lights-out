@@ -89,7 +89,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
 | `StateStore` | `firestore-emulator`, `firestore` | stato del workflow, idempotenza |
 | `Orchestrator` | `inproc`, `cloud-workflows` | macchina a stati del ciclo di vita del ticket |
-| `Delivery` | `envoy-canary`, `cloud-deploy` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
+| `Delivery` | `envoy-canary`, `cloud-deploy`, `argo-rollouts` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
 | `Metrics` | `promql`, `prometheus`, `managed-prometheus` | stessa query PromQL; `promql` interroga `METRICS_URL`; `prometheus` ne è il caso del piano a `http://$PLANE_HOST:9090`, non `prometheus:9090`, che il workbench non risolve |
 | `Flags` | `flagd`, `unleash` | OpenFeature, l'SDK non cambia; due verbi per il nucleo e i target: `evaluate.sh <flag> [version]`, `set.sh <flag> <variant>` (ADR 0026 §3) |
 | `Registry` | `zot`, `artifact-registry` | `publish.sh <tag>` costruisce, firma e pusha stampando il riferimento immutabile; `verify.sh <tag>` verifica la firma e stampa il digest verificato (ADR 0025 §1) |
@@ -105,6 +105,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `github` | CodeHost | M21 (GitHub come code host, ADR 0043) |
 | `grafana`, `cloud-monitoring` | Charts | M11 (console) |
 | `antigravity-sdk`, `linear`, `unleash` | AgentHarness, Tracker, Flags | da assegnare: ognuno con un ADR e la sua suite di conformità |
+| `argo-rollouts` | Delivery | M25 (Kubernetes con Argo Rollouts, ADR 0051) |
 
 Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud Deploy ha un concetto che Envoy non ha, o lo si modella in astratto o resta dentro l'adapter.
 
@@ -657,7 +658,16 @@ Assorbe la metà "rilascio" di M14.
 
 L'esperimento di §14 come scritto, ma ogni ticket gira con i tre fornitori e il diario pubblica i tre verdetti: è la risposta al rischio "runtime solo Gemini" di §15, e il materiale del lancio di fase 2. Il criterio d'uscita di §14 non cambia. Stima: 8–12 settimane, in parallelo con la fase 1 di §15.
 
-### M25 — Il confine della shell (ADR 0052)
+### M25 — Delivery su Kubernetes: `argo-rollouts` (ADR 0051)
+
+Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su Kubernetes deve scrivere un adapter prima che lights-out gli serva; con questo adapter sceglie `DELIVERY=argo-rollouts` e ha canary, verify e rollback del launchpad sul suo cluster, senza Envoy e senza il percorso di delivery del piano compose. Zero modifiche a `core/`.
+
+- `adapters/argo-rollouts/`: i quattro verbi e `ready.sh`, solo `kubectl` (aggiunto al workbench, pinnato). Il Rollout dichiara i passi `setCanaryScale` + `pause`, poi `setWeight` 5, 25, 100 ognuno seguito da `pause`; `shift.sh` promuove una pausa alla volta, `rollback.sh` fa abort, `status.sh` legge dai pod e dal router. Serve un traffic router: senza, il 5% esatto vuole 20 repliche.
+- La prova locale è un nodo k3s accanto al piano L0, servizio compose `k8s` dichiarato nell'adapter: Registry, Flags e Metrics restano quelli del piano, si sposta solo il Delivery. Il workload ottiene una parte opzionale del contratto, `k8s/`; `app/k8s/backend.yaml` è quella dell'app.
+- Sotto podman serve un engine rootful: la macchina podman rootless non delega il controller cpuset che k3s chiede (misurato il 2026-11-06). `CONTAINER_CONNECTION=podman-machine-default-root` lo dà senza cambiare impostazioni.
+- **Fatto quando:** `./go up && ./go argo-conformance` stampa `GO: delivery-conformance` in locale e nel job `argo` di GitHub Actions, con `gates/delivery-conformance.sh` invariata; `./go ci` verde; `./go demo` invariato e senza cluster.
+
+### M26 — Il confine della shell (ADR 0052)
 
 *Aggiunto 2026-11-06, decisione dell'owner.* Il repo è 16,8k righe di shell contro 6,1k di Python, e in `core/` la shell teneva una macchina a stati e schemi JSON scritti in `jq`, fuori da ogni test unitario e dal punteggio di mutation del gate di sé (ADR 0049).
 
@@ -667,7 +677,7 @@ L'esperimento di §14 come scritto, ma ogni ticket gira con i tre fornitori e il
 - **Dopo:** il resto di `core/` (la lista del debito), poi le suite di `ci/` e `gates/`; gli adapter solo dietro i loro verbi.
 - **Fatto quando:** `./go ci` verde con `shell-boundary`; `./go demo` verde da clone pulito, senza chiave, sotto i 900 s; le righe shell di `core/` scese di quanto la fetta ha spostato.
 
-*Stato 2026-11-06 (sessione M25, branch `claude/shell-boundary-7f7be1`):* ADR 0052 scritta; `core/` da 2.101 a 1.764 righe shell (codice: da 1.357 a 1.074); 103 test unitari nuovi (mutation 0,866 sui quattro moduli, 701 mutanti); dodici file restano nella lista del debito. `./go ci` verde da clone pulito; `./go demo` → `GO: demo, milestone M9, 463s to rollback`, da clone pulito senza `.env` né chiave, su un piano libero. Non mergiato: decide l'owner. Se un altro branch prende M25 prima, questa sezione si rinumera al merge.
+*Stato 2026-11-06 (sessione M26, branch `claude/shell-boundary-7f7be1`):* ADR 0052 scritta; `core/` da 2.101 a 1.764 righe shell (codice: da 1.357 a 1.074); 103 test unitari nuovi (mutation 0,866 sui quattro moduli, 701 mutanti); dodici file restano nella lista del debito. `./go ci` verde da clone pulito; `./go demo` → `GO: demo, milestone M9, 463s to rollback`, da clone pulito senza `.env` né chiave, su un piano libero. Approvata dall'owner per main; scritta come M25 e rinumerata M26 al merge, perché M25 è `argo-rollouts` (ADR 0051).
 
 ### Dopo
 
