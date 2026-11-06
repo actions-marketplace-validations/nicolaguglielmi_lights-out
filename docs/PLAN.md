@@ -657,6 +657,18 @@ Assorbe la metà "rilascio" di M14.
 
 L'esperimento di §14 come scritto, ma ogni ticket gira con i tre fornitori e il diario pubblica i tre verdetti: è la risposta al rischio "runtime solo Gemini" di §15, e il materiale del lancio di fase 2. Il criterio d'uscita di §14 non cambia. Stima: 8–12 settimane, in parallelo con la fase 1 di §15.
 
+### M25 — Il confine della shell (ADR 0052)
+
+*Aggiunto 2026-11-06, decisione dell'owner.* Il repo è 16,8k righe di shell contro 6,1k di Python, e in `core/` la shell teneva una macchina a stati e schemi JSON scritti in `jq`, fuori da ogni test unitario e dal punteggio di mutation del gate di sé (ADR 0049).
+
+- **Il confine.** La shell resta dove è il contratto o l'host: `./go`, `lights-out`, i file di `core/` che girano sull'host prima di ogni immagine (`doctor.sh`, `attach.sh`), i verbi degli adapter (ADR 0024), il wrapper del gate che stampa l'unica riga, gli entry point sottili e la colla che lancia processi. La logica (parsing, decisioni, macchine a stati, JSON) va in Python sotto `core/`, solo libreria standard, con test `unittest` scritti dalle ADR.
+- **Il controllo** `ci/shell-boundary.sh` in `./go ci`: un file shell di `core/` ha al massimo 30 righe di codice (decisione dell'owner, misurata sulla colla di oggi). Chi le supera oggi è elencato col conteggio esatto: un debito che può solo scendere, e la voce si abbassa o si toglie quando scende.
+- **La prima fetta:** `tower.sh`, `audit.sh`, `incident.sh` e la logica di `triage.sh` passano in `core/*.py` dietro gli stessi entry point; `Makefile`, `./go` e la torre non cambiano.
+- **Dopo:** il resto di `core/` (la lista del debito), poi le suite di `ci/` e `gates/`; gli adapter solo dietro i loro verbi.
+- **Fatto quando:** `./go ci` verde con `shell-boundary`; `./go demo` verde da clone pulito, senza chiave, sotto i 900 s; le righe shell di `core/` scese di quanto la fetta ha spostato.
+
+*Stato 2026-11-06 (sessione M25, branch `claude/shell-boundary-7f7be1`):* ADR 0052 scritta; `core/` da 2.101 a 1.764 righe shell (codice: da 1.357 a 1.074); 103 test unitari nuovi; dodici file restano nella lista del debito. Non mergiato: decide l'owner. Se un altro branch prende M25 prima, questa sezione si rinumera al merge.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
