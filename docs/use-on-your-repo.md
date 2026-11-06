@@ -286,7 +286,7 @@ guessed file would be a hidden mock. `./go up` refuses a contract without
 
 | File | What it is |
 |---|---|
-| `compose.yaml` | Your services, merged into the plane's. `${WORKLOAD}` is your repository's root: use it as the build context. A service with profile `test` is what `compose:<service>` names. Services the worker needs (Postgres, say) are declared once under `x-crew-worker` and applied to the three worker services, `gemini-cli`, `claude-code` and `codex` (ADR 0041 §11; `./go ci` checks it) |
+| `compose.yaml` | Your services, merged into the plane's. `${WORKLOAD}` is your repository's root: use it as the build context. A service with profile `test` is what `compose:<service>` names. Services the worker needs (Postgres, say) are declared once under `x-crew-worker` and applied to the four worker services, `gemini-cli`, `claude-code`, `codex` and `antigravity-cli` (ADR 0041 §11, 0050; `./go ci` checks it) |
 | `flags/flags.json` | `release-freeze`, plus your kill switch, on for `CANARY_VERSION` |
 | `smoke.sh`, `load.sh` | The happy path through `$APP_URL`; traffic until killed |
 | `crew-prepare.sh` | Optional: prepares the worker's checkout |
@@ -313,6 +313,7 @@ services:
   gemini-cli: *crew-worker
   claude-code: *crew-worker
   codex: *crew-worker
+  antigravity-cli: *crew-worker
 ```
 
 A harness sits on the internal `crew` network, with one way out: the `egress`

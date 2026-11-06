@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The antigravity-cli AgentHarness worker (docs/adr/0050): the workload's
+# toolchain plus Antigravity CLI (`agy`), one release pinned by version and
+# per-architecture sha256 in release.env. The binary is downloaded here, at
+# image build, in a stage on the workbench (which has curl), checked
+# against the digest, and copied alone into the worker; nothing else ever
+# fetches it. It is proprietary (docs/adr/0050 §6): an image built from
+# this file is never pushed or published. HARNESS_BASE_IMAGE is the
+# workload's TOOLCHAIN_IMAGE or the workbench, as for gemini-cli (docs/adr/
+# 0042 §8). agy is a dynamically linked glibc binary: a musl base stops the
+# build at `agy --version` with the message below, never a silent fallback.
+ARG WORKBENCH_IMAGE
+ARG HARNESS_BASE_IMAGE
+FROM ${WORKBENCH_IMAGE} AS fetch
+
+COPY release.env /tmp/release.env
+RUN set -eu; \
+    . /tmp/release.env; \
+    case "$(uname -m)" in \
+      x86_64) url=$URL_AMD64; sha=$SHA256_AMD64 ;; \
+      aarch64|arm64) url=$URL_ARM64; sha=$SHA256_ARM64 ;; \
+      *) echo "antigravity-cli: release.env pins no tarball for $(uname -m) (docs/adr/0050 §2)" >&2; exit 1 ;; \
+    esac; \
+    mkdir -p /tmp/agy; \
+    curl -fsSL --retry 3 -o /tmp/agy/agy.tar.gz "$url"; \
+    echo "$sha  /tmp/agy/agy.tar.gz" | sha256sum -c - >&2; \
+    tar -xzf /tmp/agy/agy.tar.gz -C /tmp/agy antigravity; \
+    install -m 0755 /tmp/agy/antigravity /tmp/agy/agy; \
+    printf '%s\n' "$VERSION" > /tmp/agy/version
+
+FROM ${HARNESS_BASE_IMAGE}
+
+RUN set -eu; \
+    if ! command -v git >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1 || ! command -v timeout >/dev/null 2>&1; then \
+      if command -v apt-get >/dev/null 2>&1; then \
+        apt-get update && apt-get install -y --no-install-recommends ca-certificates git jq coreutils && rm -rf /var/lib/apt/lists/*; \
+      else \
+        echo "HARNESS_BASE_IMAGE lacks git, jq or timeout and has no apt-get to install them; the dev-worker needs all three (docs/adr/0042 §8)" >&2; \
+        exit 1; \
+      fi; \
+    fi
+
+COPY --from=fetch /tmp/agy/agy /usr/local/bin/agy
+COPY --from=fetch /tmp/agy/version /opt/antigravity-cli/version
+RUN agy --version >/dev/null 2>&1 \
+ || { echo "agy does not run on HARNESS_BASE_IMAGE: it is a glibc binary and this base may be musl (docs/adr/0050 §2)" >&2; exit 1; }
+
+# The pre-tool shim and the guard it calls, and the budget hook (docs/adr/
+# 0050 §3, §4): baked into the image, not bind-mounted.
+COPY hooks/ /opt/antigravity-cli-hooks/
+RUN chmod 0755 /opt/antigravity-cli-hooks/*.sh
+
+COPY entrypoint.sh /usr/local/bin/crew-entrypoint
+RUN chmod 0755 /usr/local/bin/crew-entrypoint
+
+ENTRYPOINT ["/usr/local/bin/crew-entrypoint"]
