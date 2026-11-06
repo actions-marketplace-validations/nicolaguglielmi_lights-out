@@ -1,0 +1,9 @@
+# The local cluster pulls what the plane's Registry holds (docs/adr/0051
+# §4): the launchpad hands deploy.sh a digest it verified at
+# localhost:5050, which inside the k3s node is nothing, so containerd is
+# pointed at the zot service on the plane's network instead. Same bytes,
+# same digest: no second copy of the image, no second signature.
+mirrors:
+  "localhost:5050":
+    endpoint:
+      - "http://zot:5000"
