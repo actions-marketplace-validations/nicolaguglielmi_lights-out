@@ -667,7 +667,7 @@ L'esperimento di §14 come scritto, ma ogni ticket gira con i tre fornitori e il
 - **Dopo:** il resto di `core/` (la lista del debito), poi le suite di `ci/` e `gates/`; gli adapter solo dietro i loro verbi.
 - **Fatto quando:** `./go ci` verde con `shell-boundary`; `./go demo` verde da clone pulito, senza chiave, sotto i 900 s; le righe shell di `core/` scese di quanto la fetta ha spostato.
 
-*Stato 2026-11-06 (sessione M25, branch `claude/shell-boundary-7f7be1`):* ADR 0052 scritta; `core/` da 2.101 a 1.764 righe shell (codice: da 1.357 a 1.074); 103 test unitari nuovi; dodici file restano nella lista del debito. Non mergiato: decide l'owner. Se un altro branch prende M25 prima, questa sezione si rinumera al merge.
+*Stato 2026-11-06 (sessione M25, branch `claude/shell-boundary-7f7be1`):* ADR 0052 scritta; `core/` da 2.101 a 1.764 righe shell (codice: da 1.357 a 1.074); 103 test unitari nuovi (mutation 0,866 sui quattro moduli, 701 mutanti); dodici file restano nella lista del debito. `./go ci` verde da clone pulito; `./go demo` → `GO: demo, milestone M9, 463s to rollback`, da clone pulito senza `.env` né chiave, su un piano libero. Non mergiato: decide l'owner. Se un altro branch prende M25 prima, questa sezione si rinumera al merge.
 
 ### Dopo
 
