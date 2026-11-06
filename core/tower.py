@@ -1,0 +1,283 @@
+"""The control plane's state machine (docs/adr/0019 §1, §2): stdlib only.
+
+Vendor-free: it only calls the STATE_STORE and EVENT_BUS adapter verbs the
+profile names, and the step scripts under $TOWER_STEPS. core/tower.sh is
+its entry point (docs/adr/0052 §3); callers keep calling that.
+
+    python3 core/tower.py open <ticket>          write the document at `opened`, publish `assign`
+    python3 core/tower.py step <ticket> <step>   apply one step: precondition, effect, write, publish next
+    python3 core/tower.py resume <ticket>        request again the step whose last attempt failed
+
+The document is plain JSON, one per ticket, id = ticket id. A step's
+precondition is the state it starts from; an event whose precondition is
+not the document's current state is dropped with one stderr line and exit
+0 -- the idempotency rule, covering a duplicate event and a redelivery
+after a slow step. A step script gets the document on $DOC_FILE (plus
+TICKET, PR_NUMBER, BASE_SHA, HEAD_SHA) and prints a JSON object on stdout:
+at least {"state": "<next>"}, plus the fields it recorded, deep-merged
+into the document. A step that exits non-zero, prints no state, or whose
+next event cannot be published leaves the state and every other field as
+they were, appends one history entry {step, state, at, error: <why>}, and
+exits 1: no retries, no timeouts of the tower's own (docs/adr/0034 §1).
+`resume` requires that entry to be the last one and appends {step:
+"resume", resumed: <step>} before publishing the step again (docs/adr/0034
+§2). Every history entry carries the document's `attempt` once it has one
+(docs/adr/0038 §9). All output is on stderr, one `[tower]` line each.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+COLLECTION = "tickets"
+USAGE = "usage: tower.sh open <ticket> | step <ticket> <step> | resume <ticket>"
+
+# The transition table. PRECONDITION: step -> the state it starts from.
+# NEXT: state -> the step requested once the document is there; a state
+# that is not a key is terminal. ci/board.sh checks the board against both.
+PRECONDITION = {
+    "assign": "opened",
+    "ci": "pr-opened",
+    "review": "review",
+    "merge": "ci-passed",
+    "release": "merged",
+    "rework": "ci-failed",
+}
+NEXT = {
+    "pr-opened": "ci",
+    "review": "review",
+    "ci-passed": "merge",
+    "merged": "release",
+    "ci-failed": "rework",
+}
+
+
+class Refused(Exception):
+    """One `[tower]` line on stderr and an exit code."""
+
+    def __init__(self, line, code=1):
+        super().__init__(line)
+        self.line = line
+        self.code = code
+
+
+def text(value):
+    """A field as `jq -r '<path> // empty'` prints it: null and false are absent."""
+    if value is None or value is False:
+        return ""
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
+
+
+def dig(doc, *keys):
+    """doc[k1][k2]..., or None where any level is missing or not an object."""
+    for key in keys:
+        if not isinstance(doc, dict):
+            return None
+        doc = doc.get(key)
+    return doc
+
+
+def merge(left, right):
+    """jq's `left * right`: objects merge recursively, anything else is replaced."""
+    if not (isinstance(left, dict) and isinstance(right, dict)):
+        return right
+    out = dict(left)
+    for key, value in right.items():
+        out[key] = merge(out[key], value) if key in out else value
+    return out
+
+
+def attempt(doc):
+    """{attempt: n} once the document has one (docs/adr/0038 §9), {} before."""
+    value = doc.get("attempt")
+    if value is None or value is False:
+        return {}
+    return {"attempt": value}
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def compact(doc):
+    """The document as `jq -c` writes it."""
+    return json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+
+
+def say(line):
+    print(line, file=sys.stderr, flush=True)
+
+
+class Tower:
+    def __init__(self, ticket, env):
+        self.ticket = ticket
+        self.store_adapter = env["STATE_STORE"]
+        self.bus = env["EVENT_BUS"]
+        self.steps = env.get("TOWER_STEPS") or "core/steps"
+
+    def store_get(self):
+        """The document, or None when the store has none (get.sh exit non-zero)."""
+        got = subprocess.run(
+            ["sh", f"adapters/{self.store_adapter}/get.sh", COLLECTION, self.ticket],
+            stdout=subprocess.PIPE, text=True, check=False)
+        if got.returncode != 0:
+            return None
+        try:
+            doc = json.loads(got.stdout)
+        except ValueError:
+            doc = None
+        if not isinstance(doc, dict):
+            raise Refused(f"[tower] {self.ticket}: the stored document is not a JSON object")
+        return doc
+
+    def store_put(self, doc):
+        put = subprocess.run(
+            ["sh", f"adapters/{self.store_adapter}/put.sh", COLLECTION, self.ticket],
+            input=compact(doc) + "\n", text=True, check=False)
+        return put.returncode == 0
+
+    def publish(self, step):
+        message = compact({"ticket": self.ticket, "step": step})
+        return subprocess.run(["sh", f"adapters/{self.bus}/publish.sh", message],
+                              check=False).returncode == 0
+
+    def tell(self, line):
+        say(f"[tower] {self.ticket}: {line}")
+
+    def get(self):
+        doc = self.store_get()
+        if doc is None:
+            raise Refused(f"[tower] {self.ticket}: no document; open the ticket first")
+        return doc
+
+    def record_failure(self, doc, step, state, why):
+        """Append the failed attempt to doc's history and write it; the state does not move."""
+        failed = dict(doc)
+        failed["history"] = (doc.get("history") or []) + [
+            {"step": step, "state": state, "at": now(), **attempt(doc), "error": why}]
+        if not self.store_put(failed):
+            self.tell(f"could not record the failed {step} either")
+        self.tell(f"resume with ./go resume TICKET={self.ticket}")
+
+    def open(self):
+        doc = {"id": self.ticket, "state": "opened",
+               "history": [{"step": "open", "state": "opened", "at": now()}]}
+        if not self.store_put(doc):
+            raise Refused(f"[tower] {self.ticket}: could not write the document")
+        if not self.publish("assign"):
+            raise Refused(f"[tower] {self.ticket}: could not publish assign")
+        self.tell("opened, assign requested")
+
+    def step(self, step):
+        want = PRECONDITION.get(step)
+        if want is None:
+            raise Refused(f'[tower] {self.ticket}: unknown step "{step}"', 2)
+        doc = self.get()
+        have = text(doc.get("state")) or "none"
+        if have != want:
+            self.tell(f"{step} already applied (state {have}), ignoring")
+            return
+        script = f"{self.steps}/{step}.sh"
+        if not os.path.isfile(script):
+            raise Refused(f"[tower] {self.ticket}: no {script}")
+
+        self.tell(f"{step} (state {have})")
+        with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as doc_file:
+            doc_file.write(compact(doc) + "\n")
+            doc_file.flush()
+            env = dict(os.environ, TICKET=self.ticket, DOC_FILE=doc_file.name,
+                       PR_NUMBER=text(dig(doc, "pr", "number")),
+                       BASE_SHA=text(dig(doc, "pr", "base_sha")),
+                       HEAD_SHA=text(dig(doc, "pr", "head_sha")))
+            ran = subprocess.run(["sh", script], stdout=subprocess.PIPE, text=True,
+                                 env=env, check=False)
+        if ran.returncode != 0:
+            rc = ran.returncode if ran.returncode > 0 else 128 - ran.returncode
+            self.tell(f"step {step} failed; state stays {have}")
+            self.record_failure(doc, step, have, f"step exited {rc}")
+            raise Refused(None)
+        try:
+            result = json.loads(ran.stdout)
+        except ValueError:
+            result = None
+        new_state = text(result.get("state")) if isinstance(result, dict) else ""
+        if not new_state:
+            self.tell(f"step {step} printed no state; state stays {have}")
+            self.record_failure(doc, step, have, "step printed no state")
+            raise Refused(None)
+
+        updated = merge(doc, result)
+        updated["history"] = (updated.get("history") or []) + [
+            {"step": step, "state": result["state"], "at": now(), **attempt(updated)}]
+        if not self.store_put(updated):
+            raise Refused(f"[tower] {self.ticket}: could not write the document after {step}")
+        self.tell(f"{step} → {new_state}")
+
+        following = NEXT.get(new_state)
+        if following is None:
+            self.tell(f"{new_state} is terminal, nothing requested")
+        elif not self.publish(following):
+            self.tell(f"could not publish {following}")
+            self.record_failure(updated, following, new_state, f"could not publish {following}")
+            raise Refused(None)
+
+    def resume(self):
+        doc = self.get()
+        have = text(doc.get("state")) or "none"
+        history = doc.get("history") or []
+        last = history[-1] if history else {}
+        why = text(dig(last, "error"))
+        step = text(dig(last, "step"))
+        if not why:
+            raise Refused(f"[tower] {self.ticket}: not stranded: state {have}, last history entry "
+                          f"{step or 'none'} did not fail; nothing to resume")
+        if PRECONDITION.get(step) != have:
+            raise Refused(f"[tower] {self.ticket}: the failed step {step} does not start from "
+                          f"state {have}; not resuming")
+        # Written before publishing: a step that starts at once (a job at L2)
+        # must not have its write overwritten by this one. A failed publish
+        # records itself, so the ticket stays resumable.
+        doc = dict(doc, history=history + [
+            {"step": "resume", "state": have, "at": now(), **attempt(doc), "resumed": step}])
+        if not self.store_put(doc):
+            raise Refused(f"[tower] {self.ticket}: could not record the resume; nothing requested")
+        if not self.publish(step):
+            self.tell(f"could not publish {step}")
+            self.record_failure(doc, step, have, f"could not publish {step}")
+            raise Refused(None)
+        self.tell(f"{step} requested again (state {have}; last attempt: {why})")
+
+
+def main(argv, env=None):
+    env = os.environ if env is None else env
+    for var in ("STATE_STORE", "EVENT_BUS"):
+        if not env.get(var):
+            say(f"tower: {var} not set; run this via ./go, not directly")
+            return 2
+    cmd = argv[0] if argv else ""
+    ticket = argv[1] if len(argv) > 1 else ""
+    if not cmd or not ticket or cmd not in ("open", "step", "resume"):
+        say(USAGE)
+        return 2
+    tower = Tower(ticket, env)
+    try:
+        if cmd == "open":
+            tower.open()
+        elif cmd == "step":
+            tower.step(argv[2] if len(argv) > 2 else "")
+        else:
+            tower.resume()
+    except Refused as refused:
+        if refused.line:
+            say(refused.line)
+        return refused.code
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
