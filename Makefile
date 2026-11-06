@@ -1053,6 +1053,29 @@ codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST se
 delivery-conformance: ## Six-case Delivery/Flags conformance suite, real releases on the plane (docs/adr/0026)
 	@CONFORMANCE=1 sh gates/delivery-conformance.sh
 
+# The argo-rollouts Delivery adapter's proof (docs/adr/0051 §6): the same
+# six-case suite, unchanged, with DELIVERY=argo-rollouts and APP_URL on
+# the local cluster's traffic router. The plane must be up (./go up): the
+# cluster takes its Registry, Flags and Metrics, and starts from the
+# stable digest `up` published and the Registry port verifies here.
+# adapters/argo-rollouts/cluster.sh brings one k3s node up beside the
+# plane and takes it down after the suite; KEEP_CLUSTER=1 leaves it up
+# (KUBECONFIG=.crew/argo/kubeconfig) for a look. Not part of ./go demo,
+# which never needs a cluster (CLAUDE.md, the golden rule). Under podman
+# it needs a rootful engine (adapters/argo-rollouts/README.md).
+ARGO_APP_PORT ?= 8180
+ARGO_API_PORT ?= 6443
+export ARGO_APP_PORT ARGO_API_PORT
+.PHONY: argo-conformance
+argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, against a local k3s cluster beside the plane, plane up (docs/adr/0051)
+	@image=$$(sh "adapters/$(REGISTRY)/verify.sh" "$(APP_TAG)") \
+		|| { printf 'NO-GO: delivery-conformance — argo-rollouts: no verified stable image at %s; run ./go up\n' "$(APP_TAG)"; exit 1; }; \
+	[ -n "$(KEEP_CLUSTER)" ] || trap 'sh adapters/argo-rollouts/cluster.sh down' EXIT; \
+	sh adapters/argo-rollouts/cluster.sh up "$(WORKLOAD_CONTRACT)/k8s" "$$image" >&2 \
+		|| { printf 'NO-GO: delivery-conformance — argo-rollouts: the local cluster did not come up\n'; exit 1; }; \
+	$(MAKE) --no-print-directory delivery-conformance DELIVERY=argo-rollouts \
+		APP_URL=http://$(PLANE_HOST):$(ARGO_APP_PORT) KUBECONFIG=$(CURDIR)/.crew/argo/kubeconfig
+
 # Every CLI harness against a scripted model (docs/adr/0041 §8): its image is
 # built, its run.sh driven nine ways, no key, no account. CONFORMANCE=1 for
 # the same reason as above. The compose view is the root file plus the
