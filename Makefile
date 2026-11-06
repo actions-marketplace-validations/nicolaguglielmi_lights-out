@@ -434,15 +434,15 @@ demo-crew: ## Prove ticket 0001 becomes a PR that passes the M4 gates (docs/adr/
 # What record and record-review need of the run they save (docs/adr/0041
 # §10, §7), $(1) the target: AGENT_HARNESS is not replay, which would replay
 # the fixture it is trying to create; it is a CLI harness, an adapters/<name>/
-# with run.sh, Containerfile and package-lock.json (the same discovery as
-# gates/harness-conformance.sh); and MODEL_BASE_URL is unset, so a run
+# with run.sh, Containerfile and package-lock.json or release.env (the same
+# discovery as gates/harness-conformance.sh, docs/adr/0050 §2); and MODEL_BASE_URL is unset, so a run
 # against a scripted or proxied endpoint can never become a fixture.
 define record_guard
 	@if [ "$(AGENT_HARNESS)" = "replay" ]; then \
 		printf 'NO-GO: $(1) — recording a replay is circular; PROFILE=l1\n'; exit 1; \
 	fi
-	@if [ ! -f "adapters/$(AGENT_HARNESS)/run.sh" ] || [ ! -f "adapters/$(AGENT_HARNESS)/Containerfile" ] || [ ! -f "adapters/$(AGENT_HARNESS)/package-lock.json" ]; then \
-		printf 'NO-GO: $(1) — AGENT_HARNESS=%s is not a CLI harness (an adapters/<name>/ with run.sh, Containerfile and package-lock.json)\n' "$(AGENT_HARNESS)"; exit 1; \
+	@if [ ! -f "adapters/$(AGENT_HARNESS)/run.sh" ] || [ ! -f "adapters/$(AGENT_HARNESS)/Containerfile" ] || { [ ! -f "adapters/$(AGENT_HARNESS)/package-lock.json" ] && [ ! -f "adapters/$(AGENT_HARNESS)/release.env" ]; }; then \
+		printf 'NO-GO: $(1) — AGENT_HARNESS=%s is not a CLI harness (an adapters/<name>/ with run.sh, Containerfile and package-lock.json or release.env)\n' "$(AGENT_HARNESS)"; exit 1; \
 	fi
 	@if [ -n "$(MODEL_BASE_URL)" ]; then \
 		printf 'NO-GO: $(1) — MODEL_BASE_URL is set: a run against a scripted or proxied endpoint is never a fixture (docs/adr/0041 §7)\n'; exit 1; \

@@ -39,6 +39,17 @@
 # Beyond the exit code, the guard must leave exactly one hooks.log line per
 # call, ALLOW or DENY to match, naming the tool the CLI sent (docs/adr/0017
 # §9): it is the evidence that the hook fired in a recorded run.
+#
+# Antigravity CLI (docs/adr/0050 §3) cannot run the guard directly: its
+# PreToolUse hook gets {toolCall: {name, args}} and denies only by printing
+# {"decision": "deny"} on stdout. Its adapter ships a shim,
+# hooks/agy-guard.sh, that hands the call to the same guard.sh. So a harness
+# with that shim also has every case rendered in agy's shape (run_command
+# with CommandLine, read_file and write_file with Path and Content, the other
+# built-ins as a shell command through run_command, as for codex) and run
+# through the shim, which must print a deny exactly when the case expects
+# one. And the shim's own rule: a tool it does not offer (search_web,
+# invoke_subagent) is denied by name, without reaching the guard.
 set -eu
 name=hooks
 . ci/lib.sh
@@ -48,10 +59,11 @@ cases_dir=ci/hooks-cases
 
 # The guards: one per CLI harness, discovered the way ci/harness-shape.sh does.
 distinct=""
+shims=""
 for d in adapters/*/; do
   h=$(basename "$d")
   [ -f "adapters/$h/run.sh" ] && [ -f "adapters/$h/Containerfile" ] || continue
-  [ -f "adapters/$h/package.json" ] || [ -f "adapters/$h/package-lock.json" ] || continue
+  [ -f "adapters/$h/package.json" ] || [ -f "adapters/$h/package-lock.json" ] || [ -f "adapters/$h/release.env" ] || continue
   guard=adapters/$h/hooks/guard.sh
   [ -f "$guard" ] || nogo "$guard not found: adapters/$h is a CLI harness and needs its guard (docs/adr/0041 §11)"
   # The guard is registered with matcher "*": check each entrypoint line that
@@ -68,6 +80,7 @@ for d in adapters/*/; do
     cmp -s "$g" "$guard" && same=yes
   done
   [ "$same" = yes ] || distinct="$distinct $guard"
+  [ ! -f "adapters/$h/hooks/agy-guard.sh" ] || shims="$shims adapters/$h/hooks/agy-guard.sh"
 done
 [ -n "$distinct" ] || nogo "no CLI harness with a guard under adapters/"
 
@@ -106,6 +119,17 @@ render() {
                 transcript_path: "/tmp/crew-home/.codex/sessions/rollout-s.jsonl",
                 model: "m", permission_mode: "bypassPermissions", tool_use_id: "call_1", tool_name: "Bash",
                 tool_input: {command: shell_form($c; $i)}}' "$2" ;;
+    agy)
+      jq -c "$shell_form"'. as $c | .tool_input as $i
+             | {conversationId: "c", stepIdx: 2, modelName: "m-medium", lastUserInput: "u",
+                artifactDirectoryPath: "/tmp/crew-home/.gemini/antigravity-cli/brain/c",
+                transcriptPath: "/tmp/crew-home/.gemini/antigravity-cli/brain/c/.system_generated/logs/transcript_full.jsonl",
+                workspacePaths: ["/crew/0001/workspace"]}
+             + {toolCall: (
+                 if $c.tool_name == "read_file" then {name: "read_file", args: {Path: $i.file_path}}
+                 elif $c.tool_name == "write_file" then {name: "write_file", args: {Path: $i.file_path, Content: $i.content}}
+                 else {name: "run_command", args: {CommandLine: (if $c.tool_name == "run_shell_command" then $i.command else shell_form($c; $i) end),
+                                                   toolSummary: "s", WaitMsBeforeAsync: 10000}} end)}' "$2" ;;
   esac
 }
 
@@ -166,6 +190,64 @@ for guard in $distinct; do
         cat "$work/stderr.log" >&2
       fi
     done
+  done
+done
+
+# agy's shim, every case in agy's shape: a deny is the JSON on stdout, exit 0.
+for shim in $shims; do
+  for expect_file in "$cases_dir"/*.expect; do
+    [ -e "$expect_file" ] || continue
+    case_name=$(basename "$expect_file" .expect)
+    want=$(cat "$expect_file")
+    total=$((total + 1))
+    render agy "$cases_dir/$case_name.json" > "$work/input.json" 2> "$work/render.err" \
+      || nogo "case $case_name cannot be rendered as agy" "$(cat "$work/render.err")"
+    tool=$(jq -r '.toolCall.name' "$work/input.json")
+    rm -f "$work/hooks.log"
+    rc=0
+    CREW_OUT="$work" sh "$shim" < "$work/input.json" > "$work/stdout.log" 2> "$work/stderr.log" || rc=$?
+    got="exit($rc)"
+    if [ "$rc" -eq 0 ]; then
+      if [ ! -s "$work/stdout.log" ]; then
+        got=allow
+      elif jq -e '.decision == "deny" and (.reason | type) == "string"' "$work/stdout.log" >/dev/null 2>&1; then
+        got=deny
+      else
+        got="stdout '$(head -c 200 "$work/stdout.log")'"
+      fi
+    fi
+    problem=""
+    if [ "$got" != "$want" ]; then
+      problem="want $want, got $got"
+    else
+      verdict=ALLOW
+      [ "$want" = deny ] && verdict=DENY
+      lines=0
+      [ -f "$work/hooks.log" ] && lines=$(awk 'END{print NR}' "$work/hooks.log")
+      if [ "$lines" -ne 1 ]; then
+        problem="hooks.log has $lines lines, want 1"
+      elif ! grep -Eq "^$verdict [^ ]+ ." "$work/hooks.log" || [ "$(cut -d' ' -f2 "$work/hooks.log")" != "$tool" ]; then
+        problem="hooks.log says '$(cat "$work/hooks.log")', want $verdict for $tool"
+      fi
+    fi
+    if [ -n "$problem" ]; then
+      bad=$((bad + 1))
+      [ -n "$first" ] || first="$case_name as agy ($problem)"
+      printf 'ci-hooks: %s: %s as agy: %s\n' "$shim" "$case_name" "$problem" >&2
+      cat "$work/stderr.log" >&2
+    fi
+  done
+  for t in search_web invoke_subagent; do
+    total=$((total + 1))
+    rm -f "$work/hooks.log"
+    out=$(jq -nc --arg t "$t" '{toolCall: {name: $t, args: {query: "readme", Prompt: "list the files"}}}' \
+      | CREW_OUT="$work" sh "$shim" 2>/dev/null) || out=""
+    if ! printf '%s' "$out" | jq -e '.decision == "deny"' >/dev/null 2>&1 \
+       || [ "$(cat "$work/hooks.log" 2>/dev/null)" != "DENY $t not-offered" ]; then
+      bad=$((bad + 1))
+      [ -n "$first" ] || first="$t as agy (not denied by name: '$out', hooks.log '$(cat "$work/hooks.log" 2>/dev/null)')"
+      printf 'ci-hooks: %s: %s is not denied as a tool the harness does not offer\n' "$shim" "$t" >&2
+    fi
   done
 done
 
