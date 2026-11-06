@@ -31,9 +31,11 @@
 #       the merged project rendered with the `crew` profile, network `crew`
 #       is internal; every CLI harness service is on exactly [crew], with
 #       the four proxy variables (HTTPS_PROXY, HTTP_PROXY and their lower-case
-#       twins) at http://egress:3128 and no published port; every service a
-#       harness depends on (a workload's crew-postgres) is on exactly [crew]
-#       with no published port; `egress` is on exactly crew and default with
+#       twins) at http://egress:3128, dns [192.0.2.1] and no published port;
+#       every service a harness depends on (a workload's crew-postgres) is on
+#       exactly [crew] with dns [192.0.2.1] and no published port (§7: the
+#       engine's resolver forwards no name out); `egress` is on exactly crew
+#       and default with
 #       none. The first project rendered is also judged with one planted
 #       defect at a time, and each must be named: a check that cannot fail
 #       is not one;
@@ -87,6 +89,7 @@ import sys
 
 PROXY = "http://egress:3128"
 PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")
+NO_RESOLVER = ["192.0.2.1"]
 
 
 def nets(service):
@@ -112,6 +115,8 @@ def flaw(cfg, harnesses):
                 return "harness service %s has %s=%r, want %s (docs/adr/0046 §3)" % (h, var, env.get(var), PROXY)
         if svc.get("ports"):
             return "harness service %s publishes a port; it must publish none (docs/adr/0046 §1)" % h
+        if svc.get("dns") != NO_RESOLVER:
+            return "harness service %s has dns %s, want %s, so the engine forwards no name out (docs/adr/0046 §7)" % (h, svc.get("dns"), NO_RESOLVER)
     for dep in sorted({d for h in harnesses for d in (services[h].get("depends_on") or {})}):
         svc = services.get(dep)
         if svc is None:
@@ -120,6 +125,8 @@ def flaw(cfg, harnesses):
             return "%s, a service a harness depends on, is on networks %s, want exactly [crew] (docs/adr/0046 §6)" % (dep, nets(svc))
         if svc.get("ports"):
             return "%s, a service a harness depends on, publishes a port; it must publish none (docs/adr/0046 §6)" % dep
+        if svc.get("dns") != NO_RESOLVER:
+            return "%s, a service a harness depends on, has dns %s, want %s (docs/adr/0046 §7)" % (dep, svc.get("dns"), NO_RESOLVER)
     egress = services.get("egress")
     if egress is None:
         return "the project has no service egress (docs/adr/0046 §2)"
@@ -154,12 +161,16 @@ def planted(h):
         ("a harness with a published port", "publishes a port",
          lambda c: c["services"][h].__setitem__("ports", [{"target": 80, "published": "8080"}])),
         ("a harness with the wrong proxy", "HTTPS_PROXY", set_var("HTTPS_PROXY", "http://proxy.example:3128")),
+        ("a harness with the engine's resolver", "has dns None", lambda c: c["services"][h].pop("dns")),
+        ("a harness with a public resolver", "has dns ['1.1.1.1']", lambda c: c["services"][h].__setitem__("dns", ["1.1.1.1"])),
         ("a dependency on the default network", "planted-db, a service a harness depends on, is on networks",
-         lambda c: depend(c, networks={"default": None})),
+         lambda c: depend(c, networks={"default": None}, dns=NO_RESOLVER)),
         ("a dependency on crew and default", "planted-db, a service a harness depends on, is on networks",
-         lambda c: depend(c, networks={"crew": None, "default": None})),
+         lambda c: depend(c, networks={"crew": None, "default": None}, dns=NO_RESOLVER)),
         ("a dependency that publishes a port", "planted-db, a service a harness depends on, publishes a port",
-         lambda c: depend(c, networks={"crew": None}, ports=[{"target": 5432, "published": "5432"}])),
+         lambda c: depend(c, networks={"crew": None}, dns=NO_RESOLVER, ports=[{"target": 5432, "published": "5432"}])),
+        ("a dependency with the engine's resolver", "planted-db, a service a harness depends on, has dns",
+         lambda c: depend(c, networks={"crew": None})),
         ("egress without crew", "service egress is on networks", lambda c: c["services"]["egress"].__setitem__("networks", {"default": None})),
         ("egress without default", "service egress is on networks", lambda c: c["services"]["egress"].__setitem__("networks", {"crew": None})),
         ("egress with a published port", "service egress publishes a port",
@@ -178,7 +189,7 @@ def selfcheck(cfg, harnesses):
     h = harnesses[0]
     # A dependency that is right must be accepted: the planted ones are judged against it.
     good = copy.deepcopy(cfg)
-    good["services"]["planted-db"] = {"networks": {"crew": None}}
+    good["services"]["planted-db"] = {"networks": {"crew": None}, "dns": NO_RESOLVER}
     good["services"][h]["depends_on"] = dict(good["services"][h].get("depends_on") or {}, **{"planted-db": {}})
     if flaw(good, harnesses):
         return "the self-check's project with a good dependency on crew is refused: " + flaw(good, harnesses)

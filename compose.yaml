@@ -35,6 +35,11 @@ x-crew-worker: &crew-worker
   user: "${CREW_UID:-0}:${CREW_GID:-0}"
   networks:
     - crew
+  # The engine's resolver still answers the names on `crew` (egress, a
+  # workload's crew-postgres), but forwards nothing else: its upstream is a
+  # documentation address that never answers (docs/adr/0046 §7).
+  dns:
+    - 192.0.2.1
   volumes:
     - ./roles:/roles:ro
   security_opt:
