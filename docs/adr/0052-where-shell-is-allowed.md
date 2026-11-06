@@ -52,8 +52,13 @@ Nothing stopped the shell half from growing.
    "$@"`. Each module runs as a script and is imported by its tests as
    `core.<x>`; one may import another's function, as `policy.py` imports
    `risk.py`'s parser. Adapters are still called as `sh
-   adapters/<name>/<verb>.sh`, through `subprocess`. No shared helper module
-   and no dependency: none was needed for this slice.
+   adapters/<name>/<verb>.sh`, through one function, `sh()` in
+   `core/tower.py`, which the other modules import: an argument list, never
+   a shell line. The self gate's bandit flags every process call (B404,
+   B603, B607) and any finding is a NO-GO; those findings are excused on
+   that one line and on the imports, each with its reason, as
+   `core/egress.py` excuses B104 (ADR 0046 §2), so a second process call
+   elsewhere is a finding again. No other shared helper and no dependency.
 4. **The ratchet, `ci/shell-boundary.sh`, in `./go ci`.** A `core/` shell
    file has at most **30 code lines**. Provenance: the owner's decision
    (2026-11-06), checked against a measurement the same day: the glue in
@@ -127,7 +132,10 @@ Nothing stopped the shell half from growing.
   23 files, 12 of them on the debt list. Tracked `.sh` in the repository:
   16,817 → 16,552 (the check itself is 76 lines).
 - The self gate's mutation and SAST commands now see the tower, the audit,
-  the incident builder and the triage judge.
+  the incident builder and the triage judge. Measured on 2026-11-06 with
+  its own runner, scoped to the four modules: 701 mutants, 607 killed,
+  score 0.866, against the contract's `MUTATION_BASELINE` of 0.3934; bandit
+  1.9.4 over `core/`: no finding.
 - A change to a debt file must keep or lower its count and update the
   entry when it lowers it.
 - `ci/board.sh` imports `core/tower.py`; renaming its tables is a change to

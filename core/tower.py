@@ -27,7 +27,7 @@ exits 1: no retries, no timeouts of the tower's own (docs/adr/0034 §1).
 
 import json
 import os
-import subprocess
+import subprocess  # nosec B404 - adapter verbs and steps are scripts (docs/adr/0052 §3)
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -113,6 +113,13 @@ def say(line):
     print(line, file=sys.stderr, flush=True)
 
 
+def sh(script, *args, **kwargs):
+    """Run SCRIPT with sh, an argument list and never a shell line: the one process call."""
+    # The script is an adapter verb the profile names (docs/adr/0024) or a
+    # TOWER_STEPS step; sh is the workbench's.
+    return subprocess.run(["sh", script, *args], check=False, **kwargs)  # nosec B603 B607 - an argv list, no shell, ADR 0052 §3
+
+
 class Tower:
     def __init__(self, ticket, env):
         self.ticket = ticket
@@ -122,9 +129,8 @@ class Tower:
 
     def store_get(self):
         """The document, or None when the store has none (get.sh exit non-zero)."""
-        got = subprocess.run(
-            ["sh", f"adapters/{self.store_adapter}/get.sh", COLLECTION, self.ticket],
-            stdout=subprocess.PIPE, text=True, check=False)
+        got = sh(f"adapters/{self.store_adapter}/get.sh", COLLECTION, self.ticket,
+                 stdout=subprocess.PIPE, text=True)
         if got.returncode != 0:
             return None
         try:
@@ -136,15 +142,13 @@ class Tower:
         return doc
 
     def store_put(self, doc):
-        put = subprocess.run(
-            ["sh", f"adapters/{self.store_adapter}/put.sh", COLLECTION, self.ticket],
-            input=compact(doc) + "\n", text=True, check=False)
+        put = sh(f"adapters/{self.store_adapter}/put.sh", COLLECTION, self.ticket,
+                 input=compact(doc) + "\n", text=True)
         return put.returncode == 0
 
     def publish(self, step):
         message = compact({"ticket": self.ticket, "step": step})
-        return subprocess.run(["sh", f"adapters/{self.bus}/publish.sh", message],
-                              check=False).returncode == 0
+        return sh(f"adapters/{self.bus}/publish.sh", message).returncode == 0
 
     def tell(self, line):
         say(f"[tower] {self.ticket}: {line}")
@@ -194,8 +198,7 @@ class Tower:
                        PR_NUMBER=text(dig(doc, "pr", "number")),
                        BASE_SHA=text(dig(doc, "pr", "base_sha")),
                        HEAD_SHA=text(dig(doc, "pr", "head_sha")))
-            ran = subprocess.run(["sh", script], stdout=subprocess.PIPE, text=True,
-                                 env=env, check=False)
+            ran = sh(script, stdout=subprocess.PIPE, text=True, env=env)
         if ran.returncode != 0:
             rc = ran.returncode if ran.returncode > 0 else 128 - ran.returncode
             self.tell(f"step {step} failed; state stays {have}")
