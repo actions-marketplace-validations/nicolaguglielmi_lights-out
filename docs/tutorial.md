@@ -137,7 +137,7 @@ Read it from the top:
 ### A ticket goes all the way: `e2e`
 
 `e2e` runs the same thing through the tower, the control plane: ticket →
-PR → the six gates → merge → a signed build of the merge → canary 5% →
+PR → the gates → merge → a signed build of the merge → canary 5% →
 verify NO-GO → rollback, then the audit.
 
 <!-- source: GitHub Actions run 41866972654 (commit ee2f679), job engine-compat (126703546061), step "./go demo"; left out: git's push hints, the gates' tool output, cosign's warning and JSON, compose's container lines -->
@@ -186,8 +186,8 @@ Stage by stage:
   against the Gemini API (`fixtures/0001/dev-worker/`). The patch must
   stay inside the ticket's `## Perimeter`, checked before any PR exists.
   The PR opens on the plane's own Gitea, never on this repository.
-- **The six gates.** risk, secrets, deps, SAST, test, mutation, in that
-  order, on the PR's range, with the base's contract and policy (a PR
+- **The gates.** risk, secrets, test-weakening, deps, SAST, test,
+  mutation, test-proof, in that order, on the PR's range, with the base's contract and policy (a PR
   cannot loosen what judges it). Here: risk `low` with no signal, so
   `auto-merge`; gitleaks found no leaks; one advisory already on the base,
   which does not gate (ADR 0032); the tests pass; the mutation score on
