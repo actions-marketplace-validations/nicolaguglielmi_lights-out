@@ -23,15 +23,26 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 pr=$(sh "$here/adapters/gitea/pr.sh" "$number") || exit 1
 if [ "$(printf '%s' "$pr" | jq -r .merged)" != true ]; then
   payload=$(jq -cn --arg h "$head" '{Do: "merge", head_commit_id: $h}')
-  code=$(curl -sS --connect-timeout 2 --max-time 30 -o /dev/null -w '%{http_code}' \
-    -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
-    -d "$payload" "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/pulls/$number/merge") || code=000
-  # 405 "already merged": a merge that happened between pr.sh and here.
-  case "$code" in
-    200|405) : ;;
-    409) printf 'merge-gitea: PR #%s head moved since CI judged %s; not merged\n' "$number" "$head" >&2; exit 1 ;;
-    *) printf 'merge-gitea: merge PR #%s returned %s\n' "$number" "$code" >&2; exit 1 ;;
-  esac
+  # 405 is "already merged" (a merge between pr.sh and here) or "not
+  # mergeable yet": Gitea re-checks a PR's mergeability in a queue after
+  # its base branch moves, and a merge onto a moved main (docs/adr/0056
+  # §1) can arrive before the check. Asked again once a second while it
+  # is neither, for at most READY_TIMEOUT seconds (the adapters' own wait).
+  i=0
+  while :; do
+    code=$(curl -sS --connect-timeout 2 --max-time 30 -o /dev/null -w '%{http_code}' \
+      -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
+      -d "$payload" "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO/pulls/$number/merge") || code=000
+    case "$code" in
+      200) break ;;
+      405) pr=$(sh "$here/adapters/gitea/pr.sh" "$number") || exit 1
+           [ "$(printf '%s' "$pr" | jq -r .merged)" != true ] || break
+           i=$((i + 1)); [ "$i" -lt "${READY_TIMEOUT:-60}" ] || break
+           sleep 1 ;;
+      409) printf 'merge-gitea: PR #%s head moved since CI judged %s; not merged\n' "$number" "$head" >&2; exit 1 ;;
+      *) printf 'merge-gitea: merge PR #%s returned %s\n' "$number" "$code" >&2; exit 1 ;;
+    esac
+  done
   pr=$(sh "$here/adapters/gitea/pr.sh" "$number") || exit 1
   [ "$(printf '%s' "$pr" | jq -r .merged)" = true ] \
     || { printf 'merge-gitea: PR #%s still not merged after merge returned %s\n' "$number" "$code" >&2; exit 1; }
