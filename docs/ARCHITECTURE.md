@@ -39,7 +39,7 @@ Every `Delivery` adapter must pass `gates/delivery-conformance.sh` to count as o
 
 Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`). The Makefile selects one with `PROFILE ?= l0` and exports it. Adapter choices come from environment variables named after the ports above, except for the `Workload` port: it is chosen by `WORKLOAD=<dir>` (default `app`), not by the profile — it is the same workload at every level. See [ADR 0001](adr/0001-profiles-and-single-makefile.md) and [ADR 0030](adr/0030-workload-port.md).
 
-*Amended 2026-09-20 (ADR 0022, 0028).* L0 and L1 are the whole product: every capability, no account, no key. L2 and L3 replace containers with managed services and add nothing the local plane lacks. `profiles/l2.env` and `profiles/l3.env` also carry `WORKBENCH_FLAVOUR=cloud`, which makes `./go` build `workbench/cloud/Containerfile` (gcloud and terraform) on top of the base workbench image; L0 and L1 never download either.
+*Amended 2026-09-20 (ADR 0022, 0028).* L0 and L1 are the whole product: every capability, no account, no key. L2 and L3 replace containers with managed services and add nothing the local plane lacks. ADR 0028's split, gcloud and terraform in a cloud image of their own that only L2 and L3 would build, is not in the tree: both are in the one workbench image (`workbench/Containerfile`), which every level builds.
 
 ## Invariants
 
@@ -65,7 +65,7 @@ See [ADR 0004](adr/0004-containerised-toolchain.md).
 
 ## Human gate
 
-`core/launchpad.sh` writes `RELEASE_RECORD` (`.crew/release.json`) with the release outcome and metrics at each stage. `core/promote.sh` is go-for-launch: it reads the record, checks that the canary is held (not rolled back), runs the release role (at L1+) or renders the brief from the record (at L0), prints it, and asks for a human answer: `GO_FOR_LAUNCH=GO|NO-GO` if set, else one line from the terminal, else NO-GO. `GO` shifts the canary to 100% of traffic; `NO-GO` rolls it back. `demo-launch` proves this flow mechanically and runs on every push in the `launch` CI job. See [ADR 0020](docs/adr/0020-adk-agents-and-go-for-launch-at-m7.md) §4.
+`core/launchpad.sh` writes `RELEASE_RECORD` (`.crew/release.json`) with the release outcome and metrics at each stage. `core/promote.sh` is go-for-launch: it reads the record, checks that the canary is held (not rolled back), runs the release role (at L1+) or renders the brief from the record (at L0), prints it, and asks for a human answer: `GO_FOR_LAUNCH=GO|NO-GO` if set, else one line from the terminal, else NO-GO. `GO` shifts the canary to 100% of traffic; `NO-GO` rolls it back. `demo-launch` proves this flow mechanically and runs on every push in the `launch` CI job. See [ADR 0020](adr/0020-adk-agents-and-go-for-launch-at-m7.md) §4.
 
 ## Demo Stages
 
