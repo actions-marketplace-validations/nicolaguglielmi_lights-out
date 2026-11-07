@@ -692,11 +692,38 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
 - Ognuno è un gate o una precondizione della torre col contratto a una riga. La logica sta in Python sotto `core/` (ADR 0052).
 - **Fatto quando:** `./go demo-gates` ha tre fixture nuove: un test che passa già sulla base (NO-GO), un'asserzione tolta (NO-GO), un controllo positivo (GO). `./go ci` prova la sovrapposizione dei perimetri senza engine. `./go demo` resta invariato, senza chiave e sotto i 900 s.
 
+### M28 — La mappa del progetto, ricostruita a ogni merge (ADR 0054)
+
+*Aggiunto 2026-11-07, decisione dell'owner.* Gli agenti oggi capiscono il repository con grep e con `worker.md`. Non vedono quali ADR governano un percorso, quali test lo coprono, quali ticket l'hanno già toccato, quali documenti lo descrivono. Intanto la documentazione deriva a ogni merge: `ci/readme.sh` controlla solo i comandi `./go` del README.
+
+- **La mappa è un file SQLite** (`sqlite3`, libreria standard), mai un servizio. Nodi: funzionalità, ticket, file, simboli, test, ADR, pagine di documentazione. Archi: ticket→file, test→file, ADR→percorso, documento→percorso, comando o chiave. Le funzionalità le dichiarano i ticket, con un'etichetta: la mappa non le indovina.
+- **Si ricostruisce, non si aggiorna.** Dopo ogni merge un passo della torre la rigenera da zero, in modo deterministico e senza modello. Le fonti sono i ticket, la storia git, le ADR, i documenti e il codice (`ast` per Python, un parser minimo per JS). Porta lo sha del merge: chi la legge su una base diversa fallisce con un messaggio chiaro. Una mappa stantia non si può usare senza saperlo.
+- **Deriva della documentazione.** Un gate deterministico: un documento che cita un percorso, un comando `./go` o una chiave di profilo che non esiste più è NO-GO. Un merge che tocca file governati da un'ADR o descritti da una pagina apre un ticket di documentazione per il `dev-worker`, con il perimetro sui soli documenti, come il post mortem apre il ticket di fix (ADR 0044). Nessun ruolo nuovo, nessuna riscrittura senza gate.
+- **Agli agenti arriva nel brief.** In `assign` la torre interroga la mappa per i file del perimetro e mette la fetta nel documento d'ingresso del worker (ADR 0031 §2): ADR, test, ticket passati, documenti da tenere allineati. Vale per ogni harness e si replaya a L0. Un server MCP in sola lettura viene dopo, e solo se M24 mostra che agli agenti serve chiedere a metà lavoro.
+- **Si misura in M24.** Un interruttore di profilo mette o toglie la fetta dal brief. In M24 metà dei ticket gira con la mappa e metà senza, e si confrontano turni, token e tentativi di rework dai `run.json`.
+- **Fatto quando:** `./go map` costruisce la mappa su lights-out e su un workload attaccato. `./go ci` prova che una mappa con sha diverso è rifiutata e che il gate di deriva è verde sulla documentazione di questo repository, con un caso NO-GO costruito. `./go demo` resta invariato, senza chiave e sotto i 900 s.
+
+### M29 — La fase dev visibile, dalla richiesta al rilascio (ADR 0055)
+
+*Aggiunto 2026-11-07, decisione dell'owner.* Oggi la torre parte da `opened`: la raccolta della richiesta e la definizione della spec non lasciano traccia, e una richiesta ambigua si scopre solo dopo quattro giri di rework. La console di M11 vede la fase dev, ma non è su main.
+
+- **Prima il recupero della console.** `merge/console` (ADR 0047: il logbook, cinque schermate, il go-for-launch attraverso `core/promote.sh`) riallineato su main e portato dentro con la sua CI. I campi di costo che il logbook scriveva in `core/tower.sh` vanno nel modulo Python della torre (ADR 0052).
+- **Tre stati prima del ticket:** `requested` → `questions` → `spec-ready` → `opened`. Il ruolo `product` legge la richiesta e restituisce domande, oppure dice che è chiara. Le risposte arrivano da `./go answer` o dalla console: è la seconda scrittura che ADR 0023 §2 già prevede. Si registrano chi ha risposto e quando.
+- **Il gate sulla spec**, deterministico: criteri Given/When/Then, un `## Perimeter`, nessun criterio senza un esito osservabile. Un NO-GO riporta il ticket a `questions` con il motivo.
+- **La timeline del ticket**, una riga per fase, ognuna col suo record:
+  - richiesta, domande e risposte, verdetto della spec;
+  - `assign` con perimetro e attesa (M27);
+  - tentativi del worker con turni, token e costo, ogni gate con la sua riga, review, rework;
+  - merge, canary, firma umana, 100% o rollback.
+- **La vista d'insieme:** i ticket per stato, la mappa dei perimetri occupati (M27) e i documenti che un merge ha lasciato da riallineare (M28).
+- Le regole della console restano quelle di ADR 0023: è una vista e non la fonte di verità, ogni schermata ha il suo `./go`, nessun numero senza un record dietro. La registrazione del passo `questions` a L1 resta all'owner, come per M18: nessuna fixture scritta a mano.
+- **Fatto quando:** `./go console` mostra a L0, senza chiave, un ticket da `requested` al rollback in una timeline sola. `./go ci` prova la tabella degli stati nuova e il gate sulla spec (un GO, un criterio vago NO-GO, un perimetro mancante NO-GO). `./go demo` resta invariato, sotto i 900 s.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
 
-*Nota 2026-11-07 (studio dell'owner).* Con M24: il `test-reviewer` su un fornitore diverso da quello del `dev-worker` per rischio medio e alto, se la seconda chiave c'è, altrimenti il default resta un fornitore solo; un eval del `test-reviewer` su diff etichettati, per fornitore. Dopo M24, ognuno con la sua ADR: un gate sulla spec del ticket e un passo in cui `product` fa domande prima di `assign`; una coda di merge con batch, bisezione e revert automatico su main, se l'esperimento mostra che serve il parallelo; una mappa ticket → file → test derivata dalla storia a ogni merge, solo se un confronto con e senza la mappa nel brief la giustifica. Scartati: un database a grafo nel piano (regola d'oro), un ruolo integratore (i ruoli sono sei: un conflitto torna al `dev-worker` come rework, ADR 0038) e l'editor delle spec dentro questo repository (ADR 0029 §3).
+*Nota 2026-11-07 (studio dell'owner).* Con M24: il `test-reviewer` su un fornitore diverso da quello del `dev-worker` per rischio medio e alto, se la seconda chiave c'è, altrimenti il default resta un fornitore solo; un eval del `test-reviewer` su diff etichettati, per fornitore. Dopo M24, ognuno con la sua ADR: un gate sulla spec del ticket e un passo in cui `product` fa domande prima di `assign`; una coda di merge con batch, bisezione e revert automatico su main, se l'esperimento mostra che serve il parallelo. La mappa del progetto è diventata M28 (decisione dell'owner, stesso giorno): un file ricostruito a ogni merge, misurato dentro M24. Scartati: un database a grafo come servizio del piano, al posto di quel file (regola d'oro), un ruolo integratore (i ruoli sono sei: un conflitto torna al `dev-worker` come rework, ADR 0038) e l'editor delle spec dentro questo repository (ADR 0029 §3).
 
 ### Rischi di questo arco
 
