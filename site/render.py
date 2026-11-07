@@ -400,15 +400,16 @@ async def shots(site, out):
 
 # The console's screens as stills (docs/adr/0047, docs/adr/0055), served by
 # console/serve.py itself in snapshot mode, where nothing can be pressed:
-# (still, logbook, screen, hide the empty columns, viewport). The overview and ticket
-# 0001's timeline read the committed snapshot of a real ./go demo
-# (console/snapshot/README.md names its run). The kanban reads the logbook
-# ci/logbook.sh builds over stub sources, the one with tickets in more states
-# than one demo leaves; the landing says so under it.
+# (still, logbook, screen, hide the empty columns, viewport). All three read
+# the logbook ci/logbook.sh builds over stub sources, the one with tickets
+# in more states than one demo leaves; the landing says so under them. A
+# demo's own logbook is not committed: a threshold's name in its `key` field
+# reads as a secret to gitleaks, and a change cannot excuse its own finding
+# (docs/adr/0049 §4).
 CONSOLE = [
     ("console-kanban", "fixtures/logbook/golden-1.1.json", "kanban", True, (1520, 560)),
-    ("console-ticket", "console/snapshot/logbook.json", "ticket/0001", False, (1440, 1560)),
-    ("console-overview", "console/snapshot/logbook.json", "overview", False, (1440, 820)),
+    ("console-ticket", "fixtures/logbook/golden-1.1.json", "ticket/0009", False, (1440, 1040)),
+    ("console-overview", "fixtures/logbook/golden-1.1.json", "overview", False, (1440, 1000)),
 ]
 
 

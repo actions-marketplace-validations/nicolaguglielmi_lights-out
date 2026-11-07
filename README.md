@@ -22,9 +22,9 @@ It runs complete on your laptop: no account, no API key, no cloud.
 What is proven and what is not yet is said plainly below, in [What is real and what is recorded](#what-is-real-and-what-is-recorded).
 
 <p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature"></p>
-<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="Ticket 0001's timeline in the console, from the request to the rollback" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: tickets by state, perimeters held, tickets waiting, docs to realign" width="49%"></p>
+<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="A ticket's timeline in the console: the request, a question, the answer, the confirmed criteria and the spec gate" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: tickets by state, perimeters held, tickets waiting, docs to realign" width="49%"></p>
 
-The console (`./go console`). Above, the kanban over the logbook the tests build, which holds tickets in more states than one demo leaves. Below, ticket 0001's timeline and the overview from the logbook of a real `./go demo` on GitHub Actions ([`console/snapshot/`](console/snapshot/README.md)).
+The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, and the overview. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.1.json`](fixtures/logbook/golden-1.1.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
 
 ## Five ways in
 

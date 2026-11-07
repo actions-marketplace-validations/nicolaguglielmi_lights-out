@@ -250,6 +250,7 @@ nav .gh{font-size:14px;padding:9px 12px}
 .shot figcaption{padding:14px 16px 16px;font-size:14px;color:var(--mute)}
 .shot figcaption b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 @media (max-width:760px){.shots{grid-template-columns:1fr}}
+.shots-note{margin:16px 0 0;font:12.5px/1.6 var(--mono);color:var(--mute)}
 .empty{grid-column:1/-1;border:1px dashed var(--line2);border-radius:14px;padding:22px;color:var(--mute);font:13px/1.6 var(--mono)}
 dialog{border:1px solid var(--line2);border-radius:14px;background:#06090d;color:var(--ink);padding:0;width:min(1200px,94vw);max-height:92vh;overflow:hidden}
 dialog::backdrop{background:rgba(2,4,6,.86);backdrop-filter:blur(4px)}
@@ -520,17 +521,18 @@ Then the response is not 500 …
     <div class="shots">
       <figure class="shot wide reveal">
         <img src="media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature" loading="lazy">
-        <figcaption><b>Kanban</b>One column per tower state, a card per ticket with its priority and feature. A card moves only when the tower moves its ticket: there is no drag-and-drop. Shown over the logbook the tests build (<code>fixtures/logbook/golden-1.1.json</code>), which holds tickets in more states than one demo leaves; empty columns hidden.</figcaption>
+        <figcaption><b>Kanban</b>One column per tower state, a card per ticket with its priority and feature. A card moves only when the tower moves its ticket: there is no drag-and-drop. Empty columns hidden.</figcaption>
       </figure>
       <figure class="shot reveal">
-        <img src="media/console-ticket.jpg" alt="Ticket 0001's timeline: request, product, spec, assign, the worker's attempt, gates, merge, canary, rollback" loading="lazy">
-        <figcaption><b>One ticket, end to end</b>Ticket 0001 from the request to the rollback, one row per phase, each from its record. The logbook of a real <code>./go demo</code> on GitHub Actions, committed as <code>console/snapshot/logbook.json</code>.</figcaption>
+        <img src="media/console-ticket.jpg" alt="Ticket 0009's timeline: the request, the product role's question, the answer, the confirmed criteria, and the spec gate's NO-GO for a missing perimeter" loading="lazy">
+        <figcaption><b>One ticket's timeline</b>A request, the product role's question, a person's answer through the console, the confirmed criteria, and the spec gate's NO-GO: the ticket names no files yet. One row per phase, each from its record.</figcaption>
       </figure>
       <figure class="shot reveal">
         <img src="media/console-overview.jpg" alt="The overview: tickets by state, the perimeters open tickets hold, the tickets waiting at assign, the docs a merge left to realign" loading="lazy">
-        <figcaption><b>Overview</b>Tickets by state, the files open tickets hold, who waits at assign and on whom, and the docs a merge left to realign. The same demo's logbook.</figcaption>
+        <figcaption><b>Overview</b>Tickets by state, the files open tickets hold, who waits at assign and on whom, and the docs a merge left to realign.</figcaption>
       </figure>
     </div>
+    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.1.json</code>), which holds tickets in more states than one demo leaves; its model is a stub.</p>
     <div class="board-link reveal">
       <p><b>Open it on your own run.</b> After <code>./go demo</code>, <code>./go console</code> serves it on localhost:8098 over the live record.</p>
       <a class="btn" href="https://github.com/nicolaguglielmi/lights-out/tree/main/console">console/ ↗</a>
