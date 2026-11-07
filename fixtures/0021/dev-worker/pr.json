@@ -1,4 +1,4 @@
 {
   "title": "Add a one-line size report of the metrics page",
-  "body": "meetups/report.py's metrics_report() returns the metrics page's size in\nbytes and lines, for the ops runbook; a test checks both numbers against\nthe page itself.\n\nHand-written L0 fixture for ticket 0021 (docs/adr/0056 §7): no model\nwrote this change."
+  "body": "meetups/report.py's metrics_report() returns the metrics page's size in\nbytes and lines, for the ops runbook; a test checks both numbers on a\npage of known size.\n\nHand-written L0 fixture for ticket 0021 (docs/adr/0056 §7): no model\nwrote this change."
 }
