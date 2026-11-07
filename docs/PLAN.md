@@ -681,9 +681,22 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
 
 *Stato 2026-11-06 (sessione M26, branch `claude/shell-boundary-7f7be1`):* ADR 0052 scritta; `core/` da 2.101 a 1.764 righe shell (codice: da 1.357 a 1.074); 103 test unitari nuovi (mutation 0,866 sui quattro moduli, 701 mutanti); dodici file restano nella lista del debito. `./go ci` verde da clone pulito; `./go demo` → `GO: demo, milestone M9, 463s to rollback`, da clone pulito senza `.env` né chiave, su un piano libero. Approvata dall'owner per main; scritta come M25 e rinumerata M26 al merge, perché M25 è `argo-rollouts` (ADR 0051).
 
+### M27 — Il test che non prova niente, e due ticket sugli stessi file (ADR 0053)
+
+*Aggiunto 2026-11-07, decisione dell'owner.* Prima di M24: su un repository che non conosciamo, il verdetto vale quanto i test che lo sostengono. Oggi il test finto lo prende la mutation, solo dove la mutation gira (Python), e lo cerca il `test-reviewer`, che è un modello. Quattro controlli deterministici, nessun ruolo nuovo, nessun modello.
+
+- **Fallisce prima, passa dopo.** I test che la PR aggiunge o modifica girano sulla base, con il solo cambio dei test applicato: devono fallire. Sulla head devono passare. Quali file sono test lo dichiara il contratto del workload. Vale per ogni runner, JS compreso. Una PR che non tocca test non ha soggetto e passa per assenza, come la mutation (ADR 0015 §3).
+- **Test indeboliti.** Il diff non può togliere asserzioni, aggiungere skip o xfail, né cancellare un test esistente, a meno che il ticket lo dichiari. È un controllo sul diff, per linguaggio, con la lista dei pattern nell'ADR e la sua provenienza.
+- **Perimetri sovrapposti.** Ogni ticket dichiara il suo `## Perimeter` (ADR 0021 §5). `assign` rifiuta un ticket il cui perimetro si sovrappone a quello di un ticket aperto: un file, un solo worker alla volta. Il ticket resta in attesa e non viene scartato.
+- **Base verde prima del primo ticket.** Su un repository attaccato, `assign` parte solo se i gate sono verdi sulla base: un NO-GO ereditato non viene addebitato al worker.
+- Ognuno è un gate o una precondizione della torre col contratto a una riga. La logica sta in Python sotto `core/` (ADR 0052).
+- **Fatto quando:** `./go demo-gates` ha tre fixture nuove: un test che passa già sulla base (NO-GO), un'asserzione tolta (NO-GO), un controllo positivo (GO). `./go ci` prova la sovrapposizione dei perimetri senza engine. `./go demo` resta invariato, senza chiave e sotto i 900 s.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
+
+*Nota 2026-11-07 (studio dell'owner).* Con M24: il `test-reviewer` su un fornitore diverso da quello del `dev-worker` per rischio medio e alto, se la seconda chiave c'è, altrimenti il default resta un fornitore solo; un eval del `test-reviewer` su diff etichettati, per fornitore. Dopo M24, ognuno con la sua ADR: un gate sulla spec del ticket e un passo in cui `product` fa domande prima di `assign`; una coda di merge con batch, bisezione e revert automatico su main, se l'esperimento mostra che serve il parallelo; una mappa ticket → file → test derivata dalla storia a ogni merge, solo se un confronto con e senza la mappa nel brief la giustifica. Scartati: un database a grafo nel piano (regola d'oro), un ruolo integratore (i ruoli sono sei: un conflitto torna al `dev-worker` come rework, ADR 0038) e l'editor delle spec dentro questo repository (ADR 0029 §3).
 
 ### Rischi di questo arco
 
