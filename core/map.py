@@ -316,7 +316,7 @@ def citations(page, text, tree, targets, words):
         if line.lstrip().startswith(("```", "~~~")):
             fence = not fence
             continue
-        for target in LINK.findall(line):
+        for target in ([] if fence else LINK.findall(line)):
             path = link_path(target, page)
             if path is not None:
                 found.append(("path", path, n, path_ok(path, tree)))
@@ -476,7 +476,7 @@ def covered(db, paths):
     """{(kind, name): {paths}} for the pages and ADRs, not excluded, that cite PATHS (§4)."""
     exclude = db.execute("SELECT value FROM meta WHERE key = 'exclude'").fetchone()[0].split()
     rows = db.execute("SELECT n.kind, n.name, c.target FROM cite c JOIN node n ON n.id = c.src "
-                      "WHERE c.kind = 'path' AND c.ok = 1").fetchall()
+                      "WHERE c.kind = 'path'").fetchall()
     out = {}
     for kind, name, target in rows:
         if excluded(name, exclude):
@@ -520,7 +520,7 @@ def slice_of(db, globs):
     lines += ["", "Tickets that touched them before:"]
     lines += [f"- {t or n} ({','.join(sorted(k.split(',')))})" for n, t, k in tickets] or ["- none"]
     symbols = db.execute(f"SELECT f.name, s.name FROM edge e JOIN node f ON f.id = e.src JOIN node s ON s.id = e.dst "  # nosec B608 - placeholders only
-                         f"WHERE e.kind = 'defines' AND f.name IN ({marks}) ORDER BY f.name, s.id", paths).fetchall()
+                         f"WHERE e.kind = 'defines' AND f.name IN ({marks}) ORDER BY f.name, s.name", paths).fetchall()
     by_file = {}
     for path, symbol in symbols:
         by_file.setdefault(path, []).append(symbol.split("::", 1)[1])
@@ -585,8 +585,9 @@ def after_merge(args):
         run(["git", "clone", "-q", "--bare", args.clone_url, src])  # nosec B607 - the workbench's git
         sha, _ = build(src, args.merge_sha, args.out, args.tickets, read_targets(args.targets), exclude)
         # What the merge changed: against its first parent, as a code host shows a merge commit.
-        changed = git(src, "diff-tree", "-r", "--root", "--no-commit-id", "--name-only", "--no-renames",
-                      "-m", "--first-parent", sha).decode().split("\n")
+        parents = git(src, "rev-list", "--parents", "-n", "1", sha).decode().split()[1:]
+        changed = (git(src, "diff", "--name-only", "--no-renames", parents[0], sha) if parents
+                   else git(src, "ls-tree", "-r", "--name-only", sha)).decode().split("\n")
     db = open_map(args.out, sha)
     try:
         ticket = docs_ticket(db, sorted(c for c in changed if c), sha)
