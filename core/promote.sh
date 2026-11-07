@@ -12,6 +12,17 @@
 # are the only scripts it calls. At L0 "100%" is the canary cluster taking
 # every request; the canary does not become the new stable image (M8).
 #
+# Who answered, and through what (docs/adr/0047 §3): GO_FOR_LAUNCH_BY
+# (default `unauthenticated`: a container's user name would look like an
+# identity it is not) and GO_FOR_LAUNCH_VIA (default `cli`; the console
+# passes `console`) go into the record, `promoted` on GO and `rejected` on
+# NO-GO, and into one line of RELEASES_LOG per answer. With
+# GO_FOR_LAUNCH_BRIEF_SHA256 set, promote answers on the brief already in
+# PROMOTE_OUT, the one the human read, if its sha256 matches, and writes
+# no new one; otherwise nothing moves. core/releases.py renders the L0
+# brief and writes the answer. With no answer it writes the brief
+# and moves nothing: that is how a console prepares the brief it shows.
+#
 # Reuses ci/lib.sh's go/nogo for the one-line verdict, as launchpad does.
 set -eu
 name=go-for-launch
@@ -21,6 +32,7 @@ name=go-for-launch
 : "${DELIVERY:?DELIVERY not set; run this via ./go, not directly}"
 : "${AGENT_HARNESS:?AGENT_HARNESS not set; run this via ./go, not directly}"
 : "${PROMOTE_OUT:=.crew/promote}"
+answered_sha=${GO_FOR_LAUNCH_BRIEF_SHA256:-}
 
 [ -f "$RELEASE_RECORD" ] || nogo "no release record; run ./go release" "looked at $RELEASE_RECORD"
 record=$(jq -c . "$RELEASE_RECORD" 2>/dev/null) || nogo "$RELEASE_RECORD is not JSON"
@@ -37,16 +49,9 @@ fi
 # leaves it at `held`. The Delivery port's status.sh reads the plane
 # itself (docs/adr/0026 §2); promote only a canary that is still there at
 # the weight it was held at (ticket 0008).
-held_at=$(printf '%s' "$record" | jq -r '.held_at // empty')
-[ -n "$held_at" ] || nogo "$RELEASE_RECORD is held but names no held_at"
 status=$(sh "adapters/$DELIVERY/status.sh") \
   || nogo "adapters/$DELIVERY/status.sh could not read the plane; nothing moved"
-plane_canary=$(printf '%s' "$status" | jq -r '.canary // "none"' 2>/dev/null) \
-  || nogo "adapters/$DELIVERY/status.sh did not print JSON" "$status"
-plane_weight=$(printf '%s' "$status" | jq -r '.weight' 2>/dev/null)
-if [ "$plane_canary" != "$version" ] || [ "$plane_weight" != "$held_at" ]; then
-  nogo "the record holds $version at ${held_at}%, the plane has canary $plane_canary at ${plane_weight}%; nothing moved"
-fi
+why=$(printf '%s' "$status" | python3 core/releases.py plane) || nogo "$why" "$status"
 
 # The brief: the release role over the record, through its harness. At L0
 # the roles have no model — they replay responses recorded at L1, keyed
@@ -60,15 +65,17 @@ fi
 # shellcheck disable=SC1091 # the role's budgets
 . roles/release/role.env
 harness=${HARNESS:-$AGENT_HARNESS}
-rm -rf "$PROMOTE_OUT"
-mkdir -p "$PROMOTE_OUT/out"
-if [ "$AGENT_HARNESS" = replay ]; then
+[ -n "$answered_sha" ] || { rm -rf "$PROMOTE_OUT"; mkdir -p "$PROMOTE_OUT/out"; }
+if [ -n "$answered_sha" ]; then
+  # The answer is to the brief already shown: no second brief is written,
+  # because a release role at L1 would not write the same one twice.
+  on_disk=$(sha256sum "$PROMOTE_OUT/brief.md" 2>/dev/null | cut -d' ' -f1)
+  [ "$on_disk" = "$answered_sha" ] || nogo "the brief on disk is not the one answered; nothing moved"
+  brief=$(cat "$PROMOTE_OUT/brief.md")
+  author=$(head -n1 "$PROMOTE_OUT/brief.author" 2>/dev/null) || author="unknown"
+elif [ "$AGENT_HARNESS" = replay ]; then
   author="core/promote.sh from the record — no model at L0, the release role writes it from L1"
-  brief=$(printf '%s' "$record" | jq -r '
-    "# Promotion brief: \(.version)\n\nPromote `\(.version)` (`\(.image)`), replacing stable `\(.stable)`.\n\n## Stages\n"
-    + ([.stages[] | "- \(.pct)%: \(.verdict)\n" + ([.numbers[] | "  - \(.)\n"] | join(""))] | join(""))
-    + "\n## Not verified\n- 100% of traffic: not observed yet; that is what this decision starts.\n"
-    + "\nRecommendation: GO — every stage passed verify; the numbers above are the evidence."')
+  brief=$(python3 core/releases.py brief)
 else
   author="the release role, $harness"
   ROLE=release INPUT="$RELEASE_RECORD" OUT="$PROMOTE_OUT/out" \
@@ -93,7 +100,10 @@ for pct in $(printf '%s' "$record" | jq -r '.stages[].pct'); do
     *) nogo "the brief does not name the $pct% stage" ;;
   esac
 done
-printf '%s\n' "$brief" > "$PROMOTE_OUT/brief.md"
+if [ -z "$answered_sha" ]; then
+  printf '%s\n' "$brief" > "$PROMOTE_OUT/brief.md"
+  printf '%s\n' "$author" > "$PROMOTE_OUT/brief.author"
+fi
 {
   printf '[go-for-launch] promotion brief for %s (by %s):\n\n' "$version" "$author"
   printf '%s\n\n' "$brief"
@@ -111,13 +121,13 @@ case "$answer" in
   GO) ;;
   NO-GO)
     sh "adapters/$DELIVERY/rollback.sh" >&2 || nogo "human said NO-GO, and the rollback failed"
+    python3 core/releases.py answer NO-GO
     nogo "human said NO-GO" "$version rolled back" ;;
   "") nogo "no human answer (set GO_FOR_LAUNCH=GO or answer on the terminal); nothing moved" ;;
   *) nogo "answer \"$answer\" is neither GO nor NO-GO; nothing moved" ;;
 esac
 
 sh "adapters/$DELIVERY/shift.sh" 100 >&2 || nogo "shift to 100% did not take"
-printf '%s' "$record" | jq -c --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '. + {promoted: {weight: 100, at: $at, by: "go-for-launch"}}' > "$RELEASE_RECORD"
+python3 core/releases.py answer GO
 printf '[go-for-launch] %s at 100%% of traffic (%s)\n' "$version" "$DELIVERY" >&2
 go

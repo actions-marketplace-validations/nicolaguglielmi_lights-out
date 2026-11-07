@@ -7,6 +7,7 @@ its entry point (docs/adr/0052 §3); callers keep calling that.
     python3 core/tower.py open <ticket>          write the document at `opened`, publish `assign`
     python3 core/tower.py step <ticket> <step>   apply one step: precondition, effect, write, publish next
     python3 core/tower.py resume <ticket>        request again the step whose last attempt failed
+    python3 core/tower.py task <run.json>        print the task fields a role's run leaves in the document
 
 The document is plain JSON, one per ticket, id = ticket id. A step's
 precondition is the state it starts from; an event whose precondition is
@@ -33,7 +34,7 @@ import tempfile
 from datetime import datetime, timezone
 
 COLLECTION = "tickets"
-USAGE = "usage: tower.sh open <ticket> | step <ticket> <step> | resume <ticket>"
+USAGE = "usage: tower.sh open <ticket> | step <ticket> <step> | resume <ticket> | task <run.json>"
 
 # The transition table. PRECONDITION: step -> the state it starts from.
 # NEXT: state -> the step requested once the document is there; a state
@@ -53,6 +54,25 @@ NEXT = {
     "merged": "release",
     "ci-failed": "rework",
 }
+
+
+# The task fields copied from a role's run.json (docs/adr/0047 §2, P1):
+# who ran it and what it cost, as the harness reported it, or under replay
+# as the recorded run did -- the rule `model` follows. A key the harness
+# does not report is null, never a guess.
+RUN_KEYS = ("model", "provider", "thinking", "turns", "tokens", "duration_s", "input_sha256")
+
+
+def task(run):
+    """{harness, replayed, model, provider, ...} from a run.json object."""
+    recorded = run.get("recorded") if isinstance(run.get("recorded"), dict) else {}
+    out = {"harness": text(run.get("harness")) or "unknown", "replayed": run.get("harness") == "replay"}
+    for key in RUN_KEYS:
+        value = run.get(key)
+        if value is None or value is False:
+            value = recorded.get(key)
+        out[key] = None if value is False else value
+    return out
 
 
 class Refused(Exception):
@@ -258,6 +278,14 @@ class Tower:
 
 def main(argv, env=None):
     env = os.environ if env is None else env
+    if argv[:1] == ["task"] and len(argv) == 2:
+        try:
+            with open(argv[1], encoding="utf-8") as fh:
+                print(compact(task(json.load(fh))))
+        except (OSError, ValueError, AttributeError) as exc:
+            say(f"tower: cannot read the run {argv[1]}: {exc}")
+            return 1
+        return 0
     for var in ("STATE_STORE", "EVENT_BUS"):
         if not env.get(var):
             say(f"tower: {var} not set; run this via ./go, not directly")

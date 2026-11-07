@@ -21,14 +21,14 @@ debt='
 core/crew.sh 87
 core/egress.sh 42
 core/init.sh 40
-core/launchpad.sh 77
+core/launchpad.sh 72
 core/mutation-baseline.sh 32
 core/postmortem.sh 49
-core/promote.sh 87
+core/promote.sh 84
 core/steps/ci.sh 85
 core/steps/release.sh 56
-core/steps/review.sh 75
-core/steps/rework.sh 52
+core/steps/review.sh 73
+core/steps/rework.sh 51
 core/toolchain.sh 126
 '
 

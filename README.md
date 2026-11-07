@@ -62,6 +62,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ./go demo-rollback   # just the self-rollback, about a minute
 ./go board           # the pipeline explained, and live while the plane runs: localhost:8099
 ./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
+./go console         # the client's view: tickets, the audit chain, post mortems, thresholds, go-for-launch from a browser: localhost:8098
 ./go down            # stop everything
 ```
 

@@ -70,11 +70,11 @@ TICKET="$TICKET" ROLE="$ROLE" ATTEMPT="$next" REWORK_FILE="$verdict" REWORK_HEAD
 
 # shellcheck disable=SC1090,SC1091 # written by crew.sh just now
 . "$crew_dir/pr-opened.env"
-harness=$(jq -r '.harness // "unknown"' "$crew_dir/out/run.json")
-model=$(jq -r '.model // .recorded.model // null' "$crew_dir/out/run.json")
+# Who ran it and what it cost (docs/adr/0047 §2, P1), from run.json.
+task=$(python3 core/tower.py task "$crew_dir/out/run.json")
 
 jq -cn --argjson next "$next" --argjson rework "$rework" --arg n "$PR_NUMBER" --arg url "$PR_URL" \
-  --arg base "$BASE_SHA" --arg head "$HEAD_SHA" --arg harness "$harness" --arg model "$model" --arg role "$ROLE" \
+  --arg base "$BASE_SHA" --arg head "$HEAD_SHA" --arg role "$ROLE" --argjson task "$task" \
   '{state: "pr-opened", attempt: $next, rework: $rework, ci: null, review: null,
     pr: {number: ($n | tonumber), url: $url, base_sha: $base, head_sha: $head},
-    task: {role: $role, harness: $harness, model: (if $model == "null" then null else $model end)}}'
+    task: ({role: $role} + $task)}'

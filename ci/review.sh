@@ -28,6 +28,7 @@ trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/adapters/stub-codehost" "$root/adapters/stub-tracker" \
   "$root/adapters/stub-harness" "$root/adapters/replay"
 ln -s "$repo/roles" "$root/roles"
+ln -s "$repo/core" "$root/core"
 
 # --- a real upstream repo, standing in for the code host, with a real
 # ticket/<id> branch two commits ahead of base ---

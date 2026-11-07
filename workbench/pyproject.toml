@@ -18,6 +18,10 @@
 # litellm 1.106.6 imports `mcp` on the anthropic path and failed every
 # eval case with "No module named 'mcp'" before any model call; 2.3.0 is
 # the version litellm's own `proxy` extra resolves to.
+# jsonschema (docs/adr/0047 §2): ci/logbook.sh validates the logbook against
+# its committed schemas. Already in the lock at this version as a transitive
+# dependency of google-adk, pinned directly so a bump of the ADK cannot
+# take it away; no new bytes are downloaded.
 [project]
 name = "lights-out-workbench"
 version = "0"
@@ -30,6 +34,7 @@ dependencies = [
     "rouge-score==0.1.2",
     "pandas==2.3.3",
     "tabulate==0.9.0",
+    "jsonschema==4.26.0",
 ]
 
 [tool.uv]

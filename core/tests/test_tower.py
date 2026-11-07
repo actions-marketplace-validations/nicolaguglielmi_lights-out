@@ -431,5 +431,44 @@ class JqSemantics(unittest.TestCase):
         self.assertEqual(tower.attempt({}), {})
 
 
+class Task(TowerCase):
+    """docs/adr/0047 §2, P1: who ran a role and what it cost, from run.json;
+    under replay the recorded run's values, a missing key null."""
+
+    def run_json(self, run):
+        (self.root / "run.json").write_text(json.dumps(run))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = tower.main(["task", "run.json"], {})
+        return code, json.loads(out.getvalue()) if code == 0 else None
+
+    def test_a_live_run_reports_its_own_fields(self):
+        code, task = self.run_json({"harness": "gemini-cli", "model": "m", "provider": "p", "thinking": "low",
+                                    "turns": 7, "tokens": {"total": 9}, "duration_s": 3, "input_sha256": "ab"})
+        self.assertEqual(code, 0)
+        self.assertEqual(task, {"harness": "gemini-cli", "replayed": False, "model": "m", "provider": "p",
+                                "thinking": "low", "turns": 7, "tokens": {"total": 9}, "duration_s": 3,
+                                "input_sha256": "ab"})
+
+    def test_a_replayed_run_reports_the_recorded_one(self):
+        code, task = self.run_json({"harness": "replay", "recorded": {"model": "m", "provider": "p", "turns": 4}})
+        self.assertEqual(code, 0)
+        self.assertTrue(task["replayed"])
+        self.assertEqual((task["model"], task["provider"], task["turns"]), ("m", "p", 4))
+        self.assertIsNone(task["tokens"])
+
+    def test_no_harness_is_unknown_and_nothing_is_guessed(self):
+        code, task = self.run_json({})
+        self.assertEqual(code, 0)
+        self.assertEqual(task["harness"], "unknown")
+        self.assertEqual({k for k, v in task.items() if v not in (None, False)}, {"harness"})
+
+    def test_an_unreadable_run_is_a_failure(self):
+        (self.root / "run.json").write_text("not json")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(tower.main(["task", "run.json"], {}), 1)
+            self.assertEqual(tower.main(["task", "absent.json"], {}), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
