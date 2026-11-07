@@ -166,11 +166,12 @@ nav .gh{font-size:14px;padding:9px 12px}
 @media (max-width:560px){.roles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.role{padding:10px}.role span{font-size:11.5px}}
 
 /* scene 3: gates */
-.lights{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.lights{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
 .light{text-align:center;font:11.5px/1 var(--mono);color:var(--mute)}
 .light i{display:block;width:22px;height:22px;margin:0 auto 9px;border-radius:50%;background:#1a2430;border:1px solid var(--line2)}
 .scene.on .light i{animation:lit .25s forwards;animation-delay:calc(var(--i) * .42s + .3s)}
 .scene.on .light.no i{animation-name:litno}
+.scene.on .light.off i{animation:none}
 @keyframes lit{to{background:var(--green);border-color:var(--green);box-shadow:0 0 18px var(--green)}}
 @keyframes litno{to{background:var(--red);border-color:var(--red);box-shadow:0 0 22px var(--red)}}
 
@@ -215,7 +216,7 @@ nav .gh{font-size:14px;padding:9px 12px}
   .step{min-height:64vh;justify-content:flex-start;padding-top:30px}
   .step h3{font-size:26px}
   .win pre{padding:12px 14px}
-  .lights{gap:4px}.light{font-size:10px}.light i{width:16px;height:16px}
+  .lights{gap:10px 4px;grid-template-columns:repeat(4,1fr)}.light{font-size:10px}.light i{width:16px;height:16px}
   .chart{height:80px}
   .outcomes div{grid-template-columns:84px 1fr;padding:8px 10px;font-size:11.5px}
   .scene .cap{display:none}
@@ -242,6 +243,13 @@ nav .gh{font-size:14px;padding:9px 12px}
 @media (max-width:760px){.scn.feature{flex-direction:column}.scn.feature .pic{aspect-ratio:16/9;min-height:0}}
 .board-link{margin-top:28px;display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center;border:1px dashed var(--line2);border-radius:14px;padding:20px 22px;color:var(--ink2)}
 .board-link p{margin:0;flex:1 1 380px}
+.shots{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.shot{margin:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
+.shot.wide{grid-column:1/-1}
+.shot img{display:block;width:100%;height:auto;background:#f6f7f9}
+.shot figcaption{padding:14px 16px 16px;font-size:14px;color:var(--mute)}
+.shot figcaption b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
+@media (max-width:760px){.shots{grid-template-columns:1fr}}
 .empty{grid-column:1/-1;border:1px dashed var(--line2);border-radius:14px;padding:22px;color:var(--mute);font:13px/1.6 var(--mono)}
 dialog{border:1px solid var(--line2);border-radius:14px;background:#06090d;color:var(--ink);padding:0;width:min(1200px,94vw);max-height:92vh;overflow:hidden}
 dialog::backdrop{background:rgba(2,4,6,.86);backdrop-filter:blur(4px)}
@@ -320,6 +328,7 @@ html:not(.js) .scene:first-child{opacity:1;visibility:visible;transform:none}
     <ul>
       <li><a href="#how">How it works</a></li>
       <li><a href="#scenarios">Scenarios</a></li>
+      <li><a href="#console">Console</a></li>
       <li><a href="#real">Real vs recorded</a></li>
       <li><a href="#try">Try it</a></li>
     </ul>
@@ -399,10 +408,12 @@ Then the response is not 500 …
           <div class="lights">
             <div class="light" style="--i:1"><i></i>risk</div>
             <div class="light" style="--i:2"><i></i>secrets</div>
-            <div class="light" style="--i:3"><i></i>deps</div>
-            <div class="light" style="--i:4"><i></i>sast</div>
-            <div class="light" style="--i:5"><i></i>test</div>
-            <div class="light no" style="--i:6"><i></i>mutation</div>
+            <div class="light" style="--i:3"><i></i>weaken</div>
+            <div class="light" style="--i:4"><i></i>deps</div>
+            <div class="light" style="--i:5"><i></i>sast</div>
+            <div class="light" style="--i:6"><i></i>test</div>
+            <div class="light no" style="--i:7"><i></i>mutation</div>
+            <div class="light off" style="--i:8"><i></i>proof</div>
           </div>
           <div class="win">
             <div class="bar"><i></i><i></i><i></i><span>one line per gate on stdout</span><b>ticket 0001 · claude-code</b></div>
@@ -457,11 +468,11 @@ Then the response is not 500 …
           <span class="src">roles/ · core/crew.sh</span>
         </li>
         <li class="step" id="how-3" data-step="3">
-          <span class="n">03 · SIX GATES</span>
-          <h3>Six gates judge every pull request.</h3>
-          <p>Risk, secrets, dependencies, static analysis, tests, mutation. Each prints one line, <code>GO</code> or <code>NO-GO</code> with the reason, and every threshold says where it comes from.</p>
-          <p>A PR is judged by its base's policy, never its own: it cannot edit the gates that judge it. Mutation testing tells an honest test from one that passes and catches nothing.</p>
-          <span class="src">gates/ · docs/adr/0033</span>
+          <span class="n">03 · EIGHT GATES</span>
+          <h3>Eight gates judge every pull request.</h3>
+          <p>Risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, and proof that the new tests fail without the change. Each prints one line, <code>GO</code> or <code>NO-GO</code> with the reason, and every threshold says where it comes from. The first NO-GO stops the rest.</p>
+          <p>A PR is judged by its base's policy, never its own: it cannot edit the gates that judge it. A test written to pass does not get through: dropping an assertion is a NO-GO, mutation testing catches a test that checks nothing, and a new test that already passes on the base proves nothing.</p>
+          <span class="src">gates/ · docs/adr/0033 · docs/adr/0053</span>
         </li>
         <li class="step" id="how-4" data-step="4">
           <span class="n">04 · THE CANARY</span>
@@ -495,6 +506,34 @@ Then the response is not 500 …
     <div class="board-link reveal">
       <p><b>Step through it yourself.</b> The board plays every scenario station by station: what each step does, which file does it and the line it prints. These are scripted walks over the real code paths, with example versions and numbers. Run <code>./go board</code> with the plane up and it shows your own release live.</p>
       <a class="btn" href="board/">Open the board ↗</a>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="console" aria-labelledby="console-h">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">The console</div>
+      <h2 id="console-h">From the request to the release, on one page.</h2>
+      <p class="lead">A request comes in, the product role asks what is missing, a person answers, the spec gate checks the criteria, and only then does an agent start. The console shows every ticket on that path, from one versioned document, the logbook. It has two writes, the answer to an open question and go-for-launch, and both are recorded with who pressed.</p>
+    </div>
+    <div class="shots">
+      <figure class="shot wide reveal">
+        <img src="media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature" loading="lazy">
+        <figcaption><b>Kanban</b>One column per tower state, a card per ticket with its priority and feature. A card moves only when the tower moves its ticket: there is no drag-and-drop. Shown over the logbook the tests build (<code>fixtures/logbook/golden-1.1.json</code>), which holds tickets in more states than one demo leaves; empty columns hidden.</figcaption>
+      </figure>
+      <figure class="shot reveal">
+        <img src="media/console-ticket.jpg" alt="Ticket 0001's timeline: request, product, spec, assign, the worker's attempt, gates, merge, canary, rollback" loading="lazy">
+        <figcaption><b>One ticket, end to end</b>Ticket 0001 from the request to the rollback, one row per phase, each from its record. The logbook of a real <code>./go demo</code> on GitHub Actions, committed as <code>console/snapshot/logbook.json</code>.</figcaption>
+      </figure>
+      <figure class="shot reveal">
+        <img src="media/console-overview.jpg" alt="The overview: tickets by state, the perimeters open tickets hold, the tickets waiting at assign, the docs a merge left to realign" loading="lazy">
+        <figcaption><b>Overview</b>Tickets by state, the files open tickets hold, who waits at assign and on whom, and the docs a merge left to realign. The same demo's logbook.</figcaption>
+      </figure>
+    </div>
+    <div class="board-link reveal">
+      <p><b>Open it on your own run.</b> After <code>./go demo</code>, <code>./go console</code> serves it on localhost:8098 over the live record.</p>
+      <a class="btn" href="https://github.com/nicolaguglielmi/lights-out/tree/main/console">console/ ↗</a>
     </div>
   </div>
 </section>
@@ -539,7 +578,7 @@ Then the response is not 500 …
     <div class="try">
       <div class="panel reveal">
         <h3>The demo</h3>
-        <p>An agent turns a ticket into a pull request, six gates judge it, it merges, builds, signs and takes 5% of the traffic. Verify sees the errors and rolls it back on its own. The run ends with <code>GO: demo</code>.</p>
+        <p>An agent turns a ticket into a pull request, eight gates judge it, it merges, builds, signs and takes 5% of the traffic. Verify sees the errors and rolls it back on its own. The run ends with <code>GO: demo</code>.</p>
         <div class="code"><button class="copy" type="button" data-copy="git clone https://github.com/nicolaguglielmi/lights-out.git&#10;cd lights-out&#10;./go demo">copy</button>
 <pre><span class="p">$ </span>git clone https://github.com/nicolaguglielmi/lights-out.git
 <span class="p">$ </span>cd lights-out
@@ -548,7 +587,7 @@ Then the response is not 500 …
       </div>
       <div class="panel reveal">
         <h3>Gates on your repository</h3>
-        <p>The <code>lights-out</code> wrapper runs init and the six gates from the published image, inside your repository, without cloning lights-out.</p>
+        <p>The <code>lights-out</code> wrapper runs init and the gates from the published image, inside your repository, without cloning lights-out.</p>
         <div class="code"><button class="copy" type="button" data-copy="mkdir -p ~/.local/bin&#10;curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out&#10;chmod +x ~/.local/bin/lights-out">copy</button>
 <pre><span class="p">$ </span>mkdir -p ~/.local/bin
 <span class="p">$ </span>curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out

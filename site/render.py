@@ -13,6 +13,7 @@ encodes the takes with ffmpeg into <site dir>/media/:
     hero.webm, hero.mp4, hero.gif, hero.jpg   a short loop, cropped to the diagram
     <scenario>.mp4, <scenario>.jpg            one clip per scenario on the board
     scenarios.json               id, name, blurb and seconds of each clip
+    console-<screen>.jpg         stills of the console's screens (CONSOLE below)
 
 Every frame says what it shows: the board's scripted walks, the real code
 paths with example versions and numbers. With SHOTS=<dir> it also takes
@@ -28,11 +29,13 @@ import json
 import os
 import pathlib
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import urllib.request
 
 from playwright.async_api import async_playwright
 
@@ -393,6 +396,64 @@ async def shots(site, out):
         await browser.close()
 
 
+# ---- the console --------------------------------------------------------------
+
+# The console's screens as stills (docs/adr/0047, docs/adr/0055), served by
+# console/serve.py itself in snapshot mode, where nothing can be pressed:
+# (still, logbook, screen, hide the empty columns). The overview and ticket
+# 0001's timeline read the committed snapshot of a real ./go demo
+# (console/snapshot/README.md names its run). The kanban reads the logbook
+# ci/logbook.sh builds over stub sources, the one with tickets in more states
+# than one demo leaves; the landing says so under it.
+CONSOLE = [
+    ("console-kanban", "fixtures/logbook/golden-1.1.json", "kanban", True),
+    ("console-ticket", "console/snapshot/logbook.json", "ticket/0001", False),
+    ("console-overview", "console/snapshot/logbook.json", "overview", False),
+]
+
+
+def console(logbook):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = {**os.environ, "CONSOLE_SNAPSHOT": str(ROOT / logbook), "CONSOLE_LISTEN": str(port), "CONSOLE_PORT": str(port)}
+    proc = subprocess.Popen([sys.executable, str(ROOT / "console" / "serve.py")], env=env,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    base = f"http://127.0.0.1:{port}"
+    for _ in range(50):
+        try:
+            urllib.request.urlopen(base + "/v1/console.json", timeout=1).close()
+            return proc, base
+        except OSError:
+            time.sleep(0.1)
+    proc.kill()
+    sys.exit(f"render: console/serve.py over {logbook} did not answer: {proc.stderr.read().decode()[-400:]}")
+
+
+async def stills(site):
+    media = site / "media"
+    media.mkdir(parents=True, exist_ok=True)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        for name, logbook, screen, hide in CONSOLE:
+            proc, base = console(logbook)
+            try:
+                ctx = await browser.new_context(viewport={"width": 1440, "height": 1000}, device_scale_factor=2,
+                                                color_scheme="light")
+                page = await ctx.new_page()
+                await page.goto(f"{base}/#{screen}")
+                await page.wait_for_selector("main h1")
+                if hide:
+                    await page.locator("main select").last.select_option("hide")
+                    await page.wait_for_timeout(200)
+                jpg(await page.screenshot(type="png"), media / f"{name}.jpg", 1440)
+                await ctx.close()
+            finally:
+                proc.kill()
+            log(f"still {name}: {screen} over {logbook}")
+        await browser.close()
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: python3 site/render.py <site dir>")
@@ -400,6 +461,7 @@ def main():
     if not (site / "index.html").is_file():
         sys.exit(f"render: {site}/index.html not found; build the site directory first")
     asyncio.run(render(site))
+    asyncio.run(stills(site))
     if os.environ.get("SHOTS"):
         asyncio.run(shots(site, pathlib.Path(os.environ["SHOTS"]).resolve()))
 
