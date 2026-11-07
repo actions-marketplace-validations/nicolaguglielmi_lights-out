@@ -86,7 +86,7 @@ REPLAY_TICKETS := .crew/replay-tickets
 define replay_tickets
 	@rm -rf "$(REPLAY_TICKETS)" && mkdir -p "$(REPLAY_TICKETS)" && cp "$(TICKETS_SOURCE)"/*.md "$(REPLAY_TICKETS)/"
 endef
-e2e demo-rework demo-review: TICKETS_DIR = $(REPLAY_TICKETS)
+e2e demo-rework demo-review demo-mainline: TICKETS_DIR = $(REPLAY_TICKETS)
 
 # docker-compose over the podman socket builds through the classic /build
 # API; pinning this avoids compose spawning a buildkitd container
@@ -872,6 +872,7 @@ MAINLINE_TICKETS := 0020 0021 0022
 .PHONY: demo-mainline
 demo-mainline: ## Prove main always green: disjoint tickets merge unjudged, an overlap goes to rework, a breaking merge is bisected and reverted (docs/adr/0056)
 	@$(MAKE) --no-print-directory up
+	$(replay_tickets)
 	@printf '[demo-mainline] replay: deleting the documents of %s and of main before opening them again\n' "$(MAINLINE_TICKETS)" >&2
 	@for t in $(MAINLINE_TICKETS); do sh adapters/$(STATE_STORE)/delete.sh tickets "$$t" || exit 1; done \
 		&& sh adapters/$(STATE_STORE)/delete.sh mainline main \

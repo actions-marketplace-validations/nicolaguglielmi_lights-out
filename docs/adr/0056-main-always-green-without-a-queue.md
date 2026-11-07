@@ -52,6 +52,9 @@ together: one renames what the other starts calling.
      ticket goes to rework (§6).
    - `pr.base_sha` is not on main (main was rewritten): the step fails
      and nothing is merged.
+   - The head CI judged is already on main: a retry after the code host
+     merged (ADR 0019 §9). Its own merge is not main moving under it; the
+     adapter's idempotent merge answers.
 
 2. **The table.**
 
