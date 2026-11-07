@@ -1,5 +1,74 @@
 {
   "docs_to_realign": null,
+  "kanban": [
+    {
+      "state": "requested",
+      "tickets": []
+    },
+    {
+      "state": "questions",
+      "tickets": [
+        "0009"
+      ]
+    },
+    {
+      "state": "spec-ready",
+      "tickets": []
+    },
+    {
+      "state": "opened",
+      "tickets": [
+        "0005"
+      ]
+    },
+    {
+      "state": "pr-opened",
+      "tickets": []
+    },
+    {
+      "state": "review",
+      "tickets": []
+    },
+    {
+      "state": "ci-passed",
+      "tickets": []
+    },
+    {
+      "state": "ci-failed",
+      "tickets": [
+        "0003",
+        "0008"
+      ]
+    },
+    {
+      "state": "needs-human",
+      "tickets": [
+        "0007"
+      ]
+    },
+    {
+      "state": "merged",
+      "tickets": []
+    },
+    {
+      "state": "held",
+      "tickets": [
+        "0002"
+      ]
+    },
+    {
+      "state": "rolled-back",
+      "tickets": [
+        "0001"
+      ]
+    },
+    {
+      "state": "assigned",
+      "tickets": [
+        "0004"
+      ]
+    }
+  ],
   "launch": {
     "brief": {
       "author": "the release role, stub-harness",
@@ -267,6 +336,7 @@
         "risk_level": "low",
         "verdict": "GO"
       },
+      "feature": "venues",
       "history": [
         {
           "at": "2026-11-01T09:00:00Z",
@@ -308,6 +378,7 @@
         "number": 1,
         "url": "http://codehost.invalid/o/r/pulls/1"
       },
+      "priority": "P1",
       "product": null,
       "questions": [],
       "release": {
@@ -418,6 +489,7 @@
     {
       "attempt": 2,
       "ci": null,
+      "feature": null,
       "history": [
         {
           "at": "2026-11-02T08:00:00Z",
@@ -444,6 +516,7 @@
         "app/backend/waitlist/*"
       ],
       "pr": null,
+      "priority": "P2",
       "product": null,
       "questions": [],
       "release": {
@@ -549,6 +622,7 @@
         "risk_level": "low",
         "verdict": "NO-GO"
       },
+      "feature": null,
       "history": [
         {
           "at": "2026-11-03T08:00:00Z",
@@ -574,6 +648,7 @@
         "README.md"
       ],
       "pr": null,
+      "priority": null,
       "product": null,
       "questions": [],
       "release": null,
@@ -627,6 +702,7 @@
     {
       "attempt": 1,
       "ci": null,
+      "feature": null,
       "history": [
         {
           "at": "2026-11-03T09:00:00Z",
@@ -660,6 +736,7 @@
         "app/backend/migrations/*"
       ],
       "pr": null,
+      "priority": null,
       "product": null,
       "questions": [],
       "release": null,
@@ -744,6 +821,7 @@
     {
       "attempt": null,
       "ci": null,
+      "feature": null,
       "history": [
         {
           "at": "2026-11-04T07:00:00Z",
@@ -765,6 +843,7 @@
         "ok": false
       },
       "pr": null,
+      "priority": null,
       "product": null,
       "questions": [],
       "release": null,
@@ -797,6 +876,7 @@
     {
       "attempt": 4,
       "ci": null,
+      "feature": null,
       "history": [
         {
           "at": "2026-11-04T06:00:00Z",
@@ -823,6 +903,7 @@
         "app/backend/geocoder/*"
       ],
       "pr": null,
+      "priority": null,
       "product": null,
       "questions": [],
       "release": null,
@@ -907,6 +988,7 @@
         "risk_level": "medium",
         "verdict": "GO"
       },
+      "feature": null,
       "history": [
         {
           "at": "2026-11-04T05:00:00Z",
@@ -933,6 +1015,7 @@
         "app/backend/router.py"
       ],
       "pr": null,
+      "priority": null,
       "product": null,
       "questions": [],
       "release": null,
@@ -985,6 +1068,7 @@
     {
       "attempt": null,
       "ci": null,
+      "feature": "waiting-list",
       "history": [
         {
           "at": "2026-11-07T08:00:00Z",
@@ -1028,6 +1112,7 @@
         "ok": false
       },
       "pr": null,
+      "priority": "P0",
       "product": {
         "consulted": true,
         "duration_s": 3.1,

@@ -419,6 +419,8 @@ now accepts any `1.x` in `schema`, so a 1.1 logbook validates against both.
 | `tickets[].tasks[]` | tower `tasks`: every attempt's task, with its `attempt` |
 | `tickets[].spec.{criteria, by, verdict, line, at}` | tower `spec`, written by the clarify and spec steps |
 | `tickets[].timeline[]` | built by the reader from the fields above, the history, `rework`, `ci`, `review`, `merge`, `release` and the release log |
+| `tickets[].feature`, `.priority` | the ticket's header, `- Feature: <slug>` and `- Priority: P0..P3`, or `null` (ADR 0055 §7) |
+| `kanban[]` | `{state, tickets: [id]}`, one column per tower state in the table's order, then any other state; inside, P0 first, unprioritised last, then the oldest, then the id |
 | `docs_to_realign` | `null`: no record yet (M28, ADR 0054) |
 | `pending` | constant: what each empty panel waits for, `{wait, docs_to_realign}` |
 

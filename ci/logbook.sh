@@ -12,6 +12,8 @@
 #      golden fixtures/logbook/golden-1.1.json, written by hand from the
 #      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6. Then variants of the sources, each checked on the
 #      one field the plan's rule decides.
+#      The kanban's every card sits in its ticket's state's column, and moves
+#      when the tower moves the ticket (docs/adr/0055 §7).
 #   b. The golden validates against every committed schema of its major.
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
@@ -466,6 +468,28 @@ cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
   || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.1.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+
+# The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
+# state, and every ticket is on exactly one card. Then the tower moves a
+# ticket, and its card moves with it, and nothing else does.
+cards_agree() {
+  jq -e '([.kanban[] | .state as $s | .tickets[] | {id: ., col: $s}]) as $cards
+    | ($cards | length) == (.tickets | length)
+    and ([.tickets[] | .id as $i | .state as $st | ([$cards[] | select(.id == $i and .col == $st)] | length) == 1] | all)' "$1" >/dev/null
+}
+cards_agree "$root/out1.json" || nogo "a kanban card is not in its ticket's state's column, or a ticket is not on exactly one card" \
+  "$(jq -c '{kanban, states: [.tickets[] | {id, state}]}' "$root/out1.json")"
+cp "$root/state/tickets.0005.json" "$tmp/0005.keep"
+jq '.state = "merged"' "$tmp/0005.keep" > "$root/state/tickets.0005.json"
+run_reader LOGBOOK_FILE=out4.json
+cards_agree "$root/out4.json" || nogo "after the tower moved ticket 0005, a card is not in its state's column"
+[ "$(jq -c '[.kanban[] | select(.state == "merged" or .state == "opened") | {(.state): .tickets}] | add' "$root/out4.json")" = '{"opened":[],"merged":["0005"]}' ] \
+  || nogo "moving ticket 0005 to merged did not move its card from opened to merged" "$(jq -c .kanban "$root/out4.json")"
+cp "$tmp/0005.keep" "$root/state/tickets.0005.json"
+jq '.kanban[0].tickets += ["0001"]' "$root/out1.json" > "$tmp/kanban-bad.json"
+! cards_agree "$tmp/kanban-bad.json" || nogo "the kanban check accepts a ticket on two cards"
+jq '(.tickets[] | select(.id == "0009") | .state) = "opened"' "$root/out1.json" > "$tmp/kanban-bad.json"
+! cards_agree "$tmp/kanban-bad.json" || nogo "the kanban check accepts a card outside its ticket's state"
 
 # The golden depends on its sources: change one fact, the bytes change.
 cp "$root/state/tickets.0001.json" "$tmp/0001.keep"

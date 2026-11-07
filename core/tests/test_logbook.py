@@ -36,12 +36,12 @@ class Before(unittest.TestCase):
         }
 
     def test_the_phases_follow_the_history(self):
-        rows = logbook.timeline(self.doc(), "0009", [], ["app/*"])
+        rows = logbook.timeline(self.doc(), "0009", [], ["src/*"])
         self.assertEqual(phases(rows), ["request", "product", "question", "answer", "product", "spec", "answer",
                                         "product", "spec"])
 
     def test_every_row_names_its_record_and_its_time(self):
-        for r in logbook.timeline(self.doc(), "0009", [], ["app/*"]):
+        for r in logbook.timeline(self.doc(), "0009", [], ["src/*"]):
             self.assertTrue(r["record"], r)
             self.assertIn("at", r)
             self.assertIn("verdict", r)
@@ -104,13 +104,13 @@ class After(unittest.TestCase):
                 {"ticket": "0002", "version": "v2", "at": "r2", "answer": None, "stages": [{"pct": 5, "verdict": "GO"}]}]
 
     def test_the_chain_in_order(self):
-        rows = logbook.timeline(self.doc(), "0001", self.rels(), ["app/*"])
+        rows = logbook.timeline(self.doc(), "0001", self.rels(), ["src/*"])
         self.assertEqual(phases(rows), ["open", "assign", "attempt", "gates", "rework", "attempt", "gates", "gate",
                                         "gate", "merge", "canary", "release", "outcome"])
 
     def test_assign_holds_the_perimeter_and_an_empty_wait_named_for_m27(self):
-        row = [r for r in logbook.timeline(self.doc(), "0001", [], ["app/*"]) if r["phase"] == "assign"][0]
-        self.assertEqual((row["line"], row["perimeter"], row["wait"]), ("PR #7", ["app/*"], None))
+        row = [r for r in logbook.timeline(self.doc(), "0001", [], ["src/*"]) if r["phase"] == "assign"][0]
+        self.assertEqual((row["line"], row["perimeter"], row["wait"]), ("PR #7", ["src/*"], None))
         self.assertIn("M27", row["wait_from"])
 
     def test_each_attempt_has_its_own_cost(self):
@@ -169,6 +169,36 @@ class After(unittest.TestCase):
                "review": {"verdict": "changes-requested", "reason": "first\nsecond"}}
         row = logbook.timeline(doc, "1", [], [])[1]
         self.assertEqual((row["phase"], row["verdict"], row["line"]), ("review", "changes-requested", "first"))
+
+
+class Kanban(unittest.TestCase):
+    """docs/adr/0055 §7: a card's column is its ticket's state; P0 first,
+    unprioritised last, then the oldest, then the id."""
+
+    def t(self, tid, state, priority=None, opened=None):
+        return {"id": tid, "state": state, "priority": priority, "opened_at": opened}
+
+    def test_every_ticket_is_one_card_in_its_state_s_column(self):
+        tickets = [self.t("1", "questions"), self.t("2", "rolled-back"), self.t("3", "questions"), self.t("4", "odd")]
+        board = logbook.kanban(tickets)
+        where = {tid: col["state"] for col in board for tid in col["tickets"]}
+        self.assertEqual(where, {"1": "questions", "2": "rolled-back", "3": "questions", "4": "odd"})
+        self.assertEqual(sum(len(c["tickets"]) for c in board), 4)
+
+    def test_the_columns_are_the_tower_s_states_in_order_then_any_other(self):
+        board = logbook.kanban([self.t("1", "zeta"), self.t("2", "alpha")])
+        self.assertEqual([c["state"] for c in board][:4], ["requested", "questions", "spec-ready", "opened"])
+        self.assertEqual([c["state"] for c in board][-3:], ["rolled-back", "alpha", "zeta"])
+
+    def test_priority_then_age_then_id(self):
+        tickets = [self.t("a", "opened", None, "t1"), self.t("b", "opened", "P2", "t3"), self.t("c", "opened", "P0", "t9"),
+                   self.t("d", "opened", "P2", "t2"), self.t("e", "opened", "P2", "t2"), self.t("f", "opened", "P3", None)]
+        col = [c for c in logbook.kanban(tickets) if c["state"] == "opened"][0]
+        self.assertEqual(col["tickets"], ["c", "d", "e", "b", "f", "a"])
+
+    def test_an_unread_ticket_list_stays_unread(self):
+        unread = {"ok": False, "error": "x"}
+        self.assertEqual(logbook.kanban(unread), unread)
 
 
 if __name__ == "__main__":
