@@ -300,7 +300,7 @@ def link_path(target, page):
 
 
 def path_ok(path, tree):
-    """PATH exists, or ends an existing path: `.lights-out/worker.md` names a workload's contract file."""
+    """PATH exists, or ends an existing path: a page may name a contract file by its place in any workload."""
     if path.startswith("../") or path == "..":
         return False
     if any(c in path for c in "*?["):
