@@ -14,6 +14,7 @@
 # because the self gate measures core/ with the unit suite alone; this
 # gate keeps the shell seam honest (the step scripts, the transition
 # table, the refusal). Written from the ADR, not from the scripts.
+# shellcheck disable=SC2329 # the world's helpers run through other helpers and through "$@"
 set -eu
 name=mainline
 . ci/lib.sh
