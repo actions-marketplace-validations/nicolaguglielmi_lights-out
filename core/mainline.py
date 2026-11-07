@@ -360,7 +360,7 @@ def check(env):
             f"back to the dev-worker with the verdict")
         return {"state": "ci-failed",
                 "mainline": {"verdict": "NO-GO", "judge": "main", "head_sha": text(dig(doc, "merge", "head_sha")),
-                             "line": f"NO-GO: main — {mine['line']} (merge {merge_sha}, reverted by {mine['revert']})",
+                             "line": f"NO-GO: main — merge {merge_sha} broke main, reverted by {mine['revert']}: {mine['line']}",
                              "details": mine.get("details") or []}}
     say(f"[mainline] ticket {env['TICKET']}: merge {merge_sha} is on a green main")
     return {"state": "main-green", "mainline": {"verdict": "GO", "green": store_get(env).get("green")}}
@@ -386,7 +386,8 @@ def walk(env, doc, record, reverted, green, head, merge_sha):
     repo = env["WORKLOAD"]
     judge = Judge(env, green)
     judged = text(dig(doc, "ci", "head_sha"))
-    if judged and green == text(dig(doc, "pr", "base_sha")):
+    if judged and green == text(dig(doc, "pr", "base_sha")) \
+            and git(repo, "cat-file", "-e", f"{judged}^{{commit}}", ok=False).returncode == 0:
         # CI passed that head with the base's judges, which are G's.
         judge.known_green(judged)
     limit = group_max()
