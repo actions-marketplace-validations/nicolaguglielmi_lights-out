@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- The console (docs/adr/0047, 0055): six screens over one document,
+<!-- The console (docs/adr/0047, 0055): seven screens over one document,
      the logbook, read from /v1/logbook.json. Every value on these screens
      is a field of the logbook (docs/plans/console.md names each one); the
      page computes no verdict of its own. Two inputs: go-for-launch, a POST
@@ -73,6 +73,12 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 .placeholder { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .count { font-size: 24px; font-weight: 700; }
+.board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.col { flex: 0 0 190px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0 0 8px; color: var(--ink); text-decoration: none; font-size: 13px; }
+.lane { margin: 0 0 14px; }
+.lane h2 { margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -84,6 +90,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
   </div>
   <nav id="nav">
     <a href="#overview" data-s="overview">Overview</a>
+    <a href="#kanban" data-s="kanban">Kanban</a>
     <a href="#tickets" data-s="tickets">This week's tickets</a>
     <a href="#incidents" data-s="incidents">Incidents and post mortems</a>
     <a href="#launch" data-s="launch">Go-for-launch</a>
@@ -94,6 +101,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 <script>
 "use strict";
 let book = null, con = null, lastLine = null, busy = false, windowDays = null, answerLine = null;
+let kFeature = "", kPriority = "", kGroup = "";
 
 // h(tag, attrs, ...children): every text goes through a text node, never HTML.
 function h(tag, attrs, ...kids) {
@@ -104,12 +112,15 @@ function h(tag, attrs, ...kids) {
     else if (k === "cls") el.className = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const kid of kids.flat()) {
+  for (const kid of kids.flat(Infinity)) {
     if (kid === null || kid === undefined || kid === false) continue;
     el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
   }
   return el;
 }
+// A ticket's name: the logbook's title already starts with the id when it
+// comes from the ticket's first line.
+const named = (t) => String(t.title).startsWith(t.id) ? t.title : t.id + " — " + t.title;
 const unread = (v) => v && typeof v === "object" && !Array.isArray(v) && v.ok === false;
 const shown = (v) => (v === null || v === undefined || v === "") ? "—" : v;
 function chip(verdict) {
@@ -139,7 +150,7 @@ function screenOverview() {
   out.push(h("h2", {}, "Tickets by state"), h("div", {cls: "panel"}, h("div", {cls: "grid3"},
     states.filter((st) => all.some((t) => t.state === st)).map((st) => h("div", {},
       h("div", {cls: "muted"}, st), h("div", {cls: "count"}, all.filter((t) => t.state === st).length),
-      h("div", {}, all.filter((t) => t.state === st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, t.id), " ", t.title))))))));
+      h("div", {}, all.filter((t) => t.state === st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t))))))))));
   const open = all.filter((t) => !DONE.includes(t.state) && Array.isArray(t.perimeter));
   out.push(h("h2", {}, "Perimeters held by open tickets"), h("div", {cls: "panel"},
     open.length ? h("table", {}, h("tr", {}, ["Ticket", "State", "Declared perimeter", "Waiting for"].map((c) => h("th", {}, c))),
@@ -148,6 +159,45 @@ function screenOverview() {
       : h("p", {cls: "muted"}, "No open ticket declares a perimeter.")));
   out.push(h("h2", {}, "Docs a merge left to realign"), h("div", {cls: "panel"},
     book.docs_to_realign ? h("pre", {}, JSON.stringify(book.docs_to_realign, null, 2)) : pendingNote("docs_to_realign")));
+  return out;
+}
+
+// --- kanban (docs/adr/0055 §7) -----------------------------------------
+// The columns and the order inside them are the logbook's (`kanban`): the
+// page filters and groups, and never moves a card. No drag-and-drop, no
+// button on a card: a card moves when the tower moves its ticket.
+function card(t) {
+  return h("a", {cls: "card", href: "#ticket/" + encodeURIComponent(t.id)},
+    h("div", {}, h("b", {}, named(t))),
+    h("div", {cls: "muted"}, h("span", {cls: "chip " + (t.priority ? "pending" : "none")}, t.priority || "unprioritised"), " ",
+      t.feature || "no feature"),
+    t.outcome && t.outcome.verdict !== "pending" ? h("div", {}, chip(t.outcome.verdict)) : null);
+}
+function screenKanban() {
+  const out = [h("h1", {}, "Kanban"),
+    h("p", {cls: "lede"}, "One column per tower state. A card moves only when the tower moves its ticket; feature and priority change by editing the ticket.")];
+  if (unread(book.kanban) || unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(unread(book.kanban) ? book.kanban : book.tickets)));
+  if (!Array.isArray(book.kanban)) return out.concat(h("div", {cls: "panel"}, h("p", {cls: "muted"}, "This logbook has no kanban (written before 1.1).")));
+  const byId = Object.fromEntries(ticketsList().map((t) => [t.id, t]));
+  const features = [...new Set(ticketsList().map((t) => t.feature || ""))].sort();
+  const sel = (value, opts, set) => h("select", {onchange: (e) => { set(e.target.value); render(); }},
+    opts.map(([v, txt]) => h("option", {value: v, selected: v === value}, txt)));
+  out.push(h("p", {cls: "muted"}, "Feature ",
+    sel(kFeature, [["", "all"]].concat(features.map((f) => [f || "-", f || "no feature"])), (v) => { kFeature = v; }),
+    " Priority ", sel(kPriority, [["", "all"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["-", "unprioritised"]], (v) => { kPriority = v; }),
+    " Group by ", sel(kGroup, [["", "nothing"], ["feature", "feature"], ["priority", "priority"]], (v) => { kGroup = v; })));
+  const keep = (t) => (!kFeature || (t.feature || "-") === kFeature) && (!kPriority || (t.priority || "-") === kPriority);
+  const lanes = kGroup ? [...new Set(ticketsList().filter(keep).map((t) => t[kGroup] || ""))]
+    .sort((a, b) => (a || "~").localeCompare(b || "~")) : [null];
+  for (const lane of lanes) {
+    const inLane = (t) => keep(t) && (lane === null || (t[kGroup] || "") === lane);
+    const board = h("div", {cls: "board"}, book.kanban.map((col) => h("div", {cls: "col"},
+      h("h3", {}, col.state + " · " + col.tickets.filter((id) => byId[id] && inLane(byId[id])).length),
+      col.tickets.filter((id) => byId[id] && inLane(byId[id])).map((id) => card(byId[id])))));
+    out.push(h("div", {cls: "lane"},
+      lane === null ? null : h("h2", {}, lane || (kGroup === "priority" ? "unprioritised" : "no feature")),
+      h("div", {cls: "panel"}, board)));
+  }
   return out;
 }
 
@@ -237,7 +287,7 @@ function screenTicket(id) {
   const t = ticketsList().find((x) => x.id === id);
   if (!t) return [h("h1", {}, "Ticket " + id), h("div", {cls: "panel"}, "This ticket is not in the logbook: the tower never opened it, or the store could not be read.")];
   const rows = t.timeline || [];
-  return [h("h1", {}, t.id + " — " + t.title),
+  return [h("h1", {}, named(t)),
     h("p", {cls: "lede"}, "Every phase from the request to the release, one row each, each from its record. Check it against the code host: ",
       h("code", {}, "./go audit TICKET=" + t.id)),
     h("div", {cls: "panel"}, h("p", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge), ": ", h("span", {cls: "mono"}, shown(t.outcome.line)))),
@@ -366,10 +416,11 @@ function render() {
   else if (screen === "launch") body = screenLaunch();
   else if (screen === "thresholds") body = screenThresholds();
   else if (screen === "overview") body = screenOverview();
+  else if (screen === "kanban") body = screenKanban();
   else body = screenTickets();
   const banners = [];
   if (con.read_error) banners.push(h("div", {cls: "banner err"}, "Stale: the last read failed (" + con.read_error + "); showing the last good logbook."));
-  main.replaceChildren(...banners, ...body);
+  main.replaceChildren(...banners, ...body.filter(Boolean));
 }
 async function load() {
   try {

@@ -41,6 +41,9 @@ VAGUE = ("works", "correctly", "properly", "as expected", "as intended", "approp
 _VAGUE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in VAGUE) + r")(?![\w-])", re.I)
 _WORD = {w: re.compile(rf"(?:^|[\s,;.])({w})\b", re.I) for w in ("given", "when", "then")}
 DECISIONS = ("ask_product_owner", "confirm_acceptance")
+# The two optional header fields (docs/adr/0055 §7): their exact values.
+FIELDS = {"Feature": re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$"), "Priority": re.compile(r"^P[0-3]$")}
+_HEADER = re.compile(r"^- ([A-Z][A-Za-z]*): ?(.*)$")
 
 
 def now():
@@ -96,6 +99,24 @@ def flaw(criterion):
     return None
 
 
+def header(text):
+    """{field: [values]} from the `- Key: value` lines before the first `## `."""
+    out = {}
+    for line in text.splitlines():
+        if line.startswith("## "):
+            break
+        m = _HEADER.match(line.rstrip())
+        if m:
+            out.setdefault(m.group(1), []).append(m.group(2).strip())
+    return out
+
+
+def fields(text):
+    """{feature, priority}: each the header's value, or None when absent."""
+    head = header(text)
+    return {k.lower(): (head.get(k) or [None])[0] for k in FIELDS}
+
+
 def check(text):
     """The first reason the spec fails the gate, or None (docs/adr/0055 §4)."""
     criteria = criteria_of(text)
@@ -112,6 +133,14 @@ def check(text):
         return f"no {PERIMETER} section"
     if not any(line.startswith("- ") for line in perimeter):
         return f"{PERIMETER} declares no path"
+    head = header(text)
+    for field, shape in FIELDS.items():
+        values = head.get(field) or []
+        if len(values) > 1:
+            return f"- {field}: is set {len(values)} times"
+        if values and not shape.match(values[0]):
+            want = "P0, P1, P2 or P3" if field == "Priority" else "a slug, lowercase letters and digits joined by hyphens"
+            return f'- {field}: "{values[0]}" is not {want}'
     return None
 
 

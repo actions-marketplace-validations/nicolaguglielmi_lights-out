@@ -22,7 +22,7 @@ Something is wrong.
 
 ## Acceptance criteria
 
-Given a meetup at capacity
+Given a event at capacity
 When a new member signs up
 Then they join the waiting list instead of getting a 409
 
@@ -31,7 +31,7 @@ first member on the list is promoted to attendee
 
 ## Perimeter
 
-- `app/backend/meetups/*.py`
+- `src/events/*.py`
 """
 
 
@@ -70,7 +70,7 @@ class Gate(unittest.TestCase):
         self.assertIn("no ## Acceptance criteria", spec.check(without(GOOD, "## Acceptance")))
 
     def test_an_empty_criteria_section(self):
-        text = GOOD.replace(GOOD[GOOD.index("Given a meetup"):GOOD.index("## Perimeter")], "\n")
+        text = GOOD.replace(GOOD[GOOD.index("Given a event"):GOOD.index("## Perimeter")], "\n")
         self.assertIn("has no criterion", spec.check(text))
 
     def test_a_criterion_without_when_or_then(self):
@@ -78,8 +78,8 @@ class Gate(unittest.TestCase):
         self.assertIn("Then", spec.check(GOOD.replace("Then they join", "So they join")))
 
     def test_the_words_must_come_in_order(self):
-        text = GOOD.replace("Given a meetup at capacity\nWhen a new member signs up\nThen they join",
-                            "Then they join\nWhen a new member signs up\nGiven a meetup at capacity and")
+        text = GOOD.replace("Given a event at capacity\nWhen a new member signs up\nThen they join",
+                            "Then they join\nWhen a new member signs up\nGiven a event at capacity and")
         self.assertIsNotNone(spec.check(text))
 
     def test_a_then_with_no_outcome(self):
@@ -98,17 +98,53 @@ class Gate(unittest.TestCase):
         self.assertIsNone(spec.check(text))
 
     def test_a_vague_word_before_then_is_not_judged(self):
-        self.assertIsNone(spec.check(GOOD.replace("Given a meetup at capacity", "Given a fast meetup")))
+        self.assertIsNone(spec.check(GOOD.replace("Given a event at capacity", "Given a fast event")))
 
     def test_no_perimeter_section(self):
         self.assertEqual(spec.check(without(GOOD, "## Perimeter")), "no ## Perimeter section")
 
     def test_a_perimeter_with_no_path(self):
-        self.assertIn("declares no path", spec.check(GOOD.replace("- `app/backend/meetups/*.py`", "none yet")))
+        self.assertIn("declares no path", spec.check(GOOD.replace("- `src/events/*.py`", "none yet")))
 
     def test_the_first_failure_is_the_criteria_before_the_perimeter(self):
         text = without(GOOD, "## Perimeter").replace("Then they join", "So they join")
         self.assertIn("Then", spec.check(text))
+
+
+class Fields(unittest.TestCase):
+    """§7: Feature and Priority are optional; present, they must be well formed."""
+
+    def with_header(self, *lines):
+        return GOOD.replace("# 0099 — a request\n", "# 0099 — a request\n\n" + "\n".join(lines) + "\n", 1)
+
+    def test_absent_fields_pass_and_read_as_none(self):
+        self.assertIsNone(spec.check(GOOD))
+        self.assertEqual(spec.fields(GOOD), {"feature": None, "priority": None})
+
+    def test_well_formed_fields_pass_and_are_read(self):
+        text = self.with_header("- Status: open", "- Feature: waiting-list", "- Priority: P1")
+        self.assertIsNone(spec.check(text))
+        self.assertEqual(spec.fields(text), {"feature": "waiting-list", "priority": "P1"})
+
+    def test_every_priority_from_p0_to_p3(self):
+        for p in ("P0", "P1", "P2", "P3"):
+            self.assertIsNone(spec.check(self.with_header(f"- Priority: {p}")), p)
+
+    def test_a_malformed_value_is_named(self):
+        for line in ("- Priority: P4", "- Priority: high", "- Priority: p1", "- Feature: Waiting List",
+                     "- Feature: waiting--list", "- Feature: -x", "- Feature:"):
+            field, value = line[2:].split(":", 1)
+            why = spec.check(self.with_header(line))
+            self.assertIsNotNone(why, line)
+            self.assertIn(f'- {field}: "{value.strip()}"', why)
+
+    def test_a_field_set_twice(self):
+        self.assertIn("2 times", spec.check(self.with_header("- Priority: P1", "- Priority: P2")))
+
+    def test_a_field_after_the_first_section_is_not_a_header(self):
+        text = GOOD.replace("Something is wrong.", "Something is wrong.\n\n- Priority: urgent")
+        self.assertIsNone(spec.check(text))
+        self.assertIsNone(spec.fields(text)["priority"])
 
 
 class Answers(unittest.TestCase):
@@ -201,7 +237,7 @@ class Compose(unittest.TestCase):
     def test_the_confirmed_criteria_replace_the_request_s(self):
         out = spec.compose(GOOD, {"spec": {"criteria": ["Given x, when y, then z"]}})
         self.assertIn("Given x, when y, then z", out)
-        self.assertNotIn("Given a meetup", out)
+        self.assertNotIn("Given a event", out)
         self.assertIn("## Perimeter", out)
         self.assertIn("## Problem", out)
         self.assertIsNone(spec.check(out))

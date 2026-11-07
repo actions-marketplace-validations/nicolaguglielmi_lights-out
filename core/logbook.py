@@ -30,13 +30,19 @@ import sys
 
 try:
     from core.policy import PolicyError, effective
+    from core.spec import fields
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
+    from spec import fields
 
 SCHEMA = "lights-out/logbook/1.1"
 # What no record on this branch holds yet (docs/adr/0055 §6): the row or
 # panel is drawn empty and names the milestone that will fill it.
 PENDING = {"wait": "M27 (docs/adr/0053)", "docs_to_realign": "M28 (docs/adr/0054)"}
+# The kanban's columns, the tower's states in its table's order (docs/adr/
+# 0055 §7); a state outside the list gets a column after them.
+COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
+           "needs-human", "merged", "held", "rolled-back")
 _DECIMAL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 _PROVENANCE = re.compile(r"^#\s*Provenance, (measurement|external|decision):\s*(.*)$")
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
@@ -243,12 +249,16 @@ def tickets(rels):
         except ValueError:
             return unread(f"{get} printed no JSON for {tid}")
         file_title, origin = ticket_file_facts(path)
+        with open(path, encoding="utf-8") as fh:
+            declared = fields(fh.read())
         history = doc.get("history") or []
         spec = pick(doc.get("spec"), ("title", "sha256", "criteria", "by", "verdict", "line", "at"))
         out.append({
             "id": tid,
             "title": (spec or {}).get("title") or file_title or tid,
             "origin": origin,
+            "feature": declared["feature"],
+            "priority": declared["priority"],
             "perimeter": perimeter(path),
             "state": doc.get("state"),
             "attempt": doc.get("attempt"),
@@ -270,6 +280,21 @@ def tickets(rels):
             "timeline": timeline(doc, tid, rels, perimeter(path)),
         })
     return out
+
+
+def kanban(tickets):
+    """One column per state, every ticket on one card in its state's column,
+    P0 first and unprioritised last, then the oldest, then the id (§7)."""
+    if not isinstance(tickets, list):
+        return tickets
+    states = list(COLUMNS) + sorted({t["state"] for t in tickets if t["state"] not in COLUMNS}, key=str)
+    rank = {f"P{n}": n for n in range(4)}
+
+    def order(t):
+        return rank.get(t["priority"], 4), t["opened_at"] or "~", t["id"]
+
+    return [{"state": st, "tickets": [t["id"] for t in sorted(tickets, key=order) if t["state"] == st]}
+            for st in states]
 
 
 # --- the timeline (docs/adr/0055 §6) -----------------------------------------
@@ -551,10 +576,12 @@ def main(argv):
 
     record = read_json(env("RELEASE_RECORD", ".crew/release.json"))
     rels = releases(record)
+    held = tickets(rels)
     book = {
         "schema": SCHEMA,
         "source": source(),
-        "tickets": tickets(rels),
+        "tickets": held,
+        "kanban": kanban(held),
         "releases": rels,
         "postmortems": postmortems(),
         "thresholds": thresholds(),
