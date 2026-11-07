@@ -98,7 +98,7 @@ command writes to your repository.
 
 | File | What it is |
 |---|---|
-| `workload.env` | The eleven keys, below, each under a provenance line |
+| `workload.env` | The twelve keys, below, each under a provenance line |
 | `worker.md` | The dev-worker's brief: `## Scope` (the paths it may change) and `## Tests` (the exact command, and where to run it) |
 | `policy.env` | Your thresholds. A draft overrides none: every threshold is the platform default (section 3) |
 | `runners/` | The stack's runners, copied from `stacks/<stack>/runners/`: cosmic-ray and bandit for python, StrykerJS and eslint with eslint-plugin-security for javascript. Each set is pinned by its own lockfile |
@@ -114,10 +114,11 @@ still prints each excused finding on stderr ([ADR 0049](adr/0049-lights-out-judg
 
 The plane half is in section 2.
 
-### The eleven keys
+### The twelve keys
 
-`ci/workloads.sh` checks these eleven keys. The first seven are ADR 0030's
-contract. The last four are ADR 0042's runner contract.
+`ci/workloads.sh` checks these twelve keys. The first seven are ADR 0030's
+contract, `WORKLOAD_TEST_PATHS` is ADR 0053's, and the last four are ADR
+0042's runner contract.
 
 | Key | What it says |
 |---|---|
@@ -128,6 +129,7 @@ contract. The last four are ADR 0042's runner contract.
 | `WORKLOAD_LOCKFILES` | Lockfiles for the dependency gate, `:`-separated |
 | `WORKLOAD_MUTATION_SCOPE` | The source directory the mutation gate reads |
 | `WORKLOAD_TEST_ROOT` | The prefix stripped to address lines in the compose test image (may be empty). On the workbench and image forms, the directory the three commands run from |
+| `WORKLOAD_TEST_PATHS` | Which files are tests, `:`-separated globs relative to the repository's root, `*` crossing `/`. `test-proof` runs the ones a change adds or edits on the base, where they must fail; `test-weakening` refuses a change that deletes them, drops assertions or tests, or adds skips. `./go init` drafts your stack's default discovery |
 | `TOOLCHAIN_IMAGE` | Where the three toolchain gates run their commands: `workbench`, `compose:<service>` or an image reference. The three forms are below |
 | `TEST_CMD` | The test command, one `sh -c` line, run from the repository's root. Its exit code is the verdict of the `test` gate |
 | `SAST_CMD` | The static analysis command, one `sh -c` line. It prints one line, `{"findings": N}`. Any finding is a NO-GO. A non-zero exit with no findings parsed is one too |
@@ -135,6 +137,12 @@ contract. The last four are ADR 0042's runner contract.
 
 A key that is empty or names a missing path makes its gate answer NO-GO and
 name the key. A typo never turns into a silent GO.
+
+A ticket that removes tests on purpose (a dead feature, a refactor that
+merges two suites) says so in a `## Removes tests` section, list items of
+globs in the `## Perimeter` form. `test-weakening` excuses the files it
+matches and prints each one on stderr; without the section, nothing is
+excused ([ADR 0053](adr/0053-tests-that-prove-and-tickets-that-wait.md)).
 
 The three `*_CMD` keys run from the repository's root. On the workbench and
 image forms they run from `WORKLOAD_TEST_ROOT`; `compose:` runs them where the
