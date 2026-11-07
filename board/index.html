@@ -258,14 +258,14 @@ pre{margin:0;font-size:11.5px;line-height:1.5;color:var(--ink2);white-space:pre-
 <!-- core/tower.sh's transition table. ci/board.sh fails when it drifts. -->
 <script type="application/json" id="tower-machine">
 {
-  "precondition": {"clarify": "requested", "answer": "questions", "spec": "spec-ready", "assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "release": "merged", "rework": "ci-failed"},
-  "next": {"requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "release", "ci-failed": "rework"}
+  "precondition": {"clarify": "requested", "answer": "questions", "spec": "spec-ready", "assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "mainline": "merged", "release": "main-green", "rework": "ci-failed"},
+  "next": {"requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "mainline", "main-green": "release", "ci-failed": "rework"}
 }
 </script>
 <script>
 "use strict";
 const MACHINE = JSON.parse(document.getElementById("tower-machine").textContent);
-const STATES = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed", "needs-human", "merged", "held", "rolled-back"];
+const STATES = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed", "needs-human", "merged", "main-green", "held", "rolled-back"];
 const GATES = ["risk", "secrets", "deps", "sast", "test", "mutation"];
 
 // ---- the stations -------------------------------------------------------
@@ -846,7 +846,7 @@ function liveView() {
     if (h.some(x => x.error) || lastErr) v.locks.stranded = lastErr ? "on" : "off";
     const st = d.state;
     v.nodes.ticket = "go";
-    const after = ["pr-opened","review","ci-passed","ci-failed","needs-human","merged","held","rolled-back"];
+    const after = ["pr-opened","review","ci-passed","ci-failed","needs-human","merged","main-green","held","rolled-back"];
     if (after.includes(st)) Object.assign(v.nodes, {crew:"go", perimeter:"go", pr:"go"}), v.locks.perimeter = "ok";
     if (st === "opened") { v.focus = ["crew"]; v.br = "assign"; if (lastErr) v.nodes.crew = "nogo"; }
     if (st === "pr-opened") { v.focus = ["gates"]; v.br = "ci"; if (lastErr) v.nodes.gates = "nogo"; }
@@ -860,13 +860,14 @@ function liveView() {
     }
     if (st === "review") { v.nodes.risk = "held"; v.focus = ["review"]; v.br = "ci"; }
     if (d.review) { v.nodes.review = d.review.verdict === "approved" ? "go" : "nogo"; v.out.push(`review ${d.review.role}: ${d.review.verdict} — ${d.review.reason || ""}`.trim()); }
-    if (["ci-passed","merged","held","rolled-back"].includes(st)) v.nodes.risk = "go";
+    if (["ci-passed","merged","main-green","held","rolled-back"].includes(st)) v.nodes.risk = "go";
     if (st === "ci-passed") { v.focus = ["merge"]; v.br = "merge"; if (lastErr) v.nodes.merge = "nogo"; }
     if (st === "ci-failed") { v.nodes.merge = "skip"; v.nodes.build = "skip"; v.focus = ["crew"]; v.br = "assign"; if (lastErr) v.nodes.crew = "nogo"; }
     if (st === "needs-human") { v.nodes.merge = "skip"; v.nodes.build = "skip"; }
     (d.rework || []).forEach(r => v.out.push(`rework: attempt ${r.attempt} sent back by the ${r.judge}`));
-    if (["merged","held","rolled-back"].includes(st)) { v.nodes.merge = "go"; v.locks.pinned = "on"; }
-    if (st === "merged") { v.focus = ["build"]; v.br = "release"; if (lastErr) v.nodes.build = "nogo"; }
+    if (["merged","main-green","held","rolled-back"].includes(st)) { v.nodes.merge = "go"; v.locks.pinned = "on"; }
+    if (st === "merged" || st === "main-green") { v.focus = ["build"]; v.br = "release"; if (lastErr) v.nodes.build = "nogo"; }
+    if (d.mainline && d.mainline.line) v.out.push(d.mainline.line);
     if (["held","rolled-back"].includes(st)) { v.nodes.build = "go"; v.locks.signed = "on"; }
     if (d.release && d.release.verdict) v.out.push(d.release.verdict);
     document.getElementById("doc-sub").textContent = t.title;

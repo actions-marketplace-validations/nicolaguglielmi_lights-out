@@ -1,0 +1,4 @@
+{
+  "title": "Name the app's database connections",
+  "body": "Every connection get_db() opens now carries application_name=meetups,\nso Postgres's pg_stat_activity tells the app's sessions from the\nmigrations' and the tests'.\n\nHand-written L0 fixture for ticket 0022 (docs/adr/0056 §7): no model\nwrote this change."
+}

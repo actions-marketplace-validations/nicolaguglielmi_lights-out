@@ -3,7 +3,11 @@
 #
 # step-merge (docs/adr/0019 §1, §5): merges the PR through the code host
 # at the head CI judged — `ci.head_sha` in the document — and records the
-# merge sha and the head it merged. A head that moved since CI fails the
+# merge sha and the head it merged. First the re-judge rule (docs/adr/
+# 0056 §1, core/mainline.py): main moved since the PR's base by a commit
+# that touched the ticket's perimeter prints ci-failed and merges nothing;
+# moved elsewhere, it merges without the gates running again. A head that
+# moved since CI fails the
 # step (ticket 0010): the adapter refuses to merge it, and a head the
 # adapter reports that is not the judged one is refused here as well.
 # Then the project map is rebuilt at the merge (docs/adr/0054 §4).
@@ -11,7 +15,7 @@
 # merge.sh on a PR the host already reports merged performs nothing and
 # prints the same two shas, so a tower that died between the effect and
 # the write advances the document on the retry without a second merge.
-# Next state: merged.
+# Next state: merged, or ci-failed from the re-judge rule.
 set -eu
 : "${TICKET:?TICKET not set}"
 : "${PR_NUMBER:?PR_NUMBER not set}"
@@ -21,6 +25,8 @@ set -eu
 judged=$(jq -r '.ci.head_sha // empty' "$DOC_FILE")
 [ -n "$judged" ] || { printf 'step-merge: %s has no ci.head_sha; nothing was judged\n' "$DOC_FILE" >&2; exit 1; }
 
+rejudged=$(python3 core/mainline.py rejudge) || exit 1
+[ -z "$rejudged" ] || { printf '%s\n' "$rejudged"; exit 0; }
 shas=$(sh "adapters/$CODE_HOST/merge.sh" "$PR_NUMBER" "$judged") \
   || { printf 'step-merge: PR #%s not merged; CI judged head %s\n' "$PR_NUMBER" "$judged" >&2; exit 1; }
 merge_sha=${shas%% *}

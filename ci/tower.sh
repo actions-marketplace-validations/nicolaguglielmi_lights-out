@@ -37,9 +37,10 @@ root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/adapters/stub-state" "$root/adapters/stub-bus" "$root/adapters/stub-codehost" \
   "$root/steps" "$root/state" "$root/bus" "$root/world" "$root/core"
-# core/ file by file: everything is the repo's own except crew.sh (below).
+# core/ file by file: everything is the repo's own except crew.sh and
+# mainline.py (below).
 for f in "$repo"/core/*; do
-  [ "$(basename "$f")" = crew.sh ] || ln -s "$f" "$root/core/$(basename "$f")"
+  case "$(basename "$f")" in crew.sh|mainline.py) ;; *) ln -s "$f" "$root/core/$(basename "$f")" ;; esac
 done
 ln -s "$repo/policy" "$root/policy"
 ln -s "$repo/ci" "$root/ci"
@@ -177,6 +178,15 @@ d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 printf 'release\n' >> "$d/effects.log"
 printf '%s\n' '{"state":"rolled-back","release":{"version":"0.2.0-waitlist","verdict":"NO-GO: launchpad — 5%: stub","numbers":["slo: stub"],"image":"stub"}}'
 STUB
+# mainline: main's head judged green (docs/adr/0056 §3); the check itself
+# is ci/mainline.sh's subject.
+cat > "$root/steps/mainline.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+printf 'mainline\n' >> "$d/effects.log"
+jq -cn --arg m "$(jq -r .merge.sha "$DOC_FILE")" '{state: "main-green", mainline: {verdict: "GO", green: $m}}'
+STUB
 ln -s "$repo/core/steps/merge.sh" "$root/steps/merge.sh"
 ln -s "$repo/core/steps/rework.sh" "$root/steps/rework.sh"
 
@@ -209,6 +219,13 @@ mkdir -p "$d/.crew/$TICKET/out"
 printf 'PR_NUMBER=1\nPR_URL=stub://pr/1\nBASE_SHA=base\nHEAD_SHA=%s\n' "$head" > "$d/.crew/$TICKET/pr-opened.env"
 printf '%s\n' '{"harness":"stub","model":null}' > "$d/.crew/$TICKET/out/run.json"
 printf 'GO: crew\n'
+STUB
+
+# The re-judge rule merge.sh runs first (docs/adr/0056 §1) is ci/mainline.sh's
+# subject; here main never moved, so it has nothing to say.
+cat > "$root/core/mainline.py" <<'STUB'
+import sys
+sys.exit(0 if sys.argv[1:] == ["rejudge"] else 2)
 STUB
 
 export STATE_STORE=stub-state EVENT_BUS=stub-bus CODE_HOST=stub-codehost TOWER_STEPS="$root/steps"
@@ -245,13 +262,13 @@ sh core/tower.sh open 0001 2>"$log" || fail_case a-open "open exited $?"
 if [ -z "$mismatch" ]; then
   sh adapters/inproc/run.sh 2>"$log" || fail_case a-run "inproc run exited $?"
   [ "$(doc | jq -r .state)" = rolled-back ] || fail_case a-final "final state $(doc | jq -r .state), want rolled-back"
-  [ "$(effects)" = "assign,ci,merge performed 1,release," ] || fail_case a-effects "effects: $(effects)"
+  [ "$(effects)" = "assign,ci,merge performed 1,mainline,release," ] || fail_case a-effects "effects: $(effects)"
   [ "$(queue)" = 0 ] || fail_case a-queue "queue not empty after the run"
-  [ "$(doc | jq '.history | length')" = 5 ] || fail_case a-history "history has $(doc | jq '.history | length') entries, want 5"
+  [ "$(doc | jq '.history | length')" = 6 ] || fail_case a-history "history has $(doc | jq '.history | length') entries, want 6"
   [ "$(doc | jq -r .merge.sha)" = merge-of-head1 ] || fail_case a-merge "merge.sha not recorded from the code host"
   # docs/adr/0038 golden-rule check: a ticket the gates pass first time
   # never takes the rework lines; every entry after assign carries attempt 1.
-  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-passed@1,merge>merged@1,release>rolled-back@1" ] \
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-passed@1,merge>merged@1,mainline>main-green@1,release>rolled-back@1" ] \
     || fail_case a-trail "history: $(trail)"
   [ "$(doc | jq '(.rework // []) | length')" = 0 ] || fail_case a-trail "a first-time GO left a rework record"
 fi
@@ -270,7 +287,7 @@ if [ -z "$mismatch" ]; then
     fail_case a-review-approve "run failed"
   fi
   [ "$(doc | jq -r .state)" = rolled-back ] || fail_case a-review-approve "final state $(doc | jq -r .state), want rolled-back"
-  [ "$(effects)" = "assign,ci,review,merge performed 1,release," ] || fail_case a-review-approve "effects: $(effects)"
+  [ "$(effects)" = "assign,ci,review,merge performed 1,mainline,release," ] || fail_case a-review-approve "effects: $(effects)"
   [ "$(queue)" = 0 ] || fail_case a-review-approve "queue not empty after the run"
   [ "$(doc | jq -r .review.verdict)" = approved ] || fail_case a-review-approve "review.verdict not recorded"
 fi
@@ -283,7 +300,7 @@ if [ -z "$mismatch" ]; then
   sh adapters/stub-bus/publish.sh '{"ticket":"0001","step":"ci"}' || fail_case b "could not publish the duplicate"
   sh adapters/inproc/run.sh 2>"$log" || fail_case b "second run exited $?"
   grep -q 'ci already applied' "$log" || fail_case b "no 'already applied' line on a duplicate event"
-  [ "$(effects)" = "assign,ci,merge performed 1,release," ] || fail_case b "duplicate event had an effect: $(effects)"
+  [ "$(effects)" = "assign,ci,merge performed 1,mainline,release," ] || fail_case b "duplicate event had an effect: $(effects)"
   [ "$(doc)" = "$before" ] || fail_case b "duplicate event changed the document"
 fi
 
@@ -307,8 +324,8 @@ if [ -z "$mismatch" ]; then
   [ "$(doc | jq -r .state)" = merged ] || fail_case d "state $(doc | jq -r .state), want merged"
   [ "$(doc | jq -r .merge.sha)" = X ] || fail_case d "merge.sha $(doc | jq -r .merge.sha), want the host's X"
   [ "$(doc | jq -r .merge.head_sha)" = head1 ] || fail_case d "merge.head_sha not the host's head"
-  [ "$(queue)" = 1 ] && [ "$(sh adapters/stub-bus/pull.sh | jq -r .step 2>/dev/null || cat bus/*.msg | jq -r .step)" = release ] \
-    || fail_case d "release was not requested after the recovered merge"
+  [ "$(queue)" = 1 ] && [ "$(sh adapters/stub-bus/pull.sh | jq -r .step 2>/dev/null || cat bus/*.msg | jq -r .step)" = mainline ] \
+    || fail_case d "mainline was not requested after the recovered merge (docs/adr/0056 §2)"
 fi
 
 # (e) a failing step: exit 1, nothing published, state and fields
@@ -378,9 +395,9 @@ if [ -z "$mismatch" ]; then
   [ "$(queue)" = 1 ] || fail_case g-resume "resume queued $(queue) events, want 1"
   sh adapters/inproc/run.sh 2>"$log" || fail_case g-resume "the resumed run exited $?"
   [ "$(doc | jq -r .state)" = rolled-back ] || fail_case g-resume "final state $(doc | jq -r .state), want rolled-back"
-  [ "$(effects)" = "assign,ci,ci,merge performed 1,release," ] || fail_case g-resume "effects: $(effects)"
+  [ "$(effects)" = "assign,ci,ci,merge performed 1,mainline,release," ] || fail_case g-resume "effects: $(effects)"
   steps=$(doc | jq -r '[.history[] | .step + (if .error then "!" else "" end)] | join(",")')
-  [ "$steps" = "open,assign,ci!,resume,ci,merge,release" ] || fail_case g-resume "history steps: $steps"
+  [ "$steps" = "open,assign,ci!,resume,ci,merge,mainline,release" ] || fail_case g-resume "history steps: $steps"
   out=$(audit) || true
   [ "$out" = "GO: audit" ] || fail_case g-resume-audit "audit after a resumed run: $out"
 fi
@@ -426,9 +443,9 @@ if [ -z "$mismatch" ]; then
   reset
   reworked STUB_CI=fail-once || fail_case i "run failed"
   [ "$(doc | jq -r .state)" = rolled-back ] || fail_case i-final "final state $(doc | jq -r .state), want rolled-back"
-  [ "$(effects)" = "assign,ci,crew 2,ci,merge performed 1,release," ] || fail_case i-effects "effects: $(effects)"
+  [ "$(effects)" = "assign,ci,crew 2,ci,merge performed 1,mainline,release," ] || fail_case i-effects "effects: $(effects)"
   [ "$(queue)" = 0 ] || fail_case i-queue "queue not empty after the run"
-  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework>pr-opened@2,ci>ci-passed@2,merge>merged@2,release>rolled-back@2" ] \
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework>pr-opened@2,ci>ci-passed@2,merge>merged@2,mainline>main-green@2,release>rolled-back@2" ] \
     || fail_case i-trail "history: $(trail)"
   # What survives of the rejected attempt: one entry, with the gate's own words.
   [ "$(doc | jq '.rework | length')" = 1 ] || fail_case i-rework "rework has $(doc | jq '.rework | length') entries, want 1"
@@ -458,8 +475,8 @@ if [ -z "$mismatch" ]; then
   reset
   reworked STUB_CI=review STUB_REVIEW=reject-once || fail_case j "run failed"
   [ "$(doc | jq -r .state)" = rolled-back ] || fail_case j-final "final state $(doc | jq -r .state), want rolled-back"
-  [ "$(effects)" = "assign,ci,review,crew 2,ci,review,merge performed 1,release," ] || fail_case j-effects "effects: $(effects)"
-  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>review@1,review>ci-failed@1,rework>pr-opened@2,ci>review@2,review>ci-passed@2,merge>merged@2,release>rolled-back@2" ] \
+  [ "$(effects)" = "assign,ci,review,crew 2,ci,review,merge performed 1,mainline,release," ] || fail_case j-effects "effects: $(effects)"
+  [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>review@1,review>ci-failed@1,rework>pr-opened@2,ci>review@2,review>ci-passed@2,merge>merged@2,mainline>main-green@2,release>rolled-back@2" ] \
     || fail_case j-trail "history: $(trail)"
   [ "$(doc | jq '.rework | length')" = 1 ] || fail_case j-rework "rework has $(doc | jq '.rework | length') entries, want 1"
   [ "$(doc | jq -r '.rework[0] | "\(.attempt) \(.judge) \(.head_sha)"')" = "1 review head1" ] \
@@ -556,8 +573,8 @@ if [ -z "$mismatch" ]; then
     [ "$(cat bus/*.msg | jq -r .step)" = rework ] || fail_case l-resume "resume requested $(cat bus/*.msg | jq -r .step), want rework"
     STUB_CI=fail-once sh adapters/inproc/run.sh 2>"$log" || fail_case l-resume "the resumed run exited $?"
     [ "$(doc | jq -r .state)" = rolled-back ] || fail_case l-resume "final state $(doc | jq -r .state), want rolled-back"
-    [ "$(effects)" = "assign,ci,crew 2,crew 2,ci,merge performed 1,release," ] || fail_case l-resume "effects: $(effects)"
-    [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework!>ci-failed@1,resume>ci-failed@1,rework>pr-opened@2,ci>ci-passed@2,merge>merged@2,release>rolled-back@2" ] \
+    [ "$(effects)" = "assign,ci,crew 2,crew 2,ci,merge performed 1,mainline,release," ] || fail_case l-resume "effects: $(effects)"
+    [ "$(trail)" = "open>opened@-,assign>pr-opened@1,ci>ci-failed@1,rework!>ci-failed@1,resume>ci-failed@1,rework>pr-opened@2,ci>ci-passed@2,merge>merged@2,mainline>main-green@2,release>rolled-back@2" ] \
       || fail_case l-resume "history: $(trail)"
     [ "$(doc | jq -r '"\(.rework | length) \(.rework[0].attempt)"')" = "1 1" ] \
       || fail_case l-resume "rework after the resume: $(doc | jq -c .rework)"

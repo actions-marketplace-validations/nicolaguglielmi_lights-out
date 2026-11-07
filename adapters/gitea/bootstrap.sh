@@ -57,8 +57,12 @@ curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" -H 
 # 4. Mirror the workload repository's HEAD onto Gitea's main. Force: the
 # L0 repo is a mirror of the local clone, not a place to keep hand-made
 # history; merged changes are fetched from it before the next assign.
-git -C "${WORKLOAD:-$here}" push --force "$GITEA_PUSH_URL" HEAD:refs/heads/main >&2 \
-  || { printf 'bootstrap-gitea: push to main failed\n' >&2; exit 1; }
+# CODE_HOST_KEEP_MAIN (core/crew.sh, a rework): main stays as the tower
+# left it (docs/adr/0056 §6); otherwise the replay starts from this checkout.
+if [ -z "${CODE_HOST_KEEP_MAIN:-}" ]; then
+  git -C "${WORKLOAD:-$here}" push --force "$GITEA_PUSH_URL" HEAD:refs/heads/main >&2 \
+    || { printf 'bootstrap-gitea: push to main failed\n' >&2; exit 1; }
+fi
 
 # 5. Wait until Gitea has processed that push. The repo is created empty
 # and stays `empty: true` until the post-receive hook has run, which is

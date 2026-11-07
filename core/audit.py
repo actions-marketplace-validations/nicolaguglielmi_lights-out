@@ -27,7 +27,7 @@ except ImportError:  # run as a script: core/ is sys.path[0]
 
 # States past each point of the chain, so the links it needs.
 RELEASED = ("rolled-back", "held")
-MERGED = ("merged",) + RELEASED
+MERGED = ("merged", "main-green") + RELEASED
 JUDGED = ("ci-passed", "review", "ci-failed", "needs-human") + MERGED
 # Past the review: "review" itself means the reviewer has not run yet.
 REVIEWED = ("ci-passed", "ci-failed", "needs-human") + MERGED
@@ -99,7 +99,9 @@ def check(doc, host):
         return
     host_merged = field(host, ".merged")
     host_merge = field(host, ".merge_sha")
-    if state in MERGED:
+    # A merge the main check reverted (docs/adr/0056 §4) is merged on the
+    # code host while the ticket is back at ci-failed for its rework.
+    if state in MERGED or field(doc, ".mainline.judge") == "main":
         if host_merged != "true":
             raise Refused(f"state store says {state}, code host says PR #{number} is "
                           f"{field(host, '.state')} and not merged")
@@ -125,8 +127,11 @@ def chain(doc, ticket):
         lines += ["         " + interpolated(n) for n in (dig(doc, "release", "numbers") or [])]
         lines.append(f"         image: {f('.release.image')}")
         lines.append(f"  ← merge  {f('.merge.sha')} (code host agrees)")
-    elif state == "merged":
-        lines.append(f"merge    {f('.merge.sha')} (code host agrees), not released")
+    elif state in ("merged", "main-green"):
+        lines.append(f"merge    {f('.merge.sha')} (code host agrees), "
+                     f"{'on a green main, ' if state == 'main-green' else ''}not released")
+    elif f(".mainline.judge") == "main":
+        lines.append(f"PR       stopped at {state}: merged as {f('.merge.sha')}, reverted ({f('.mainline.line')})")
     else:
         lines.append(f"PR       stopped at {state}")
     lines.append(f"  ← PR     #{f('.pr.number')} {f('.pr.url')} (gates {f('.ci.verdict')}, "

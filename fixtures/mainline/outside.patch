@@ -1,0 +1,22 @@
+From 2f6ee11d020f13fb4de28003fb2bab7b11da0b0e Mon Sep 17 00:00:00 2001
+From: a-person <person@lights-out.invalid>
+Date: Sat, 7 Nov 2026 19:07:26 +0100
+Subject: [PATCH] db: say when a connection closes
+
+---
+ app/backend/meetups/db.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/app/backend/meetups/db.py b/app/backend/meetups/db.py
+index 29d4b3f..6a6c0f9 100644
+--- a/app/backend/meetups/db.py
++++ b/app/backend/meetups/db.py
+@@ -1,4 +1,4 @@
+-"""One psycopg connection per request, no pool (docs/adr/0005)."""
++"""One psycopg connection per request, no pool, closed when the request ends (docs/adr/0005)."""
+ 
+ import os
+ from collections.abc import Iterator
+-- 
+2.54.0 (Apple Git-157)
+

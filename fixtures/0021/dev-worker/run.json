@@ -1,0 +1,6 @@
+{
+  "hand_written": true,
+  "model": null,
+  "attempt": 1,
+  "note": "Written by hand to prove main always green at L0 (docs/adr/0056 \u00a77): ticket 0021's change. No model produced this patch."
+}
