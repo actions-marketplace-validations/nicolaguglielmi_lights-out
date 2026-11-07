@@ -400,15 +400,15 @@ async def shots(site, out):
 
 # The console's screens as stills (docs/adr/0047, docs/adr/0055), served by
 # console/serve.py itself in snapshot mode, where nothing can be pressed:
-# (still, logbook, screen, hide the empty columns). The overview and ticket
+# (still, logbook, screen, hide the empty columns, viewport). The overview and ticket
 # 0001's timeline read the committed snapshot of a real ./go demo
 # (console/snapshot/README.md names its run). The kanban reads the logbook
 # ci/logbook.sh builds over stub sources, the one with tickets in more states
 # than one demo leaves; the landing says so under it.
 CONSOLE = [
-    ("console-kanban", "fixtures/logbook/golden-1.1.json", "kanban", True),
-    ("console-ticket", "console/snapshot/logbook.json", "ticket/0001", False),
-    ("console-overview", "console/snapshot/logbook.json", "overview", False),
+    ("console-kanban", "fixtures/logbook/golden-1.1.json", "kanban", True, (1520, 560)),
+    ("console-ticket", "console/snapshot/logbook.json", "ticket/0001", False, (1440, 1560)),
+    ("console-overview", "console/snapshot/logbook.json", "overview", False, (1440, 820)),
 ]
 
 
@@ -435,10 +435,10 @@ async def stills(site):
     media.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        for name, logbook, screen, hide in CONSOLE:
+        for name, logbook, screen, hide, (w, h) in CONSOLE:
             proc, base = console(logbook)
             try:
-                ctx = await browser.new_context(viewport={"width": 1440, "height": 1000}, device_scale_factor=2,
+                ctx = await browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=2,
                                                 color_scheme="light")
                 page = await ctx.new_page()
                 await page.goto(f"{base}/#{screen}")
@@ -446,7 +446,7 @@ async def stills(site):
                 if hide:
                     await page.locator("main select").last.select_option("hide")
                     await page.wait_for_timeout(200)
-                jpg(await page.screenshot(type="png"), media / f"{name}.jpg", 1440)
+                jpg(await page.screenshot(type="png"), media / f"{name}.jpg", w)
                 await ctx.close()
             finally:
                 proc.kill()
