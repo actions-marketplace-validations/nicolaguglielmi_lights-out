@@ -541,9 +541,10 @@ def drift(repo, targets, exclude=(), tickets="tickets", known=()):
             continue
         found += [(path, line, kind, target)
                   for kind, target, line, ok in citations(path, tree.text(path), tree, targets, words) if not ok]
-    # A path git ignores is one a run writes (.crew/, .env), not a claim about the tree.
+    # A path the repository ignores is one a run writes (.crew/, .env), not a
+    # claim about the tree; a contributor's own global excludes play no part.
     paths = sorted({t for _, _, k, t in found if k == "path"})
-    ignored = set(git(repo, "check-ignore", "--no-index", "--stdin",
+    ignored = set(git(repo, "-c", "core.excludesFile=/dev/null", "check-ignore", "--no-index", "--stdin",
                       data="".join(f"{p}\n{p}/\n" for p in paths).encode(), ok=(0, 1)).decode().splitlines()) if paths else set()
     return [f"{p}:{n}: {k} {t} names nothing" for p, n, k, t in found
             if not (k == "path" and (t in ignored or f"{t}/" in ignored))]

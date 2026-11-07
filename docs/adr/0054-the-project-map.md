@@ -94,8 +94,9 @@ tree, and linked ADR 0020 through a path relative to the wrong directory.
      line, `GO: docs-drift` or `NO-GO: docs-drift — <n> citation(s) name
      nothing`, each finding (`<page>:<line>: <kind> <target> names
      nothing`) on stderr. It reads the working tree, so it judges what is
-     about to be committed; a path git ignores is a path a run writes
-     (`.crew/`, `.env`), not a claim. It proves it can fail first, on a
+     about to be committed; a path the repository's `.gitignore` ignores is
+     a path a run writes (`.crew/`, `.env`), not a claim. A contributor's
+     global excludes play no part, so every clone gets the same answer. It proves it can fail first, on a
      built tree with a missing path, an unknown target and an unknown key.
    - Its scope is every page except `MAP_EXCLUDE`, set in the `Makefile`:
      `docs/PLAN.md` and `docs/plans/*` (plans describe what does not exist
