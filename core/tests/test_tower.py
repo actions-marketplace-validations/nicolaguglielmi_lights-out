@@ -1,5 +1,6 @@
-"""Tests for core/tower.py, written from docs/adr/0019 §1-§2, docs/adr/0034
-and docs/adr/0038 §9, never from the implementation.
+"""Tests for core/tower.py, written from docs/adr/0019 §1-§2, docs/adr/0034,
+docs/adr/0038 §9 and docs/adr/0055 §1, §2, §5, never from the
+implementation.
 
 Each test runs the machine in-process in a temp root with file-backed stub
 ports: a StateStore that keeps one file per document, an EventBus that
@@ -115,7 +116,7 @@ class Usage(TowerCase):
             self.assertIsNone(self.doc())
 
     def test_a_command_and_a_ticket_are_required(self):
-        for argv in ((), ("open",), ("close", "0001"), ("", "0001")):
+        for argv in ((), ("open",), ("request",), ("close", "0001"), ("", "0001")):
             code, err = self.run_tower(*argv)
             self.assertEqual(code, 2, argv)
             self.assertIn("usage:", err)
@@ -129,19 +130,22 @@ class Usage(TowerCase):
 
 
 class Transitions(unittest.TestCase):
-    """The states and steps of docs/adr/0019 §1, with rework from docs/adr/0038."""
+    """The states and steps of docs/adr/0019 §1, with rework from docs/adr/0038
+    and the three states before `opened` from docs/adr/0055 §1."""
 
     def test_each_step_starts_from_its_state(self):
         self.assertEqual(tower.PRECONDITION, {
+            "clarify": "requested", "answer": "questions", "spec": "spec-ready",
             "assign": "opened", "ci": "pr-opened", "review": "review",
             "merge": "ci-passed", "release": "merged", "rework": "ci-failed"})
 
     def test_each_state_requests_the_next_step_or_nothing(self):
         self.assertEqual(tower.NEXT, {
+            "requested": "clarify", "spec-ready": "spec", "opened": "assign",
             "pr-opened": "ci", "review": "review", "ci-passed": "merge",
             "merged": "release", "ci-failed": "rework"})
-        for terminal in ("rolled-back", "held", "needs-human"):
-            self.assertNotIn(terminal, tower.NEXT)
+        for waiting in ("questions", "rolled-back", "held", "needs-human"):
+            self.assertNotIn(waiting, tower.NEXT)
 
 
 class Step(TowerCase):
@@ -429,6 +433,108 @@ class JqSemantics(unittest.TestCase):
         self.assertEqual(tower.attempt({"attempt": 0}), {"attempt": 0})
         self.assertEqual(tower.attempt({"attempt": None}), {})
         self.assertEqual(tower.attempt({}), {})
+
+
+class Request(TowerCase):
+    """docs/adr/0055 §1: a request starts at `requested` and asks for clarify."""
+
+    def test_writes_the_document_at_requested_and_requests_clarify(self):
+        code, err = self.run_tower("request", "0001")
+        self.assertEqual(code, 0)
+        doc = self.doc()
+        self.assertEqual((doc["id"], doc["state"]), ("0001", "requested"))
+        self.assertEqual([(h["step"], h["state"]) for h in doc["history"]], [("request", "requested")])
+        self.assertRegex(doc["history"][0]["at"], STAMP)
+        self.assertEqual(self.published(), [{"ticket": "0001", "step": "clarify"}])
+
+    def test_an_unpublished_clarify_is_a_failure(self):
+        self.fail("publish")
+        code, err = self.run_tower("request", "0001")
+        self.assertEqual(code, 1)
+        self.assertIn("could not publish clarify", err)
+
+    def test_a_spec_gate_go_requests_assign(self):
+        self.put_doc({"id": "0001", "state": "spec-ready", "history": []})
+        self.step_script("spec", 'echo \'{"state": "opened", "spec": {"verdict": "GO"}}\'\n')
+        code, _ = self.run_tower("step", "0001", "spec")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.doc()["state"], "opened")
+        self.assertEqual(self.published(), [{"ticket": "0001", "step": "assign"}])
+
+    def test_questions_requests_nothing(self):
+        self.put_doc({"id": "0001", "state": "requested", "history": []})
+        self.step_script("clarify", 'echo \'{"state": "questions", "questions": [{"question": "q?"}]}\'\n')
+        self.assertEqual(self.run_tower("step", "0001", "clarify")[0], 0)
+        self.assertEqual(self.doc()["state"], "questions")
+        self.assertEqual(self.published(), [])
+
+
+class Answer(TowerCase):
+    """docs/adr/0055 §2: a person's answer on the open question, then `answer`."""
+
+    def setUp(self):
+        super().setUp()
+        self.put_doc({"id": "0001", "state": "questions", "history": [],
+                      "questions": [{"question": "first?", "answer": "yes"}, {"question": "second?"}]})
+
+    def answer(self, **env):
+        return self.run_tower("answer", "0001", env=dict(ENV, **env))
+
+    def test_records_who_answered_how_and_when_then_requests_answer(self):
+        code, err = self.answer(ANSWER="  waiting list  ", ANSWER_BY="ada@example.org", ANSWER_VIA="console")
+        self.assertEqual(code, 0)
+        q = self.doc()["questions"]
+        self.assertEqual(q[0], {"question": "first?", "answer": "yes"})
+        self.assertEqual({k: q[1][k] for k in ("question", "answer", "answered_by", "answered_via")},
+                         {"question": "second?", "answer": "waiting list", "answered_by": "ada@example.org",
+                          "answered_via": "console"})
+        self.assertRegex(q[1]["answered_at"], STAMP)
+        self.assertEqual(self.doc()["state"], "questions")
+        self.assertEqual(self.doc()["history"][-1]["step"], "answered")
+        self.assertEqual(self.published(), [{"ticket": "0001", "step": "answer"}])
+
+    def test_the_cli_answers_unauthenticated(self):
+        self.answer(ANSWER="ok")
+        q = self.doc()["questions"][-1]
+        self.assertEqual((q["answered_by"], q["answered_via"]), ("unauthenticated", "cli"))
+
+    def test_no_answer_records_nothing(self):
+        code, err = self.answer(ANSWER="  ")
+        self.assertEqual(code, 2)
+        self.assertNotIn("answer", self.doc()["questions"][-1])
+        self.assertEqual(self.published(), [])
+
+    def test_only_an_open_question_takes_an_answer(self):
+        self.put_doc({"id": "0001", "state": "questions", "history": [],
+                      "questions": [{"question": "q?", "answer": "done"}]})
+        self.assertEqual(self.answer(ANSWER="again")[0], 1)
+        self.put_doc({"id": "0001", "state": "spec-ready", "history": [], "questions": [{"question": "q?"}]})
+        code, err = self.answer(ANSWER="late")
+        self.assertEqual(code, 1)
+        self.assertIn("no open question", err)
+        self.assertEqual(self.published(), [])
+
+
+class Tasks(TowerCase):
+    """docs/adr/0055 §5: every attempt's task is kept, with its attempt."""
+
+    def test_each_task_is_appended_with_the_attempt(self):
+        self.put_doc({"id": "0001", "state": "opened", "history": []})
+        self.step_script("assign", 'echo \'{"state": "pr-opened", "attempt": 1, "task": {"turns": 3}}\'\n')
+        self.run_tower("step", "0001", "assign")
+        doc = self.doc()
+        doc["state"] = "ci-failed"
+        self.put_doc(doc)
+        self.step_script("rework", 'echo \'{"state": "pr-opened", "attempt": 2, "task": {"turns": 5}}\'\n')
+        self.run_tower("step", "0001", "rework")
+        self.assertEqual(self.doc()["tasks"], [{"turns": 3, "attempt": 1}, {"turns": 5, "attempt": 2}])
+        self.assertEqual(self.doc()["task"], {"turns": 5})
+
+    def test_a_step_without_a_task_keeps_the_list(self):
+        self.put_doc({"id": "0001", "state": "ci-passed", "history": [], "tasks": [{"turns": 1}]})
+        self.step_script("merge", 'echo \'{"state": "merged"}\'\n')
+        self.run_tower("step", "0001", "merge")
+        self.assertEqual(self.doc()["tasks"], [{"turns": 1}])
 
 
 class Task(TowerCase):

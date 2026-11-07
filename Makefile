@@ -206,7 +206,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower assign perimeter review prompts evals promote board logbook roles postmortem metrics package shell-boundary contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics package shell-boundary contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -284,12 +284,13 @@ board: ## The flight readiness board on localhost:8099: the pipeline explained, 
 logbook: ## Write the logbook, the record a client's console reads: [LOGBOOK_FILE=.crew/logbook.json] (docs/adr/0047 §2)
 	@sh core/logbook.sh
 
-# The console (docs/adr/0047): the client's five screens over the logbook
-# and the one write, go-for-launch through core/promote.sh. ./go publishes
+# The console (docs/adr/0047, 0055): the client's six screens over the
+# logbook and two writes, go-for-launch through core/promote.sh and the
+# answer to a ticket's open question through `make answer`. ./go publishes
 # it on the host's loopback, CONSOLE_PORT to move it; CONSOLE_SNAPSHOT=<file>
 # serves a logbook file with no plane behind it.
 .PHONY: console
-console: ## The console on localhost:8098: tickets, one ticket's chain, post mortems, go-for-launch, thresholds (docs/adr/0047)
+console: ## The console on localhost:8098: overview, tickets, each ticket's timeline from request to release, post mortems, go-for-launch, thresholds (docs/adr/0047, 0055)
 	@python3 console/serve.py
 
 # M11's acceptance (docs/adr/0047 §4): demo-launch's sequence, but the
@@ -734,12 +735,12 @@ unfreeze: ## Turn release-freeze off (docs/adr/0013 §6)
 TICKET ?= 0001
 
 .PHONY: e2e
-e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)
+e2e: ## Golden path at L0: request → spec → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019, 0055)
 	@$(MAKE) --no-print-directory up
 	$(replay_tickets)
 	@printf '[e2e] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
 	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: e2e — could not reset the document\n'; exit 1; }
-	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: e2e — could not open ticket %s\n' "$(TICKET)"; exit 1; }
+	@sh core/tower.sh request "$(TICKET)" || { printf 'NO-GO: e2e — could not request ticket %s\n' "$(TICKET)"; exit 1; }
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: e2e — a step failed; see the [tower] lines above\n'; exit 1; }
 	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
 	if [ "$$state" != "rolled-back" ]; then \
@@ -789,6 +790,29 @@ resume: ## Request again the step a ticket failed, keeping its history: TICKET=<
 	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
 	printf '[resume] ticket %s is at %s\n' "$(TICKET)" "$$state" >&2
 	@printf 'GO: resume\n'
+
+# Before the ticket (docs/adr/0055): request starts a ticket at
+# `requested`; the product role asks a question or confirms the criteria,
+# the spec gate judges the spec, and the orchestrator runs until the queue
+# is empty: at `questions` a person answers with `answer`, which records
+# who answered and runs the product role again; past the gate the ticket
+# goes on from `opened` as e2e does. ANSWER, ANSWER_BY and ANSWER_VIA reach
+# core/tower.sh from make's command line.
+.PHONY: request
+request: ## Start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> (docs/adr/0055)
+	@sh core/tower.sh request "$(TICKET)" || { printf 'NO-GO: request — ticket %s was not requested; see the [tower] line above\n' "$(TICKET)"; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: request — a step failed; see the [tower] lines above\n'; exit 1; }
+	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
+	printf '[request] ticket %s is at %s\n' "$(TICKET)" "$$state" >&2
+	@printf 'GO: request\n'
+
+.PHONY: answer
+answer: ## Answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text> [ANSWER_BY=<who>] (docs/adr/0055 §2)
+	@sh core/tower.sh answer "$(TICKET)" || { printf 'NO-GO: answer — nothing recorded; see the [tower] line above\n'; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: answer — a step failed; see the [tower] lines above\n'; exit 1; }
+	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
+	printf '[answer] ticket %s is at %s\n' "$(TICKET)" "$$state" >&2
+	@printf 'GO: answer\n'
 
 # The rework loop live at L0 (docs/adr/0038 §10). Ticket 0013's attempt 1
 # is the committed fake-test change, NO-GO at mutation; the tower sends the

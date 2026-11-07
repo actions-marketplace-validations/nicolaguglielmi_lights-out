@@ -2,7 +2,7 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.0` (core/logbook/1.0.schema.json) from the
+Assembles `lights-out/logbook/1.1` (core/logbook/1.1.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb). Every rule
@@ -33,7 +33,10 @@ try:
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
 
-SCHEMA = "lights-out/logbook/1.0"
+SCHEMA = "lights-out/logbook/1.1"
+# What no record on this branch holds yet (docs/adr/0055 §6): the row or
+# panel is drawn empty and names the milestone that will fill it.
+PENDING = {"wait": "M27 (docs/adr/0053)", "docs_to_realign": "M28 (docs/adr/0054)"}
 _DECIMAL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 _PROVENANCE = re.compile(r"^#\s*Provenance, (measurement|external|decision):\s*(.*)$")
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
@@ -241,7 +244,7 @@ def tickets(rels):
             return unread(f"{get} printed no JSON for {tid}")
         file_title, origin = ticket_file_facts(path)
         history = doc.get("history") or []
-        spec = pick(doc.get("spec"), ("title", "sha256"))
+        spec = pick(doc.get("spec"), ("title", "sha256", "criteria", "by", "verdict", "line", "at"))
         out.append({
             "id": tid,
             "title": (spec or {}).get("title") or file_title or tid,
@@ -261,8 +264,113 @@ def tickets(rels):
             "merge": pick(doc.get("merge"), ("sha", "head_sha")),
             "release": pick(doc.get("release"), ("version", "image", "verdict", "numbers")),
             "history": history,
+            "questions": doc.get("questions") or [],
+            "product": pick(doc.get("product"), TASK_KEYS[1:] + ("consulted", "why")),
+            "tasks": [pick(t, TASK_KEYS + ("attempt",)) for t in doc.get("tasks") or []],
+            "timeline": timeline(doc, tid, rels, perimeter(path)),
         })
     return out
+
+
+# --- the timeline (docs/adr/0055 §6) -----------------------------------------
+
+
+def row(phase, at, line, record, verdict=None, **more):
+    return dict({"phase": phase, "at": at, "verdict": verdict, "line": line, "record": record}, **more)
+
+
+def cost(task):
+    t = task or {}
+    return {k: t.get(k) for k in ("attempt", "harness", "model", "turns", "tokens", "duration_s", "replayed")}
+
+
+def timeline(doc, tid, rels, globs):
+    """One row per phase, in the order the tower's history holds them; each
+    names the record it comes from. A phase with no record has no row."""
+    history = [h for h in doc.get("history") or [] if isinstance(h, dict)]
+    questions = [q for q in doc.get("questions") or [] if isinstance(q, dict)]
+    asked = {src: [q for q in questions if q.get("from") == src] for src in ("product", "spec")}
+    answered = [q for q in questions if q.get("answer")]
+    tasks = {t.get("attempt"): t for t in doc.get("tasks") or [] if isinstance(t, dict)}
+    spec, product = doc.get("spec") or {}, doc.get("product") or {}
+    last = {h.get("step"): i for i, h in enumerate(history)}
+    rows = []
+    for i, h in enumerate(history):
+        step, at, state = h.get("step"), h.get("at"), h.get("state")
+        if h.get("error"):
+            rows.append(row(step, at, h["error"], "tower history", "failed", attempt=h.get("attempt")))
+            continue
+        if step == "request":
+            rows.append(row("request", at, "requested", "tower history"))
+        elif step == "open":
+            rows.append(row("open", at, "opened directly: no request, no spec gate", "tower history"))
+        elif step in ("clarify", "answer"):
+            latest = i == last.get(step) and i >= max(last.get("clarify", -1), last.get("answer", -1))
+            if latest and product.get("consulted") is False:
+                line = f"not consulted: {product.get('why')}"
+            elif state == "questions":
+                line = "asked a question"
+            else:
+                line = f"confirmed {len(spec.get('criteria') or [])} criteria" if latest else "confirmed the criteria"
+            rows.append(row("product", at, line, "tower product", state,
+                            **(cost(dict(product, attempt=None)) if latest else {})))
+            if state == "questions" and asked["product"]:
+                q = asked["product"].pop(0)
+                rows.append(row("question", q.get("asked_at"), q.get("question"), "tower questions", by="product"))
+        elif step == "answered" and answered:
+            q = answered.pop(0)
+            rows.append(row("answer", q.get("answered_at"), q.get("answer"), "tower questions",
+                            by=q.get("answered_by"), via=q.get("answered_via")))
+        elif step == "spec":
+            if state == "opened":
+                rows.append(row("spec", at, spec.get("line") if i == last["spec"] else "GO: spec", "tower spec", "GO"))
+            else:
+                q = asked["spec"].pop(0) if asked["spec"] else {}
+                rows.append(row("spec", at, f"NO-GO: spec — {q.get('question')}", "tower spec", "NO-GO"))
+        elif step in ("assign", "rework"):
+            n = h.get("attempt")
+            if step == "assign":
+                pr = doc.get("pr") or {}
+                rows.append(row("assign", at, f"PR #{pr.get('number')}" if pr.get("number") else "assigned",
+                                "tower history", perimeter=globs, wait=None, wait_from=PENDING["wait"]))
+            else:
+                rw = [r for r in doc.get("rework") or [] if isinstance(r, dict)]
+                prior = rw[n - 2] if isinstance(n, int) and 0 <= n - 2 < len(rw) else {}
+                rows.append(row("rework", at, prior.get("line"), "tower rework", attempt=n, judge=prior.get("judge")))
+            task = tasks.get(n) or (doc.get("task") if not tasks and n == doc.get("attempt") else None)
+            if task:
+                rows.append(row("attempt", at, None, "tower tasks" if tasks else "tower task", **cost(dict(task, attempt=n))))
+        elif step == "ci":
+            ci = doc.get("ci") or {}
+            current = i == last["ci"]
+            rows.append(row("gates", at, ci.get("line") if current else None, "tower ci", state, attempt=h.get("attempt")))
+            if current:
+                rows += [row("gate", at, d, "tower ci details") for d in ci.get("details") or []]
+        elif step == "review":
+            r = doc.get("review") or {}
+            rows.append(row("review", at, (r.get("reason") or "").split("\n")[0] or None if i == last["review"] else None,
+                            "tower review", r.get("verdict") if i == last["review"] else state))
+        elif step == "merge":
+            rows.append(row("merge", at, (doc.get("merge") or {}).get("sha"), "tower merge", state))
+        elif step == "release":
+            rel = doc.get("release") or {}
+            mine = [r for r in rels if r["ticket"] == tid and r["version"] == rel.get("version")] \
+                if isinstance(rels, list) else []
+            for stage in (mine[-1]["stages"] if mine else []):
+                said = str(stage.get("verdict") or "")
+                rows.append(row("canary", mine[-1]["at"], said, "release log", "GO" if said.startswith("GO") else "NO-GO",
+                                pct=stage.get("pct"), numbers=stage.get("numbers") or []))
+            rows.append(row("release", at, rel.get("verdict"), "tower release", state))
+            answer = mine[-1]["answer"] if mine else None
+            if answer:
+                rows.append(row("sign-off", answer.get("at"), f"{answer.get('answer')} by {answer.get('by')}",
+                                "release log", answer.get("answer"), via=answer.get("via")))
+        elif step == "resume":
+            rows.append(row("resume", at, f"{h.get('resumed')} requested again", "tower history"))
+    end = outcome(doc, tid, rels)
+    if end["verdict"] != "pending":
+        rows.append(row("outcome", None, end["line"], f"outcome, judged by {end['judge']}", end["verdict"]))
+    return rows
 
 
 # --- thresholds -----------------------------------------------------------
@@ -451,6 +559,8 @@ def main(argv):
         "postmortems": postmortems(),
         "thresholds": thresholds(),
         "launch": launch(record),
+        "docs_to_realign": None,
+        "pending": PENDING,
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"

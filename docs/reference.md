@@ -54,12 +54,15 @@ The README keeps three of these; this is the full list.
 - **Your engine:** for plane commands, `./go` hands its toolchain container your engine's socket, which means full control of the engine. Run it where that is acceptable.
 - **Live, on Claude:** the first live run on another provider, on GitHub Actions on 2026-11-04 (`claude-code` 2.1.311, `claude-sonnet-5-5`). `record-evals`: GO for product, ops-triage and release. `record` on ticket 0001: `GO: crew`, then `NO-GO: mutation`, 5 of 8 mutants killed on the changed lines (0.625 < 0.666). Nothing was saved: a NO-GO keeps no fixture, and see [Coding harnesses](#coding-harnesses) for why the ADK recordings are not committed. OpenAI has not run.
 - **Cloud:** Google Cloud profiles are designed, not yet run.
+- **Before the ticket (ADR 0055):** the product role replays only where it was recorded: ticket 0005's waiting-list request, a question and, after the owner's answer, the criteria (`./go ci` drives it through the tower). For any other request at L0, ticket 0001 in `./go demo` included, the step records `product: not consulted` with the replay's own reason, takes the criteria the ticket states, and the spec gate judges them for real. Under replay an answer's text is not compared with the recording. Recording the role on ticket 0001 is `./go record-evals PROFILE=l1`.
 
 ## Control plane
 
 The tower (`core/tower.sh`) is a state machine over a JSON document per ticket in the state store, driven by step events on the event bus, with the `inproc` orchestrator pulling one event at a time. `./go e2e` runs it end to end and `./go audit TICKET=<id>` rebuilds the chain deploy → merge → PR → ticket → spec from the document and cross-checks it against the code host: a record that says merged while the PR is open is a NO-GO.
 
 Before merge, a NO-GO is not the end (ADR 0038). A gates NO-GO or a review's CHANGES-REQUESTED puts the ticket at `ci-failed`, which requests `rework`: dev-worker runs again on the same ticket, from its own PR head, with the ticket followed by the verdict as its input (the NO-GO line and the gate's own details, such as surviving mutants, or the reviewer's reason; never a transcript). The new head goes through the same `ci` step and, if routed, the same review. Each history entry carries its attempt number and the document's `rework` list keeps every rejected attempt's verdict. At `REWORK_MAX_ATTEMPTS` (`policy/rework.env`, four) the ticket stops at `needs-human`. After merge nothing loops: a failing canary rolls back.
+
+Before `opened` (ADR 0055) there are three states. `./go request TICKET=<id>` writes the document at `requested` and runs `clarify`: the product role reads the request and either asks one question (`questions`) or confirms the criteria (`spec-ready`). At `questions` the tower waits for a person: `./go answer TICKET=<id> ANSWER=<text>`, or the console's answer box, records the answer with who answered, through what and when, and runs the role again with every answer so far as later turns of the same conversation. At `spec-ready` the spec gate (`gates/spec.sh`, deterministic, no model) judges the request with the confirmed criteria: every criterion has Given, When and Then in that order and an outcome with no word from the ADR's vague list, and `## Perimeter` declares a path. GO opens the ticket and requests `assign`; NO-GO sends it back to `questions` with the reason as the question. `./go open` still starts a ticket at `opened` directly. The tower also keeps every attempt's task in `tasks`, so the console shows each attempt's turns, tokens and duration.
 
 Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the gates run by the tower on the PR head (with the base's gates, Makefile and policy, and the ticket's perimeter checked again, ADR 0033) and posted as the `gates` commit status on the PR, not a Gitea Actions job — the runner's first job, from M8, is the release image build on `main`; the PR-gates job itself moves to the milestone that runs the tower on GCP. The canary the tower releases after the merge is a real build of the merge commit, signed by the `Registry` port and verified by the launchpad before it takes any traffic — `./go audit` prints the verified digest, not a placeholder. The bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
 
@@ -94,6 +97,8 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 ./go audit           # rebuild the chain from a ticket's state: ./go audit TICKET=0001
 ./go resume          # request again the step a ticket failed, history kept: TICKET=<id>
+./go request         # start a ticket at requested: the product role asks or confirms, then the spec gate (ADR 0055): TICKET=<id>
+./go answer          # answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text> [ANSWER_BY=<who>]
 ./go demo-rework     # prove a NO-GO goes back to the worker with its verdict, then GO and merged (ticket 0013)
 ./go assign          # turn a ticket into a PR: TICKET=<id> [ROLE=dev-worker] [MAP_BRIEF=on, the map's slice in the brief (ADR 0054 §5)]
 ./go map             # build the project map of the workload repository at HEAD into .crew/map.sqlite: no model, no plane (ADR 0054)
@@ -119,7 +124,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
 ./go unfreeze        # re-enable launchpad after freeze
 ./go board           # the pipeline explained, live while the plane runs, on localhost:8099 (BOARD_PORT to move it)
-./go console         # the client's console on localhost:8098: five screens over the logbook, go-for-launch through core/promote.sh (CONSOLE_PORT; CONSOLE_SNAPSHOT=<file> without the plane; ADR 0047)
+./go console         # the client's console on localhost:8098: an overview, each ticket's timeline from request to release, post mortems, go-for-launch, thresholds; two writes, go-for-launch and the answer to an open question (CONSOLE_PORT; CONSOLE_SNAPSHOT=<file> without the plane; ADR 0047, 0055)
 ./go logbook         # write the logbook, the one versioned record the console and a consumer read: LOGBOOK_FILE (default .crew/logbook.json)
 ./go demo-console    # prove go-for-launch pressed from the console: held canary, POST GO → 100% via console, then the un-promote
 ./go doctor          # host-side: engine, podman socket, git, workbench image, the plane's ports, the key the profile needs; one line each, then GO or NO-GO (ADR 0045 §4)
@@ -345,7 +350,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, incident, postmortem, demo-postmortem, record-postmortem, promote, record-evals, kill-switch, freeze, unfreeze, e2e, board, logbook, console, demo-console
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, incident, postmortem, demo-postmortem, record-postmortem, promote, record-evals, kill-switch, freeze, unfreeze, e2e, request, answer, board, logbook, console, demo-console
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -369,7 +374,8 @@ lights-out/
     postmortem.sh           # M22: ./go postmortem, runs the role, checks and files tickets
     postmortem.py           # M22: the document and anchor checks
     logbook.sh              # M11: ./go logbook, the one versioned record (ADR 0047 §2)
-    logbook.py              # M11: its reader, by the rules in docs/plans/console.md
+    logbook.py              # M11: its reader, by the rules in docs/plans/console.md; 1.1 adds the timeline (ADR 0055)
+    spec.py                 # M29: the spec gate and the product role's step before the ticket (ADR 0055)
     logbook/1.0.schema.json # M11: the logbook's schema, one file per minor
     risk.py                 # risk classifier: rules-based PR scoring
     tests/                  # unit tests for risk.py

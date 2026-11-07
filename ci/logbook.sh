@@ -9,19 +9,23 @@
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.0.json, which is written by hand
-#      from the plan. Then variants of the sources, each checked on the
+#      golden fixtures/logbook/golden-1.1.json, written by hand from the
+#      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6. Then variants of the sources, each checked on the
 #      one field the plan's rule decides.
 #   b. The golden validates against every committed schema of its major.
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
 #      snapshot is drift; with neither, this point is skipped.
 #   d. console/ names no adapter, no .crew/ and no store; serve.py starts
-#      two scripts and has one POST route; index.html fetches /v1/ only.
+#      two scripts and `make answer` only, and has two POST routes, the
+#      second answering a ticket's open question (docs/adr/0055 §2);
+#      index.html fetches /v1/ only.
 #   e. The console at runtime: snapshot mode refuses to write; the start-up
 #      refusals (§5); LIVE mode in the stub root refuses every bad press
 #      before anything runs, and one good press moves the plane and records
-#      who pressed.
+#      who pressed; an answer to anything but the open question runs
+#      nothing, and the good one runs `make answer` as `./go answer` does,
+#      with who answered and `via: console` (docs/adr/0055 §2).
 #   f. Every numeric policy key has a "# Provenance, <kind>:" line above it
 #      (Consequences).
 # Before any of that, every checker runs on a bad input and must reject it:
@@ -32,7 +36,7 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.0.json"
+golden="$repo/fixtures/logbook/golden-1.1.json"
 tmp=$(mktemp -d)
 pids=""
 # shellcheck disable=SC2154 # p is the loop's own variable, assigned when the trap runs
@@ -42,7 +46,7 @@ for tool in python3 jq curl sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.0.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.1.json not found"
 [ -d "$stub" ] || nogo "fixtures/logbook/stub not found"
 
 # --- the checkers, one python file, one subcommand each ---------------------
@@ -156,6 +160,11 @@ def cmd_serve(path):
         if c in ("git", "curl", "jq", "docker", "podman", "docker-compose", "bash"):
             die(f"{path} names the program {c}; it starts core/logbook.sh and core/promote.sh only")
     for n in ast.walk(tree):
+        if isinstance(n, ast.List) and n.elts and isinstance(n.elts[0], ast.Constant) and n.elts[0].value == "make":
+            targets = [e.value for e in n.elts[1:] if isinstance(e, ast.Constant) and not str(e.value).startswith("-") and "=" not in str(e.value)]
+            if targets != ["answer"]:
+                die(f"{path} runs make {targets}; `make answer` is the one recipe it may run")
+    for n in ast.walk(tree):
         if isinstance(n, ast.keyword) and n.arg == "shell" and not (isinstance(n.value, ast.Constant) and n.value.value is False):
             die(f"{path} passes shell={ast.dump(n.value)}; argv only")
         if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "os" \
@@ -164,7 +173,7 @@ def cmd_serve(path):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in ("do_PUT", "do_DELETE", "do_PATCH"):
             die(f"{path} defines {n.name}; go-for-launch is the one write")
     v1 = {c for c in consts if re.fullmatch(r"/v1/[\w.\-]+", c)}
-    want = {"/v1/logbook.json", "/v1/console.json", "/v1/go-for-launch"}
+    want = {"/v1/logbook.json", "/v1/console.json", "/v1/go-for-launch", "/v1/answer"}
     if v1 != want:
         die(f"{path} names the routes {sorted(v1)}; want exactly {sorted(want)}")
     posts = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "do_POST"]
@@ -172,8 +181,9 @@ def cmd_serve(path):
         die(f"{path} has {len(posts)} do_POST; want 1")
     in_post = {n.value for n in ast.walk(posts[0]) if isinstance(n, ast.Constant) and isinstance(n.value, str)
                and n.value.startswith("/")}
-    if in_post - {"/v1/go-for-launch"}:
-        die(f"{path}: do_POST names {sorted(in_post - {'/v1/go-for-launch'})}; /v1/go-for-launch is the one POST route")
+    writes = {"/v1/go-for-launch", "/v1/answer"}
+    if in_post - writes:
+        die(f"{path}: do_POST names {sorted(in_post - writes)}; the POST routes are {sorted(writes)}")
 
 
 def cmd_index(path):
@@ -202,10 +212,10 @@ def cmd_index(path):
         if meth:
             if meth.group(1).strip("'\",`") != "POST":
                 die(f"{path} fetches with method {meth.group(1)}; POST is the only write")
-            if goes != "/v1/go-for-launch":
-                die(f"{path}: a POST to {goes or args[:30]}; /v1/go-for-launch is the one POST route")
-        elif goes == "/v1/go-for-launch":
-            die(f"{path} fetches /v1/go-for-launch without method POST")
+            if goes not in ("/v1/go-for-launch", "/v1/answer"):
+                die(f"{path}: a POST to {goes or args[:30]}; /v1/go-for-launch and /v1/answer are the POST routes")
+        elif goes in ("/v1/go-for-launch", "/v1/answer"):
+            die(f"{path} fetches {goes} without method POST")
     for m in re.finditer(r"\bmethod\s*:\s*(\S+)", src):
         if m.group(1).strip("'\",`") != "POST":
             die(f"{path} has method {m.group(1)}; POST is the only write")
@@ -303,7 +313,7 @@ must_reject "the console's names (.crew/)" names "$st/names-bad"
 printf 'STATE_STORE\n' > "$st/names-bad/a.py"
 must_reject "the console's names (STATE_STORE)" names "$st/names-bad"
 
-# serve.py: two scripts, one POST route.
+# serve.py: two scripts and `make answer`, two POST routes.
 cat > "$st/serve-good.py" <<'PY'
 """Docstring naming core/anything-else.sh is not an argv."""
 import subprocess
@@ -314,37 +324,41 @@ class H:
         if self.path in ("/", "/v1/logbook.json", "/v1/console.json"):
             return
     def do_POST(self):
-        if self.path != "/v1/go-for-launch":
+        if self.path not in ("/v1/go-for-launch", "/v1/answer"):
             return
         subprocess.run(["sh", "core/promote.sh"], check=False)
         subprocess.run(["sh", "core/logbook.sh"], check=False)
+        subprocess.run(["make", "--no-print-directory", "answer", "TICKET=1"], check=False)
 PY
 { cat "$st/serve-good.py"; printf 'subprocess.run(["sh", "adapters/x/get.sh"])\n'; } > "$st/serve-adapter.py"
-sed 's|self.path != "/v1/go-for-launch"|self.path not in ("/v1/go-for-launch", "/other")|' "$st/serve-good.py" > "$st/serve-two-posts.py"
+sed 's|"/v1/answer"):|"/v1/answer", "/other"):|' "$st/serve-good.py" > "$st/serve-two-posts.py"
+sed 's|"answer", "TICKET=1"|"release", "TICKET=1"|' "$st/serve-good.py" > "$st/serve-make.py"
 sed 's|check=False)|check=False, shell=True)|' "$st/serve-good.py" > "$st/serve-shell.py"
 sed 's|"/v1/console.json"|"/v1/console.json", "/v1/extra"|' "$st/serve-good.py" > "$st/serve-route.py"
 sed 's|\["sh", "core/promote.sh"\]|["git", "core/promote.sh"]|' "$st/serve-good.py" > "$st/serve-git.py"
 { cat "$st/serve-good.py"; printf '\n\nclass X:\n    def do_DELETE(self):\n        pass\n'; } > "$st/serve-delete.py"
 must_accept "serve.py" serve "$st/serve-good.py"
-for v in adapter two-posts shell route git delete; do
+for v in adapter two-posts shell route git delete make; do
   must_reject "serve.py ($v)" serve "$st/serve-$v.py"
 done
 
-# index.html: GET fetch on /v1/, one POST.
+# index.html: GET fetch on /v1/, two POST routes.
 cat > "$st/index-good.html" <<'HTML'
 <script>
 fetch('/v1/logbook.json').then(r => r.json());
 fetch("/v1/go-for-launch", {method: 'POST', body: '{}'});
+fetch("/v1/answer", {method: 'POST', body: '{}'});
 </script>
 HTML
 sed "s|fetch('/v1/logbook.json')|fetch('https://example.invalid/l.json')|" "$st/index-good.html" > "$st/index-external.html"
 sed "s|fetch('/v1/logbook.json')|fetch('/state.json')|" "$st/index-good.html" > "$st/index-other.html"
 sed "s|fetch('/v1/logbook.json')|fetch('/v1/logbook.json', {method: 'PUT'})|" "$st/index-good.html" > "$st/index-put.html"
 sed "s|fetch('/v1/logbook.json')|fetch('/v1/console.json', {method: 'POST'})|" "$st/index-good.html" > "$st/index-post-elsewhere.html"
-sed "s|{method: 'POST', body|{body|" "$st/index-good.html" > "$st/index-get-go.html"
+sed "s|\"/v1/go-for-launch\", {method: 'POST', body|\"/v1/go-for-launch\", {body|" "$st/index-good.html" > "$st/index-get-go.html"
+sed "s|\"/v1/answer\", {method: 'POST', body|\"/v1/answer\", {body|" "$st/index-good.html" > "$st/index-get-answer.html"
 sed 's|<script>|<script>var x = new XMLHttpRequest();|' "$st/index-good.html" > "$st/index-xhr.html"
 must_accept "index.html" index "$st/index-good.html"
-for v in external other put post-elsewhere get-go xhr; do
+for v in external other put post-elsewhere get-go get-answer xhr; do
   must_reject "index.html ($v)" index "$st/index-$v.html"
 done
 
@@ -411,6 +425,9 @@ set -eu
 d=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 printf 'rollback\n' >> "$d/effects.log"
 STUB
+  # `make answer`, as the console runs it: records what it was given.
+  # shellcheck disable=SC2016 # the stub Makefile expands its own variables
+  printf 'answer:\n\t@printf '"'"'answer %%s %%s %%s %%s\\n'"'"' "$(TICKET)" "$$ANSWER" "$$ANSWER_BY" "$$ANSWER_VIA" >> effects.log\n\t@echo "GO: answer"\n' > "$r/Makefile"
   chmod +x "$r"/adapters/stub-state/get.sh "$r"/adapters/stub-delivery/*.sh
   printf '{"stable":"0.3.0-b","canary":"0.5.0-d","weight":25}\n' > "$r/world/status.json"
   : > "$r/effects.log"
@@ -440,15 +457,15 @@ mkroot "$root"
 
 # --- a. the reader, twice, against the golden --------------------------------
 run_reader LOGBOOK_FILE=out1.json
-[ "$out" = "GO: logbook — out1.json, 7 tickets" ] \
-  || nogo "core/logbook.sh printed '$out' (exit $rc), want 'GO: logbook — out1.json, 7 tickets'" "$(cat "$root/reader.err")"
+[ "$out" = "GO: logbook — out1.json, 8 tickets" ] \
+  || nogo "core/logbook.sh printed '$out' (exit $rc), want 'GO: logbook — out1.json, 8 tickets'" "$(cat "$root/reader.err")"
 run_reader LOGBOOK_FILE=out2.json
-[ "$out" = "GO: logbook — out2.json, 7 tickets" ] \
-  || nogo "the second run printed '$out' (exit $rc), want 'GO: logbook — out2.json, 7 tickets'" "$(cat "$root/reader.err")"
+[ "$out" = "GO: logbook — out2.json, 8 tickets" ] \
+  || nogo "the second run printed '$out' (exit $rc), want 'GO: logbook — out2.json, 8 tickets'" "$(cat "$root/reader.err")"
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.0.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.1.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The golden depends on its sources: change one fact, the bytes change.
 cp "$root/state/tickets.0001.json" "$tmp/0001.keep"
@@ -627,16 +644,24 @@ press() {
     -H "${PH:-X-Noop: 1}" -d "$p_body" "$(base)/v1/go-for-launch"
 }
 
+# reply TICKET QUESTION TEXT: the answer POST, every header right unless PO
+# or PH is set, as for press.
+reply() {
+  r_body=$(jq -cn --arg t "$1" --argjson q "$2" --arg a "$3" '{ticket: $t, question: $q, answer: $a}')
+  req -X POST -H 'Content-Type: application/json' -H "Origin: ${PO:-http://127.0.0.1:$port}" \
+    -H "${PH:-X-Noop: 1}" -d "$r_body" "$(base)/v1/answer"
+}
+
 # --- e1. snapshot mode, with a tripwire where the scripts would be ----------
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.0.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.1.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
 done
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.0.json
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.1.json
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"
@@ -652,9 +677,11 @@ press GO 0.5.0-d 25 "$want_sha"
 [ "$code" = 403 ] || nogo "snapshot mode: a correct POST answered $code, want 403" "$(cat "$body")"
 press PREPARE 0.5.0-d 25 "$want_sha"
 [ "$code" = 403 ] || nogo "snapshot mode: a PREPARE POST answered $code, want 403" "$(cat "$body")"
+reply 0009 1 "a perimeter"
+[ "$code" = 403 ] || nogo "snapshot mode: an answer POST answered $code, want 403" "$(cat "$body")"
 for path in /v1/logbook.json /v1/console.json /; do
   req -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" -d '{}' "$(base)$path"
-  case "$code" in 404 | 405) : ;; *) nogo "POST $path answered $code, want 404 or 405: go-for-launch is the one write" ;; esac
+  case "$code" in 404 | 405) : ;; *) nogo "POST $path answered $code, want 404 or 405: go-for-launch and answer are the writes" ;; esac
 done
 for verb in PUT DELETE PATCH; do
   req -X "$verb" -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" -d '{}' "$(base)/v1/go-for-launch"
@@ -824,6 +851,25 @@ sleep 3
 press GO 0.5.0-d 25 "$want_sha"
 [ "$code" = 409 ] || nogo "a second GO on an answered record answered $code, want 409"
 [ "$(cat "$live/effects.log")" = "shift 100" ] || nogo "a second GO moved the plane again: $(cat "$live/effects.log")"
+
+# The second write (docs/adr/0055 §2): ticket 0009 waits on question 1.
+# Anything but that question runs nothing; the good answer runs the stub
+# root's `make answer` with the text, who answered and via console.
+: > "$live/effects.log"
+reply 0009 0 "an old question"
+[ "$code" = 409 ] || nogo "an answer to an answered question answered $code, want 409" "$(cat "$body")"
+reply 0001 0 "a ticket with no question"
+[ "$code" = 409 ] || nogo "an answer on a ticket with no open question answered $code, want 409" "$(cat "$body")"
+reply 0009 1 "   "
+[ "$code" = 400 ] || nogo "an empty answer answered $code, want 400" "$(cat "$body")"
+PO=http://evil.invalid reply 0009 1 "a perimeter"
+[ "$code" = 403 ] || nogo "an answer with a foreign Origin answered $code, want 403"
+[ ! -s "$live/effects.log" ] || nogo "a refused answer ran something: $(cat "$live/effects.log")"
+reply 0009 1 "app/backend/meetups/*.py"
+[ "$code" = 200 ] || nogo "a correct answer POST answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/live2.log")"
+jq -e '.line == "GO: answer" and .exit == 0' "$body" >/dev/null || nogo "the answer POST is not {line: 'GO: answer', exit: 0}" "$(cat "$body")"
+[ "$(cat "$live/effects.log")" = "answer 0009 app/backend/meetups/*.py unauthenticated console" ] \
+  || nogo "make answer saw '$(cat "$live/effects.log")', want the ticket, the text, unauthenticated and console"
 stop_console
 
 # --- f. every numeric policy key has its provenance --------------------------

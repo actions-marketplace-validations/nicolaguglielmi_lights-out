@@ -5,12 +5,15 @@
     GET  /                   console/index.html, five screens
     GET  /v1/logbook.json    the logbook, as core/logbook.sh wrote it
     GET  /v1/console.json    this console and this request: mode, auth, identity
-    POST /v1/go-for-launch   the one write: core/promote.sh, as ./go promote runs it
+    POST /v1/go-for-launch   the first write: core/promote.sh, as ./go promote runs it
+    POST /v1/answer          the second: ./go answer's recipe (docs/adr/0055 §2)
 
 It reads one document, the logbook, and nothing behind it: the tower, the
-plane and the policy files reach it only through core/logbook.sh. Its one
-write is go-for-launch through core/promote.sh, the same script and the
-same checks as `./go promote`, with who pressed and `via: console`.
+plane and the policy files reach it only through core/logbook.sh. Its two
+writes are go-for-launch through core/promote.sh, the same script and the
+same checks as `./go promote`, and the answer to a ticket's open question
+through `make answer`, the recipe `./go answer` runs; both record who
+pressed and `via: console`.
 Every rule below is in docs/plans/console.md, "Decided at build".
 
 LIVE (default): core/logbook.sh runs in one loop every CONSOLE_POLL_S
@@ -186,7 +189,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path.split("?")[0] != "/v1/go-for-launch":
+        route = self.path.split("?")[0]
+        if route not in ("/v1/go-for-launch", "/v1/answer"):
             return self.send(404, {"error": "not found"})
         who, err = identity(self.headers)
         if err:
@@ -197,6 +201,8 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin") or ""
         if host not in CFG.hosts or origin not in (f"http://{host}", f"https://{host}"):
             return self.send(403, {"error": "Origin and Host must be this console's own"})
+        if route == "/v1/answer":
+            return self.reply(who)
         can, reason = may_launch(who)
         if not can:
             return self.send(403, {"error": reason})
@@ -230,6 +236,38 @@ class Handler(BaseHTTPRequestHandler):
                                capture_output=True, text=True, timeout=600)
             sys.stderr.write(p.stderr)
             line = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else f"core/promote.sh exit {p.returncode}"
+            read_once(self.server.logbook_file)
+            return self.send(200, {"line": line, "exit": p.returncode})
+        finally:
+            press.release()
+
+    def reply(self, who):
+        """The answer to a ticket's open question (docs/adr/0055 §2): only the
+        question the logbook shows open, then `make answer`, as ./go answer."""
+        if CFG.snapshot:
+            return self.send(403, {"error": "snapshot: no tower behind it, nothing can be answered"})
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+            body = json.loads(self.rfile.read(min(length, 8192)) or b"null")
+            ticket, index, text = body["ticket"], body["question"], body["answer"].strip()
+            assert isinstance(ticket, str) and isinstance(index, int) and text
+        except (ValueError, KeyError, TypeError, AttributeError, AssertionError):
+            return self.send(400, {"error": "the body must be {ticket, question: <index>, answer: <text>}"})
+        if not press.acquire(blocking=False):
+            return self.send(409, {"error": "another press is running"})
+        try:
+            read_once(self.server.logbook_file)
+            tickets = (state["book"] or {}).get("tickets")
+            t = next((x for x in tickets if x.get("id") == ticket), None) if isinstance(tickets, list) else None
+            qs = (t or {}).get("questions") or []
+            if not t or t.get("state") != "questions" or index != len(qs) - 1 or qs[index].get("answer"):
+                return self.send(409, {"error": f"ticket {ticket} has no open question {index}; nothing recorded"})
+            env = {k: v for k, v in os.environ.items() if not k.startswith("ANSWER")}
+            env.update(ANSWER=text, ANSWER_BY=who, ANSWER_VIA="console")
+            p = subprocess.run(["make", "--no-print-directory", "answer", f"TICKET={ticket}"], cwd=ROOT, env=env,
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
+            sys.stderr.write(p.stderr)
+            line = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else f"make answer exit {p.returncode}"
             read_once(self.server.logbook_file)
             return self.send(200, {"line": line, "exit": p.returncode})
         finally:

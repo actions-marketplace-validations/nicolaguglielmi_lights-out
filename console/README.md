@@ -1,14 +1,15 @@
 # console
 
-The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-reads-one-versioned-logbook-and-writes-only-go-for-launch.md); every field, rule and route in [docs/plans/console.md](../docs/plans/console.md)). Five screens:
+The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-reads-one-versioned-logbook-and-writes-only-go-for-launch.md), [ADR 0055](../docs/adr/0055-the-dev-phase-visible-from-request-to-release.md); every field, rule and route in [docs/plans/console.md](../docs/plans/console.md)). Six screens:
 
-1. **This week's tickets**: each with GO/NO-GO, the judge that decided, and its line.
-2. **One ticket's chain**, from the ticket to the rollback: spec, task (harness, provider, model, tokens), PR, gates, review, merge, release stages with their `slo:` numbers, verify, go-for-launch.
-3. **Incidents and post mortems**, with their fix tickets and those tickets' states.
-4. **Go-for-launch**: the release record, what the plane runs now, the brief, and the one button.
-5. **Thresholds**: every number that can stop a change, where it is set, and its provenance ("undeclared" when it has none).
+1. **Overview**: the tickets by state, the perimeters open tickets hold, the docs a merge left to realign. The last panel, and each ticket's perimeter wait, are drawn empty and say which milestone fills them (M28, M27): no record holds them yet.
+2. **This week's tickets**: each with GO/NO-GO, the judge that decided, and its line.
+3. **One ticket's timeline**, one row per phase and each from its record: the request, the product role's questions and the answers (who, through what, when), the spec gate's verdict, assign with the perimeter, each worker attempt with turns, tokens and duration, each gate line, review, rework, merge, the canary stages with their `slo:` numbers, the human answer, 100% or rollback. A ticket waiting on a question shows an answer box.
+4. **Incidents and post mortems**, with their fix tickets and those tickets' states.
+5. **Go-for-launch**: the release record, what the plane runs now, the brief, and the button.
+6. **Thresholds**: every number that can stop a change, where it is set, and its provenance ("undeclared" when it has none).
 
-It reads **one document, the logbook** (`lights-out/logbook/1.0`, [schema](../core/logbook/1.0.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. Its **one write is go-for-launch**, through the same `core/promote.sh` and the same checks as `./go promote`; the record then says who pressed and `via: console`. `ci/logbook.sh` checks both.
+It reads **one document, the logbook** (`lights-out/logbook/1.1`, [schema](../core/logbook/1.1.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. It has **two writes**: go-for-launch, through the same `core/promote.sh` and the same checks as `./go promote`; and the answer to a ticket's open question, through `make answer`, the recipe `./go answer` runs, accepted only for the question the logbook shows open. Both record who pressed and `via: console`. `ci/logbook.sh` checks both.
 
 ## Run it
 
@@ -20,7 +21,7 @@ It reads **one document, the logbook** (`lights-out/logbook/1.0`, [schema](../co
 ./go console
 ```
 
-Open http://localhost:8098. After `./go demo` it shows ticket 0001's chain to the rollback. To press the button, hold a canary first: `./go kill-switch`, then `./go release`, which holds the canary at 25% when verify passes (`git checkout app/flags/flags.json` undoes the kill switch afterwards). `CONSOLE_PORT` moves the port.
+Open http://localhost:8098. After `./go demo` it shows ticket 0001's timeline from `requested` to the rollback. At L0 the product role has no recording for that request, and its row says it was not consulted (ADR 0055 §3). To press the button, hold a canary first: `./go kill-switch`, then `./go release`, which holds the canary at 25% when verify passes (`git checkout app/flags/flags.json` undoes the kill switch afterwards). `CONSOLE_PORT` moves the port.
 
 Without the plane, serve a logbook file instead; nothing can be pressed:
 

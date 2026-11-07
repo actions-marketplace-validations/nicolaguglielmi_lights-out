@@ -1,0 +1,175 @@
+"""Tests for core/logbook.py's timeline, written from docs/adr/0055 §6 and
+docs/plans/console.md "1.1: the dev phase", never from the implementation:
+one row per phase in the history's order, each naming its record, and no
+row for a phase with no record. ci/logbook.sh proves the whole document
+against its golden; these pin each rule on its own."""
+
+import unittest
+
+from core import logbook
+
+H = lambda step, state, at, **more: dict(step=step, state=state, at=at, **more)  # noqa: E731
+
+
+def phases(rows):
+    return [r["phase"] for r in rows]
+
+
+class Before(unittest.TestCase):
+    """request, product, question, answer, spec."""
+
+    def doc(self):
+        return {
+            "state": "opened",
+            "history": [H("request", "requested", "t0"), H("clarify", "questions", "t1"),
+                        H("answered", "questions", "t2"), H("answer", "spec-ready", "t3"),
+                        H("spec", "questions", "t4"), H("answered", "questions", "t5"),
+                        H("answer", "spec-ready", "t6"), H("spec", "opened", "t7")],
+            "questions": [
+                {"question": "who is promoted?", "from": "product", "asked_at": "t1", "answer": "the first",
+                 "answered_by": "alice", "answered_via": "console", "answered_at": "t2"},
+                {"question": "no ## Perimeter section", "from": "spec", "asked_at": "t4", "answer": "added",
+                 "answered_by": "bob", "answered_via": "cli", "answered_at": "t5"}],
+            "product": {"harness": "adk", "model": "m", "turns": 4, "tokens": {"total": 9}, "replayed": True,
+                        "consulted": True},
+            "spec": {"criteria": ["a", "b"], "by": "product", "verdict": "GO", "line": "GO: spec", "at": "t7"},
+        }
+
+    def test_the_phases_follow_the_history(self):
+        rows = logbook.timeline(self.doc(), "0009", [], ["app/*"])
+        self.assertEqual(phases(rows), ["request", "product", "question", "answer", "product", "spec", "answer",
+                                        "product", "spec"])
+
+    def test_every_row_names_its_record_and_its_time(self):
+        for r in logbook.timeline(self.doc(), "0009", [], ["app/*"]):
+            self.assertTrue(r["record"], r)
+            self.assertIn("at", r)
+            self.assertIn("verdict", r)
+            self.assertIn("line", r)
+
+    def test_questions_and_answers_carry_who_and_how(self):
+        rows = logbook.timeline(self.doc(), "0009", [], [])
+        q = [r for r in rows if r["phase"] == "question"][0]
+        self.assertEqual((q["line"], q["at"], q["by"]), ("who is promoted?", "t1", "product"))
+        a = [r for r in rows if r["phase"] == "answer"]
+        self.assertEqual([(r["line"], r["by"], r["via"], r["at"]) for r in a],
+                         [("the first", "alice", "console", "t2"), ("added", "bob", "cli", "t5")])
+
+    def test_the_spec_rows_say_go_and_no_go_with_the_reason(self):
+        rows = [r for r in logbook.timeline(self.doc(), "0009", [], []) if r["phase"] == "spec"]
+        self.assertEqual([r["verdict"] for r in rows], ["NO-GO", "GO"])
+        self.assertEqual(rows[0]["line"], "NO-GO: spec — no ## Perimeter section")
+        self.assertEqual(rows[1]["line"], "GO: spec")
+
+    def test_the_last_product_run_carries_its_cost(self):
+        rows = [r for r in logbook.timeline(self.doc(), "0009", [], []) if r["phase"] == "product"]
+        self.assertEqual([r["verdict"] for r in rows], ["questions", "spec-ready", "spec-ready"])
+        self.assertNotIn("turns", rows[0])
+        self.assertEqual((rows[-1]["turns"], rows[-1]["model"], rows[-1]["line"]), (4, "m", "confirmed 2 criteria"))
+
+    def test_a_product_not_consulted_says_why(self):
+        doc = {"history": [H("request", "requested", "t0"), H("clarify", "spec-ready", "t1")],
+               "product": {"consulted": False, "why": "no recording"}, "spec": {"criteria": ["x"], "by": "request"}}
+        row = logbook.timeline(doc, "0001", [], [])[1]
+        self.assertEqual((row["phase"], row["line"]), ("product", "not consulted: no recording"))
+
+    def test_a_ticket_opened_directly_says_so(self):
+        rows = logbook.timeline({"history": [H("open", "opened", "t0")]}, "0001", [], [])
+        self.assertEqual(phases(rows), ["open"])
+        self.assertIn("no request", rows[0]["line"])
+
+
+class After(unittest.TestCase):
+    """assign, attempts, gates, rework, review, merge, canary, sign-off, outcome."""
+
+    def doc(self):
+        return {
+            "state": "rolled-back", "attempt": 2,
+            "history": [H("open", "opened", "t0"), H("assign", "pr-opened", "t1", attempt=1),
+                        H("ci", "ci-failed", "t2", attempt=1), H("rework", "pr-opened", "t3", attempt=2),
+                        H("ci", "ci-passed", "t4", attempt=2), H("merge", "merged", "t5", attempt=2),
+                        H("release", "rolled-back", "t6", attempt=2)],
+            "pr": {"number": 7},
+            "tasks": [{"attempt": 1, "harness": "replay", "turns": 3, "tokens": {"total": 10}},
+                      {"attempt": 2, "harness": "replay", "turns": 5, "tokens": {"total": 20}}],
+            "rework": [{"attempt": 1, "judge": "gates", "line": "NO-GO: mutation — 0.5"}],
+            "ci": {"verdict": "GO", "line": "GO: gates", "details": ["GO: risk", "GO: test"]},
+            "merge": {"sha": "m1"},
+            "release": {"version": "v2", "verdict": "NO-GO: launchpad — 5%: error_rate → rolled back"},
+        }
+
+    def rels(self):
+        return [{"ticket": "0001", "version": "v2", "at": "r1", "answer": None,
+                 "stages": [{"pct": 5, "verdict": "NO-GO: launchpad — 5%", "numbers": ["slo: x"]}]},
+                {"ticket": "0002", "version": "v2", "at": "r2", "answer": None, "stages": [{"pct": 5, "verdict": "GO"}]}]
+
+    def test_the_chain_in_order(self):
+        rows = logbook.timeline(self.doc(), "0001", self.rels(), ["app/*"])
+        self.assertEqual(phases(rows), ["open", "assign", "attempt", "gates", "rework", "attempt", "gates", "gate",
+                                        "gate", "merge", "canary", "release", "outcome"])
+
+    def test_assign_holds_the_perimeter_and_an_empty_wait_named_for_m27(self):
+        row = [r for r in logbook.timeline(self.doc(), "0001", [], ["app/*"]) if r["phase"] == "assign"][0]
+        self.assertEqual((row["line"], row["perimeter"], row["wait"]), ("PR #7", ["app/*"], None))
+        self.assertIn("M27", row["wait_from"])
+
+    def test_each_attempt_has_its_own_cost(self):
+        rows = [r for r in logbook.timeline(self.doc(), "0001", [], []) if r["phase"] == "attempt"]
+        self.assertEqual([(r["attempt"], r["turns"], r["tokens"]["total"]) for r in rows], [(1, 3, 10), (2, 5, 20)])
+
+    def test_rework_carries_the_verdict_that_sent_it_back(self):
+        row = [r for r in logbook.timeline(self.doc(), "0001", [], []) if r["phase"] == "rework"][0]
+        self.assertEqual((row["attempt"], row["line"], row["judge"]), (2, "NO-GO: mutation — 0.5", "gates"))
+
+    def test_only_the_last_ci_run_has_its_line_and_gate_rows(self):
+        rows = [r for r in logbook.timeline(self.doc(), "0001", [], []) if r["phase"] in ("gates", "gate")]
+        self.assertEqual([(r["phase"], r["line"]) for r in rows],
+                         [("gates", None), ("gates", "GO: gates"), ("gate", "GO: risk"), ("gate", "GO: test")])
+        self.assertEqual([r["verdict"] for r in rows if r["phase"] == "gates"], ["ci-failed", "ci-passed"])
+
+    def test_the_canary_rows_come_from_this_ticket_s_release_only(self):
+        rows = [r for r in logbook.timeline(self.doc(), "0001", self.rels(), []) if r["phase"] == "canary"]
+        self.assertEqual([(r["pct"], r["verdict"], r["numbers"]) for r in rows], [(5, "NO-GO", ["slo: x"])])
+        self.assertEqual(rows[0]["record"], "release log")
+
+    def test_no_release_log_no_canary_rows(self):
+        rows = logbook.timeline(self.doc(), "0001", {"ok": False, "error": "x"}, [])
+        self.assertNotIn("canary", phases(rows))
+        self.assertIn("release", phases(rows))
+
+    def test_a_human_answer_is_the_sign_off(self):
+        doc = dict(self.doc(), state="held", release={"version": "v3", "verdict": "GO: launchpad — held"})
+        rels = [{"ticket": "0001", "version": "v3", "at": "r", "stages": [{"pct": 25, "verdict": "GO"}],
+                 "answer": {"answer": "GO", "by": "alice", "via": "console", "at": "r9"}}]
+        rows = logbook.timeline(doc, "0001", rels, [])
+        sign = [r for r in rows if r["phase"] == "sign-off"][0]
+        self.assertEqual((sign["verdict"], sign["line"], sign["via"], sign["at"]), ("GO", "GO by alice", "console", "r9"))
+        self.assertEqual(rows[-1]["phase"], "outcome")
+        self.assertEqual(rows[-1]["verdict"], "GO")
+
+    def test_the_outcome_is_last_and_names_its_judge(self):
+        last = logbook.timeline(self.doc(), "0001", [], [])[-1]
+        self.assertEqual((last["phase"], last["verdict"]), ("outcome", "NO-GO"))
+        self.assertIn("verify", last["record"])
+
+    def test_a_pending_ticket_has_no_outcome_row(self):
+        self.assertNotIn("outcome", phases(logbook.timeline({"state": "requested",
+                                                             "history": [H("request", "requested", "t0")]}, "1", [], [])))
+
+    def test_a_failed_step_is_a_row_and_a_resume_too(self):
+        doc = {"state": "pr-opened", "history": [H("open", "opened", "t0"),
+                                                 H("ci", "pr-opened", "t1", error="step exited 1"),
+                                                 H("resume", "pr-opened", "t2", resumed="ci")]}
+        rows = logbook.timeline(doc, "1", [], [])
+        self.assertEqual([(r["phase"], r["verdict"], r["line"]) for r in rows[1:3]],
+                         [("ci", "failed", "step exited 1"), ("resume", None, "ci requested again")])
+
+    def test_review_shows_its_verdict_and_first_line(self):
+        doc = {"state": "ci-failed", "history": [H("open", "opened", "t0"), H("review", "ci-failed", "t1")],
+               "review": {"verdict": "changes-requested", "reason": "first\nsecond"}}
+        row = logbook.timeline(doc, "1", [], [])[1]
+        self.assertEqual((row["phase"], row["verdict"], row["line"]), ("review", "changes-requested", "first"))
+
+
+if __name__ == "__main__":
+    unittest.main()
