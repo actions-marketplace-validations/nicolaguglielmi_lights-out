@@ -41,7 +41,7 @@ SCHEMA = "lights-out/logbook/1.1"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
-           "needs-human", "merged", "held", "rolled-back")
+           "needs-human", "merged", "main-green", "held", "rolled-back")
 _DECIMAL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 _PROVENANCE = re.compile(r"^#\s*Provenance, (measurement|external|decision):\s*(.*)$")
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")

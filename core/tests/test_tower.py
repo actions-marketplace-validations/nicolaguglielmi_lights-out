@@ -358,7 +358,9 @@ class RedMain(TowerCase):
     GREEN = "3f2a9c1"
     LINE = "NO-GO: gates — test: undefined call(s) foo in 9d41e07"
     REFUSED = (("assign", "opened"), ("rework", "ci-failed"), ("release", "main-green"))
-    ALLOWED = (("ci", "pr-opened"), ("review", "review"), ("merge", "ci-passed"), ("mainline", "merged"))
+    # ADR 0055's steps before the ticket touch no code: a red main does not stop them.
+    ALLOWED = (("clarify", "requested"), ("answer", "questions"), ("spec", "spec-ready"),
+               ("ci", "pr-opened"), ("review", "review"), ("merge", "ci-passed"), ("mainline", "merged"))
 
     def main_doc(self, **fields):
         doc = {"state": "red", "green": self.GREEN, "head": "9d41e07", "line": self.LINE,
