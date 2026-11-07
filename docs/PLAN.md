@@ -764,6 +764,21 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - l'immagine dei gate passa `./go demo-package` con la sua misura;
   - `./go demo` resta invariato.
 
+### M32 — Plugin esterni, altre CI, un altro deploy (ADR 0058)
+
+*Aggiunto 2026-11-07, decisione dell'owner. Si costruisce dopo M27–M30.* Le porte sono già plugin (ADR 0024), ma un adapter vive solo dentro questo repository, e chi usa un'altra CI o un altro sistema di deploy deve aspettare noi.
+
+- **Adapter fuori dal repo.** Un profilo dichiara un percorso di adapter esterni. Un plugin vale solo se ha passato la suite di conformità della sua porta (Delivery, CodeHost, AgentHarness), registrata per l'hash esatto dell'adapter; altrimenti la torre lo rifiuta in una riga. La tabella di §4 resta il catalogo dei nostri; quelli di terzi stanno fuori, con la loro prova.
+- **Le altre CI sono superfici, non giudici.** Jenkins, GitLab CI, CircleCI e simili eseguono l'immagine dei gate e pubblicano la riga GO/NO-GO come check sul code host, come `action/` per GitHub. Il verdetto resta di lights-out e del contratto della base (ADR 0033): la torre non legge mai il verdetto di un'altra CI. Una ricetta mai eseguita è dichiarata "non provata" nel README.
+- **Jenkins e GitLab CI provati in locale.** Jenkins con Jenkinsfile Runner in un container; GitLab come adapter CodeHost accanto a Gitea e GitHub, con la sua conformità.
+- **Un adapter di deploy in più, scelto dalla domanda.** Flagger sul k3s di M25 è il più economico. Spinnaker è un adapter Delivery, non una CI, e solo su richiesta di un utente reale: non sta in piedi a L0.
+- *Da verificare prima di scrivere:* le versioni correnti di Jenkinsfile Runner, di GitLab CE e di Flagger, e che si eseguano senza account.
+- **Fatto quando:**
+  - un adapter esterno di prova viene rifiutato senza conformità e accettato dopo;
+  - `./go demo-jenkins` pubblica la riga di `lights-out gates` su una PR locale;
+  - `gates/codehost-conformance.sh` è GO su GitLab;
+  - `./go demo` resta invariato.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
