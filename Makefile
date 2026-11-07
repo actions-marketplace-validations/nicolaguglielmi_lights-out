@@ -70,6 +70,24 @@ HARNESS_BASE_IMAGE := $(if $(filter workbench compose:%,$(TOOLCHAIN_IMAGE)),$(WO
 export HARNESS_BASE_IMAGE
 export TICKETS_DIR
 
+# The project map (docs/adr/0054): where ./go map and the merge step write
+# it (MAP_FILE empty turns the merge step's rebuild off, §4), where the
+# workload repository keeps its tickets, and the pages the drift check
+# and the docs ticket leave alone: plans describe what does not exist yet,
+# .claude/ is construction tooling (§3). MAP_BRIEF, in the profile, puts
+# the map's slice in the worker's brief (§5).
+MAP_FILE ?= .crew/map.sqlite
+MAP_TICKETS := $(if $(WORKLOAD_ATTACHED),.lights-out/tickets,tickets)
+MAP_EXCLUDE := docs/PLAN.md docs/plans/* .claude/*
+# The replays that merge file their docs ticket into a copy of the tickets,
+# as demo-postmortem does (docs/adr/0044 §7, 0054 §4).
+TICKETS_SOURCE := $(TICKETS_DIR)
+REPLAY_TICKETS := .crew/replay-tickets
+define replay_tickets
+	@rm -rf "$(REPLAY_TICKETS)" && mkdir -p "$(REPLAY_TICKETS)" && cp "$(TICKETS_SOURCE)"/*.md "$(REPLAY_TICKETS)/"
+endef
+e2e demo-rework demo-review: TICKETS_DIR = $(REPLAY_TICKETS)
+
 # docker-compose over the podman socket builds through the classic /build
 # API; pinning this avoids compose spawning a buildkitd container
 # (docs/adr/0010).
@@ -182,7 +200,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help readme gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower perimeter review prompts evals promote board roles postmortem metrics package shell-boundary contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower perimeter review prompts evals promote board roles postmortem metrics package shell-boundary contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -242,6 +260,12 @@ up: ## Start the L0 plane, wait until every adapter is ready, then publish the s
 	done
 	@$(MAKE) --no-print-directory publish TAG=$(APP_TAG)
 	@printf 'lights-out: plane is up, app at http://localhost:%s\n' "$(APP_PORT)" >&2
+
+.PHONY: map
+map: ## Build the project map of the workload repository at HEAD, no model, no plane: MAP_FILE=<file> (docs/adr/0054)
+	@out=$$(python3 core/map.py build --repo "$(WORKLOAD_REPO)" --tickets "$(MAP_TICKETS)" --exclude "$(MAP_EXCLUDE)" --out "$(MAP_FILE)") \
+		|| { printf 'NO-GO: map — core/map.py could not build it; see above\n'; exit 1; }; \
+	printf 'GO: map — %s → %s\n' "$$out" "$(MAP_FILE)"
 
 .PHONY: board
 board: ## The flight readiness board on localhost:8099: the pipeline explained, and the live plane when it is up (docs/adr/0035)
@@ -626,6 +650,7 @@ TICKET ?= 0001
 .PHONY: e2e
 e2e: ## Golden path at L0: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)
 	@$(MAKE) --no-print-directory up
+	$(replay_tickets)
 	@printf '[e2e] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
 	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: e2e — could not reset the document\n'; exit 1; }
 	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: e2e — could not open ticket %s\n' "$(TICKET)"; exit 1; }
@@ -690,6 +715,7 @@ resume: ## Request again the step a ticket failed, keeping its history: TICKET=<
 demo-rework: TICKET := 0013
 demo-rework: ## Prove the rework loop: ticket 0013 NO-GO at the gates, reworked with the verdict, GO and merged (docs/adr/0038)
 	@$(MAKE) --no-print-directory up
+	$(replay_tickets)
 	@printf '[demo-rework] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
 	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: demo-rework — could not reset the document\n'; exit 1; }
 	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: demo-rework — could not open ticket %s\n' "$(TICKET)"; exit 1; }
@@ -727,6 +753,7 @@ review: ## Judge an opened PR outside the tower: TICKET=<id> [ROLE=test-reviewer
 demo-review: TICKET := 0005
 demo-review: ## Prove a medium/high-risk PR goes through the review step to a traceable verdict: TICKET=<id> (docs/adr/0021)
 	@$(MAKE) --no-print-directory up
+	$(replay_tickets)
 	@printf '[demo-review] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
 	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: demo-review — could not reset the document\n'; exit 1; }
 	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: demo-review — could not open ticket %s\n' "$(TICKET)"; exit 1; }

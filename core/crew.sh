@@ -94,18 +94,19 @@ if [ -f "$WORKLOAD_CONTRACT/crew-prepare.sh" ]; then
 fi
 
 # The harness's input (docs/adr/0037 §6, review's precedent in ADR 0021
-# §3): the ticket, then the workload's brief, then on a rework the verdict
-# (docs/adr/0038 §4). ticket.md stays the ticket alone, for the perimeter
-# check below.
-{
-  cat "$crew_dir/ticket.md"
-  printf '\n---\n\n'
-  cat "$brief"
-  if [ "$ATTEMPT" -gt 1 ]; then
-    printf '\n---\n\n'
-    cat "$REWORK_FILE"
-  fi
-} > "$crew_dir/input.md"
+# §3): the ticket, then the workload's brief, with MAP_BRIEF=on the project
+# map's slice for the perimeter at this base (docs/adr/0054 §5), then on a
+# rework the verdict (docs/adr/0038 §4). ticket.md stays the ticket alone,
+# for the perimeter check below.
+set -- "$brief"
+case "${MAP_BRIEF:-off}" in on|off) ;; *) nogo "MAP_BRIEF is '$MAP_BRIEF': on or off (docs/adr/0054 §5)" ;; esac
+if [ "${MAP_BRIEF:-off}" = on ]; then
+  python3 core/map.py slice --map "${MAP_FILE:-}" --base "$base" --ticket "$crew_dir/ticket.md" \
+    > "$crew_dir/slice.md" 2> "$crew_dir/slice.err" || nogo "$(tail -n1 "$crew_dir/slice.err")"
+  set -- "$@" "$crew_dir/slice.md"
+fi
+[ "$ATTEMPT" -le 1 ] || set -- "$@" "$REWORK_FILE"
+{ cat "$crew_dir/ticket.md"; for part in "$@"; do printf '\n---\n\n'; cat "$part"; done; } > "$crew_dir/input.md"
 
 mkdir -p "$crew_dir/out"
 
