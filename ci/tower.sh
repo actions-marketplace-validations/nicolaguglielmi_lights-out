@@ -212,6 +212,9 @@ printf 'GO: crew\n'
 STUB
 
 export STATE_STORE=stub-state EVENT_BUS=stub-bus CODE_HOST=stub-codehost TOWER_STEPS="$root/steps"
+# The stub code host has no repository to clone: the merge step's map
+# rebuild is off here (docs/adr/0054 §4); ci/map.sh proves it.
+export MAP_FILE=
 cd "$root"
 
 reset() {
