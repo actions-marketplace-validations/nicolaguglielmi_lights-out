@@ -137,9 +137,9 @@ function releasesList() { return Array.isArray(book.releases) ? book.releases : 
 // --- overview (docs/adr/0055 §6) --------------------------------------
 const ORDER = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
   "needs-human", "merged", "held", "rolled-back"];
-const DONE = ["merged", "held", "rolled-back"];
-function pendingNote(what) {
-  return h("div", {cls: "placeholder"}, "Empty: no record holds this yet. It arrives with " + shown((book.pending || {})[what]) + ".");
+function waitLine(w) {
+  return "waiting since " + shown(w.since) + ", " + w.refusals + " refused assign" + (w.refusals > 1 ? "s" : "") +
+    (w.holders.length ? "; held by " + w.holders.join(", ") : "; no open ticket holds its files: the base, or a missing perimeter (./go resume)");
 }
 function screenOverview() {
   const out = [h("h1", {}, "Overview"),
@@ -151,14 +151,25 @@ function screenOverview() {
     states.filter((st) => all.some((t) => t.state === st)).map((st) => h("div", {},
       h("div", {cls: "muted"}, st), h("div", {cls: "count"}, all.filter((t) => t.state === st).length),
       h("div", {}, all.filter((t) => t.state === st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t))))))))));
-  const open = all.filter((t) => !DONE.includes(t.state) && Array.isArray(t.perimeter));
-  out.push(h("h2", {}, "Perimeters held by open tickets"), h("div", {cls: "panel"},
-    open.length ? h("table", {}, h("tr", {}, ["Ticket", "State", "Declared perimeter", "Waiting for"].map((c) => h("th", {}, c))),
-      open.map((t) => h("tr", {}, h("td", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, t.id)), h("td", {}, t.state),
-        h("td", {cls: "mono"}, t.perimeter.join("  ·  ")), h("td", {}, pendingNote("wait")))))
-      : h("p", {cls: "muted"}, "No open ticket declares a perimeter.")));
-  out.push(h("h2", {}, "Docs a merge left to realign"), h("div", {cls: "panel"},
-    book.docs_to_realign ? h("pre", {}, JSON.stringify(book.docs_to_realign, null, 2)) : pendingNote("docs_to_realign")));
+  const held = book.perimeters_held;
+  out.push(h("h2", {}, "Perimeters held (perimeters/held, ADR 0053)"), h("div", {cls: "panel"},
+    unread(held) ? err(held) : !Array.isArray(held) ? h("p", {cls: "muted"}, "This logbook has no perimeters_held.")
+    : held.length ? h("table", {}, h("tr", {}, ["Ticket", "State", "Globs", "Holds now"].map((c) => h("th", {}, c))),
+      held.map((x) => h("tr", {}, h("td", {}, h("a", {href: "#ticket/" + encodeURIComponent(x.ticket)}, x.ticket)), h("td", {}, shown(x.state)),
+        h("td", {cls: "mono"}, x.globs.join("  ·  ")), h("td", {}, x.holding ? h("span", {cls: "chip pending"}, "yes") : "no: its PR is not open"))))
+      : h("p", {cls: "muted"}, "No assign has claimed a perimeter yet.")));
+  const waits = all.filter((t) => t.wait);
+  out.push(h("h2", {}, "Tickets waiting at assign"), h("div", {cls: "panel"}, waits.length
+    ? h("ul", {}, waits.map((t) => h("li", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t)), ": ", waitLine(t.wait))))
+    : h("p", {cls: "muted"}, "No ticket waits.")));
+  const docs = book.docs_to_realign;
+  out.push(h("h2", {}, "Docs a merge left to realign (ADR 0054)"), h("div", {cls: "panel"},
+    unread(docs) ? err(docs) : !Array.isArray(docs) ? h("p", {cls: "muted"}, "This logbook has no docs_to_realign.")
+    : docs.length ? h("table", {}, h("tr", {}, ["Merged ticket", "Merge", "Docs ticket", "Its state"].map((c) => h("th", {}, c))),
+      docs.map((d) => h("tr", {}, h("td", {}, d.ticket), h("td", {cls: "mono"}, shown(d.merge_sha)),
+        h("td", {}, d.docs_ticket_state ? h("a", {href: "#ticket/" + encodeURIComponent(d.docs_ticket)}, d.docs_ticket) : d.docs_ticket),
+        h("td", {}, shown(d.docs_ticket_state) === "—" ? "not opened by the tower" : d.docs_ticket_state))))
+      : h("p", {cls: "muted"}, "No merge has left docs to realign.")));
   return out;
 }
 
@@ -171,6 +182,7 @@ function card(t) {
     h("div", {}, h("b", {}, named(t))),
     h("div", {cls: "muted"}, h("span", {cls: "chip " + (t.priority ? "pending" : "none")}, t.priority || "unprioritised"), " ",
       t.feature || "no feature"),
+    t.wait ? h("div", {cls: "muted"}, waitLine(t.wait)) : null,
     t.outcome && t.outcome.verdict !== "pending" ? h("div", {}, chip(t.outcome.verdict)) : null);
 }
 function screenKanban() {
@@ -241,7 +253,7 @@ function cost(task) {
 }
 
 // --- screen 2: one ticket's timeline (docs/adr/0055 §6) ----------------
-const VERDICTS = {"spec-ready": "GO", "questions": "pending", "ci-passed": "GO", "ci-failed": "NO-GO", "review": "pending",
+const VERDICTS = {"waiting": "pending", "spec-ready": "GO", "questions": "pending", "ci-passed": "GO", "ci-failed": "NO-GO", "review": "pending",
   "merged": "GO", "rolled-back": "NO-GO", "held": "GO", "failed": "stranded", "approved": "GO", "changes-requested": "NO-GO"};
 function rowDetail(r) {
   const bits = [];
@@ -252,7 +264,7 @@ function rowDetail(r) {
   if (r.phase === "product" && (r.turns !== undefined || r.model !== undefined)) bits.push(dl([["Harness", r.harness], ["Model", r.model],
     ["Turns", r.turns], ["Tokens", r.tokens && r.tokens.total], r.replayed ? ["Replay", "recorded at L1, replayed"] : null]));
   if (r.phase === "assign") bits.push(dl([["Perimeter", unread(r.perimeter) ? err(r.perimeter) : h("span", {cls: "mono"}, (r.perimeter || []).join("  ·  "))],
-    ["Waited", r.wait === null ? pendingNote("wait") : r.wait]]));
+    ["Waited", r.wait ? r.wait.refusals + " refused assign(s) since " + shown(r.wait.since) : "no"]]));
   if (r.phase === "canary") bits.push(h("div", {}, h("b", {}, r.pct + "%"), (r.numbers || []).length ? h("pre", {}, r.numbers.join("\n")) : null));
   if (r.by) bits.push(h("div", {cls: "muted"}, "by " + r.by + (r.via ? " via " + r.via : "")));
   if (r.phase === "rework" && r.judge) bits.push(h("div", {cls: "muted"}, "judged by " + r.judge));

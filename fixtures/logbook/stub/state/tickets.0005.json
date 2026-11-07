@@ -1,6 +1,7 @@
 {
   "id": "0005",
   "state": "opened",
-  "history": [{"step": "open", "state": "opened", "at": "2026-11-04T07:00:00Z"}],
+  "history": [{"step": "open", "state": "opened", "at": "2026-11-04T07:00:00Z"},
+              {"step": "assign", "state": "opened", "at": "2026-11-04T07:01:00Z", "error": "step exited 1"}],
   "spec": {"title": "Gate the waitlist flag", "sha256": "5555555555555555555555555555555555555555555555555555555555555555"}
 }

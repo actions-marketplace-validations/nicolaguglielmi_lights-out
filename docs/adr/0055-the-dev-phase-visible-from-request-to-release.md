@@ -30,9 +30,12 @@ this branch (ADR 0047, one commit on 105dea2):
   precedent): a fixture is never written by hand.
 - ADR 0047 §3 dropped the console's answer to the product role "until a
   `./go` command answers it". ADR 0023 §2 allows it as the second write.
-- M27 (perimeter overlap at `assign`, ADR 0053) and M28 (the docs a merge
-  leaves to realign, ADR 0054) are being built in parallel and are not on
-  this branch.
+- M27 (perimeter overlap at `assign`, ADR 0053) and M28 (the project
+  map and the docs a merge leaves to realign, ADR 0054) were built in
+  parallel and landed first (main 373da51). Their records: a refused
+  `assign` is a failed history entry and the ticket stays `opened`; the
+  StateStore's `perimeters/held` names who holds which globs; the merge
+  step writes `map: {sha, docs_ticket}`.
 
 ## Decision
 
@@ -139,7 +142,7 @@ this branch (ADR 0047, one commit on 105dea2):
 5. **The tower keeps every attempt's task.** When a step's result carries
    `task` (assign, rework), the tower also appends it, with the document's
    `attempt`, to `tasks`. A rule of `core/tower.py`, so `assign` and
-   `rework`, which M27 and M28 change, are not touched. The timeline shows
+   `rework`, which M27 and M28 changed, are not touched. The timeline shows
    each attempt's turns, tokens and duration from there.
 
 6. **The console: one timeline per ticket, and an overview.**
@@ -155,11 +158,17 @@ this branch (ADR 0047, one commit on 105dea2):
    - Screen 2, the chain, becomes the timeline. A new overview shows the
      tickets by state, the perimeters held by tickets that are open and
      not yet merged, and the docs a merge left to realign.
-   - **What M27 and M28 will fill.** The perimeter wait (ADR 0053) and
-     the docs to realign (ADR 0054) have no record on this branch. Their
-     rows and panels are drawn empty, labelled with the milestone and ADR
-     that will provide them, and the logbook carries `null` for them. No
-     number stands in.
+   - **M27's wait and M28's docs, from their records.** A refused
+     `assign` (ADR 0053 §5-§6) is a `wait` row; the `assign` row that
+     follows says how many refusals and since when. A ticket at `opened`
+     whose last `assign` was refused carries `wait: {since, refusals,
+     holders}`, the holders being the tickets of `perimeters/held` that
+     hold now and whose globs overlap its own (ADR 0053's own overlap
+     rule); none named means the base or a missing perimeter refused it.
+     The logbook carries `perimeters_held` and `docs_to_realign` (each
+     merge's `map.docs_ticket` and that ticket's state). The holders are
+     read at the logbook's time, not at the refusal's: the tower records
+     no reason with a failed step. No number stands in.
    - ADR 0023's rules hold: every screen mirrors `./go logbook` and
      `./go audit`; the answer mirrors `./go answer`.
 
@@ -245,10 +254,10 @@ this branch (ADR 0047, one commit on 105dea2):
 
 - **The one that hurts first: the worker does not see the confirmed
   criteria yet.** `assign` hands it `tickets/<id>.md`, unchanged here so
-  that M27 and M28 can change `assign` without a conflict. Until `assign`
-  reads `.crew/<id>/spec.md`, a criterion `product` added after an answer
-  reaches the timeline and the gate, not the worker. That is the first
-  change after M27 and M28 land.
+  that M27 and M28 could change `assign` without a conflict. Until
+  `assign` reads `.crew/<id>/spec.md`, a criterion `product` added after
+  an answer reaches the timeline and the gate, not the worker. That is
+  the first change after this one lands.
 - `./go demo`'s tower now starts at `requested`: two more steps, about as
   long as one adk import and one gate, inside the same budget. Its stages
   and verdict do not change.

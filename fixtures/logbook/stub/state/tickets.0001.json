@@ -13,6 +13,7 @@
   "pr": {"number": 1, "url": "http://codehost.invalid/o/r/pulls/1", "base_sha": "b1", "head_sha": "h1", "branch": "ticket-0001"},
   "ci": {"verdict": "GO", "risk_level": "low", "decision": "auto-merge", "line": "GO: ci", "details": [], "head_sha": "h1"},
   "merge": {"sha": "m1", "head_sha": "h1"},
+  "map": {"sha": "m1", "file": ".crew/map.sqlite", "docs_ticket": "0009"},
   "release": {"version": "0.2.0-a", "image": "img-a", "verdict": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
               "numbers": ["slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"]}
 }

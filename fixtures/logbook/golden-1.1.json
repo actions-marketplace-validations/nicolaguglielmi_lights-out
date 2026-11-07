@@ -1,5 +1,12 @@
 {
-  "docs_to_realign": null,
+  "docs_to_realign": [
+    {
+      "docs_ticket": "0009",
+      "docs_ticket_state": "questions",
+      "merge_sha": "m1",
+      "ticket": "0001"
+    }
+  ],
   "kanban": [
     {
       "state": "requested",
@@ -107,10 +114,32 @@
       "version": "0.5.0-d"
     }
   },
-  "pending": {
-    "docs_to_realign": "M28 (docs/adr/0054)",
-    "wait": "M27 (docs/adr/0053)"
-  },
+  "perimeters_held": [
+    {
+      "globs": [
+        "app/backend/meetups/*"
+      ],
+      "holding": false,
+      "state": "rolled-back",
+      "ticket": "0001"
+    },
+    {
+      "globs": [
+        "README.md"
+      ],
+      "holding": true,
+      "state": "ci-failed",
+      "ticket": "0003"
+    },
+    {
+      "globs": [
+        "app/backend/router.py"
+      ],
+      "holding": true,
+      "state": "ci-failed",
+      "ticket": "0008"
+    }
+  ],
   "postmortems": [
     {
       "actions": [
@@ -357,6 +386,10 @@
         }
       ],
       "id": "0001",
+      "map": {
+        "docs_ticket": "0009",
+        "sha": "m1"
+      },
       "merge": {
         "head_sha": "h1",
         "sha": "m1"
@@ -436,8 +469,7 @@
           "phase": "assign",
           "record": "tower history",
           "verdict": null,
-          "wait": null,
-          "wait_from": "M27 (docs/adr/0053)"
+          "wait": null
         },
         {
           "at": "2026-11-01T09:01:00Z",
@@ -484,7 +516,8 @@
         }
       ],
       "title": "Unknown venue answers 500",
-      "updated_at": "2026-11-01T09:30:00Z"
+      "updated_at": "2026-11-01T09:30:00Z",
+      "wait": null
     },
     {
       "attempt": 2,
@@ -504,6 +537,7 @@
         }
       ],
       "id": "0002",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-02T08:00:00Z",
       "origin": null,
@@ -606,7 +640,8 @@
         }
       ],
       "title": "Add a waitlist",
-      "updated_at": "2026-11-02T10:00:00Z"
+      "updated_at": "2026-11-02T10:00:00Z",
+      "wait": null
     },
     {
       "attempt": null,
@@ -636,6 +671,7 @@
         }
       ],
       "id": "0003",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-03T08:00:00Z",
       "origin": null,
@@ -697,7 +733,8 @@
         }
       ],
       "title": "0003 — Tidy the README",
-      "updated_at": "2026-11-03T08:20:00Z"
+      "updated_at": "2026-11-03T08:20:00Z",
+      "wait": null
     },
     {
       "attempt": 1,
@@ -724,6 +761,7 @@
         }
       ],
       "id": "0004",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-03T09:00:00Z",
       "origin": null,
@@ -782,8 +820,7 @@
           "phase": "assign",
           "record": "tower history",
           "verdict": null,
-          "wait": null,
-          "wait_from": "M27 (docs/adr/0053)"
+          "wait": null
         },
         {
           "at": "2026-11-03T09:01:00Z",
@@ -816,7 +853,8 @@
         }
       ],
       "title": "Rename a column",
-      "updated_at": "2026-11-03T09:05:00Z"
+      "updated_at": "2026-11-03T09:05:00Z",
+      "wait": null
     },
     {
       "attempt": null,
@@ -827,16 +865,23 @@
           "at": "2026-11-04T07:00:00Z",
           "state": "opened",
           "step": "open"
+        },
+        {
+          "at": "2026-11-04T07:01:00Z",
+          "error": "step exited 1",
+          "state": "opened",
+          "step": "assign"
         }
       ],
       "id": "0005",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-04T07:00:00Z",
       "origin": "postmortem demo-rollback action 1",
       "outcome": {
-        "judge": null,
-        "line": null,
-        "verdict": "pending"
+        "judge": "step",
+        "line": "step exited 1",
+        "verdict": "stranded"
       },
       "perimeter": {
         "error": "ticket tickets/0005.md has no ## Perimeter section",
@@ -868,10 +913,30 @@
           "phase": "open",
           "record": "tower history",
           "verdict": null
+        },
+        {
+          "at": "2026-11-04T07:01:00Z",
+          "line": "assign refused (step exited 1): the ticket waits at opened for ./go resume (docs/adr/0053 §5-§6)",
+          "phase": "wait",
+          "record": "tower history",
+          "verdict": "waiting"
+        },
+        {
+          "at": null,
+          "line": "step exited 1",
+          "phase": "outcome",
+          "record": "outcome, judged by step",
+          "verdict": "stranded"
         }
       ],
       "title": "Gate the waitlist flag",
-      "updated_at": "2026-11-04T07:00:00Z"
+      "updated_at": "2026-11-04T07:01:00Z",
+      "wait": {
+        "holders": [],
+        "record": "tower history, perimeters/held",
+        "refusals": 1,
+        "since": "2026-11-04T07:01:00Z"
+      }
     },
     {
       "attempt": 4,
@@ -891,6 +956,7 @@
         }
       ],
       "id": "0007",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-04T06:00:00Z",
       "origin": null,
@@ -975,7 +1041,8 @@
         }
       ],
       "title": "Cache geocoder answers",
-      "updated_at": "2026-11-04T06:50:00Z"
+      "updated_at": "2026-11-04T06:50:00Z",
+      "wait": null
     },
     {
       "attempt": 1,
@@ -1003,6 +1070,7 @@
         }
       ],
       "id": "0008",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-04T05:00:00Z",
       "origin": null,
@@ -1063,7 +1131,8 @@
         }
       ],
       "title": "Split the router",
-      "updated_at": "2026-11-04T05:40:00Z"
+      "updated_at": "2026-11-04T05:40:00Z",
+      "wait": null
     },
     {
       "attempt": null,
@@ -1099,6 +1168,7 @@
         }
       ],
       "id": "0009",
+      "map": null,
       "merge": null,
       "opened_at": "2026-11-07T08:00:00Z",
       "origin": null,
@@ -1222,7 +1292,8 @@
         }
       ],
       "title": "0009 — A waiting list when a meetup is full",
-      "updated_at": "2026-11-07T08:10:07Z"
+      "updated_at": "2026-11-07T08:10:07Z",
+      "wait": null
     }
   ]
 }

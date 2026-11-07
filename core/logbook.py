@@ -31,14 +31,13 @@ import sys
 try:
     from core.policy import PolicyError, effective
     from core.spec import fields
+    from core.assign import HOLDING, overlaps
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
+    from assign import HOLDING, overlaps
 
 SCHEMA = "lights-out/logbook/1.1"
-# What no record on this branch holds yet (docs/adr/0055 §6): the row or
-# panel is drawn empty and names the milestone that will fill it.
-PENDING = {"wait": "M27 (docs/adr/0053)", "docs_to_realign": "M28 (docs/adr/0054)"}
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -272,6 +271,7 @@ def tickets(rels):
             "ci": pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha")),
             "review": pick(doc.get("review"), ("role", "verdict", "reason", "harness", "model")),
             "merge": pick(doc.get("merge"), ("sha", "head_sha")),
+            "map": pick(doc.get("map"), ("sha", "docs_ticket")),
             "release": pick(doc.get("release"), ("version", "image", "verdict", "numbers")),
             "history": history,
             "questions": doc.get("questions") or [],
@@ -295,6 +295,54 @@ def kanban(tickets):
 
     return [{"state": st, "tickets": [t["id"] for t in sorted(tickets, key=order) if t["state"] == st]}
             for st in states]
+
+
+def perimeters_held(tickets):
+    """M27's record of who holds which files (docs/adr/0053 §5): the
+    StateStore's perimeters/held, each holder with its ticket's state now
+    and whether that state holds."""
+    store = env("STATE_STORE")
+    if not store or not isinstance(tickets, list):
+        return unread("STATE_STORE not set; run this via ./go logbook") if not store else tickets
+    rc, stdout, err = run("sh", f"adapters/{store}/get.sh", "perimeters", "held")
+    if rc == 1:
+        return []
+    if rc != 0:
+        return unread(err)
+    try:
+        held = (json.loads(stdout) or {}).get("tickets") or {}
+    except (ValueError, AttributeError):
+        return unread("perimeters/held is not a JSON object")
+    states = {t["id"]: t["state"] for t in tickets}
+    return [{"ticket": tid, "globs": globs, "state": states.get(tid), "holding": states.get(tid) in HOLDING}
+            for tid, globs in sorted(held.items())]
+
+
+def waiting(ticket, holds):
+    """A ticket at `opened` whose last assign was refused waits (ADR 0053
+    §5-§6); the holders are the holding tickets whose globs overlap its own
+    perimeter now, none when the refusal was the base's."""
+    history = ticket.get("history") or []
+    last = history[-1] if history else {}
+    if ticket.get("state") != "opened" or last.get("step") != "assign" or not last.get("error"):
+        return None
+    refused = [h for h in history if h.get("step") == "assign" and h.get("error")]
+    mine = ticket.get("perimeter") if isinstance(ticket.get("perimeter"), list) else []
+    holders = sorted({h["ticket"] for h in holds if isinstance(holds, list) and h["holding"]
+                      and h["ticket"] != ticket["id"] and any(overlaps(a, b) for a in mine for b in h["globs"])})
+    return {"since": refused[0].get("at"), "refusals": len(refused), "holders": holders,
+            "record": "tower history, perimeters/held"}
+
+
+def docs_to_realign(tickets):
+    """M28's docs tickets (docs/adr/0054 §4): each merge that left docs to
+    realign, with the ticket it filed and that ticket's state."""
+    if not isinstance(tickets, list):
+        return tickets
+    states = {t["id"]: t["state"] for t in tickets}
+    return [{"ticket": t["id"], "merge_sha": t["map"].get("sha"), "docs_ticket": t["map"]["docs_ticket"],
+             "docs_ticket_state": states.get(t["map"]["docs_ticket"])}
+            for t in tickets if isinstance(t.get("map"), dict) and t["map"].get("docs_ticket")]
 
 
 # --- the timeline (docs/adr/0055 §6) -----------------------------------------
@@ -322,6 +370,10 @@ def timeline(doc, tid, rels, globs):
     rows = []
     for i, h in enumerate(history):
         step, at, state = h.get("step"), h.get("at"), h.get("state")
+        if h.get("error") and step == "assign":
+            rows.append(row("wait", at, f"assign refused ({h['error']}): the ticket waits at opened for "
+                            "./go resume (docs/adr/0053 §5-§6)", "tower history", "waiting"))
+            continue
         if h.get("error"):
             rows.append(row(step, at, h["error"], "tower history", "failed", attempt=h.get("attempt")))
             continue
@@ -356,8 +408,10 @@ def timeline(doc, tid, rels, globs):
             n = h.get("attempt")
             if step == "assign":
                 pr = doc.get("pr") or {}
+                refused = [e for e in history[:i] if e.get("step") == "assign" and e.get("error")]
+                waited = {"refusals": len(refused), "since": refused[0].get("at")} if refused else None
                 rows.append(row("assign", at, f"PR #{pr.get('number')}" if pr.get("number") else "assigned",
-                                "tower history", perimeter=globs, wait=None, wait_from=PENDING["wait"]))
+                                "tower history", perimeter=globs, wait=waited))
             else:
                 rw = [r for r in doc.get("rework") or [] if isinstance(r, dict)]
                 prior = rw[n - 2] if isinstance(n, int) and 0 <= n - 2 < len(rw) else {}
@@ -577,6 +631,9 @@ def main(argv):
     record = read_json(env("RELEASE_RECORD", ".crew/release.json"))
     rels = releases(record)
     held = tickets(rels)
+    holds = perimeters_held(held)
+    for t in held if isinstance(held, list) else []:
+        t["wait"] = waiting(t, holds)
     book = {
         "schema": SCHEMA,
         "source": source(),
@@ -586,8 +643,8 @@ def main(argv):
         "postmortems": postmortems(),
         "thresholds": thresholds(),
         "launch": launch(record),
-        "docs_to_realign": None,
-        "pending": PENDING,
+        "perimeters_held": holds,
+        "docs_to_realign": docs_to_realign(held),
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"
