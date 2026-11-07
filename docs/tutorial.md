@@ -676,7 +676,7 @@ permissions:
   contents: read
   checks: write
 steps:
-  - uses: actions/checkout@v4
+  - uses: actions/checkout@v7
     with:
       fetch-depth: 0
   - uses: nicolaguglielmi/lights-out/action@v0.1.0
