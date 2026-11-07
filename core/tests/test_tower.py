@@ -131,21 +131,28 @@ class Usage(TowerCase):
 
 class Transitions(unittest.TestCase):
     """The states and steps of docs/adr/0019 §1, with rework from docs/adr/0038
-    and the three states before `opened` from docs/adr/0055 §1."""
+    and the three states before `opened` from docs/adr/0055 §1, and the main check between merge and
+    release from docs/adr/0056 §2."""
 
     def test_each_step_starts_from_its_state(self):
         self.assertEqual(tower.PRECONDITION, {
             "clarify": "requested", "answer": "questions", "spec": "spec-ready",
             "assign": "opened", "ci": "pr-opened", "review": "review",
-            "merge": "ci-passed", "release": "merged", "rework": "ci-failed"})
+            "merge": "ci-passed", "mainline": "merged", "release": "main-green",
+            "rework": "ci-failed"})
 
     def test_each_state_requests_the_next_step_or_nothing(self):
         self.assertEqual(tower.NEXT, {
             "requested": "clarify", "spec-ready": "spec", "opened": "assign",
             "pr-opened": "ci", "review": "review", "ci-passed": "merge",
-            "merged": "release", "ci-failed": "rework"})
+            "merged": "mainline", "main-green": "release", "ci-failed": "rework"})
         for waiting in ("questions", "rolled-back", "held", "needs-human"):
             self.assertNotIn(waiting, tower.NEXT)
+
+    def test_release_no_longer_starts_from_merged(self):
+        # ADR 0056 §2: a merged ticket waits for the main check, not for release.
+        self.assertNotEqual(tower.PRECONDITION["release"], "merged")
+        self.assertNotEqual(tower.NEXT["merged"], "release")
 
 
 class Step(TowerCase):
@@ -237,8 +244,19 @@ class Step(TowerCase):
         self.assertIn("[tower] 0001: ci → ci-passed", err)
         self.assertEqual(self.published(), [{"ticket": "0001", "step": "merge"}])
 
-    def test_a_terminal_state_requests_nothing(self):
+    def test_a_release_requested_for_a_merged_ticket_is_dropped(self):
+        # ADR 0056 §2: release starts from main-green; a merged ticket is mainline's.
         self.put_doc({"id": "0001", "state": "merged", "history": []})
+        self.step_script("release", "touch ran\necho '{\"state\": \"rolled-back\"}'\n")
+        before = self.doc()
+        code, err = self.run_tower("step", "0001", "release")
+        self.assertEqual(code, 0)
+        self.assertIn("release already applied (state merged), ignoring", err)
+        self.assertFalse((self.root / "ran").exists())
+        self.assertEqual(self.doc(), before)
+
+    def test_a_terminal_state_requests_nothing(self):
+        self.put_doc({"id": "0001", "state": "main-green", "history": []})
         self.step_script("release", "echo '{\"state\": \"rolled-back\"}'\n")
         code, err = self.run_tower("step", "0001", "release")
         self.assertEqual(code, 0)
@@ -248,7 +266,7 @@ class Step(TowerCase):
 
     def test_every_transition_requests_what_the_table_says(self):
         for step, start in tower.PRECONDITION.items():
-            for state in ("pr-opened", "review", "ci-passed", "ci-failed", "merged", "held"):
+            for state in ("pr-opened", "review", "ci-passed", "ci-failed", "merged", "main-green", "held"):
                 with self.subTest(step=step, state=state):
                     (self.root / "bus.log").unlink(missing_ok=True)
                     self.put_doc({"id": "0001", "state": start, "history": []})
@@ -330,6 +348,132 @@ class Step(TowerCase):
         code, err = self.run_tower("step", "0001", "assign")
         self.assertEqual(code, 1)
         self.assertIn("could not record the failed assign either", err)
+
+
+class RedMain(TowerCase):
+    """docs/adr/0056 §5: a red `mainline`/`main` document refuses assign, rework and release before
+    they run, records the refusal as a failed attempt with the reason, and leaves every other step
+    alone. The `mainline` step is one of those: it is what turns the document green again."""
+
+    GREEN = "3f2a9c1"
+    LINE = "NO-GO: gates — test: undefined call(s) foo in 9d41e07"
+    REFUSED = (("assign", "opened"), ("rework", "ci-failed"), ("release", "main-green"))
+    ALLOWED = (("ci", "pr-opened"), ("review", "review"), ("merge", "ci-passed"), ("mainline", "merged"))
+
+    def main_doc(self, **fields):
+        doc = {"state": "red", "green": self.GREEN, "head": "9d41e07", "line": self.LINE,
+               "reverted": [], "at": "t", **fields}
+        (self.root / "state" / "mainline.main.json").write_text(json.dumps(doc))
+
+    def ticket_at(self, step, state):
+        fields = {} if step == "assign" else {"attempt": 2}
+        self.put_doc({"id": "0001", "state": state, "history": [{"step": "open", "state": "opened", "at": "t0"}],
+                      **fields})
+
+    def runs(self, step):
+        """The step script touches `ran` and moves the ticket to `held`."""
+        self.step_script(step, "touch ran\necho '{\"state\": \"held\"}'\n")
+
+    def reset(self):
+        (self.root / "ran").unlink(missing_ok=True)
+        (self.root / "bus.log").unlink(missing_ok=True)
+
+    def test_every_step_is_classified(self):
+        # A step added to the table later must be decided here, refused on a red main or not.
+        self.assertEqual(dict(self.REFUSED + self.ALLOWED), tower.PRECONDITION)
+
+    def test_a_red_main_refuses_assign_rework_and_release_before_they_run(self):
+        self.main_doc()
+        for step, start in self.REFUSED:
+            with self.subTest(step=step):
+                self.reset()
+                self.ticket_at(step, start)
+                self.runs(step)
+                before = self.doc()
+                code, _ = self.run_tower("step", "0001", step)
+                self.assertEqual(code, 1)
+                self.assertFalse((self.root / "ran").exists(), "the step script must not run")
+                self.assertEqual(self.published(), [])
+                doc = self.doc()
+                self.assertEqual(doc["state"], start, "the state stays")
+                self.assertEqual({k: v for k, v in doc.items() if k != "history"},
+                                 {k: v for k, v in before.items() if k != "history"})
+                self.assertEqual(doc["history"][:-1], before["history"])
+                entry = doc["history"][-1]
+                self.assertEqual((entry["step"], entry["state"]), (step, start))
+                self.assertRegex(entry["at"], STAMP)
+                self.assertTrue(entry["error"].startswith("main is NO-GO"), entry["error"])
+                self.assertIn(self.GREEN, entry["error"], "since which green main")
+                self.assertIn(self.LINE, entry["error"], "and why")
+                if step != "assign":
+                    self.assertEqual(entry["attempt"], 2)
+                else:
+                    self.assertNotIn("attempt", entry)
+
+    def test_the_refused_step_is_requested_again_once_main_is_green(self):
+        for step, start in self.REFUSED:
+            with self.subTest(step=step):
+                self.reset()
+                self.main_doc()
+                self.ticket_at(step, start)
+                self.runs(step)
+                self.assertEqual(self.run_tower("step", "0001", step)[0], 1)
+                self.main_doc(state="green")
+                code, _ = self.run_tower("resume", "0001")
+                self.assertEqual(code, 0)
+                self.assertEqual(self.published(), [{"ticket": "0001", "step": step}])
+                self.assertEqual(self.doc()["history"][-1]["resumed"], step)
+                self.assertEqual(self.run_tower("step", "0001", step)[0], 0)
+                self.assertTrue((self.root / "ran").exists())
+                self.assertEqual(self.doc()["state"], "held")
+
+    def test_a_green_absent_or_unmarked_main_runs_the_step(self):
+        for label, doc in (("green", {"state": "green", "green": self.GREEN}), ("no state", {"head": "x"}),
+                           ("absent", None)):
+            for step, start in self.REFUSED:
+                with self.subTest(main=label, step=step):
+                    self.reset()
+                    path = self.root / "state" / "mainline.main.json"
+                    path.unlink(missing_ok=True)
+                    if doc is not None:
+                        path.write_text(json.dumps(doc))
+                    self.ticket_at(step, start)
+                    self.runs(step)
+                    self.assertEqual(self.run_tower("step", "0001", step)[0], 0)
+                    self.assertTrue((self.root / "ran").exists())
+                    self.assertEqual(self.doc()["state"], "held")
+                    self.assertNotIn("error", self.doc()["history"][-1])
+
+    def test_no_other_step_is_refused(self):
+        self.main_doc()
+        for step, start in self.ALLOWED:
+            with self.subTest(step=step):
+                self.reset()
+                self.ticket_at(step, start)
+                self.runs(step)
+                self.assertEqual(self.run_tower("step", "0001", step)[0], 0)
+                self.assertTrue((self.root / "ran").exists())
+                self.assertEqual(self.doc()["state"], "held")
+                self.assertNotIn("error", self.doc()["history"][-1])
+
+    def test_an_event_for_a_step_already_applied_is_dropped_not_refused(self):
+        self.main_doc()
+        self.put_doc({"id": "0001", "state": "pr-opened", "history": []})
+        self.runs("assign")
+        before = self.doc()
+        code, err = self.run_tower("step", "0001", "assign")
+        self.assertEqual(code, 0)
+        self.assertIn("assign already applied (state pr-opened), ignoring", err)
+        self.assertEqual(self.doc(), before)
+
+    def test_only_mainline_main_is_read(self):
+        # A red document under another id, or with the arguments swapped, is not main's.
+        for name in ("mainline.other.json", "main.mainline.json", "tickets.main.json"):
+            (self.root / "state" / name).write_text(json.dumps({"state": "red", "green": self.GREEN, "line": self.LINE}))
+        self.ticket_at("assign", "opened")
+        self.runs("assign")
+        self.assertEqual(self.run_tower("step", "0001", "assign")[0], 0)
+        self.assertTrue((self.root / "ran").exists())
 
 
 class Resume(TowerCase):
