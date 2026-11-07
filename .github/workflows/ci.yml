@@ -201,6 +201,21 @@ jobs:
           docker exec lights-out-k8s-1 kubectl get rollout,pods,svc,endpointslices -A -o wide || true
           docker exec lights-out-k8s-1 kubectl -n argo-rollouts logs deploy/argo-rollouts --tail 80 || true
 
+  # M30's acceptance (docs/adr/0056 §7): two disjoint tickets merge without
+  # re-judging, a third goes back to rework after a person's merge on its
+  # perimeter, a merge that breaks main is bisected and reverted through
+  # the plane's Gitea, and main is GO again. Brings the plane up itself.
+  mainline:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - run: ./go demo-mainline
+        env:
+          CONTAINER_ENGINE: docker
+
   # The Workload port's own acceptance (docs/adr/0030 §7), and attach's
   # since M13 (docs/adr/0037 §10): workloads/minimal/ copied into a fresh
   # git repository, attached, then down, up, smoke, verify, demo-rollback,
