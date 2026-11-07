@@ -8,7 +8,7 @@
 # whole word: "gate"/"gates" (except "gates/", a path — dev-worker's own
 # scope list uses it and stays); every gates/*.sh basename but "test",
 # derived from gates/*.sh, never hardcoded; "make <t>" and "./go <t>" for
-# every target `make help` lists (the ci/readme.sh derivation), plus the
+# every target `make help` lists (the derivation core/map.py uses for docs, docs/adr/0054 §3), plus the
 # bare entrypoints "make" and "./go" on their own — a prompt has no
 # business naming either; and the hand list of tools the gates invoke —
 # osv-scanner, gitleaks, cosmic-ray, bandit, stryker, eslint,
@@ -47,7 +47,7 @@ for f in gates/*.sh; do
   gate_basenames="$gate_basenames $b"
 done
 
-# --- every target `make help` lists (the ci/readme.sh derivation) ---
+# --- every target `make help` lists (the derivation core/map.py uses for docs, docs/adr/0054 §3) ---
 help_out=$(make --no-print-directory help 2>&1) || nogo "make --no-print-directory help exited nonzero" "$help_out"
 targets=$(printf '%s\n' "$help_out" | awk '/^  [a-z]/{print $1}')
 
