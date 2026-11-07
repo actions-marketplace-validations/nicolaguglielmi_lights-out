@@ -39,7 +39,7 @@ TICKET = """# 0021 - a ticket
 
 ## Perimeter
 
-- `app/backend/meetups/db.py`
+- `svc/backend/store/db.py`
 - `docs/*`
 -   tests/test_db.py
 
@@ -59,7 +59,7 @@ class Perimeter(unittest.TestCase):
 
     def test_the_items_of_the_section_with_backticks_dropped_and_spaces_trimmed(self):
         self.assertEqual(mainline.perimeter(TICKET),
-                         ["app/backend/meetups/db.py", "docs/*", "tests/test_db.py"])
+                         ["svc/backend/store/db.py", "docs/*", "tests/test_db.py"])
 
     def test_the_order_of_the_ticket_is_kept(self):
         text = "## Perimeter\n\n- `z.py`\n- `a.py`\n- `m.py`\n"
@@ -96,10 +96,10 @@ class InPerimeter(unittest.TestCase):
     """fnmatch.fnmatchcase on any glob; `*` crosses `/` (ADR 0056 §1)."""
 
     def test_an_exact_path(self):
-        self.assertTrue(mainline.in_perimeter("app/db.py", ["app/db.py"]))
+        self.assertTrue(mainline.in_perimeter("svc/db.py", ["svc/db.py"]))
 
     def test_star_crosses_slashes(self):
-        self.assertTrue(mainline.in_perimeter("app/backend/meetups/db.py", ["app/*"]))
+        self.assertTrue(mainline.in_perimeter("svc/backend/store/db.py", ["svc/*"]))
         self.assertTrue(mainline.in_perimeter("a/b/c/d.py", ["*.py"]))
         self.assertTrue(mainline.in_perimeter("docs/guide/deep/intro.txt", ["docs/*"]))
 
@@ -109,7 +109,7 @@ class InPerimeter(unittest.TestCase):
 
     def test_a_path_matching_no_glob_is_outside(self):
         self.assertFalse(mainline.in_perimeter("tests/a.py", ["src/*", "docs/*"]))
-        self.assertFalse(mainline.in_perimeter("app/db.py.bak", ["app/db.py"]))
+        self.assertFalse(mainline.in_perimeter("svc/db.py.bak", ["svc/db.py"]))
 
     def test_a_directory_name_is_not_a_prefix(self):
         # A glob without a wildcard names a path, not a directory.
@@ -117,8 +117,8 @@ class InPerimeter(unittest.TestCase):
         self.assertFalse(mainline.in_perimeter("docs/a.md", ["docs/"]))
 
     def test_the_match_is_case_sensitive(self):
-        self.assertFalse(mainline.in_perimeter("app/db.py", ["App/*"]))
-        self.assertFalse(mainline.in_perimeter("APP/DB.PY", ["app/db.py"]))
+        self.assertFalse(mainline.in_perimeter("svc/db.py", ["Svc/*"]))
+        self.assertFalse(mainline.in_perimeter("SVC/DB.PY", ["svc/db.py"]))
 
     def test_an_empty_perimeter_holds_nothing(self):
         self.assertFalse(mainline.in_perimeter("a.py", []))
@@ -313,7 +313,7 @@ STUBS = {
     "adapters/stub-state/put.sh": SH_HERE + 'cat > "$d/state/$1.$2.json"\n',
     "adapters/stub-tracker/get.sh": SH_HERE + 'f="$d/tickets/$1.md"\n[ -f "$f" ] || exit 1\ncat "$f"\n',
     "adapters/stub-codehost/clone-url.sh": SH_HERE + 'printf \'%s\\n\' "$d/host.git"\n',
-    # What the Gitea verbs do: push forces HEAD to the branch; open-pr
+    # What the reference CodeHost verbs do: push forces HEAD to the branch; open-pr
     # refuses a pr.json with no title and prints "<number> <url>"; merge
     # makes a merge commit while the PR's head is the one given, and prints
     # "<merge sha> <head sha>" again for a PR already merged.
