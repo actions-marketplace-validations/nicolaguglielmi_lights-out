@@ -2,8 +2,6 @@
 
 ![lights-out: six agents ship it, one human turns the lights back on](docs/assets/lights-out.jpg)
 
-**[The site](https://nicolaguglielmi.github.io/lights-out/)** explains it in five steps, with [a video tour](https://nicolaguglielmi.github.io/lights-out/media/overview.mp4) and a clip per scenario, all rendered from [the board](board/index.html).
-
 **The safety system for a dark factory of AI coding agents.** A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system, the guardrails for agents that write and ship code, with Claude Code, Gemini CLI or Codex at the keyboard.
 
 **Autonomous agents take a ticket to production on a codebase you do not trust. Numeric gates decide, the ticket's perimeter holds, a failing canary rolls itself back, and one human approves the last step.**
@@ -12,94 +10,41 @@ It runs complete on your laptop: no account, no API key, no cloud.
 
 | | |
 |---|---|
-| **Six gates on every PR** | risk, secrets, dependencies, static analysis, tests, mutation. Each prints one line, `GO` or `NO-GO` with the reason, and every threshold says where it comes from. A PR is judged by its base's policy, never its own. |
-| **A perimeter per ticket** | the diff must stay inside the files the ticket declares, checked before a PR exists. |
+| **Eight gates on every PR** | risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, and test-proof: a test the change adds must fail on the base. Each prints one line, `GO` or `NO-GO` with the reason, and every threshold says where it comes from. A PR is judged by its base's policy, never its own. |
+| **A perimeter per ticket** | the diff must stay inside the files the ticket declares, checked before a PR exists. A ticket whose files another open ticket holds waits at assign. |
+| **The dev phase, visible** | a request becomes questions, answers and a spec, and the spec gate checks its criteria before an agent starts. The console shows every ticket on a kanban and on one timeline, from the request to the release. |
+| **Main stays green, without a queue** | a PR merges without a second judgment when nothing moved under its perimeter. Main is judged again after merging; a red main is bisected and the culprit reverted, and its ticket goes back to rework. |
 | **A canary that rolls itself back** | one signed image per merge, 5% then 25% of real traffic, compared with stable on errors and p95 latency. A bad number rolls it back with nobody paged. |
 | **One human gate** | the step to 100% waits for a person's GO. Silence never promotes. |
 | **Your model, your coding CLI** | Gemini, Claude or OpenAI, through `gemini-cli`, `claude-code` or `codex`, all behind the same guard; on Gemini, Antigravity CLI too (`antigravity-cli`, experimental) ([coding harnesses](docs/reference.md#coding-harnesses)). |
-| **Gates on your repository** | `./go init` drafts the contract from your repository and `./go gates` judges your last commit, with no plane and no key. |
 | **Ops, too** | an alert becomes ranked hypotheses; an incident becomes a post mortem anchored to the audit chain, with each action item a ticket. |
 
 What is proven and what is not yet is said plainly below, in [What is real and what is recorded](#what-is-real-and-what-is-recorded).
 
-## Try it
+<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature"></p>
+<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="Ticket 0001's timeline in the console, from the request to the rollback" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: tickets by state, perimeters held, tickets waiting, docs to realign" width="49%"></p>
 
-**1. Install a container engine (once)**
+The console (`./go console`). Above, the kanban over the logbook the tests build, which holds tickets in more states than one demo leaves. Below, ticket 0001's timeline and the overview from the logbook of a real `./go demo` on GitHub Actions ([`console/snapshot/`](console/snapshot/README.md)).
 
-| Your machine | Run |
-|---|---|
-| macOS | `brew install podman`<br>`podman machine init --cpus 4 --memory 6144`<br>`podman machine start` |
-| Linux | `sudo apt-get install -y podman` (Debian, Ubuntu) or `sudo dnf install -y podman` (Fedora), then<br>`systemctl --user enable --now podman.socket` |
-| Docker on Linux | start Docker and put `CONTAINER_ENGINE=docker` before every `./go` (what CI runs) |
+## Five ways in
 
-**2. Clone and run**
+Each step asks for one thing more than the one before, and gives back something you can see.
 
-```sh
-git clone https://github.com/nicolaguglielmi/lights-out.git
-cd lights-out
-./go demo
-```
+| Step | You need | You get |
+|---|---|---|
+| [0. Look](#0-look) | a browser | the site, a video tour, the board |
+| [1. Gates on your repository](#1-gates-on-your-repository) | podman or docker, and git | the eight gates on your last commit, from the published image, without cloning lights-out |
+| [2. The whole loop](#2-the-whole-loop-on-your-laptop) | the clone | `./go demo`: a ticket to a canary that rolls itself back, no key |
+| [3. Agents on your repository](#3-agents-on-your-repository) | a model key | `./go init`, then tickets worked by real agents at L1 |
+| [4. Toward production](#4-toward-production) | your code host, delivery and metrics | what exists today for L2 and L3, and what does not yet |
 
-**3. Watch**
+### 0. Look
 
-- An agent turns a ticket into a pull request.
-- Six gates judge it: risk, secrets, dependencies, static analysis, tests, mutation.
-- It merges, builds and signs a release, and sends it 5% of the traffic.
-- Verify sees the errors and rolls the canary back on its own. No human involved.
-- The run ends with `GO: demo`, then prints where to open the app, Gitea and Prometheus.
+[The site](https://nicolaguglielmi.github.io/lights-out/) explains it in five steps, with [a video tour](https://nicolaguglielmi.github.io/lights-out/media/overview.mp4), a clip per scenario and the console's screens. [The board](board/index.html) plays every scenario station by station: what each step does, which file does it and the line it prints.
 
-The first run downloads about 1.2 GB and builds the toolchain image (3–6 minutes), so expect 10–15 minutes. After that a run takes about 7 (measured: 434 s on a MacBook with podman).
+### 1. Gates on your repository
 
-**Shorter looks**
-
-```sh
-./go demo-triage     # an alert becomes ranked hypotheses, 3 seconds, nothing to start
-./go incident        # build an incident document from the last release record: NAME= FROM= TO= [LOGS=<file>] [TICKET=<id>]
-./go postmortem INCIDENT=<file>   # an incident document becomes a post mortem and tickets
-./go demo-postmortem # replay the post mortem of the demo-rollback incident (needs a recording, see below)
-./go record-postmortem PROFILE=l1 # record that answer once, with your Gemini key
-./go up              # start the local plane (about 15 s once downloaded)
-./go demo-rollback   # just the self-rollback, about a minute
-./go board           # the pipeline explained, and live while the plane runs: localhost:8099
-./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
-./go console         # the client's view: each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
-./go request TICKET=<id>   # start a ticket before the code: the product role asks or confirms, then the spec gate
-./go answer TICKET=<id> ANSWER="<text>"   # answer its open question, then the product role again
-./go down            # stop everything
-```
-
-**Ops without the plane**
-
-An incident document holds the alerts, the release record, a log excerpt and the time window. `./go postmortem` turns it into a post mortem in `.crew/postmortem/<name>/`. Each timeline entry is anchored to an id the document holds (the release, a stage, a log line, an alert, and the PR or ticket when the tower released it), and core prints that evidence beside it. Every action item is filed as a ticket in `tickets/`. The ticket has no perimeter: a human adds one before `./go assign`. An anchored timeline is not a true one: the check stops invented releases and log lines, not a wrong story about real ones.
-
-To judge your own metrics, run `./go verify METRICS_URL=<any Prometheus-compatible endpoint> CANARY_VERSION=<v> STABLE_VERSION=<s>`. It uses the unchanged `verify/slo.promql`. "Any Prometheus-compatible endpoint" means one that answers `/api/v1/query` with the OTel HTTP semconv histogram joined to `target_info{service_version}`. On other metrics the answer is NO-GO with "no data". An auth header goes in `.env` as `METRICS_AUTH_HEADER`.
-
-## If something goes wrong
-
-Run `./go doctor` first. It prints one line per item: the engine and whether it answers, the podman API socket, git, whether the workbench image is built, whether the plane's ports (3000, 5050, 8016, 8085, 8086, 9090, 9901 and `APP_PORT`) are free or held by the lights-out plane, and whether the key your profile needs is set in `.env` (the name, never the value). It ends with `GO: doctor` or `NO-GO: doctor — <items>`. `./go` also checks your engine before it builds anything and prints the command that fixes what is missing. The other cases:
-
-| You see | Do this |
-|---|---|
-| A port is already in use | Put `APP_PORT=9000` in a file named `.env` for the app port. Ports 3000, 5050, 8016, 8085, 8086, 9090 and 9901 must be free. |
-| `Cannot allocate memory`, or everything crawls | `podman machine stop`, `podman machine set --memory 6144`, `podman machine start` |
-| `GO: demo … a first run: over the 900s budget, reported, not judged` | Everything worked; the first download and the toolchain build were slow. Your first run reports its time instead of failing on it. Later runs and CI are judged against the 900 s ([ADR 0013](docs/adr/0013-launchpad-canary-verify-rollback-at-l0.md), amendment 2026-11-04). |
-| `NO-GO: demo — rollback reached, but … > 900s budget` | Everything worked, but a run after the first one took longer than 900 s. The engine is usually short of memory or CPU (see the row above), or other containers are running. `./go down`, then `./go demo` again. |
-| Anything else | `./go down`, then `./go demo` again. Still stuck? Open an issue with the last 30 lines. |
-
-## On your own repository
-
-From a clone of lights-out:
-
-```sh
-./go init ~/code/your-repo   # attaches a clone of its HEAD and drafts the gates half of .lights-out/ in the clone
-./go gates                   # judges the last commit: no plane, no key, no engine socket when the toolchain is the workbench
-```
-
-`./go init` never writes to your repository. It infers the stack from the files at the root (python or javascript), and writes `workload.env` with a provenance line over every value, plus `worker.md`, `policy.env` and the stack's runners. It measures `MUTATION_BASELINE` by running the mutation command over the whole scope. Its last line gives the stack, the draft's location and the baseline. Copy `.attached/.lights-out/` into your repository and commit it.
-
-A toolchain gate's GO line says where it ran: `in workbench`, or the image or service the contract names. On the workbench, `./go gates` runs your repository's tests in lights-out's toolchain container, on this machine. Attach only a repository you would run here.
-
-**Without cloning lights-out, from inside your repository.** The `lights-out` wrapper runs the same init and gates from the published image, `ghcr.io/nicolaguglielmi/lights-out:0.1.0` (amd64 and arm64). You need podman or docker, and git. The first run pulls the image, about 1.8 GB unpacked.
+The `lights-out` wrapper runs init and the gates from the published image, `ghcr.io/nicolaguglielmi/lights-out:0.1.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The first run pulls the image, about 1.8 GB unpacked; `doctor`, `init` and `gates` took 65 s and 72 s on clean GitHub runners, first pull included.
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH
@@ -118,17 +63,101 @@ lights-out gates                   # judges the last commit
 
 Tags are mutable and the image is unsigned: to pin it, set `LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d1a227d4b3ebfa47b0c21268276279ee80e5c7ffdc345e4cde49ae866e8cc840`. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
 
-The plane comes next: attach, up, smoke, verify and rollback on your repository. It needs more of the contract: a compose file, a flag file, and smoke and load scripts.
+On pull requests, [the Action](docs/use-on-your-repo.md#the-action) posts the gates' line as a check run, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run them before a coding agent commits.
 
-What works today, and what does not yet:
+### 2. The whole loop on your laptop
+
+**Install a container engine (once)**
+
+| Your machine | Run |
+|---|---|
+| macOS | `brew install podman`<br>`podman machine init --cpus 4 --memory 6144`<br>`podman machine start` |
+| Linux | `sudo apt-get install -y podman` (Debian, Ubuntu) or `sudo dnf install -y podman` (Fedora), then<br>`systemctl --user enable --now podman.socket` |
+| Docker on Linux | start Docker and put `CONTAINER_ENGINE=docker` before every `./go` (what CI runs) |
+
+**Clone and run**
+
+```sh
+git clone https://github.com/nicolaguglielmi/lights-out.git
+cd lights-out
+./go demo
+```
+
+**Watch**
+
+- Ticket 0001 starts as a request. The spec gate checks its criteria.
+- An agent turns it into a pull request inside the ticket's perimeter.
+- Eight gates judge it: risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, test-proof.
+- It merges, main is judged again, and a signed release takes 5% of the traffic.
+- Verify sees the errors and rolls the canary back on its own. No human involved.
+- The run ends with `GO: demo`, then prints where to open the app, Gitea and Prometheus. `./go console` shows the ticket's whole timeline.
+
+The first run downloads about 1.2 GB and builds the toolchain image (3–6 minutes), so expect 10–15 minutes. After that a run takes about 7 (measured: 434 s on a MacBook with podman). A 4 GiB podman machine runs one demo at a time.
+
+**Shorter looks**
+
+```sh
+./go demo-triage     # an alert becomes ranked hypotheses, 3 seconds, nothing to start
+./go demo-mainline   # main stays green without a queue: a moved perimeter goes to rework, a red main is bisected and the culprit reverted
+./go incident        # build an incident document from the last release record: NAME= FROM= TO= [LOGS=<file>] [TICKET=<id>]
+./go postmortem INCIDENT=<file>   # an incident document becomes a post mortem and tickets
+./go demo-postmortem # replay the post mortem of the demo-rollback incident (needs a recording, see below)
+./go record-postmortem PROFILE=l1 # record that answer once, with your Gemini key
+./go up              # start the local plane (about 15 s once downloaded)
+./go demo-rollback   # just the self-rollback, about a minute
+./go board           # the pipeline explained, and live while the plane runs: localhost:8099
+./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
+./go console         # the client's view: kanban, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
+./go request TICKET=<id>   # start a ticket before the code: the product role asks or confirms, then the spec gate
+./go answer TICKET=<id> ANSWER="<text>"   # answer its open question, then the product role again
+./go down            # stop everything
+```
+
+**Ops without the plane**
+
+An incident document holds the alerts, the release record, a log excerpt and the time window. `./go postmortem` turns it into a post mortem in `.crew/postmortem/<name>/`. Each timeline entry is anchored to an id the document holds (the release, a stage, a log line, an alert, and the PR or ticket when the tower released it), and core prints that evidence beside it. Every action item is filed as a ticket in `tickets/`. The ticket has no perimeter: a human adds one before `./go assign`. An anchored timeline is not a true one: the check stops invented releases and log lines, not a wrong story about real ones.
+
+### 3. Agents on your repository
+
+From a clone of lights-out:
+
+```sh
+./go init ~/code/your-repo   # attaches a clone of its HEAD and drafts the gates half of .lights-out/ in the clone
+./go gates                   # judges the last commit: no plane, no key, no engine socket when the toolchain is the workbench
+```
+
+`./go init` never writes to your repository. It infers the stack from the files at the root (python or javascript), and writes `workload.env` with a provenance line over every value, plus `worker.md`, `policy.env` and the stack's runners. It measures `MUTATION_BASELINE` by running the mutation command over the whole scope. Its last line gives the stack, the draft's location and the baseline. Copy `.attached/.lights-out/` into your repository and commit it.
+
+A toolchain gate's GO line says where it ran: `in workbench`, or the image or service the contract names. On the workbench, `./go gates` runs your repository's tests in lights-out's toolchain container, on this machine. Attach only a repository you would run here.
+
+The plane comes next: attach, up, smoke, verify and rollback on your repository. It needs more of the contract: a compose file, a flag file, and smoke and load scripts.
 
 - **Works:** the eight gates on the gates half alone. With the plane half, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
 - **Time:** `./go demo-init` proves init and gates in under 300 s on two small example repositories. Init measures the whole scope, so a large suite takes longer.
 - **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `AGENT_HARNESS=claude-code` with `ANTHROPIC_API_KEY`, or `AGENT_HARNESS=codex` with `OPENAI_API_KEY` (with `MODEL_PROVIDER` and `MODEL`; the ADK roles take the same keys). The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
-- **Release and pull requests at L1.** A merged change is built from your repository's own Containerfile, signed and released on the local plane. By default merges land on the plane's Gitea and you `git fetch` them back; with `CODE_HOST=github` and a token in `.env` the pull request lands on your GitHub repository instead. Both are implemented and not yet run end to end on a repository of yours ([ADR 0043](docs/adr/0043-github-code-host-and-attached-release.md)). There is no deploy to your production.
-- **Delivery on Kubernetes, opt-in.** If you already ship with Argo Rollouts, `DELIVERY=argo-rollouts` drives your Rollout with kubectl, stage by stage, instead of Envoy. It needs a traffic router and a Rollout with the steps [its README](adapters/argo-rollouts/README.md) lists. `./go argo-conformance` proves it with the same conformance suite, on a k3s node beside the plane; under podman that needs a rootful engine. It has not been run on a cluster of yours yet ([ADR 0051](docs/adr/0051-delivery-on-kubernetes-with-argo-rollouts.md)).
 
 [The guide](docs/use-on-your-repo.md) says what `.lights-out/` holds, what each key says, what the plane needs, how to write tickets, the hook recipes for coding agents and the GitHub Action.
+
+### 4. Toward production
+
+What exists today, each opt-in, none yet run end to end on a repository of yours:
+
+- **Pull requests on GitHub.** A merged change is built from your repository's own Containerfile, signed and released on the local plane. By default merges land on the plane's Gitea and you `git fetch` them back; with `CODE_HOST=github` and a token in `.env` the pull request lands on your GitHub repository instead ([ADR 0043](docs/adr/0043-github-code-host-and-attached-release.md)). There is no deploy to your production.
+- **Delivery on Kubernetes.** If you already ship with Argo Rollouts, `DELIVERY=argo-rollouts` drives your Rollout with kubectl, stage by stage, instead of Envoy. It needs a traffic router and a Rollout with the steps [its README](adapters/argo-rollouts/README.md) lists. `./go argo-conformance` proves it with the same conformance suite, on a k3s node beside the plane; under podman that needs a rootful engine ([ADR 0051](docs/adr/0051-delivery-on-kubernetes-with-argo-rollouts.md)).
+- **Your metrics.** `./go verify METRICS_URL=<any Prometheus-compatible endpoint> CANARY_VERSION=<v> STABLE_VERSION=<s>` judges your own canary with the unchanged `verify/slo.promql`. "Any Prometheus-compatible endpoint" means one that answers `/api/v1/query` with the OTel HTTP semconv histogram joined to `target_info{service_version}`. On other metrics the answer is NO-GO with "no data". An auth header goes in `.env` as `METRICS_AUTH_HEADER`.
+- **Not yet:** the Google Cloud profiles (L2, L3) are designed, not run. A check that says what a level still lacks, and a gate that says when a setup is ready for production, are the next milestone ([roadmap](ROADMAP.md)).
+
+## If something goes wrong
+
+Run `./go doctor` first. It prints one line per item: the engine and whether it answers, the podman API socket, git, whether the workbench image is built, whether the plane's ports (3000, 5050, 8016, 8085, 8086, 9090, 9901 and `APP_PORT`) are free or held by the lights-out plane, and whether the key your profile needs is set in `.env` (the name, never the value). It ends with `GO: doctor` or `NO-GO: doctor — <items>`. `./go` also checks your engine before it builds anything and prints the command that fixes what is missing. The other cases:
+
+| You see | Do this |
+|---|---|
+| A port is already in use | Put `APP_PORT=9000` in a file named `.env` for the app port. Ports 3000, 5050, 8016, 8085, 8086, 9090 and 9901 must be free. |
+| `Cannot allocate memory`, or everything crawls | `podman machine stop`, `podman machine set --memory 6144`, `podman machine start` |
+| `GO: demo … a first run: over the 900s budget, reported, not judged` | Everything worked; the first download and the toolchain build were slow. Your first run reports its time instead of failing on it. Later runs and CI are judged against the 900 s ([ADR 0013](docs/adr/0013-launchpad-canary-verify-rollback-at-l0.md), amendment 2026-11-04). |
+| `NO-GO: demo — rollback reached, but … > 900s budget` | Everything worked, but a run after the first one took longer than 900 s. The engine is usually short of memory or CPU (see the row above), or other containers are running. `./go down`, then `./go demo` again. |
+| Anything else | `./go down`, then `./go demo` again. Still stuck? Open an issue with the last 30 lines. |
 
 ## What is real and what is recorded
 
