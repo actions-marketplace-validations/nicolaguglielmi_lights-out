@@ -298,7 +298,9 @@ console: ## The console on localhost:8098: overview, tickets, each ticket's time
 # GO_FOR_LAUNCH=GO, then demo-launch's own checks, the record's `via:
 # console`, and the un-promote. Not a `demo` stage (ADR 0003): plan §2's
 # criterion is the rollback. The console runs inside this recipe on a
-# loopback port of the workbench, like a browser on the same machine.
+# loopback port of the workbench, like a browser on the same machine. A
+# brief left by an earlier go-for-launch of the same version (demo-launch
+# runs first in CI) is removed first: this run prepares its own.
 DEMO_CONSOLE_PORT ?= 18098
 .PHONY: demo-console
 demo-console: ## Prove go-for-launch pressed from the console: held canary, brief, POST GO → 100%, via console, then the un-promote (docs/adr/0047 §4)
@@ -310,6 +312,7 @@ demo-console: ## Prove go-for-launch pressed from the console: held canary, brie
 	trap 'exit 130' INT TERM; \
 	url="http://127.0.0.1:$(DEMO_CONSOLE_PORT)"; \
 	mkdir -p .crew; \
+	rm -rf "$${PROMOTE_OUT:-.crew/promote}"; \
 	CONSOLE_LISTEN=$(DEMO_CONSOLE_PORT) CONSOLE_PORT=$(DEMO_CONSOLE_PORT) CONSOLE_AUTH=loopback python3 console/serve.py 2>.crew/demo-console.log & \
 	console_pid=$$!; \
 	$(MAKE) --no-print-directory kill-switch || exit 1; \
