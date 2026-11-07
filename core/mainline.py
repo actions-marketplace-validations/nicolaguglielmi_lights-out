@@ -161,6 +161,12 @@ def parents(repo, commit):
     return out(repo, "rev-list", "--parents", "-n", "1", commit).split()[1:]
 
 
+def is_revert(repo, commit):
+    """A revert, or the merge of one: `git revert`'s own message says so."""
+    return any("This reverts commit" in out(repo, "log", "-1", "--format=%B", c)
+               for c in [commit] + parents(repo, commit)[1:])
+
+
 def tree(repo, commit):
     return out(repo, "rev-parse", f"{commit}^{{tree}}")
 
@@ -391,7 +397,6 @@ def walk(env, doc, record, reverted, green, head, merge_sha):
         # CI passed that head with the base's judges, which are G's.
         judge.known_green(judged)
     limit = group_max()
-    culprit = None
     if record.get("state") == "red" and green != head:
         # Red is lifted by a fix on main, never by a second bisection: the
         # head is judged as it is (§4, §5).
@@ -411,13 +416,11 @@ def walk(env, doc, record, reverted, green, head, merge_sha):
             continue
         why = f"{batch[-1]} is NO-GO against the last green main {green}: {top['line']}"
         store_put(env, dict(record, state="red", green=green, head=head, line=why, reverted=reverted, at=now()))
-        if culprit:
-            raise Failed(f"main is still NO-GO after reverting {culprit}: {why}; a person decides (docs/adr/0056 §4)")
         say(f"[mainline] main is NO-GO: {why}; bisecting {len(batch)} commit(s), "
             f"at most {bisect_runs(len(batch))} more gate run(s)")
         culprit = first_red(batch, lambda c: judge(c)["go"])
         verdict = judge(culprit)
-        if any(culprit in (r.get("revert"), r.get("merge")) for r in reverted):
+        if is_revert(repo, culprit) or any(culprit in (r.get("revert"), r.get("merge")) for r in reverted):
             raise Failed(f"the culprit {culprit} is a revert or already reverted; a person decides (docs/adr/0056 §4)")
         say(f"[mainline] culprit: {culprit} — {verdict['line']}")
         revert_sha = revert(env, culprit, verdict)
@@ -426,6 +429,13 @@ def walk(env, doc, record, reverted, green, head, merge_sha):
         store_put(env, dict(record, state="red", green=green, head=revert_sha, reverted=reverted, at=now(),
                             line=f"{why}; reverted {culprit}, judging main again"))
         head = fetch_main(env)
+        # Main's new head, as it is: groups would cut it before the revert.
+        after = judge(head)
+        if not after["go"]:
+            line = f"{head} is still NO-GO after reverting {culprit}: {after['line']}"
+            store_put(env, dict(record, state="red", green=green, head=head, line=line, reverted=reverted, at=now()))
+            raise Failed(f"{line}; a person decides (docs/adr/0056 §4)")
+        green = head
     store_put(env, dict(record, state="green", green=green, head=head, line="", reverted=reverted, at=now()))
     say(f"[mainline] main is GO at {green}")
     return next((r for r in reverted if r.get("merge") == merge_sha), None)
