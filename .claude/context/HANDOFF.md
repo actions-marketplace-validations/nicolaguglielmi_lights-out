@@ -1,8 +1,10 @@
 # Handoff: M30, main always green without a queue (ADR 0056), 2026-11-07
 
-Branch `claude/m30-mainline-f7ffa4`, rebased on main 373da51 (M27 and M28). Pushed, no pull request, not merged: landing is the parent session's, after M29.
+Branch `claude/m30-mainline-on-m29`, rebased on main 1f48e4a (M27, M28, M29); the earlier `claude/m30-mainline-f7ffa4` is the same work on 373da51. Pushed, no pull request, not merged: landing is the parent session's. With M29, `main-green` is a column of the logbook's kanban and of the console, and a red main does not stop M29's `clarify`, `answer` and `spec` (no code yet).
 
 ## Acceptance, on GitHub Actions (the owner moved engine-heavy runs there)
+
+On 373da51, before the M29 rebase:
 
 ```
 c824de0: ci, package, stranger, podman, self — all success

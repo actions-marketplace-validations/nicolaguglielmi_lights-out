@@ -136,7 +136,7 @@ function releasesList() { return Array.isArray(book.releases) ? book.releases : 
 
 // --- overview (docs/adr/0055 §6) --------------------------------------
 const ORDER = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
-  "needs-human", "merged", "held", "rolled-back"];
+  "needs-human", "merged", "main-green", "held", "rolled-back"];
 function waitLine(w) {
   return "waiting since " + shown(w.since) + ", " + w.refusals + " refused assign" + (w.refusals > 1 ? "s" : "") +
     (w.holders.length ? "; held by " + w.holders.join(", ") : "; no open ticket holds its files: the base, or a missing perimeter (./go resume)");
@@ -254,7 +254,7 @@ function cost(task) {
 
 // --- screen 2: one ticket's timeline (docs/adr/0055 §6) ----------------
 const VERDICTS = {"waiting": "pending", "spec-ready": "GO", "questions": "pending", "ci-passed": "GO", "ci-failed": "NO-GO", "review": "pending",
-  "merged": "GO", "rolled-back": "NO-GO", "held": "GO", "failed": "stranded", "approved": "GO", "changes-requested": "NO-GO"};
+  "merged": "GO", "main-green": "GO", "rolled-back": "NO-GO", "held": "GO", "failed": "stranded", "approved": "GO", "changes-requested": "NO-GO"};
 function rowDetail(r) {
   const bits = [];
   if (r.line) bits.push(h("div", {cls: "mono"}, r.line));
