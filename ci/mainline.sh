@@ -187,6 +187,9 @@ fi
 cd "$root"
 export STATE_STORE=stub-state EVENT_BUS=stub-bus CODE_HOST=stub-codehost TRACKER=stub-tracker \
   WORKLOAD=work WORKLOAD_CONTRACT=work WORKLOAD_ATTACHED='' TOWER_STEPS="$root/steps" RUNS_LOG="$root/runs.log"
+# The merge step's map rebuild (docs/adr/0054 §4) is ci/map.sh's subject:
+# off here, as in ci/tower.sh.
+export MAP_FILE=
 
 log="$root/run.log"
 mismatch=""
