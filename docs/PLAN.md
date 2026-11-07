@@ -83,7 +83,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 
 | Porta | Adapter | Note |
 |---|---|---|
-| `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
+| `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
 | `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
 | `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
@@ -114,6 +114,8 @@ Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud D
 *Emendamento 2026-09-20 (ADR 0026):* `ready.sh` **non è un verbo della porta `Delivery`**: è la sonda di readiness che ogni adapter presente in `PLANE_ADAPTERS` deve a `make up`, qualunque sia la sua porta (ADR 0012 §6). La suite di conformità non la chiama mai. `status.sh` stampa un solo oggetto JSON con esattamente tre chiavi — `stable` (stringa), `canary` (stringa o `null`), `weight` (intero 0–100) — e niente altro: quello che un fornitore vuole aggiungere va su stderr. La lista di parole di `ci/vendor-free.sh` cresce con `flagd|unleash`, perché il freeze esce da `core/launchpad.sh` e passa dietro la porta `Flags`.
 
 *Emendamento 2026-11-03 (ADR 0037):* un workload può stare in un repository suo. `./go attach <path>` lo clona in `.attached/`, che diventa il `WORKLOAD` di default; il contratto di un workload attaccato sta in `.lights-out/` alla radice del suo repository (`workload.env`, frammento compose, `flags/`, `smoke.sh`, `load.sh`, `fixtures/gates/`, `worker.md`, `policy.env`, `tickets/`), quello di un workload dentro lights-out resta nella sua cartella (`app/`). La riga `Workload` della tabella vale per entrambi; `workloads/minimal` è ora un repo attaccabile, provato da `./go demo-seam`.
+
+*Emendamento 2026-11-07 (ADR 0050):* `AgentHarness` guadagna `antigravity-cli`, Antigravity CLI (`agy`) 1.5.1, solo Gemini, **opzionale e sperimentale**: si sceglie solo con `AGENT_HARNESS=antigravity-cli`, e `gemini-cli` resta il default per `gemini` finché un run live di agy sul ticket 0001 non passa i gate. Un provider può quindi avere più di un harness (emenda ADR 0041 §2). Il binario è proprietario e senza licenza: pinnato per versione e sha256 per architettura in `release.env`, scaricato solo al build dell'immagine, mai pubblicato; il proxy di egress nega telemetria e auto-update, ed è questo a tenere fermo il pin. Il guard è lo stesso `guard.sh`, dietro uno shim, con un nome di hook casuale a ogni run; passa `./go harness-conformance` (casi 0–9) contro il modello scriptato. **Buco aperto, registrato e non chiuso:** gli hook `SessionStart` e `PreToolUse` del `.agents/hooks.json` del repository girano dentro il container, fuori dal guard; non possono spegnerlo né scavalcarne il deny, ma girano (ADR 0050 §7).
 
 ---
 
