@@ -3,8 +3,10 @@
 #
 # step-rework (docs/adr/0038): a head the gates or the reviewer rejected
 # goes back to dev-worker with the verdict. Reads the document only: the
-# attempt number, and who rejected — ci.verdict NO-GO is the gates,
-# otherwise review.verdict changes-requested is the reviewer; anything
+# attempt number, and who rejected — mainline.verdict NO-GO is the tower
+# checking main (docs/adr/0056 §6: judge `base` or `main`), then
+# ci.verdict NO-GO is the gates, otherwise review.verdict
+# changes-requested is the reviewer; anything
 # else is no verdict to rework, a step failure. Appends the verdict to
 # `rework` (one entry per rejected attempt, so the next attempt's ci and
 # review fields cannot erase it). At policy/rework.env's cap, read from
@@ -12,7 +14,8 @@
 # nothing. Otherwise writes the verdict document — the NO-GO line and the
 # gate's own details, or the reviewer's verdict and reason; never a
 # transcript — and runs core/crew.sh for the next attempt from the head
-# that was judged: same ticket, same perimeter, same PR, new head. Prints
+# that was judged: same ticket, same perimeter, same PR, new head — or,
+# for the tower's two judges, from main's head (REWORK_FRESH). Prints
 # pr-opened with ci and review cleared, so merge and audit can only read
 # the new attempt's verdicts. A crew failure exits 1: the tower strands
 # the ticket at ci-failed for ./go resume (docs/adr/0034), not an attempt.
@@ -30,8 +33,8 @@ judged=$(jq -r '.pr.head_sha // empty' "$DOC_FILE")
 [ -n "$judged" ] || { printf 'step-rework: %s has no pr.head_sha\n' "$DOC_FILE" >&2; exit 1; }
 
 entry=$(jq -c --argjson n "$attempt" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
-  if .ci.verdict == "NO-GO" then
-    {attempt: $n, judge: "gates", head_sha: .pr.head_sha, line: .ci.line, details: (.ci.details // []), at: $at}
+  if .mainline.verdict == "NO-GO" or .ci.verdict == "NO-GO" then (if .mainline.verdict == "NO-GO" then .mainline else .ci + {judge: "gates"} end) as $v |
+    {attempt: $n, judge: $v.judge, head_sha: .pr.head_sha, line: $v.line, details: ($v.details // []), at: $at}
   elif .review.verdict == "changes-requested" then
     {attempt: $n, judge: "review", head_sha: .pr.head_sha,
      line: "CHANGES-REQUESTED — \(.review.role)", details: (.review.reason // "" | split("\n")), at: $at}
@@ -55,8 +58,8 @@ trap 'rm -f "$verdict"' EXIT
 printf '%s' "$entry" | jq -r --argjson next "$next" --argjson max "$REWORK_MAX_ATTEMPTS" '
   "## Rework: attempt \($next) of \($max)\n",
   "Your previous attempt (head \(.head_sha)) was not accepted. The verdict",
-  "below is everything the \(if .judge == "gates" then "gates" else "reviewer" end) said about it. Your workspace already",
-  "holds that attempt: change it to address every point the verdict raises,",
+  "below is everything the \({gates: "gates", review: "reviewer"}[.judge] // "tower") said about it. Your workspace \(if .judge == "base" or .judge == "main" then "starts" else "already" end)",
+  (if .judge == "base" or .judge == "main" then "from the head of main, without that attempt: redo the ticket on it, addressing every point the verdict raises," else "holds that attempt: change it to address every point the verdict raises," end),
   "within the ticket above, and nothing else.\n",
   "Verdict:\n",
   "    \(.line)",
@@ -65,7 +68,7 @@ printf '%s' "$entry" | jq -r --argjson next "$next" --argjson max "$REWORK_MAX_A
 printf '[rework] ticket %s: attempt %s rejected by the %s; attempt %s of %s\n' \
   "$TICKET" "$attempt" "$(printf '%s' "$entry" | jq -r .judge)" "$next" "$REWORK_MAX_ATTEMPTS" >&2
 crew_dir=".crew/$TICKET"
-TICKET="$TICKET" ROLE="$ROLE" ATTEMPT="$next" REWORK_FILE="$verdict" REWORK_HEAD="$judged" \
+TICKET="$TICKET" ROLE="$ROLE" ATTEMPT="$next" REWORK_FILE="$verdict" REWORK_HEAD="$judged" REWORK_FRESH="$(printf '%s' "$entry" | jq -r 'select(.judge == "base" or .judge == "main") | "1"')" \
   sh core/crew.sh >&2
 
 # shellcheck disable=SC1090,SC1091 # written by crew.sh just now
@@ -75,6 +78,6 @@ task=$(python3 core/tower.py task "$crew_dir/out/run.json")
 
 jq -cn --argjson next "$next" --argjson rework "$rework" --arg n "$PR_NUMBER" --arg url "$PR_URL" \
   --arg base "$BASE_SHA" --arg head "$HEAD_SHA" --arg role "$ROLE" --argjson task "$task" \
-  '{state: "pr-opened", attempt: $next, rework: $rework, ci: null, review: null,
+  '{state: "pr-opened", attempt: $next, rework: $rework, ci: null, review: null, mainline: null,
     pr: {number: ($n | tonumber), url: $url, base_sha: $base, head_sha: $head},
     task: ({role: $role} + $task)}'

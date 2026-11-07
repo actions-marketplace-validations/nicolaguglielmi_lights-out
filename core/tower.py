@@ -57,7 +57,8 @@ PRECONDITION = {
     "ci": "pr-opened",
     "review": "review",
     "merge": "ci-passed",
-    "release": "merged",
+    "mainline": "merged",
+    "release": "main-green",
     "rework": "ci-failed",
 }
 NEXT = {
@@ -67,9 +68,13 @@ NEXT = {
     "pr-opened": "ci",
     "review": "review",
     "ci-passed": "merge",
-    "merged": "release",
+    "merged": "mainline",
+    "main-green": "release",
     "ci-failed": "rework",
 }
+# Refused while main is red (docs/adr/0056 §5): the `mainline`/`main`
+# document core/mainline.py keeps.
+BLOCKED_BY_RED_MAIN = ("assign", "rework", "release")
 
 
 # The task fields copied from a role's run.json (docs/adr/0047 §2, P1):
@@ -186,6 +191,18 @@ class Tower:
         message = compact({"ticket": self.ticket, "step": step})
         return sh(f"adapters/{self.bus}/publish.sh", message).returncode == 0
 
+    def red_main(self):
+        """Why main is NO-GO (docs/adr/0056 §5), or "" when it is not red."""
+        got = sh(f"adapters/{self.store_adapter}/get.sh", "mainline", "main",
+                 stdout=subprocess.PIPE, text=True)
+        try:
+            main = json.loads(got.stdout) if got.returncode == 0 else {}
+        except ValueError:
+            main = {}
+        if not isinstance(main, dict) or main.get("state") != "red":
+            return ""
+        return f"main is NO-GO since {text(main.get('green')) or 'unknown'}: {text(main.get('line'))}"
+
     def tell(self, line):
         say(f"[tower] {self.ticket}: {line}")
 
@@ -256,6 +273,11 @@ class Tower:
         script = f"{self.steps}/{step}.sh"
         if not os.path.isfile(script):
             raise Refused(f"[tower] {self.ticket}: no {script}")
+        red = self.red_main() if step in BLOCKED_BY_RED_MAIN else ""
+        if red:
+            self.tell(f"{step} refused: {red}; state stays {have}")
+            self.record_failure(doc, step, have, red)
+            raise Refused(None)
 
         self.tell(f"{step} (state {have})")
         with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as doc_file:

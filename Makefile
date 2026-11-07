@@ -742,7 +742,8 @@ e2e: ## Golden path at L0: request → spec → PR → CI → merge → canary �
 	@$(MAKE) --no-print-directory up
 	$(replay_tickets)
 	@printf '[e2e] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
-	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: e2e — could not reset the document\n'; exit 1; }
+	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" && sh adapters/$(STATE_STORE)/delete.sh mainline main \
+		|| { printf 'NO-GO: e2e — could not reset the documents\n'; exit 1; }
 	@sh core/tower.sh request "$(TICKET)" || { printf 'NO-GO: e2e — could not request ticket %s\n' "$(TICKET)"; exit 1; }
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: e2e — a step failed; see the [tower] lines above\n'; exit 1; }
 	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
@@ -830,7 +831,8 @@ demo-rework: ## Prove the rework loop: ticket 0013 NO-GO at the gates, reworked 
 	@$(MAKE) --no-print-directory up
 	$(replay_tickets)
 	@printf '[demo-rework] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
-	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: demo-rework — could not reset the document\n'; exit 1; }
+	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" && sh adapters/$(STATE_STORE)/delete.sh mainline main \
+		|| { printf 'NO-GO: demo-rework — could not reset the documents\n'; exit 1; }
 	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: demo-rework — could not open ticket %s\n' "$(TICKET)"; exit 1; }
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: demo-rework — a step failed; see the [tower] lines above\n'; exit 1; }
 	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)") || { printf 'NO-GO: demo-rework — no document for ticket %s\n' "$(TICKET)"; exit 1; }; \
@@ -852,6 +854,97 @@ demo-rework: ## Prove the rework loop: ticket 0013 NO-GO at the gates, reworked 
 	@$(MAKE) --no-print-directory audit TICKET="$(TICKET)" >&2 || { printf 'NO-GO: demo-rework — audit did not pass\n'; exit 1; }
 	@printf 'GO: demo-rework\n'
 
+# Main always green without a queue, live at L0 (docs/adr/0056 §7).
+# Tickets 0020 and 0021 hold disjoint perimeters and each passes its gates
+# alone; 0020 renames the function 0021 starts calling. 0022 holds
+# app/backend/meetups/db.py. The three are opened, assigned and judged
+# first; then a person's change to db.py lands on main through the code
+# host's own verbs, with no ticket (fixtures/mainline/outside.patch). The
+# bus's events are then applied as adapters/inproc/run.sh applies them
+# (pull, core/tower.sh step, ack), except release and rework: those are
+# acknowledged unapplied, named on stderr — ./go e2e proves a release and
+# ./go demo-rework an attempt 2. The assertions read the documents and
+# the code host, not a log line. All three changes are hand-written
+# fixtures (README, "What is real"); the tower, the gates, the re-judge
+# rule, the bisection and the revert are real.
+MAINLINE_TICKETS := 0020 0021 0022
+
+.PHONY: demo-mainline
+demo-mainline: ## Prove main always green: disjoint tickets merge unjudged, an overlap goes to rework, a breaking merge is bisected and reverted (docs/adr/0056)
+	@$(MAKE) --no-print-directory up
+	@printf '[demo-mainline] replay: deleting the documents of %s and of main before opening them again\n' "$(MAINLINE_TICKETS)" >&2
+	@for t in $(MAINLINE_TICKETS); do sh adapters/$(STATE_STORE)/delete.sh tickets "$$t" || exit 1; done \
+		&& sh adapters/$(STATE_STORE)/delete.sh mainline main \
+		|| { printf 'NO-GO: demo-mainline — could not reset the documents\n'; exit 1; }
+	@for t in $(MAINLINE_TICKETS); do sh core/tower.sh open "$$t" || exit 1; done \
+		|| { printf 'NO-GO: demo-mainline — could not open the tickets\n'; exit 1; }
+	@printf '[demo-mainline] assign and ci for each ticket, before anything merges\n' >&2
+	@for t in $(MAINLINE_TICKETS); do sh core/tower.sh step "$$t" assign && sh core/tower.sh step "$$t" ci || exit 1; done \
+		|| { printf 'NO-GO: demo-mainline — a ticket was not assigned or judged; see the [tower] lines above\n'; exit 1; }
+	@for t in $(MAINLINE_TICKETS); do \
+		st=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$$t" | jq -r .state); \
+		[ "$$st" = ci-passed ] || { printf 'NO-GO: demo-mainline — ticket %s is at %s after its gates, want ci-passed\n' "$$t" "$$st"; exit 1; }; \
+	done
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	git clone -q "$$(sh adapters/$(CODE_HOST)/clone-url.sh)" "$$tmp/ws" \
+		&& GIT_COMMITTER_NAME=a-person GIT_COMMITTER_EMAIL=person@lights-out.invalid git -C "$$tmp/ws" am -q "$(CURDIR)/fixtures/mainline/outside.patch" \
+		&& sh adapters/$(CODE_HOST)/push.sh "$$tmp/ws" outside/db-docstring \
+		&& printf '%s\n' '{"title":"db: say when a connection closes","body":"A person'"'"'s change, merged outside the tower (docs/adr/0056 §7)."}' > "$$tmp/pr.json" \
+		&& pr=$$(sh adapters/$(CODE_HOST)/open-pr.sh outside/db-docstring "$$tmp/pr.json") \
+		&& shas=$$(sh adapters/$(CODE_HOST)/merge.sh "$${pr%% *}" "$$(git -C "$$tmp/ws" rev-parse HEAD)") \
+		|| { printf 'NO-GO: demo-mainline — the person'"'"'s merge did not land on main\n'; exit 1; }; \
+	printf '%s\n' "$${shas%% *}" > .crew/mainline-outside.sha; \
+	printf '[demo-mainline] a person merged %s on main through %s (PR #%s): app/backend/meetups/db.py, no ticket\n' "$${shas%% *}" "$(CODE_HOST)" "$${pr%% *}" >&2
+	@left=""; \
+	while :; do \
+		msg=$$(sh adapters/$(EVENT_BUS)/pull.sh) || exit 1; [ -n "$$msg" ] || break; \
+		ackid=$${msg%% *}; data=$${msg#* }; \
+		t=$$(printf '%s' "$$data" | jq -r .ticket); s=$$(printf '%s' "$$data" | jq -r .step); \
+		case "$$s" in \
+			release|rework) left="$$left $$s:$$t" ;; \
+			*) sh core/tower.sh step "$$t" "$$s" || { sh adapters/$(EVENT_BUS)/ack.sh "$$ackid"; printf 'NO-GO: demo-mainline — %s on %s failed; see the [tower] lines above\n' "$$s" "$$t"; exit 1; } ;; \
+		esac; \
+		sh adapters/$(EVENT_BUS)/ack.sh "$$ackid" || exit 1; \
+	done; \
+	printf '[demo-mainline] requested and left to their own demos:%s (release: ./go e2e; rework attempt 2: ./go demo-rework)\n' "$$left" >&2; \
+	case " $$left " in *" release:0020 "*) ;; *) printf 'NO-GO: demo-mainline — release of 0020 was not requested\n'; exit 1 ;; esac; \
+	case " $$left " in *" rework:0021 "*) ;; *) printf 'NO-GO: demo-mainline — rework of 0021 was not requested\n'; exit 1 ;; esac; \
+	case " $$left " in *" rework:0022 "*) ;; *) printf 'NO-GO: demo-mainline — rework of 0022 was not requested\n'; exit 1 ;; esac
+	@outside=$$(cat .crew/mainline-outside.sha); get() { sh adapters/$(STATE_STORE)/get.sh "$$1" "$$2"; }; \
+	a=$$(get tickets 0020) && b=$$(get tickets 0021) && c=$$(get tickets 0022) && m=$$(get mainline main) \
+		|| { printf 'NO-GO: demo-mainline — a document is missing\n'; exit 1; }; \
+	for d in "$$a" "$$b"; do \
+		trail=$$(printf '%s' "$$d" | jq -r '[.history[] | .step] | join(" ")'); \
+		[ "$$trail" = "open assign ci merge mainline" ] || { printf 'NO-GO: demo-mainline — %s history is %s: judged again, or not merged\n' "$$(printf '%s' "$$d" | jq -r .id)" "$$trail"; exit 1; }; \
+	done; \
+	git -C "$(WORKLOAD)" fetch -q "$$(sh adapters/$(CODE_HOST)/clone-url.sh)" HEAD; \
+	for d in "$$a" "$$b"; do \
+		base=$$(printf '%s' "$$d" | jq -r .pr.base_sha); merge=$$(printf '%s' "$$d" | jq -r .merge.sha); \
+		[ "$$(git -C "$(WORKLOAD)" rev-parse "$$merge^1")" != "$$base" ] \
+			|| { printf 'NO-GO: demo-mainline — %s merged onto the base it was judged on: main had not moved\n' "$$(printf '%s' "$$d" | jq -r .id)"; exit 1; }; \
+	done; \
+	st=$$(printf '%s' "$$a" | jq -r .state); [ "$$st" = main-green ] || { printf 'NO-GO: demo-mainline — 0020 is at %s, want main-green\n' "$$st"; exit 1; }; \
+	line=$$(printf '%s' "$$c" | jq -r '"\(.state) \(.mainline.judge) \(.mainline.line)"'); \
+	case "$$line" in "ci-failed base NO-GO: base — "*"app/backend/meetups/db.py by $$outside") : ;; \
+		*) printf 'NO-GO: demo-mainline — 0022 was not sent back for the person'"'"'s merge on db.py: %s\n' "$$line"; exit 1 ;; esac; \
+	[ "$$(printf '%s' "$$c" | jq -r '.merge.sha // empty')" = "" ] || { printf 'NO-GO: demo-mainline — 0022 was merged\n'; exit 1; }; \
+	bmerge=$$(printf '%s' "$$b" | jq -r .merge.sha); \
+	line=$$(printf '%s' "$$b" | jq -r '"\(.state) \(.mainline.judge) \(.mainline.line)"'); \
+	case "$$line" in "ci-failed main NO-GO: main — "*) : ;; \
+		*) printf 'NO-GO: demo-mainline — 0021 was not sent back from main: %s\n' "$$line"; exit 1 ;; esac; \
+	culprit=$$(printf '%s' "$$m" | jq -r '.reverted[-1].merge // empty'); revert=$$(printf '%s' "$$m" | jq -r '.reverted[-1].revert // empty'); \
+	[ "$$culprit" = "$$bmerge" ] || { printf 'NO-GO: demo-mainline — the bisection named %s, want 0021'"'"'s merge %s\n' "$${culprit:-nothing}" "$$bmerge"; exit 1; }; \
+	head=$$(git -C "$(WORKLOAD)" rev-parse FETCH_HEAD); \
+	[ "$$(printf '%s' "$$m" | jq -r '"\(.state) \(.green)"')" = "green $$head" ] \
+		|| { printf 'NO-GO: demo-mainline — main is %s, want green at the head %s\n' "$$(printf '%s' "$$m" | jq -c '{state, green}')" "$$head"; exit 1; }; \
+	git -C "$(WORKLOAD)" merge-base --is-ancestor "$$revert" "$$head" || { printf 'NO-GO: demo-mainline — the revert %s is not on main\n' "$$revert"; exit 1; }; \
+	printf '[demo-mainline] 0020, 0021: merged onto a moved main without re-judging\n' >&2; \
+	printf '[demo-mainline] 0022: %s\n' "$$(printf '%s' "$$c" | jq -r .mainline.line)" >&2; \
+	printf '[demo-mainline] main: %s\n' "$$(printf '%s' "$$m" | jq -r '.reverted[-1].line')" >&2; \
+	printf '[demo-mainline] bisected to 0021'"'"'s merge %s, reverted by %s; main is green at %s\n' "$$culprit" "$$revert" "$$head" >&2; \
+	printf '[demo-mainline] 0020 releases %s, the green main\n' "$$(printf '%s' "$$a" | jq -r .mainline.green)" >&2
+	@printf 'GO: demo-mainline\n'
+
 .PHONY: review
 review: ## Judge an opened PR outside the tower: TICKET=<id> [ROLE=test-reviewer] (docs/adr/0021)
 	@role="$(ROLE)"; [ -n "$$role" ] || role=test-reviewer; \
@@ -868,7 +961,8 @@ demo-review: ## Prove a medium/high-risk PR goes through the review step to a tr
 	@$(MAKE) --no-print-directory up
 	$(replay_tickets)
 	@printf '[demo-review] replay: deleting the document of ticket %s before opening it again\n' "$(TICKET)" >&2
-	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" || { printf 'NO-GO: demo-review — could not reset the document\n'; exit 1; }
+	@sh adapters/$(STATE_STORE)/delete.sh tickets "$(TICKET)" && sh adapters/$(STATE_STORE)/delete.sh mainline main \
+		|| { printf 'NO-GO: demo-review — could not reset the documents\n'; exit 1; }
 	@sh core/tower.sh open "$(TICKET)" || { printf 'NO-GO: demo-review — could not open ticket %s\n' "$(TICKET)"; exit 1; }
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: demo-review — a step failed; see the [tower] lines above\n'; exit 1; }
 	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)") || { printf 'NO-GO: demo-review — no document for ticket %s\n' "$(TICKET)"; exit 1; }; \

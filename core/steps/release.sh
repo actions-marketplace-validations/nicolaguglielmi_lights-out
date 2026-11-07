@@ -15,7 +15,9 @@
 # verified digest launchpad resolved, read back from RELEASE_RECORD — the
 # placeholder is retired, this is a real read, not a literal string. Exit
 # 1 → rolled-back, exit 0 → held at 25% for go-for-launch (ADR 0014's
-# semantics). Re-runnable: launchpad rolls back first, so a retry is a
+# semantics). The commit released is the green main the `mainline` step
+# judged with the merge in it (docs/adr/0056 §3), the merge itself when
+# the document has none. Re-runnable: launchpad rolls back first, so a retry is a
 # second release from a known state.
 set -eu
 : "${TICKET:?TICKET not set}"
@@ -25,7 +27,7 @@ set -eu
 : "${IMAGE_TIMEOUT:=300}"
 : "${RELEASE_RECORD:=.crew/release.json}"
 
-merge_sha=$(jq -r '.merge.sha // empty' "$DOC_FILE")
+merge_sha=$(jq -r '.mainline.green // .merge.sha // empty' "$DOC_FILE")
 [ -n "$merge_sha" ] || { printf 'step-release: %s has no merge.sha\n' "$DOC_FILE" >&2; exit 1; }
 
 canary_tag="sha-$merge_sha"

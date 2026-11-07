@@ -1,0 +1,4 @@
+{
+  "title": "Rename metrics_text to render_metrics",
+  "body": "The function renders the Prometheus text page; its name now says so.\napp.py's /metrics route calls it by the new name, and a test asserts\nthe rendered page carries the request-duration histogram.\n\nHand-written L0 fixture for ticket 0020 (docs/adr/0056 §7): no model\nwrote this change."
+}

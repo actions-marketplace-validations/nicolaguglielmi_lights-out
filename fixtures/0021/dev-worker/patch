@@ -1,0 +1,54 @@
+From c917d3a8a12a727f8f4bd5a7df63e0f3e840f5bd Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Sat, 7 Nov 2026 19:07:26 +0100
+Subject: [PATCH] Add a one-line size report of the metrics page
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+meetups/report.py's metrics_report() returns the metrics page's size in
+bytes and lines, for the ops runbook; a test checks both numbers against
+the page itself.
+
+Hand-written L0 fixture for ticket 0021 (docs/adr/0056 §7): no model
+wrote this change.
+---
+ app/backend/meetups/report.py    | 9 +++++++++
+ app/backend/tests/test_report.py | 9 +++++++++
+ 2 files changed, 18 insertions(+)
+ create mode 100644 app/backend/meetups/report.py
+ create mode 100644 app/backend/tests/test_report.py
+
+diff --git a/app/backend/meetups/report.py b/app/backend/meetups/report.py
+new file mode 100644
+index 0000000..a563180
+--- /dev/null
++++ b/app/backend/meetups/report.py
+@@ -0,0 +1,9 @@
++"""A one-line size report of the metrics page, for the ops runbook."""
++
++from meetups.metrics import metrics_text
++
++
++def metrics_report() -> str:
++    body = metrics_text()
++    lines = body.count(b"\n")
++    return f"{len(body)} bytes, {lines} lines"
+diff --git a/app/backend/tests/test_report.py b/app/backend/tests/test_report.py
+new file mode 100644
+index 0000000..d4b9f9b
+--- /dev/null
++++ b/app/backend/tests/test_report.py
+@@ -0,0 +1,9 @@
++from meetups.metrics import metrics_text
++from meetups.report import metrics_report
++
++
++def test_metrics_report_counts_the_page_bytes_and_lines(client):
++    client.get("/api/meetups")
++    body = metrics_text()
++    newline = b"\n"
++    assert metrics_report() == f"{len(body)} bytes, {body.count(newline)} lines"
+-- 
+2.54.0 (Apple Git-157)
+

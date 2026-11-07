@@ -1,0 +1,73 @@
+From 2f2b377a7463b56c33529315bd95bc1927b26a38 Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Sat, 7 Nov 2026 19:07:26 +0100
+Subject: [PATCH] Rename metrics_text to render_metrics
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The function renders the Prometheus text page; its name now says so.
+app.py's /metrics route calls it by the new name, and a test asserts
+the rendered page carries the request-duration histogram.
+
+Hand-written L0 fixture for ticket 0020 (docs/adr/0056 §7): no model
+wrote this change.
+---
+ app/backend/meetups/app.py        | 4 ++--
+ app/backend/meetups/metrics.py    | 2 +-
+ app/backend/tests/test_metrics.py | 7 +++++++
+ 3 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/app/backend/meetups/app.py b/app/backend/meetups/app.py
+index 0dd05bc..d336c18 100644
+--- a/app/backend/meetups/app.py
++++ b/app/backend/meetups/app.py
+@@ -12,7 +12,7 @@ from meetups.auth import current_user_id, hash_password, issue_session, verify_p
+ from meetups.db import get_db
+ from meetups.flags import waitlist_enabled
+ from meetups.geocoder_client import GeocoderUnavailable, geocode
+-from meetups.metrics import CONTENT_TYPE, metrics_text, setup_metrics
++from meetups.metrics import CONTENT_TYPE, render_metrics, setup_metrics
+ 
+ APP_VERSION = os.environ.get("APP_VERSION", "dev")
+ FRONTEND_DIST = "/srv/frontend"
+@@ -188,7 +188,7 @@ def healthz():
+ 
+ @app.get("/metrics")
+ def metrics_endpoint():
+-    return Response(content=metrics_text(), media_type=CONTENT_TYPE)
++    return Response(content=render_metrics(), media_type=CONTENT_TYPE)
+ 
+ 
+ if os.path.isdir(FRONTEND_DIST):
+diff --git a/app/backend/meetups/metrics.py b/app/backend/meetups/metrics.py
+index 4cc651d..1c93652 100644
+--- a/app/backend/meetups/metrics.py
++++ b/app/backend/meetups/metrics.py
+@@ -25,7 +25,7 @@ def setup_metrics(app: FastAPI) -> None:
+     FastAPIInstrumentor.instrument_app(app, excluded_urls="healthz,metrics")
+ 
+ 
+-def metrics_text() -> bytes:
++def render_metrics() -> bytes:
+     return prometheus_client.generate_latest()
+ 
+ 
+diff --git a/app/backend/tests/test_metrics.py b/app/backend/tests/test_metrics.py
+index 8db34cb..25ba44a 100644
+--- a/app/backend/tests/test_metrics.py
++++ b/app/backend/tests/test_metrics.py
+@@ -16,3 +16,10 @@ def test_metrics_exposes_stable_http_semconv_shape(client):
+             continue
+         assert 'http_route="/healthz"' not in line
+         assert 'http_route="/metrics"' not in line
++
++
++def test_render_metrics_is_the_page_metrics_serves(client):
++    from meetups.metrics import render_metrics
++
++    client.get("/api/meetups")
++    assert b"http_server_request_duration_seconds_count" in render_metrics()
+-- 
+2.54.0 (Apple Git-157)
+

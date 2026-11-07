@@ -62,14 +62,18 @@ crew_dir="$here/.crew/$TICKET"
 rm -rf "$crew_dir"
 mkdir -p "$crew_dir"
 
-sh "adapters/$CODE_HOST/bootstrap.sh" >&2 || nogo "$CODE_HOST bootstrap failed"
+# A rework continues a ticket already in flight: main is what the tower
+# merged since, never reset to this checkout (docs/adr/0056 §6).
+CODE_HOST_KEEP_MAIN=$([ "$ATTEMPT" -gt 1 ] && printf 1 || :) sh "adapters/$CODE_HOST/bootstrap.sh" >&2 || nogo "$CODE_HOST bootstrap failed"
 
 sh "adapters/$TRACKER/get.sh" "$TICKET" > "$crew_dir/ticket.md" \
   || nogo "no such ticket: $TICKET"
 
 git clone -q "$(sh "adapters/$CODE_HOST/clone-url.sh")" "$crew_dir/workspace" >&2 \
   || nogo "clone from $CODE_HOST failed"
-if [ "$ATTEMPT" -gt 1 ]; then
+# REWORK_FRESH (docs/adr/0056 §6): the tower sent the attempt back from
+# main, so the next one starts from main's head, like attempt 1.
+if [ "$ATTEMPT" -gt 1 ] && [ -z "${REWORK_FRESH:-}" ]; then
   # The worker changes what it pushed; the PR keeps its fork point as base.
   git -C "$crew_dir/workspace" fetch -q origin "ticket/$TICKET" >&2 \
     || nogo "ticket/$TICKET not found on $CODE_HOST for attempt $ATTEMPT"
