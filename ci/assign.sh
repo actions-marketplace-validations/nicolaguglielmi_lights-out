@@ -12,7 +12,7 @@
 #       document stays `opened` with the failed attempt in its history,
 #       and the line names both tickets and both globs;
 #   (c) a disjoint ticket is assigned beside the holder;
-#   (d) once the holder has merged, `resume` and the step assign the
+#   (d) once the holder is on a green main (docs/adr/0056), `resume` and the step assign the
 #       waiting ticket: it waited, it was not discarded;
 #   (e) a ticket with no `## Perimeter` is refused;
 #   (f) on the bundled app the base check never runs;
@@ -132,12 +132,12 @@ ticket 0003 'docs/*'
 assigned 0003 || fail "c(a disjoint ticket was refused: $(cat "$root/err"))"
 
 # (d)
-jq -c '.state = "merged"' "$root/state/tickets.0001.json" > "$root/m" && mv "$root/m" "$root/state/tickets.0001.json"
+jq -c '.state = "main-green"' "$root/state/tickets.0001.json" > "$root/m" && mv "$root/m" "$root/state/tickets.0001.json"
 tower resume 0002 || fail "d(resume refused: $(cat "$root/err"))"
-tower step 0002 assign || fail "d(still refused after the holder merged: $(cat "$root/err"))"
+tower step 0002 assign || fail "d(still refused with the holder on a green main: $(cat "$root/err"))"
 [ "$(state 0002)" = pr-opened ] || fail "d(state $(state 0002))"
 held=$(jq -r '.tickets | keys | join(",")' "$root/state/perimeters.held.json")
-[ "$held" = 0002,0003 ] || fail "d(held by [$held], want 0002,0003: a merged holder is dropped)"
+[ "$held" = 0002,0003 ] || fail "d(held by [$held], want 0002,0003: a holder on a green main is dropped)"
 
 # (e)
 ticket 0004

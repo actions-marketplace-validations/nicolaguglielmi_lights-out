@@ -4,8 +4,9 @@
 - Date: 2026-11-07
 - Milestone: M30
 - Amends ADR 0019 §1 (the transition table: `merged` requests `mainline`,
-  `release` starts from `main-green`) and ADR 0038 §2, §4 (a rework the
-  tower sends back from main starts from main's head). Consistent with
+  `release` starts from `main-green`), ADR 0038 §2, §4 (a rework the
+  tower sends back from main starts from main's head) and ADR 0053 §5
+  (a perimeter is held through `merged`). Consistent with
   ADR 0033 (main is judged by the last green main's judges), ADR 0034 (a
   refusal is a recorded failed attempt) and ADR 0043 (the code host is
   touched only through the CodeHost port's verbs).
@@ -39,8 +40,8 @@ together: one renames what the other starts calling.
    PR was judged on), each with the paths it changed against its first
    parent (`--no-renames`): what each commit *touched*, so a change later
    reverted still counts. The perimeter is the ticket's `## Perimeter`
-   from the Tracker, never from the PR, matched as `core/perimeter.sh`
-   does (`fnmatch.fnmatchcase`, `*` crosses `/`).
+   from the Tracker, never from the PR, read by ADR 0053's parser and
+   matched path by path as `core/perimeter.sh` does (`fnmatch.fnmatchcase`, `*` crosses `/`).
    - Nothing touched the perimeter: the adapter merges onto the moved
      main and no gate runs again; the main check (§3) judges the result.
      Main can still move between this read and the merge: the main check
@@ -231,9 +232,11 @@ together: one renames what the other starts calling.
   ticket assigned after a merge in the same run (ADR 0053 §5's resume)
   resets main under the merged ones; their `mainline` step then fails on
   a merge that is not on main. Noted, not changed here.
-- ADR 0053's holds end at `merged`; under this ADR a merged ticket can
-  return to `ci-failed`. When both land, `merged` joins its holding
-  states, so a hold lasts until `main-green`.
+- ADR 0053's holds ended at `merged`; under this ADR a merged ticket can
+  return to `ci-failed` by a revert, and a ticket assigned meanwhile on
+  its files would put two workers on them. `merged` joins
+  `core/assign.py`'s holding states: a hold lasts until `main-green`. The
+  ticket parsing is ADR 0053's own (`core/assign.py`'s `perimeter`).
 - Two culprits in one group need a person. At L2 two `mainline` steps at
   once would race on the document; the inproc orchestrator applies one
   event at a time.
