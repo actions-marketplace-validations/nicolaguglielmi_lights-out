@@ -220,6 +220,11 @@ def rejudge(env):
     commits = first_parent(repo, base, head)
     if not commits:
         return None
+    judged = text(dig(doc, "ci", "head_sha")) or text(dig(doc, "pr", "head_sha"))
+    if judged and ancestor(repo, judged, head):
+        # Already merged (a retry after the merge, docs/adr/0019 §9): main moved by this PR itself.
+        say(f"[merge] {judged} is already on main; the adapter's merge is the retry's")
+        return None
     ticket = adapter_out(env["TRACKER"], "get", env["TICKET"], why=f"{env['TRACKER']} has no ticket {env['TICKET']}")
     globs = perimeter(ticket)
     if not globs:
@@ -233,7 +238,6 @@ def rejudge(env):
     line = f"NO-GO: base — main moved under the perimeter since {base}: {path} by {commit}"
     say(f"[merge] {line}")
     details = [f"{p} by {c} ({out(repo, 'log', '-1', '--format=%s', c)})" for c, p in hits]
-    judged = text(dig(doc, "ci", "head_sha")) or text(dig(doc, "pr", "head_sha"))
     return {"state": "ci-failed",
             "mainline": {"verdict": "NO-GO", "judge": "base", "head_sha": judged, "line": line, "details": details}}
 

@@ -716,6 +716,16 @@ class Rejudge(WorldCase):
         self.assertFalse(self.pr_merged(1))
         self.assertEqual(self.runs(), [])
 
+    def test_a_retry_after_the_merge_is_not_judged_against_its_own_merge(self):
+        # ADR 0056 §1: the step died after the code host merged (docs/adr/0019 §9);
+        # its own merge touched its perimeter, and is not main moving under it.
+        self.propose(1, "src/a.txt", lambda: self.append("src/a.txt", "a6"))
+        self.outside(lambda: self.edit_first("src/e.txt", "e1 by hand"))
+        self.assertIsNone(self.merge(1))
+        self.docs[1]["state"] = "ci-passed"
+        self.save(1)
+        self.assertEqual(self.rejudge(1), (0, None))
+
     def test_a_change_main_has_since_reverted_still_counts(self):
         head = self.propose(1, "src/a.txt", lambda: self.append("src/a.txt", "a6"))
         touched = self.outside(lambda: self.edit_first("src/a.txt", "a1 by hand"))
