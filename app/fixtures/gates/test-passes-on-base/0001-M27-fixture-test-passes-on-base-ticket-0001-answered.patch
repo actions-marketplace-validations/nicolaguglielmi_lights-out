@@ -1,0 +1,73 @@
+From e4a5df506dd4785b67deb20504fdc9235df88e28 Mon Sep 17 00:00:00 2001
+From: Nicola <45848139+nicolaguglielmi@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 18:57:55 +0100
+Subject: [PATCH] =?UTF-8?q?[M27]=20fixture:=20test-passes-on-base=20?=
+ =?UTF-8?q?=E2=80=94=20ticket=200001=20answered=20in=20the=20contract,=20t?=
+ =?UTF-8?q?ested=20where=20the=20base=20already=20passed?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The contract file gains an example that answers "Unknown Venue, Nowhere"
+with an empty list, so the fake no longer 404s on it. The new test posts
+"Nowhere, Atlantis", the example that already answered with an empty list
+before this change: it passes on the base too, so it proves nothing about
+the change. No line under the mutation scope changes, so mutation has no
+mutant to judge; gates/test-proof.sh is what refuses it (docs/adr/0053 §2).
+---
+ app/backend/tests/test_meetups.py    | 21 +++++++++++++++++++++
+ app/contracts/geocoder/examples.json |  7 +++++++
+ 2 files changed, 28 insertions(+)
+
+diff --git a/app/backend/tests/test_meetups.py b/app/backend/tests/test_meetups.py
+index c0abc84..ef6470f 100644
+--- a/app/backend/tests/test_meetups.py
++++ b/app/backend/tests/test_meetups.py
+@@ -50,6 +50,27 @@ def test_get_unknown_meetup_is_404(client):
+     assert resp.status_code == 404
+ 
+ 
++def test_unknown_venue_returns_201_with_null_coordinates(client, geocoder_server):
++    # Ticket 0001: an unknown venue still creates the meetup, with null
++    # coordinates. Posts the venue the contract already answered with an
++    # empty list before this change, not the one the change adds.
++    token = _signup_and_login(client, "unknown-venue@example.com")
++    create = client.post(
++        "/api/meetups",
++        json={
++            "title": "Somewhere else",
++            "starts_at": "2026-03-01T18:00:00Z",
++            "venue": "Nowhere, Atlantis",
++            "capacity": 5,
++        },
++        headers=_auth(token),
++    )
++    assert create.status_code == 201
++    body = create.json()
++    assert body["venue_lat"] is None
++    assert body["venue_lon"] is None
++
++
+ def test_capacity_full_is_409_when_flag_off(client, geocoder_server):
+     owner_token = _signup_and_login(client, "owner@example.com")
+     create = client.post(
+diff --git a/app/contracts/geocoder/examples.json b/app/contracts/geocoder/examples.json
+index 78944dd..16305e0 100644
+--- a/app/contracts/geocoder/examples.json
++++ b/app/contracts/geocoder/examples.json
+@@ -31,5 +31,12 @@
+       "status": 200,
+       "body": []
+     }
++  },
++  {
++    "request": { "q": "Unknown Venue, Nowhere" },
++    "response": {
++      "status": 200,
++      "body": []
++    }
+   }
+ ]
+-- 
+2.54.0 (Apple Git-157)
+

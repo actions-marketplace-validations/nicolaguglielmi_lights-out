@@ -20,6 +20,8 @@
 # holds the PR's head, but the Makefile and what it includes, gates/,
 # ci/, core/ and policy/ are the base's; the ticket comes from the
 # Tracker and the perimeter check from this checkout, never from the PR.
+# The ticket goes to the gates as GATES_TICKET, for test-weakening's
+# `## Removes tests` (docs/adr/0053 §3).
 # An attached repository's PR (docs/adr/0037 §4) cannot carry this
 # checkout's judges at all: only its contract's workload.env, policy.env
 # and runners/ come from its base (the wrapper's set, docs/adr/0045 §3),
@@ -94,11 +96,11 @@ else
     # The platform's judges are this checkout's: no PR to another
     # repository can carry them.
     gates_dir=$tmp/gates-out
-    out=$(make --no-print-directory gates WORKLOAD="$wt" GATES_OUT="$gates_dir" BASE="$BASE_SHA" HEAD="$HEAD_SHA" TOOLCHAIN_ISOLATE=1) || true
+    out=$(make --no-print-directory gates WORKLOAD="$wt" GATES_OUT="$gates_dir" BASE="$BASE_SHA" HEAD="$HEAD_SHA" TOOLCHAIN_ISOLATE=1 GATES_TICKET="$tmp/ticket.md") || true
     cp "$gates_dir/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
   else
     gates_dir=$wt/$GATES_OUT
-    out=$( (cd "$wt" && make --no-print-directory gates BASE="$BASE_SHA" HEAD="$HEAD_SHA" TOOLCHAIN_ISOLATE=1) ) || true
+    out=$( (cd "$wt" && make --no-print-directory gates BASE="$BASE_SHA" HEAD="$HEAD_SHA" TOOLCHAIN_ISOLATE=1 GATES_TICKET="$tmp/ticket.md") ) || true
     cp "$gates_dir/verdict.env" "$GATES_OUT/verdict.env" 2>/dev/null || : > "$GATES_OUT/verdict.env"
   fi
 fi

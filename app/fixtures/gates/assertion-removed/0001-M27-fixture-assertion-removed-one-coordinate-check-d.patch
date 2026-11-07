@@ -1,0 +1,33 @@
+From 81bdb790f6a18deb8b783e1d35c5db534438f21a Mon Sep 17 00:00:00 2001
+From: Nicola <45848139+nicolaguglielmi@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 18:57:55 +0100
+Subject: [PATCH] =?UTF-8?q?[M27]=20fixture:=20assertion-removed=20?=
+ =?UTF-8?q?=E2=80=94=20one=20coordinate=20check=20dropped=20from=20an=20ex?=
+ =?UTF-8?q?isting=20test?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+test_meetups.py's happy-path test no longer checks venue_lon. The suite
+still passes; the test asserts less than it did. gates/test-weakening.sh
+counts one assertion removed and none added in that file, and no ticket
+declares the removal (docs/adr/0053 §3).
+---
+ app/backend/tests/test_meetups.py | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/app/backend/tests/test_meetups.py b/app/backend/tests/test_meetups.py
+index c0abc84..505a6d4 100644
+--- a/app/backend/tests/test_meetups.py
++++ b/app/backend/tests/test_meetups.py
+@@ -29,7 +29,6 @@ def test_full_happy_path(client, geocoder_server):
+     body = create.json()
+     meetup_id = body["id"]
+     assert body["venue_lat"] == pytest.approx(45.4641)
+-    assert body["venue_lon"] == pytest.approx(9.1919)
+ 
+     listing = client.get("/api/meetups")
+     assert listing.status_code == 200
+-- 
+2.54.0 (Apple Git-157)
+

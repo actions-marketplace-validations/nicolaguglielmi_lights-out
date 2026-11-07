@@ -6,7 +6,7 @@
 The first form reads the clone, infers its stack (python from
 pyproject.toml and uv.lock, javascript from package.json and
 package-lock.json; python wins when both are there) and writes into
-<contract dir> only: workload.env (the eleven keys, every value under a
+<contract dir> only: workload.env (the twelve keys, every value under a
 "# Provenance, ..." comment), worker.md, policy.env and runners/ copied
 from <stacks dir>/<stack>/runners/. MUTATION_BASELINE is left empty, for
 core/init.sh to measure; the second form writes it in with its provenance.
@@ -38,6 +38,12 @@ PYTHON_CANDIDATES = [(3, 14), (3, 13), (3, 12), (3, 11), (3, 10), (3, 9)]
 NODE_CANDIDATES = [24, 22, 20, 18]
 
 PLANE_KEYS = ("CANARY_VERSION", "WORKLOAD_KILL_SWITCH", "WORKLOAD_SAMPLE_PATH")
+
+# Which files are tests (docs/adr/0053 §1), a stack's default discovery as
+# fnmatch globs, `*` crossing `/`: a root-level and a nested form each, so
+# that `test_*` never matches `latest_x.py`.
+PYTHON_TEST_PATHS = "test_*.py:*/test_*.py:*_test.py:conftest.py:*/conftest.py"
+JAVASCRIPT_TEST_PATHS = "test/*:*/test/*:*.test.*:*-test.*:*_test.*"
 
 
 class Undraftable(Exception):
@@ -279,6 +285,8 @@ def infer_python(repo):
         "lockfiles_evidence": "uv.lock at the root",
         "test_root": "",
         "test_root_evidence": "the package sits at the repository root, nothing to strip",
+        "test_paths": PYTHON_TEST_PATHS,
+        "test_paths_evidence": "pytest's default python_files (test_*.py, *_test.py) anywhere, plus its conftest.py (docs/adr/0053 §1)",
         "toolchain": toolchain,
         "toolchain_evidence": toolchain_evidence,
         "test_cmd": test_cmd,
@@ -349,6 +357,8 @@ def infer_javascript(repo):
         "lockfiles_evidence": "package-lock.json at the root",
         "test_root": "",
         "test_root_evidence": "the sources sit at the repository root, nothing to strip",
+        "test_paths": JAVASCRIPT_TEST_PATHS,
+        "test_paths_evidence": "node --test's default patterns (Node 24 docs: test/ directories, *.test.*, *-test.*, *_test.*), any extension (docs/adr/0053 §1)",
         "toolchain": toolchain,
         "toolchain_evidence": toolchain_evidence,
         "test_cmd": test_cmd,
@@ -375,7 +385,7 @@ def render_workload_env(d, committed, today, commit):
     has_committed = any(kept.values())
     lines = [
         f"# .lights-out/workload.env, drafted by ./go init on {today} at {commit} (docs/adr/0042 §6):",
-        "# the eleven keys the platform reads (docs/adr/0030 §2, 0042 §1), each under",
+        "# the twelve keys the platform reads (docs/adr/0030 §2, 0042 §1, 0053 §1), each under",
         "# a comment saying where its value comes from. KEY=VALUE, one per line, no",
         "# inline comments, no `$` or `#` in a value. Paths are relative to the",
         "# repository's root. Edit, then copy .lights-out/ into your repository and",
@@ -397,6 +407,7 @@ def render_workload_env(d, committed, today, commit):
     key("WORKLOAD_LOCKFILES", d["lockfiles"], f"inferred: {d['lockfiles_evidence']}")
     key("WORKLOAD_MUTATION_SCOPE", d["scope"], f"inferred: {d['scope_evidence']}")
     key("WORKLOAD_TEST_ROOT", d["test_root"], f"inferred: {d['test_root_evidence']}")
+    key("WORKLOAD_TEST_PATHS", d["test_paths"], f"default: {d['test_paths_evidence']}")
     key("TOOLCHAIN_IMAGE", d["toolchain"], f"inferred: {d['toolchain_evidence']}")
     key("TEST_CMD", d["test_cmd"], f"inferred: {d['test_cmd_evidence']}")
     key("SAST_CMD", d["sast_cmd"], f"default: {d['sast_cmd_evidence']}")

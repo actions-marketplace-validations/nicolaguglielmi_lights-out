@@ -1,0 +1,5 @@
+GATES=NO-GO
+FAILED=test-proof
+RISK_LEVEL=low
+RISK_DECISION=auto-merge
+MUTATION_TOTAL=zero

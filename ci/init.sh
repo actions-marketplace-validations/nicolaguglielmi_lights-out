@@ -6,7 +6,7 @@
 # .lights-out/ for throwaway repositories built in a temp dir (never this
 # checkout's workloads/ in place), and the draft is read back.
 #   (a) a python repository (§6): STACK=python, a workload.env of exactly
-#       the eleven keys (§1), each under a "# Provenance," comment, the
+#       the twelve keys (§1; docs/adr/0053 §1), each under a "# Provenance," comment, the
 #       baseline empty (§6: measured later), the lockfile and the mutation
 #       scope inferred, three non-empty commands without `$` or `#`
 #       (Resolved 2), worker.md with `## Scope` and `## Tests`, a
@@ -55,9 +55,9 @@ fail_case() {
 # core/ is run by path: no bytecode written into it.
 export PYTHONDONTWRITEBYTECODE=1
 
-# The eleven keys (docs/adr/0030 §2 and 0042 §1), sorted, as one line.
+# The twelve keys (docs/adr/0030 §2, 0042 §1 and 0053 §1), sorted, as one line.
 want_keys=$(printf '%s\n' CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH \
-  WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT TOOLCHAIN_IMAGE TEST_CMD SAST_CMD \
+  WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT WORKLOAD_TEST_PATHS TOOLCHAIN_IMAGE TEST_CMD SAST_CMD \
   MUTATION_CMD | LC_ALL=C sort | tr '\n' ' ')
 
 # mk_py DIR [REQUIRES]: a python repository, as small as the ADR says init reads.
@@ -104,7 +104,7 @@ above() {
 }
 
 # env_flaw FILE: what is wrong with a drafted workload.env's shape, or
-# nothing: exactly the eleven keys, once each, a "# Provenance," line in the
+# nothing: exactly the twelve keys, once each, a "# Provenance," line in the
 # comment block directly above every one, and three commands that are
 # non-empty and free of `$` and `#`.
 env_flaw() {
