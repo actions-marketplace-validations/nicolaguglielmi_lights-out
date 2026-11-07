@@ -1,21 +1,21 @@
-From c917d3a8a12a727f8f4bd5a7df63e0f3e840f5bd Mon Sep 17 00:00:00 2001
+From 9e1060c9190be9f6c3dcdcc35b0bdc7d247744a8 Mon Sep 17 00:00:00 2001
 From: lights-out-fixtures <fixtures@lights-out.invalid>
-Date: Sat, 7 Nov 2026 19:07:26 +0100
+Date: Sat, 7 Nov 2026 20:05:03 +0100
 Subject: [PATCH] Add a one-line size report of the metrics page
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 meetups/report.py's metrics_report() returns the metrics page's size in
-bytes and lines, for the ops runbook; a test checks both numbers against
-the page itself.
+bytes and lines, for the ops runbook; a test checks both numbers on a
+page of known size.
 
 Hand-written L0 fixture for ticket 0021 (docs/adr/0056 §7): no model
 wrote this change.
 ---
  app/backend/meetups/report.py    | 9 +++++++++
- app/backend/tests/test_report.py | 9 +++++++++
- 2 files changed, 18 insertions(+)
+ app/backend/tests/test_report.py | 6 ++++++
+ 2 files changed, 15 insertions(+)
  create mode 100644 app/backend/meetups/report.py
  create mode 100644 app/backend/tests/test_report.py
 
@@ -36,19 +36,16 @@ index 0000000..a563180
 +    return f"{len(body)} bytes, {lines} lines"
 diff --git a/app/backend/tests/test_report.py b/app/backend/tests/test_report.py
 new file mode 100644
-index 0000000..d4b9f9b
+index 0000000..c140729
 --- /dev/null
 +++ b/app/backend/tests/test_report.py
-@@ -0,0 +1,9 @@
-+from meetups.metrics import metrics_text
-+from meetups.report import metrics_report
+@@ -0,0 +1,6 @@
++from meetups import report
 +
 +
-+def test_metrics_report_counts_the_page_bytes_and_lines(client):
-+    client.get("/api/meetups")
-+    body = metrics_text()
-+    newline = b"\n"
-+    assert metrics_report() == f"{len(body)} bytes, {body.count(newline)} lines"
++def test_metrics_report_counts_the_page_bytes_and_lines(monkeypatch):
++    monkeypatch.setattr(report, "metrics_text", lambda: b"# HELP x\nx 1\n\n")
++    assert report.metrics_report() == "14 bytes, 3 lines"
 -- 
 2.54.0 (Apple Git-157)
 
