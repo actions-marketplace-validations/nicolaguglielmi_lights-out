@@ -1,4 +1,4 @@
-# ADR 0055 — The dev phase visible: three tower states before the ticket, the `product` role asks or confirms, a deterministic spec gate, and one timeline per ticket in the console
+# ADR 0055 — The dev phase visible: three tower states before the ticket, the `product` role asks or confirms, a deterministic spec gate, one timeline per ticket and a read-only kanban in the console
 
 - Status: proposed
 - Date: 2026-11-07
@@ -163,7 +163,46 @@ this branch (ADR 0047, one commit on 105dea2):
    - ADR 0023's rules hold: every screen mirrors `./go logbook` and
      `./go audit`; the answer mirrors `./go answer`.
 
-7. **No seventh role.** `product` was one of the six (ADR 0020).
+7. **A kanban, read-only, with feature and priority from the ticket.**
+   *Added 2026-11-07, owner's scope addition.*
+   - **Two optional header fields** of `tickets/<id>.md`, among the `- Key:
+     value` lines before the first `## `, versioned with the ticket:
+     `- Feature: <slug>`, a slug of lowercase letters and digits joined by
+     single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`), naming the feature the
+     ticket belongs to; and `- Priority: P0|P1|P2|P3`, P0 the most urgent.
+     The spec gate (§4) checks them after the perimeter: a field present
+     with any other value, or set twice, is NO-GO. A ticket without them is
+     valid and is shown as *unprioritised* or *no feature*: they describe
+     how a client plans, not whether a test can be written, so their
+     absence must not stop a ticket the gate otherwise passes.
+   - **The columns are the tower's states**, in the table's order:
+     `requested`, `questions`, `spec-ready`, `opened`, `pr-opened`,
+     `review`, `ci-passed`, `ci-failed`, `needs-human`, `merged`, `held`,
+     `rolled-back`; a state outside this list gets a column of its own,
+     after them. A card sits in the column of its ticket's `state`, nothing
+     else. The logbook carries the board, `kanban: [{state, tickets: [id,
+     ...]}]`, built by the reader, so the page draws it and computes no
+     column of its own; `ci/logbook.sh` proves every card's column is its
+     ticket's state and every ticket is on exactly one card.
+   - **Within a column**: P0 first, P3 last, unprioritised after P3; then
+     the oldest first, by the history's first `at`; then the id.
+   - **No drag-and-drop, no button on a card.** A card moves only when the
+     tower moves its ticket. A person who could drag a card to `merged`
+     would have walked it past the gates, which is the one thing this
+     harness exists to prevent. Feature and priority change by editing the
+     ticket; the console stays read-only for them and ADR 0023 §2 keeps
+     its two writes.
+   - **The page filters** by feature and priority and **groups** the
+     columns into rows by either; filtering and grouping read the logbook's
+     fields and never change a column.
+   - **Priority does not order the tower.** At L0 the orchestrator pulls
+     one event at a time in the order they were published, and the queue
+     at `assign` is M27's (ADR 0053, the perimeter wait). Ordering it by
+     priority is a scheduling rule with its own failure modes (a P3 that
+     never runs); it waits for M27's queue to exist and for its own ADR.
+     Here priority is display only.
+
+8. **No seventh role.** `product` was one of the six (ADR 0020).
    `ci/roles.sh` is unchanged.
 
 ## Alternatives rejected
@@ -188,6 +227,16 @@ this branch (ADR 0047, one commit on 105dea2):
 - **Writing the confirmed criteria back into `tickets/<id>.md`.** The
   ticket is the person's document; the tower writes its record, the
   composed spec lives under `.crew/`.
+- **A kanban whose columns the page computes from `state`.** It would be
+  correct today, and the first page edit that groups two states would
+  make the board disagree with the tower with no check to catch it; the
+  reader builds it and the ci proves it.
+- **Drag-and-drop between columns**, or a priority edited from the
+  console: a third write that moves a ticket without the tower, or edits
+  the person's document (§7).
+- **Priority as a required field, NO-GO when absent.** Every ticket
+  committed before this ADR would fail, and nothing a gate judges depends
+  on it.
 - **Showing M27's wait and M28's docs from a guess** (age of the ticket,
   files touched by the merge): a number with no record behind it (ADR
   0023 §1).
