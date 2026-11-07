@@ -742,6 +742,28 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
 
 *Stato 2026-11-07 (sessione M30, branch `claude/m30-mainline-f7ffa4`, sopra M27 e M28):* ADR 0056 scritta prima del codice e rivista prima dei test: il rilascio porta il main verde che contiene il merge, non il merge da solo; main rosso ferma anche `rework`; un rework non resetta più main a L0; i perimetri di M27 restano tenuti fino a `main-green`. `core/mainline.py` (solo libreria standard): il passo di merge applica prima la regola di rigiudizio (commit di primo genitore dopo la base giudicata, file toccati contro il perimetro del ticket letto col parser di M27); il passo nuovo `mainline` (stato `main-green` fra `merged` e `release`) giudica main con i soli gate d'albero `sast test`, a gruppi di al massimo quattro commit (`policy/mainline.env`), bisseziona un gruppo rosso, annulla il colpevole con push, open-pr e merge del code host e rimanda il suo ticket a rework; la torre rifiuta `assign`, `rework` e `release` finché il documento `mainline/main` è rosso. Test dall'ADR: `core/tests/test_mainline.py`, i casi della torre e di `assign`, `ci/mainline.sh` in `./go ci`, senza engine (442 test unitari nel workbench). GitHub Actions su `c824de0`, cinque workflow verdi (run ci 42407872153): job `mainline` → `GO: demo-mainline` in 444 s col piano (0020 e 0021 mergiati su un main mosso senza rigiudizio; 0022 rimandato a rework per il merge di una persona su `db.py`; main NO-GO, bisezione in due run al merge di 0021, revert attraverso Gitea, main GO per la regola dello stesso albero); `engine-compat` → `GO: demo, milestone M9, 729s to rollback` (stranger 780 s), dove il passo `mainline` di `e2e` costa un fetch. Trovato: il bootstrap Gitea a L0 forzava main a ogni crew (ora solo al tentativo 1; resta per un `assign` dopo un merge nello stesso run); Gitea risponde 405 se si mergia mentre ricontrolla una PR la cui base si è mossa (l'adapter ora riprova fino a `READY_TIMEOUT`; l'adapter GitHub non è provato su questo caso); il piano dice "i gate del workload", l'ADR li restringe di proposito a `sast test`; la provenienza di `MAINLINE_GROUP_MAX=4` è la decisione dei quattro tentativi al giorno del free tier, da confermare dall'owner per gli altri fornitori; i test d'integrazione di `mainline` allungano la suite `unittest` che il gate di sé usa per la mutation di `core/`.
 
+### M31 — L'ingresso a gradini (ADR 0057)
+
+*Aggiunto 2026-11-07, decisione dell'owner. Si costruisce dopo M27–M30.* Chi passa per curiosità e chi vuole andare in produzione oggi entrano dalla stessa porta: un README lungo e un demo da 15 minuti. Una scala in cui ogni gradino chiede un solo prerequisito in più e restituisce un risultato visibile.
+
+- **I gradini:**
+  - 0, guarda (1 min, un browser): il sito, i video, l'explainer della board;
+  - 1, provalo sul tuo repo (5 min, podman o docker, nessuna chiave): `lights-out gates` o la GitHub Action sulle PR del tuo agente;
+  - 2, il giro completo (15 min, il clone): `./go demo`;
+  - 3, agenti veri sul tuo repo (1 ora, una chiave): `./go init`, poi i ticket a L1;
+  - 4, produzione (L2/L3): code host, delivery, metriche, policy, gate umano.
+- **Un'immagine snella per il gradino 1.** Solo i gate, senza il piano e senza gli harness. L'immagine di oggi pesa 1,77 GB (ADR 0045); la misura nuova va nell'ADR. Pubblicarla resta all'owner.
+- **`./go doctor --level <l0|l1|l2|l3>`**: cosa manca per quel livello, una riga per voce, invece di scoprirlo per errore.
+- **Configurazione a strati.** `init` deduce i default; ogni chiave ha un valore di partenza e un commento con la provenienza; `docs/production.md` ha un capitolo per decisione: fornitore e budget, rischio, rework, delivery, metriche, gate umano.
+- **Il gate `production-readiness`.** GO solo se il delivery è un adapter con rollback reale che ha passato la sua conformità, se le metriche arrivano da un endpoint vero, se i segreti non stanno in `.env` e se il gate umano è configurato.
+- **Il README segue la scala**, gradino per gradino, e dichiara i requisiti misurati: con la VM podman da 4 GiB regge un run pesante alla volta (osservato il 2026-11-07, due arresti della VM con due demo insieme).
+- **Fatto quando:**
+  - il README è in quest'ordine e `ci/docs-drift.sh` (che ha sostituito `ci/readme.sh` in M28) riconosce ogni comando che cita;
+  - `./go doctor --level l2` su un clone a L0 elenca le voci mancanti;
+  - `production-readiness` è NO-GO a L0 e GO su un caso costruito con adapter reali locali (`argo-rollouts`, `promql`);
+  - l'immagine dei gate passa `./go demo-package` con la sua misura;
+  - `./go demo` resta invariato.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
