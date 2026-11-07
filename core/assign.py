@@ -6,7 +6,8 @@ Run by core/steps/assign.sh before anything is cloned. Reads the ticket
 from the Tracker and its `## Perimeter` (core/perimeter.sh's rules), and
 the StateStore document perimeters/held, {"tickets": {<id>: [<glob>, ...]}},
 written by earlier assigns. A listed ticket holds its perimeter while its
-own document is in a HOLDING state: a PR is open and unmerged. When no
+own document is in a HOLDING state: a PR is open, or merged and not yet
+checked on main (docs/adr/0056). When no
 holder's glob overlaps one of this ticket's, the ticket's entry is written
 (holders that no longer hold are dropped) and the exit is 0. Otherwise one
 line names the holder and the two globs, nothing is written, and the exit
@@ -27,9 +28,11 @@ except ImportError:  # run as a script: core/ is on sys.path
     from tower import compact, sh, text
 
 COLLECTION, DOC = "perimeters", "held"
-# From pr-opened until merged: the open, unmerged states of core/tower.py's
-# table, and needs-human, where the rework cap leaves an open PR.
-HOLDING = ("pr-opened", "ci-failed", "ci-passed", "review", "needs-human")
+# From pr-opened until main is checked: the open, unmerged states of
+# core/tower.py's table, needs-human, where the rework cap leaves an open
+# PR, and merged, which the main check can send back to ci-failed by a
+# revert (docs/adr/0056, amending docs/adr/0053 §5).
+HOLDING = ("pr-opened", "ci-failed", "ci-passed", "review", "needs-human", "merged")
 WILD = "*?["
 
 
@@ -112,7 +115,7 @@ def claim(ticket, env):
                 if overlaps(a, b):
                     raise Refused(f"{ticket} waits: its perimeter overlaps {holder}'s ({a} ~ {b}), "
                                   f"held while {holder} is {state}; ./go resume TICKET={ticket} "
-                                  f"once {holder} has merged")
+                                  f"once {holder} is on a green main")
     keep[ticket] = mine
     put = sh(f"adapters/{store}/put.sh", COLLECTION, DOC,
              input=compact({"tickets": keep}) + "\n", text=True)

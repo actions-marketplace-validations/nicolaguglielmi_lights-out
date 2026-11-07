@@ -30,8 +30,10 @@ import tempfile
 from datetime import datetime, timezone
 
 try:
+    from core.assign import perimeter
     from core.tower import compact, dig, sh, text
 except ImportError:  # run as a script: core/ is sys.path[0]
+    from assign import perimeter
     from tower import compact, dig, sh, text
 
 COLLECTION, DOC = "mainline", "main"
@@ -55,20 +57,6 @@ def now():
 
 
 # --- pure rules (unit-tested from the ADR) ---
-
-def perimeter(ticket_text):
-    """The list items of `## Perimeter`, backticks dropped (core/perimeter.sh)."""
-    found, out = False, []
-    for line in ticket_text.splitlines():
-        if line.startswith("## "):
-            if found:
-                break
-            found = line.startswith("## Perimeter")
-            continue
-        if found and line.startswith("- "):
-            out.append(line[2:].strip().replace("`", ""))
-    return out
-
 
 def in_perimeter(path, globs):
     """core/perimeter.sh's case patterns: `*` crosses `/`, as fnmatchcase does."""

@@ -85,7 +85,7 @@ class Overlaps(unittest.TestCase):
 class Holding(unittest.TestCase):
     def test_the_open_unmerged_states_hold(self):
         self.assertEqual(set(assign.HOLDING),
-                         {"pr-opened", "ci-failed", "ci-passed", "review", "needs-human"})
+                         {"pr-opened", "ci-failed", "ci-passed", "review", "needs-human", "merged"})
 
 
 class AssignCase(unittest.TestCase):
@@ -157,7 +157,7 @@ class Claim(AssignCase):
                          "a refused ticket writes nothing")
 
     def test_every_holding_state_holds(self):
-        for state in ("pr-opened", "ci-failed", "ci-passed", "review", "needs-human"):
+        for state in ("pr-opened", "ci-failed", "ci-passed", "review", "needs-human", "merged"):
             self.write_ticket("0001", "svc/a.py")
             self.write_ticket("0002", "svc/a.py")
             self.put_held({"0001": ["svc/a.py"]})
@@ -165,7 +165,7 @@ class Claim(AssignCase):
             self.assertEqual(self.run_assign("0002")[0], 1, state)
 
     def test_a_merged_or_finished_holder_releases_and_is_dropped(self):
-        for state in ("merged", "rolled-back", "held", "opened"):
+        for state in ("main-green", "rolled-back", "held", "opened"):
             self.write_ticket("0002", "svc/a.py")
             self.put_held({"0001": ["svc/a.py"]})
             self.set_state("0001", state)
