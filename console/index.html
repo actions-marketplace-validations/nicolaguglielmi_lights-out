@@ -38,6 +38,7 @@ nav { display: flex; flex-wrap: wrap; gap: 4px; max-width: 1180px; margin: 10px 
 nav a { padding: 6px 12px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 14px; }
 nav a.on { background: var(--none-bg); font-weight: 600; }
 main { max-width: 1180px; margin: 0 auto; padding: 16px; }
+main.wide { max-width: none; }
 h1 { font-size: 20px; margin: 4px 0 4px; }
 h2 { font-size: 16px; margin: 20px 0 8px; }
 .lede { color: var(--muted); margin: 0 0 14px; }
@@ -101,7 +102,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 <script>
 "use strict";
 let book = null, con = null, lastLine = null, busy = false, windowDays = null, answerLine = null;
-let kFeature = "", kPriority = "", kGroup = "";
+let kFeature = "", kPriority = "", kGroup = "", kEmpty = "";
 
 // h(tag, attrs, ...children): every text goes through a text node, never HTML.
 function h(tag, attrs, ...kids) {
@@ -197,15 +198,19 @@ function screenKanban() {
   out.push(h("p", {cls: "muted"}, "Feature ",
     sel(kFeature, [["", "all"]].concat(features.map((f) => [f || "-", f || "no feature"])), (v) => { kFeature = v; }),
     " Priority ", sel(kPriority, [["", "all"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["-", "unprioritised"]], (v) => { kPriority = v; }),
-    " Group by ", sel(kGroup, [["", "nothing"], ["feature", "feature"], ["priority", "priority"]], (v) => { kGroup = v; })));
+    " Group by ", sel(kGroup, [["", "nothing"], ["feature", "feature"], ["priority", "priority"]], (v) => { kGroup = v; }),
+    " Empty columns ", sel(kEmpty, [["", "shown"], ["hide", "hidden"]], (v) => { kEmpty = v; })));
   const keep = (t) => (!kFeature || (t.feature || "-") === kFeature) && (!kPriority || (t.priority || "-") === kPriority);
   const lanes = kGroup ? [...new Set(ticketsList().filter(keep).map((t) => t[kGroup] || ""))]
     .sort((a, b) => (a || "~").localeCompare(b || "~")) : [null];
   for (const lane of lanes) {
     const inLane = (t) => keep(t) && (lane === null || (t[kGroup] || "") === lane);
-    const board = h("div", {cls: "board"}, book.kanban.map((col) => h("div", {cls: "col"},
-      h("h3", {}, col.state + " · " + col.tickets.filter((id) => byId[id] && inLane(byId[id])).length),
-      col.tickets.filter((id) => byId[id] && inLane(byId[id])).map((id) => card(byId[id])))));
+    // Hiding the empty columns is a view, like the filters: the order of
+    // the columns left is still the tower's.
+    const cols = book.kanban.map((col) => [col.state, col.tickets.filter((id) => byId[id] && inLane(byId[id]))])
+      .filter(([, ids]) => !kEmpty || ids.length);
+    const board = h("div", {cls: "board"}, cols.map(([state, ids]) => h("div", {cls: "col"},
+      h("h3", {}, state + " · " + ids.length), ids.map((id) => card(byId[id])))));
     out.push(h("div", {cls: "lane"},
       lane === null ? null : h("h2", {}, lane || (kGroup === "priority" ? "unprioritised" : "no feature")),
       h("div", {cls: "panel"}, board)));
@@ -432,6 +437,7 @@ function render() {
   else body = screenTickets();
   const banners = [];
   if (con.read_error) banners.push(h("div", {cls: "banner err"}, "Stale: the last read failed (" + con.read_error + "); showing the last good logbook."));
+  main.classList.toggle("wide", screen === "kanban");
   main.replaceChildren(...banners, ...body.filter(Boolean));
 }
 async function load() {
