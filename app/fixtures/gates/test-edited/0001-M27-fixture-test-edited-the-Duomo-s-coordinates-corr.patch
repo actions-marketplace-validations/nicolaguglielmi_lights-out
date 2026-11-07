@@ -1,0 +1,70 @@
+From 064b595c11833b56657e2693321e548d401db596 Mon Sep 17 00:00:00 2001
+From: Nicola <45848139+nicolaguglielmi@users.noreply.github.com>
+Date: Sat, 7 Nov 2026 18:57:55 +0100
+Subject: [PATCH] =?UTF-8?q?[M27]=20fixture:=20test-edited=20=E2=80=94=20th?=
+ =?UTF-8?q?e=20Duomo's=20coordinates=20corrected,=20and=20the=20assertions?=
+ =?UTF-8?q?=20that=20pin=20them?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The contract example for "Milano, Duomo" gets the cathedral's coordinates
+to four decimals, 45.4642, 9.1900. The two tests that pin the old values
+are edited to the new ones: two assertions removed and two added in each
+file, edits and not removals. On the base, which still serves the old
+values, the edited tests fail; on the head they pass. The positive control
+for gates/test-weakening.sh and gates/test-proof.sh (docs/adr/0053 §8).
+---
+ app/backend/tests/test_geocoder_client.py | 4 ++--
+ app/backend/tests/test_meetups.py         | 4 ++--
+ app/contracts/geocoder/examples.json      | 4 ++--
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/app/backend/tests/test_geocoder_client.py b/app/backend/tests/test_geocoder_client.py
+index 86ada64..b2cb2dd 100644
+--- a/app/backend/tests/test_geocoder_client.py
++++ b/app/backend/tests/test_geocoder_client.py
+@@ -19,8 +19,8 @@ def fake_server(monkeypatch):
+ 
+ def test_geocode_matching_venue_returns_contract_coordinates(fake_server):
+     lat, lon = geocode("Milano, Duomo")
+-    assert lat == pytest.approx(45.4641)
+-    assert lon == pytest.approx(9.1919)
++    assert lat == pytest.approx(45.4642)
++    assert lon == pytest.approx(9.1900)
+ 
+ 
+ def test_geocode_no_match_returns_none_none(fake_server):
+diff --git a/app/backend/tests/test_meetups.py b/app/backend/tests/test_meetups.py
+index c0abc84..22f39a4 100644
+--- a/app/backend/tests/test_meetups.py
++++ b/app/backend/tests/test_meetups.py
+@@ -28,8 +28,8 @@ def test_full_happy_path(client, geocoder_server):
+     assert create.status_code == 201
+     body = create.json()
+     meetup_id = body["id"]
+-    assert body["venue_lat"] == pytest.approx(45.4641)
+-    assert body["venue_lon"] == pytest.approx(9.1919)
++    assert body["venue_lat"] == pytest.approx(45.4642)
++    assert body["venue_lon"] == pytest.approx(9.1900)
+ 
+     listing = client.get("/api/meetups")
+     assert listing.status_code == 200
+diff --git a/app/contracts/geocoder/examples.json b/app/contracts/geocoder/examples.json
+index 78944dd..148eac7 100644
+--- a/app/contracts/geocoder/examples.json
++++ b/app/contracts/geocoder/examples.json
+@@ -5,8 +5,8 @@
+       "status": 200,
+       "body": [
+         {
+-          "lat": "45.4641",
+-          "lon": "9.1919",
++          "lat": "45.4642",
++          "lon": "9.1900",
+           "display_name": "Duomo di Milano, Milano, Italy"
+         }
+       ]
+-- 
+2.54.0 (Apple Git-157)
+

@@ -7,9 +7,16 @@
 # text). Re-runnable: crew.sh wipes .crew/<ticket> and reclones. Prints
 # the fields to merge into the document; next state pr-opened, attempt 1
 # (core/steps/rework.sh counts the next ones, docs/adr/0038).
+# Two preconditions first (docs/adr/0053 §5-§6), each refusing with one
+# line on stderr and exit 1, so the ticket waits at `opened` for `./go
+# resume`: no open ticket holds a file of its perimeter, and an attached
+# repository's base is green.
 set -eu
 : "${TICKET:?TICKET not set}"
 : "${ROLE:=dev-worker}"
+
+python3 core/assign.py "$TICKET"
+[ -z "${WORKLOAD_ATTACHED:-}" ] || sh core/base-gates.sh
 
 crew_dir=".crew/$TICKET"
 TICKET="$TICKET" ROLE="$ROLE" sh core/crew.sh >&2

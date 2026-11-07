@@ -171,8 +171,10 @@ DEMO_BUDGET_SECONDS ?= 900
 # needing a fresh image build or a live network last; `gates` stops at the
 # first NO-GO. `secrets` reuses the existing repo-wide ci/secrets.sh (it
 # already covers history plus the working tree for any range); every other
-# name is gates/<name>.sh.
-GATES := risk secrets deps sast test mutation
+# name is gates/<name>.sh. test-proof after test (it needs a green head)
+# and after mutation, whose only failing fixture it would otherwise stop
+# first (docs/adr/0053 §4).
+GATES := risk secrets test-weakening deps sast test mutation test-proof
 
 # Where a gate run's data beyond its one-line verdict lands: risk.json,
 # mutation.json, and gates' own verdict.env (docs/adr/0015 §2). Gitignored;
@@ -200,7 +202,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower perimeter review prompts evals promote board roles postmortem metrics package shell-boundary contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower assign perimeter review prompts evals promote board roles postmortem metrics package shell-boundary contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -308,7 +310,7 @@ verify: ## Check verify/slo.promql: against the live app's scrape, or with METRI
 # base is the empty tree: the whole tree is the diff, which is what init
 # measured.
 .PHONY: gates
-gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk, secrets, deps, sast, test, mutation (docs/adr/0015, 0016, 0042)
+gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk, secrets, test-weakening, deps, sast, test, mutation, test-proof (docs/adr/0015, 0016, 0042, 0053)
 	@rm -rf "$(GATES_OUT)" && mkdir -p "$(GATES_OUT)"
 	@base="$(BASE)"; head="$(HEAD)"; \
 	[ -n "$$head" ] || head=$$(git -C "$(WORKLOAD)" rev-parse HEAD); \

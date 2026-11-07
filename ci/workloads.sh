@@ -7,9 +7,10 @@
 # workloads/*/workload.env -- is checked against the Workload port
 # (docs/adr/0030 §2-3), independent of whichever WORKLOAD the enclosing
 # `make` invocation itself selected:
-#   (a) workload.env defines exactly the eleven keys, no more, no fewer --
+#   (a) workload.env defines exactly the twelve keys, no more, no fewer --
 #       an extra one could silently override DELIVERY or a `?=` default
-#       (docs/adr/0030 §4's trap); the four runner keys (docs/adr/0042
+#       (docs/adr/0030 §4's trap); WORKLOAD_TEST_PATHS, the globs naming
+#       the tests (docs/adr/0053 §1), is non-empty; the four runner keys (docs/adr/0042
 #       §1-§2) are non-empty commands with no `$` or `#` (make's include
 #       would expand the one and cut at the other) and a TOOLCHAIN_IMAGE
 #       of a known form: workbench, compose:<service>, an image reference;
@@ -64,7 +65,7 @@ egress_files=$(mktemp -d)
 trap 'rm -rf "$err_log" "$policy_out" "$egress_files"' EXIT
 
 
-expected_keys='CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT TOOLCHAIN_IMAGE TEST_CMD SAST_CMD MUTATION_CMD'
+expected_keys='CANARY_VERSION MUTATION_BASELINE WORKLOAD_KILL_SWITCH WORKLOAD_SAMPLE_PATH WORKLOAD_LOCKFILES WORKLOAD_MUTATION_SCOPE WORKLOAD_TEST_ROOT WORKLOAD_TEST_PATHS TOOLCHAIN_IMAGE TEST_CMD SAST_CMD MUTATION_CMD'
 
 # The CLI harnesses, discovered as ci/harness-shape.sh discovers them: an
 # adapters/<name>/ with run.sh, Containerfile and a pin, package.json or
@@ -265,7 +266,7 @@ for pair in $pairs; do
   f="$cd_/workload.env"
   [ -f "$f" ] || nogo "$f does not exist"
 
-  # (a) exactly the eleven keys. workload.env is "profile syntax" (its own
+  # (a) exactly the twelve keys. workload.env is "profile syntax" (its own
   # header): KEY=VALUE, one per line, no inline comments -- a comment line
   # is dropped whole, never a suffix, so a naive substring search on the
   # raw text would be wrong here. A command may hold spaces and quotes
@@ -291,6 +292,10 @@ for ln in raw_lines:
         sys.exit(1)
     keys.append(key)
     values[key] = value
+
+if "WORKLOAD_TEST_PATHS" in values and not values["WORKLOAD_TEST_PATHS"].strip(":"):
+    print(f"{path}: WORKLOAD_TEST_PATHS is empty; test-proof and test-weakening need the tests named (docs/adr/0053 §1)")
+    sys.exit(1)
 
 for key in ("TEST_CMD", "SAST_CMD", "MUTATION_CMD"):
     value = values.get(key, "")
@@ -329,7 +334,7 @@ if extra or missing:
         bits.append("extra: " + ", ".join(extra))
     if missing:
         bits.append("missing: " + ", ".join(missing))
-    print(f"{path} must define exactly the eleven docs/adr/0030 §2 and 0042 §1 keys ({'; '.join(bits)})")
+    print(f"{path} must define exactly the twelve docs/adr/0030 §2, 0042 §1 and 0053 §1 keys ({'; '.join(bits)})")
     sys.exit(1)
 PY
   ) && ok=1 || ok=0

@@ -20,12 +20,15 @@ Not asserted: a range that names a minor of the workbench's Node (`~24.1`,
 
 import unittest
 
-from core.init import node_admits, python_admits, render_workload_env
+import fnmatch
+
+from core.init import (JAVASCRIPT_TEST_PATHS, PYTHON_TEST_PATHS, node_admits, python_admits,
+                       render_workload_env)
 
 WORKBENCH_PYTHON = (3, 13)
 WORKBENCH_NODE = 24
 
-ELEVEN_KEYS = {
+KEYS = {
     "CANARY_VERSION",
     "MUTATION_BASELINE",
     "WORKLOAD_KILL_SWITCH",
@@ -33,6 +36,7 @@ ELEVEN_KEYS = {
     "WORKLOAD_LOCKFILES",
     "WORKLOAD_MUTATION_SCOPE",
     "WORKLOAD_TEST_ROOT",
+    "WORKLOAD_TEST_PATHS",
     "TOOLCHAIN_IMAGE",
     "TEST_CMD",
     "SAST_CMD",
@@ -149,6 +153,8 @@ def inference():
         "scope_evidence": "demo/__init__.py exists",
         "test_root": "",
         "test_root_evidence": "nothing to strip",
+        "test_paths": "tests/test_*.py",
+        "test_paths_evidence": "pytest's default discovery",
         "toolchain": "workbench",
         "toolchain_evidence": "requires-python admits the workbench",
         "test_cmd": "uv run --locked pytest tests -q",
@@ -180,21 +186,47 @@ def parse(text):
     return values, blocks
 
 
+class TestPathsTest(unittest.TestCase):
+    """docs/adr/0053 §1: the drafted WORKLOAD_TEST_PATHS is the stack's default
+    discovery, `*` crossing `/`."""
+
+    def matches(self, spec, path):
+        return any(fnmatch.fnmatchcase(path, g) for g in spec.split(":") if g)
+
+    def test_python_names_what_pytest_collects_and_its_fixtures(self):
+        for path in ("test_app.py", "tests/test_app.py", "pkg/tests/test_x.py", "tests/app_test.py",
+                     "conftest.py", "tests/conftest.py"):
+            self.assertTrue(self.matches(PYTHON_TEST_PATHS, path), path)
+
+    def test_python_does_not_name_code_that_only_contains_test(self):
+        for path in ("demo/latest_x.py", "demo/app.py", "demo/contest.py", "tests/mutation/run.sh"):
+            self.assertFalse(self.matches(PYTHON_TEST_PATHS, path), path)
+
+    def test_javascript_names_what_node_test_runs(self):
+        for path in ("test/calc.test.js", "test/helpers.js", "src/a.test.mjs", "src/a-test.js",
+                     "src/a_test.cjs", "pkg/test/x.js"):
+            self.assertTrue(self.matches(JAVASCRIPT_TEST_PATHS, path), path)
+
+    def test_javascript_does_not_name_the_sources(self):
+        for path in ("src/calc.js", "lib/index.mjs", "src/latest.js"):
+            self.assertFalse(self.matches(JAVASCRIPT_TEST_PATHS, path), path)
+
+
 class RenderWorkloadEnvTest(unittest.TestCase):
     def render(self, committed):
         return render_workload_env(inference(), committed, "2026-11-03", "abc1234")
 
-    def test_exactly_the_eleven_keys_once_each(self):
+    def test_exactly_the_twelve_keys_once_each(self):
         for committed in ({}, {"CANARY_VERSION": "1"}):
             with self.subTest(committed=committed):
                 values, _ = parse(self.render(committed))
-                self.assertEqual(set(values), ELEVEN_KEYS)
+                self.assertEqual(set(values), KEYS)
 
     def test_every_key_has_a_provenance_line_directly_above(self):
         for committed in ({}, {"CANARY_VERSION": "1"}):
             with self.subTest(committed=committed):
                 _, blocks = parse(self.render(committed))
-                for key in ELEVEN_KEYS:
+                for key in KEYS:
                     self.assertTrue(
                         any(line.startswith("# Provenance,") for line in blocks[key]),
                         f"{key} has no '# Provenance,' line in the comment block above it: {blocks[key]}",
@@ -211,6 +243,7 @@ class RenderWorkloadEnvTest(unittest.TestCase):
         self.assertEqual(values["WORKLOAD_LOCKFILES"], d["lockfiles"])
         self.assertEqual(values["WORKLOAD_MUTATION_SCOPE"], d["scope"])
         self.assertEqual(values["WORKLOAD_TEST_ROOT"], d["test_root"])
+        self.assertEqual(values["WORKLOAD_TEST_PATHS"], d["test_paths"])
         self.assertEqual(values["TOOLCHAIN_IMAGE"], d["toolchain"])
         self.assertEqual(values["TEST_CMD"], d["test_cmd"])
         self.assertEqual(values["SAST_CMD"], d["sast_cmd"])
