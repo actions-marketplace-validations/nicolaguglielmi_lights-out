@@ -58,6 +58,10 @@
       "tickets": []
     },
     {
+      "state": "main-green",
+      "tickets": []
+    },
+    {
       "state": "held",
       "tickets": [
         "0002"
