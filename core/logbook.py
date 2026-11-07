@@ -25,7 +25,7 @@ import hashlib
 import json
 import os
 import re
-import subprocess
+import subprocess  # nosec B404 - git and the adapter verbs the profile names (docs/adr/0052 §3)
 import sys
 
 try:
@@ -64,7 +64,7 @@ def is_unread(value):
 def run(*argv):
     """(returncode, stdout, last stderr line) of argv, from the working directory."""
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=30)  # nosec B603 - an argv list, no shell, ADR 0052 §3
     except subprocess.TimeoutExpired:
         return 124, "", f"{argv[1] if len(argv) > 1 else argv[0]}: timed out after 30s"
     lines = p.stderr.strip().splitlines()
