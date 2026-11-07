@@ -1,0 +1,249 @@
+"""The spec before the ticket (docs/adr/0055): stdlib only. The logic of
+gates/spec.sh and of the clarify, answer and spec steps; they are its
+entry points (docs/adr/0052 §3).
+
+    python3 core/spec.py check <spec.md>
+        the gate: exit 0, or exit 1 with the first failure on stdout (§4)
+    python3 core/spec.py answers <doc.json>
+        the answers so far, as the later user turns of the product role's
+        conversation: a JSON list of strings on stdout (§2)
+    python3 core/spec.py clarify <request.md> <doc.json> <run dir> <exit code>
+        the clarify/answer step's result from the product role's run:
+        `questions` or `spec-ready` (§2, §3)
+    python3 core/spec.py compose <request.md> <doc.json>
+        the spec: the request with its criteria replaced by the confirmed
+        ones, on stdout (§4)
+    python3 core/spec.py gated <doc.json> <gate line>
+        the spec step's result: `opened` on GO, `questions` on NO-GO (§4)
+
+A step result is the JSON object core/tower.py merges into the document;
+a refusal is one stderr line and exit 1, which fails the step (ADR 0034).
+"""
+
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+try:
+    from core.tower import task
+except ImportError:  # run as a script: core/ is sys.path[0]
+    from tower import task
+
+CRITERIA = "## Acceptance criteria"
+PERIMETER = "## Perimeter"
+# Provenance, decision: docs/adr/0055 §4, the words that say an outcome is
+# good without saying what is observed; one joins only with a NO-GO case.
+VAGUE = ("works", "correctly", "properly", "as expected", "as intended", "appropriately", "gracefully",
+         "seamlessly", "user-friendly", "intuitive", "better", "improved", "fast", "quickly", "robust",
+         "handled")
+_VAGUE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in VAGUE) + r")(?![\w-])", re.I)
+_WORD = {w: re.compile(rf"(?:^|[\s,;.])({w})\b", re.I) for w in ("given", "when", "then")}
+DECISIONS = ("ask_product_owner", "confirm_acceptance")
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def section(text, heading):
+    """The lines under HEADING up to the next `## `, or None when absent."""
+    lines, inside = [], False
+    for line in text.splitlines():
+        if line.rstrip() == heading or line.startswith(heading + " "):
+            inside = True
+        elif inside and line.startswith("## "):
+            break
+        elif inside:
+            lines.append(line)
+    return lines if inside else None
+
+
+def paragraphs(lines):
+    out, current = [], []
+    for line in lines:
+        if line.strip():
+            current.append(line.strip())
+        elif current:
+            out.append(" ".join(current))
+            current = []
+    if current:
+        out.append(" ".join(current))
+    return out
+
+
+def criteria_of(text):
+    lines = section(text, CRITERIA)
+    return None if lines is None else paragraphs(lines)
+
+
+def flaw(criterion):
+    """Why one criterion is not testable, or None."""
+    at = []
+    for word in ("given", "when", "then"):
+        found = _WORD[word].search(criterion, at[-1] if at else 0)
+        if not found:
+            return f'"{criterion[:60]}" has no {word.capitalize()} after its ' + (
+                "start" if not at else ("Given" if word == "when" else "When"))
+        at.append(found.end())
+    outcome = criterion[at[-1]:].strip(" .,;:")
+    if not outcome:
+        return f'"{criterion[:60]}" has a Then with no outcome'
+    vague = _VAGUE.search(outcome)
+    if vague:
+        return f'"{criterion[:60]}": "{vague.group(1)}" names no observable outcome'
+    return None
+
+
+def check(text):
+    """The first reason the spec fails the gate, or None (docs/adr/0055 §4)."""
+    criteria = criteria_of(text)
+    if criteria is None:
+        return f"no {CRITERIA} section"
+    if not criteria:
+        return f"{CRITERIA} has no criterion"
+    for criterion in criteria:
+        why = flaw(criterion)
+        if why:
+            return why
+    perimeter = section(text, PERIMETER)
+    if perimeter is None:
+        return f"no {PERIMETER} section"
+    if not any(line.startswith("- ") for line in perimeter):
+        return f"{PERIMETER} declares no path"
+    return None
+
+
+def answers(doc):
+    """The answered questions, in order, as the product role reads them."""
+    out = []
+    for q in doc.get("questions") or []:
+        if not q.get("answer"):
+            continue
+        if q.get("from") == "spec":
+            out.append(f"The spec gate returned the spec: {q.get('question')}\n\n"
+                       f"The product owner answers: {q['answer']}")
+        else:
+            out.append(q["answer"])
+    return out
+
+
+def read(path):
+    with open(path, encoding="utf-8") as fh:
+        return fh.read()
+
+
+def load(path, default):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return default
+
+
+def last_line(path):
+    try:
+        lines = [line for line in read(path).splitlines() if line.strip()]
+    except OSError:
+        return ""
+    return lines[-1] if lines else ""
+
+
+class Refused(Exception):
+    pass
+
+
+def clarify(request, doc, run_dir, rc, env):
+    """The clarify/answer step's result (docs/adr/0055 §2, §3)."""
+    run = load(os.path.join(run_dir, "out", "run.json"), {})
+    product = task(run) if isinstance(run, dict) else task({})
+    questions = list(doc.get("questions") or [])
+    if rc != 0:
+        why = last_line(os.path.join(run_dir, "run.err")) or f"the product role exited {rc}"
+        if env.get("AGENT_HARNESS") == "replay" and isinstance(run, dict) and run.get("no_recording"):
+            criteria = criteria_of(request) or []
+            return {"state": "spec-ready", "product": dict(product, consulted=False, why=why),
+                    "spec": {"criteria": criteria, "by": "request"}}
+        raise Refused(f"the product role failed: {why}")
+    calls = load(os.path.join(run_dir, "out", "calls.json"), [])
+    decided = [c for c in calls if isinstance(c, dict) and c.get("name") in DECISIONS]
+    if not decided:
+        raise Refused("the product role neither asked nor confirmed")
+    last = decided[-1]
+    args = last.get("args") or {}
+    if last["name"] == "ask_product_owner":
+        question = str(args.get("question") or "").strip()
+        if not question:
+            raise Refused("the product role asked an empty question")
+        questions.append({"question": question, "from": "product", "asked_at": now()})
+        return {"state": "questions", "questions": questions, "product": dict(product, consulted=True)}
+    criteria = [str(c).strip() for c in args.get("criteria") or [] if str(c).strip()]
+    if not criteria:
+        raise Refused("the product role confirmed no criteria")
+    return {"state": "spec-ready", "product": dict(product, consulted=True),
+            "spec": {"criteria": criteria, "by": "product"}}
+
+
+def compose(request, doc):
+    """The request with its criteria section replaced by the confirmed ones."""
+    criteria = ((doc.get("spec") or {}).get("criteria")) or []
+    block = [CRITERIA, ""] + [line for c in criteria for line in (c, "")]
+    out, skipping, placed = [], False, False
+    for line in request.splitlines():
+        if line.rstrip() == CRITERIA:
+            skipping, placed = True, True
+            out.extend(block)
+        elif skipping and line.startswith("## "):
+            skipping = False
+            out.append(line)
+        elif not skipping:
+            out.append(line)
+    if not placed:
+        out = out + [""] + block
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def gated(doc, line):
+    """The spec step's result from the gate's one line (docs/adr/0055 §4)."""
+    at = now()
+    if line.startswith("GO: spec"):
+        return {"state": "opened", "spec": {"verdict": "GO", "line": line, "at": at}}
+    if not line.startswith("NO-GO: spec — "):
+        raise Refused(f"the spec gate printed no verdict: {line or 'nothing'}")
+    reason = line[len("NO-GO: spec — "):]
+    questions = list(doc.get("questions") or []) + [{"question": reason, "from": "spec", "asked_at": at}]
+    return {"state": "questions", "questions": questions, "spec": {"verdict": "NO-GO", "line": line, "at": at}}
+
+
+def main(argv, env=None):
+    env = os.environ if env is None else env
+    cmd, args = (argv[0], argv[1:]) if argv else ("", [])
+    try:
+        if cmd == "check" and len(args) == 1:
+            why = check(read(args[0]))
+            if why:
+                print(why)
+                return 1
+            return 0
+        if cmd == "answers" and len(args) == 1:
+            print(json.dumps(answers(load(args[0], {})), ensure_ascii=False))
+        elif cmd == "clarify" and len(args) == 4:
+            print(json.dumps(clarify(read(args[0]), load(args[1], {}), args[2], int(args[3]), env),
+                             ensure_ascii=False))
+        elif cmd == "compose" and len(args) == 2:
+            sys.stdout.write(compose(read(args[0]), load(args[1], {})))
+        elif cmd == "gated" and len(args) == 2:
+            print(json.dumps(gated(load(args[0], {}), args[1]), ensure_ascii=False))
+        else:
+            print("usage: spec.py check <spec.md> | answers <doc> | clarify <request> <doc> <run dir> <rc>"
+                  " | compose <request> <doc> | gated <doc> <line>", file=sys.stderr)
+            return 2
+    except (Refused, OSError) as exc:
+        print(f"spec: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

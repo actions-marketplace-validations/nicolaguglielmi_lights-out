@@ -406,3 +406,40 @@ error}`.
   `proxy` without `CONSOLE_IDENTITY_HEADER`; `public` without
   `CONSOLE_SNAPSHOT` naming `console/snapshot/logbook.json`; a
   `CONSOLE_SNAPSHOT` that is not a readable logbook.
+
+## 1.1: the dev phase (ADR 0055, 2026-11-07)
+
+A minor: every 1.0 field is unchanged, and these are added. The 1.0 schema
+now accepts any `1.x` in `schema`, so a 1.1 logbook validates against both.
+
+| Logbook field | Source |
+|---|---|
+| `tickets[].questions[]` | tower `questions`: `{question, from: product\|spec, asked_at, answer, answered_by, answered_via, answered_at}` |
+| `tickets[].product` | tower `product`: the last run of the product role, its cost by ADR 0047 P1's rule, `consulted` and `why` |
+| `tickets[].tasks[]` | tower `tasks`: every attempt's task, with its `attempt` |
+| `tickets[].spec.{criteria, by, verdict, line, at}` | tower `spec`, written by the clarify and spec steps |
+| `tickets[].timeline[]` | built by the reader from the fields above, the history, `rework`, `ci`, `review`, `merge`, `release` and the release log |
+| `docs_to_realign` | `null`: no record yet (M28, ADR 0054) |
+| `pending` | constant: what each empty panel waits for, `{wait, docs_to_realign}` |
+
+Each timeline row is `{phase, at, verdict, line, record}` plus the fields of
+its phase; `record` names where it comes from. One row per history entry,
+in the history's order:
+
+- `request`, or `open` for a ticket opened directly;
+- `product` per clarify or answer run (the last one carries the run's cost,
+  or `not consulted: <why>`), then `question` when it asked;
+- `answer` per answered question, with `by` and `via`;
+- `spec`, GO or NO-GO with the gate's line;
+- `assign` with `perimeter`, `wait: null` and `wait_from` (M27, ADR 0053),
+  then `attempt` with the cost of that attempt; `rework` with the verdict
+  that sent it back, then its `attempt`;
+- `gates` with the CI line, and one `gate` row per detail line of the last run;
+- `review`, `merge`;
+- `canary` per stage of the ticket's release in the release log, then
+  `release` with launchpad's line, then `sign-off` when a person answered;
+- `resume`, and a failed step as a row with verdict `failed`;
+- last, `outcome`, unless the ticket is still pending.
+
+A phase with no record has no row.
+

@@ -5,6 +5,8 @@ profile names, and the step scripts under $TOWER_STEPS. core/tower.sh is
 its entry point (docs/adr/0052 §3); callers keep calling that.
 
     python3 core/tower.py open <ticket>          write the document at `opened`, publish `assign`
+    python3 core/tower.py request <ticket>       write the document at `requested`, publish `clarify`
+    python3 core/tower.py answer <ticket>        record ANSWER on the open question, publish `answer`
     python3 core/tower.py step <ticket> <step>   apply one step: precondition, effect, write, publish next
     python3 core/tower.py resume <ticket>        request again the step whose last attempt failed
     python3 core/tower.py task <run.json>        print the task fields a role's run leaves in the document
@@ -24,6 +26,13 @@ exits 1: no retries, no timeouts of the tower's own (docs/adr/0034 §1).
 "resume", resumed: <step>} before publishing the step again (docs/adr/0034
 §2). Every history entry carries the document's `attempt` once it has one
 (docs/adr/0038 §9). All output is on stderr, one `[tower]` line each.
+
+Before `opened` (docs/adr/0055 §1, §2): `request` starts a ticket at
+`requested`; `questions` waits for a person, and `answer` writes the
+person's ANSWER (ANSWER_BY, default `unauthenticated`; ANSWER_VIA, default
+`cli`) on the last question, which must be unanswered, then requests the
+`answer` step. A step result that carries `task` is also appended, with
+the document's attempt, to `tasks` (§5): every attempt's run is kept.
 """
 
 import json
@@ -34,12 +43,16 @@ import tempfile
 from datetime import datetime, timezone
 
 COLLECTION = "tickets"
-USAGE = "usage: tower.sh open <ticket> | step <ticket> <step> | resume <ticket> | task <run.json>"
+USAGE = ("usage: tower.sh open <ticket> | request <ticket> | answer <ticket> | step <ticket> <step>"
+         " | resume <ticket> | task <run.json>")
 
 # The transition table. PRECONDITION: step -> the state it starts from.
 # NEXT: state -> the step requested once the document is there; a state
 # that is not a key is terminal. ci/board.sh checks the board against both.
 PRECONDITION = {
+    "clarify": "requested",
+    "answer": "questions",
+    "spec": "spec-ready",
     "assign": "opened",
     "ci": "pr-opened",
     "review": "review",
@@ -48,6 +61,9 @@ PRECONDITION = {
     "rework": "ci-failed",
 }
 NEXT = {
+    "requested": "clarify",
+    "spec-ready": "spec",
+    "opened": "assign",
     "pr-opened": "ci",
     "review": "review",
     "ci-passed": "merge",
@@ -197,6 +213,37 @@ class Tower:
             raise Refused(f"[tower] {self.ticket}: could not publish assign")
         self.tell("opened, assign requested")
 
+    def request(self):
+        doc = {"id": self.ticket, "state": "requested",
+               "history": [{"step": "request", "state": "requested", "at": now()}]}
+        if not self.store_put(doc):
+            raise Refused(f"[tower] {self.ticket}: could not write the document")
+        if not self.publish("clarify"):
+            raise Refused(f"[tower] {self.ticket}: could not publish clarify")
+        self.tell("requested, clarify requested")
+
+    def answer(self, env):
+        said = (env.get("ANSWER") or "").strip()
+        if not said:
+            raise Refused(f"[tower] {self.ticket}: no ANSWER; nothing recorded", 2)
+        doc = self.get()
+        have = text(doc.get("state")) or "none"
+        questions = [dict(q) for q in doc.get("questions") or [] if isinstance(q, dict)]
+        if have != "questions" or not questions or questions[-1].get("answer"):
+            raise Refused(f"[tower] {self.ticket}: no open question (state {have}); nothing recorded")
+        at = now()
+        by, via = env.get("ANSWER_BY") or "unauthenticated", env.get("ANSWER_VIA") or "cli"
+        questions[-1].update(answer=said, answered_by=by, answered_via=via, answered_at=at)
+        doc = dict(doc, questions=questions, history=(doc.get("history") or []) + [
+            {"step": "answered", "state": have, "at": at, "by": by, "via": via}])
+        if not self.store_put(doc):
+            raise Refused(f"[tower] {self.ticket}: could not record the answer; nothing requested")
+        if not self.publish("answer"):
+            self.tell("could not publish answer")
+            self.record_failure(doc, "answer", have, "could not publish answer")
+            raise Refused(None)
+        self.tell(f"answered by {by} via {via}, answer requested")
+
     def step(self, step):
         want = PRECONDITION.get(step)
         if want is None:
@@ -235,6 +282,8 @@ class Tower:
             raise Refused(None)
 
         updated = merge(doc, result)
+        if isinstance(result.get("task"), dict):
+            updated["tasks"] = (doc.get("tasks") or []) + [dict(result["task"], **attempt(updated))]
         updated["history"] = (updated.get("history") or []) + [
             {"step": step, "state": result["state"], "at": now(), **attempt(updated)}]
         if not self.store_put(updated):
@@ -292,13 +341,17 @@ def main(argv, env=None):
             return 2
     cmd = argv[0] if argv else ""
     ticket = argv[1] if len(argv) > 1 else ""
-    if not cmd or not ticket or cmd not in ("open", "step", "resume"):
+    if not cmd or not ticket or cmd not in ("open", "request", "answer", "step", "resume"):
         say(USAGE)
         return 2
     tower = Tower(ticket, env)
     try:
         if cmd == "open":
             tower.open()
+        elif cmd == "request":
+            tower.request()
+        elif cmd == "answer":
+            tower.answer(env)
         elif cmd == "step":
             tower.step(argv[2] if len(argv) > 2 else "")
         else:

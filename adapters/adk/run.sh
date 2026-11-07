@@ -3,7 +3,8 @@
 #
 # harness-adk: the AgentHarness verb for the conversational roles (docs/
 # adr/0020 §1). No workspace: INPUT is one file whose text is the user
-# message, OUT receives calls.json (the tool calls the role made, in
+# message; ANSWERS, optional, a JSON list of later user messages in the
+# same conversation (docs/adr/0055 §2); OUT receives calls.json (the tool calls the role made, in
 # order), final.md and run.json. The model is the profile's (docs/adr/0040):
 # replay at L0, MODEL on MODEL_PROVIDER with the role's thinking otherwise. Adapter
 # convention (docs/adr/0012 §6): silent on success, one stderr line and

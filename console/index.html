@@ -1,10 +1,12 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- The console (docs/adr/0047): five screens over one document, the
-     logbook, read from /v1/logbook.json. Every value on these screens is a
-     field of the logbook (docs/plans/console.md names each one); the page
-     computes no verdict of its own. The one input is go-for-launch, a POST
-     to /v1/go-for-launch, which runs core/promote.sh. No build, no asset
+<!-- The console (docs/adr/0047, 0055): six screens over one document,
+     the logbook, read from /v1/logbook.json. Every value on these screens
+     is a field of the logbook (docs/plans/console.md names each one); the
+     page computes no verdict of its own. Two inputs: go-for-launch, a POST
+     to /v1/go-for-launch, which runs core/promote.sh; and the answer to a
+     ticket's open question, a POST to /v1/answer, which runs ./go answer's
+     recipe (docs/adr/0055 §2). No build, no asset
      from the network. Built by the session on 2026-11-04, not from a Stitch
      design (console/README.md). -->
 <html lang="en">
@@ -57,11 +59,6 @@ pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; background
 .muted { color: var(--muted); }
 a { color: var(--accent); }
 .unread { color: var(--nogo); font-size: 13px; }
-.stations { list-style: none; margin: 0; padding: 0; }
-.station { display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-.station:last-child { border-bottom: 0; }
-.station .name { font-weight: 600; }
-.station.empty .name, .station.empty .body { color: var(--muted); }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 6px 0 0; font-size: 14px; }
 dt { color: var(--muted); }
 dd { margin: 0; word-break: break-word; }
@@ -72,7 +69,10 @@ button.nogo { background: var(--nogo); color: #fff; border-color: transparent; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 .cards { display: grid; gap: 14px; }
-@media (max-width: 640px) { .station { grid-template-columns: 1fr; } }
+textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.placeholder { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.count { font-size: 24px; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -83,6 +83,7 @@ select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid 
     <span class="meta" id="fresh"></span>
   </div>
   <nav id="nav">
+    <a href="#overview" data-s="overview">Overview</a>
     <a href="#tickets" data-s="tickets">This week's tickets</a>
     <a href="#incidents" data-s="incidents">Incidents and post mortems</a>
     <a href="#launch" data-s="launch">Go-for-launch</a>
@@ -92,7 +93,7 @@ select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid 
 <main id="main"><p class="muted">Reading the logbook…</p></main>
 <script>
 "use strict";
-let book = null, con = null, lastLine = null, busy = false, windowDays = null;
+let book = null, con = null, lastLine = null, busy = false, windowDays = null, answerLine = null;
 
 // h(tag, attrs, ...children): every text goes through a text node, never HTML.
 function h(tag, attrs, ...kids) {
@@ -121,6 +122,34 @@ function dl(pairs) {
 }
 function ticketsList() { return Array.isArray(book.tickets) ? book.tickets : []; }
 function releasesList() { return Array.isArray(book.releases) ? book.releases : []; }
+
+// --- overview (docs/adr/0055 §6) --------------------------------------
+const ORDER = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
+  "needs-human", "merged", "held", "rolled-back"];
+const DONE = ["merged", "held", "rolled-back"];
+function pendingNote(what) {
+  return h("div", {cls: "placeholder"}, "Empty: no record holds this yet. It arrives with " + shown((book.pending || {})[what]) + ".");
+}
+function screenOverview() {
+  const out = [h("h1", {}, "Overview"),
+    h("p", {cls: "lede"}, "Every ticket the tower holds, by state; the files open tickets hold; the docs a merge left to realign.")];
+  if (unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(book.tickets)));
+  const all = ticketsList();
+  const states = ORDER.concat([...new Set(all.map((t) => t.state))].filter((st) => !ORDER.includes(st)));
+  out.push(h("h2", {}, "Tickets by state"), h("div", {cls: "panel"}, h("div", {cls: "grid3"},
+    states.filter((st) => all.some((t) => t.state === st)).map((st) => h("div", {},
+      h("div", {cls: "muted"}, st), h("div", {cls: "count"}, all.filter((t) => t.state === st).length),
+      h("div", {}, all.filter((t) => t.state === st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, t.id), " ", t.title))))))));
+  const open = all.filter((t) => !DONE.includes(t.state) && Array.isArray(t.perimeter));
+  out.push(h("h2", {}, "Perimeters held by open tickets"), h("div", {cls: "panel"},
+    open.length ? h("table", {}, h("tr", {}, ["Ticket", "State", "Declared perimeter", "Waiting for"].map((c) => h("th", {}, c))),
+      open.map((t) => h("tr", {}, h("td", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, t.id)), h("td", {}, t.state),
+        h("td", {cls: "mono"}, t.perimeter.join("  ·  ")), h("td", {}, pendingNote("wait")))))
+      : h("p", {cls: "muted"}, "No open ticket declares a perimeter.")));
+  out.push(h("h2", {}, "Docs a merge left to realign"), h("div", {cls: "panel"},
+    book.docs_to_realign ? h("pre", {}, JSON.stringify(book.docs_to_realign, null, 2)) : pendingNote("docs_to_realign")));
+  return out;
+}
 
 // --- screen 1 ----------------------------------------------------------
 function screenTickets() {
@@ -161,53 +190,64 @@ function cost(task) {
   return parts.join(", ") + (task.replayed ? " (recorded, replayed)" : "");
 }
 
-// --- screen 2 ----------------------------------------------------------
-function station(name, verdict, body, reached) {
-  return h("li", {cls: "station" + (reached ? "" : " empty")},
-    h("div", {cls: "name"}, name, h("div", {}, reached ? chip(verdict) : chip(null))),
-    h("div", {cls: "body"}, reached ? body : "not reached"));
+// --- screen 2: one ticket's timeline (docs/adr/0055 §6) ----------------
+const VERDICTS = {"spec-ready": "GO", "questions": "pending", "ci-passed": "GO", "ci-failed": "NO-GO", "review": "pending",
+  "merged": "GO", "rolled-back": "NO-GO", "held": "GO", "failed": "stranded", "approved": "GO", "changes-requested": "NO-GO"};
+function rowDetail(r) {
+  const bits = [];
+  if (r.line) bits.push(h("div", {cls: "mono"}, r.line));
+  if (r.phase === "attempt") bits.push(dl([["Attempt", r.attempt], ["Harness", r.harness], ["Model", r.model], ["Turns", r.turns],
+    ["Tokens", r.tokens && r.tokens.total], ["Duration", r.duration_s === null || r.duration_s === undefined ? null : r.duration_s + " s"],
+    r.replayed ? ["Replay", "recorded at L1, replayed: no tokens spent now"] : null]));
+  if (r.phase === "product" && (r.turns !== undefined || r.model !== undefined)) bits.push(dl([["Harness", r.harness], ["Model", r.model],
+    ["Turns", r.turns], ["Tokens", r.tokens && r.tokens.total], r.replayed ? ["Replay", "recorded at L1, replayed"] : null]));
+  if (r.phase === "assign") bits.push(dl([["Perimeter", unread(r.perimeter) ? err(r.perimeter) : h("span", {cls: "mono"}, (r.perimeter || []).join("  ·  "))],
+    ["Waited", r.wait === null ? pendingNote("wait") : r.wait]]));
+  if (r.phase === "canary") bits.push(h("div", {}, h("b", {}, r.pct + "%"), (r.numbers || []).length ? h("pre", {}, r.numbers.join("\n")) : null));
+  if (r.by) bits.push(h("div", {cls: "muted"}, "by " + r.by + (r.via ? " via " + r.via : "")));
+  if (r.phase === "rework" && r.judge) bits.push(h("div", {cls: "muted"}, "judged by " + r.judge));
+  return bits.length ? bits : "—";
+}
+async function pressReply(t, index, box) {
+  const text = box.value.trim();
+  if (!text) return;
+  busy = true; render();
+  try {
+    const r = await fetch("/v1/answer", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ticket: t.id, question: index, answer: text})});
+    const body = await r.json().catch(() => ({}));
+    answerLine = body.line || ("refused (" + r.status + "): " + (body.error || r.statusText));
+  } catch (e) { answerLine = "the console did not answer: " + e; }
+  busy = false; await load();
+}
+function answerPanel(t) {
+  const qs = t.questions || [];
+  const last = qs.length - 1;
+  if (t.state !== "questions" || last < 0 || qs[last].answer) return null;
+  const box = h("textarea", {placeholder: "Your answer, as the product owner"});
+  return h("div", {cls: "panel"}, h("h2", {}, "Open question"),
+    h("p", {}, h("b", {}, qs[last].from === "spec" ? "The spec gate: " : "The product role: "), qs[last].question),
+    con.mode === "snapshot" ? h("p", {cls: "muted"}, "Snapshot: no tower behind it, nothing can be answered.") : box,
+    h("div", {cls: "buttons"}, h("button", {cls: "go", disabled: busy || con.mode === "snapshot",
+      onclick: () => pressReply(t, last, box)}, "Answer — ./go answer TICKET=" + t.id)),
+    busy ? h("p", {cls: "muted"}, "./go answer is running: the product role, then the spec gate…") : null,
+    answerLine ? h("pre", {}, answerLine) : null);
 }
 function screenTicket(id) {
   const t = ticketsList().find((x) => x.id === id);
   if (!t) return [h("h1", {}, "Ticket " + id), h("div", {cls: "panel"}, "This ticket is not in the logbook: the tower never opened it, or the store could not be read.")];
-  const rel = releasesList().filter((r) => r.ticket === id).slice(-1)[0] || null;
-  const task = t.task || {};
-  const s = [];
-  s.push(station("Spec", "GO", dl([["Title", t.spec && t.spec.title], ["sha256", h("span", {cls: "mono"}, shown(t.spec && t.spec.sha256))],
-    ["Perimeter", unread(t.perimeter) ? err(t.perimeter) : h("span", {cls: "mono"}, t.perimeter.join("  ·  "))], ["Origin", t.origin]]), true));
-  s.push(station("Task", t.task ? "GO" : null, dl([["Role", task.role], ["Harness", task.harness], ["Provider", task.provider],
-    ["Model served", task.model], ["Thinking", task.thinking], ["Turns", task.turns], ["Tokens", task.tokens && task.tokens.total],
-    ["Duration", task.duration_s === null || task.duration_s === undefined ? null : task.duration_s + " s"],
-    task.replayed ? ["Replay", "replayed at this level: recorded by " + shown(task.provider) + " " + shown(task.model) + ", no tokens spent now"] : null]), !!t.task));
-  s.push(station("Attempts", t.rework.length ? "NO-GO" : "GO", t.rework.length
-    ? h("div", {}, t.rework.map((r) => h("div", {}, h("b", {}, "attempt " + r.attempt + ", " + r.judge + ": "), h("span", {cls: "mono"}, r.line),
-        r.details && r.details.length ? h("pre", {}, r.details.join("\n")) : null, h("div", {cls: "muted"}, shown(r.at)))))
-    : "one attempt", !!t.task));
-  s.push(station("PR", t.pr ? "GO" : null, t.pr && dl([["Number", t.pr.url ? h("a", {href: t.pr.url, rel: "noopener"}, "#" + t.pr.number) : "#" + t.pr.number],
-    ["Base", h("span", {cls: "mono"}, shown(t.pr.base_sha))], ["Head", h("span", {cls: "mono"}, shown(t.pr.head_sha))]]), !!t.pr));
-  s.push(station("Gates", t.ci && t.ci.verdict, t.ci && h("div", {}, h("div", {cls: "mono"}, shown(t.ci.line)),
-    dl([["Failed gate", t.ci.failed], ["Risk", t.ci.risk_level], ["Decision", t.ci.decision]]),
-    t.ci.details && t.ci.details.length ? h("pre", {}, t.ci.details.join("\n")) : null), !!t.ci));
-  s.push(station("Review", t.review && (t.review.verdict === "changes-requested" ? "NO-GO" : "GO"), t.review && h("div", {},
-    dl([["Role", t.review.role], ["Verdict", t.review.verdict], ["Model", t.review.model]]), t.review.reason ? h("pre", {}, t.review.reason) : null),
-    !!t.review || !!(t.ci && t.ci.decision === "review")));
-  s.push(station("Merge", t.merge ? "GO" : null, t.merge && dl([["Merge", h("span", {cls: "mono"}, shown(t.merge.sha))], ["Head merged", h("span", {cls: "mono"}, shown(t.merge.head_sha))]]), !!t.merge));
-  const stages = rel ? rel.stages : [];
-  s.push(station("Release", t.release ? (String(t.release.verdict || "").startsWith("GO") ? "GO" : "NO-GO") : null, t.release && h("div", {},
-    dl([["Version", t.release.version], ["Image", h("span", {cls: "mono"}, shown(t.release.image))], ["Launchpad", h("span", {cls: "mono"}, shown(t.release.verdict))]]),
-    stages.length ? h("table", {}, h("tr", {}, h("th", {}, "Stage"), h("th", {}, "Verdict"), h("th", {}, "Numbers")),
-      stages.map((st) => h("tr", {}, h("td", {}, st.pct + "%"), h("td", {cls: "mono"}, st.verdict), h("td", {cls: "mono"}, st.numbers.join("\n")))))
-      : h("p", {cls: "muted"}, "The stages of this release are not in the release log (it predates it)."),
-    !rel && (t.release.numbers || []).length ? h("pre", {}, t.release.numbers.join("\n")) : null), !!t.release));
-  const done = t.state === "rolled-back" || t.state === "held";
-  s.push(station("Verify / rollback", t.state === "rolled-back" ? "NO-GO" : "GO",
-    t.state === "rolled-back" ? "Rolled back automatically: verify said NO-GO." : "Held at " + shown(rel && rel.held_at) + "% for go-for-launch.", done));
-  const ans = rel && rel.answer;
-  s.push(station("Go-for-launch", ans ? ans.answer : null, ans && dl([["Answer", ans.answer], ["By", ans.by], ["Via", ans.via], ["At", ans.at]]), !!ans));
+  const rows = t.timeline || [];
   return [h("h1", {}, t.id + " — " + t.title),
-    h("p", {cls: "lede"}, "The audit chain from the ticket to the rollback. Check it against the code host: ", h("code", {}, "./go audit TICKET=" + t.id)),
+    h("p", {cls: "lede"}, "Every phase from the request to the release, one row each, each from its record. Check it against the code host: ",
+      h("code", {}, "./go audit TICKET=" + t.id)),
     h("div", {cls: "panel"}, h("p", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge), ": ", h("span", {cls: "mono"}, shown(t.outcome.line)))),
-    h("div", {cls: "panel"}, h("ol", {cls: "stations"}, s)),
+    answerPanel(t),
+    h("div", {cls: "panel"}, rows.length ? h("table", {}, h("tr", {}, ["Phase", "Verdict", "What", "At", "Record"].map((c) => h("th", {}, c))),
+      rows.map((r) => h("tr", {}, h("td", {}, r.phase), h("td", {}, r.verdict ? chip(VERDICTS[r.verdict] || r.verdict) : "—"),
+        h("td", {}, rowDetail(r)), h("td", {cls: "mono"}, shown(r.at)), h("td", {cls: "muted"}, r.record))))
+      : h("p", {cls: "muted"}, "This logbook has no timeline (written before 1.1).")),
+    t.spec && (t.spec.criteria || []).length ? h("div", {cls: "panel"}, h("h2", {}, "The spec's criteria (" + shown(t.spec.by) + ")"),
+      h("ol", {}, t.spec.criteria.map((c) => h("li", {}, c)))) : null,
     h("h2", {}, "History"),
     h("div", {cls: "panel"}, h("table", {}, h("tr", {}, ["Step", "State", "Attempt", "At", "Error"].map((c) => h("th", {}, c))),
       t.history.map((e) => h("tr", {}, h("td", {}, e.step), h("td", {}, e.state), h("td", {}, shown(e.attempt)), h("td", {cls: "mono"}, shown(e.at)), h("td", {cls: "mono"}, shown(e.error))))))];
@@ -317,7 +357,7 @@ function render() {
     con.mode === "snapshot" ? "snapshot of " + (src.commit || "?").slice(0, 12) + ", no plane behind it" : "live",
     con.identity ? "as " + con.identity : null].filter(Boolean).join(" · ");
   document.getElementById("fresh").textContent = con.mode === "live" ? "read at " + (con.read_at || "—") : "";
-  const hash = decodeURIComponent(location.hash.slice(1)) || "tickets";
+  const hash = decodeURIComponent(location.hash.slice(1)) || "overview";
   const [screen, arg] = hash.split("/");
   for (const a of document.querySelectorAll("nav a")) a.classList.toggle("on", a.dataset.s === screen || (screen === "ticket" && a.dataset.s === "tickets"));
   let body;
@@ -325,6 +365,7 @@ function render() {
   else if (screen === "incidents") body = screenIncidents();
   else if (screen === "launch") body = screenLaunch();
   else if (screen === "thresholds") body = screenThresholds();
+  else if (screen === "overview") body = screenOverview();
   else body = screenTickets();
   const banners = [];
   if (con.read_error) banners.push(h("div", {cls: "banner err"}, "Stale: the last read failed (" + con.read_error + "); showing the last good logbook."));
