@@ -421,8 +421,10 @@ now accepts any `1.x` in `schema`, so a 1.1 logbook validates against both.
 | `tickets[].timeline[]` | built by the reader from the fields above, the history, `rework`, `ci`, `review`, `merge`, `release` and the release log |
 | `tickets[].feature`, `.priority` | the ticket's header, `- Feature: <slug>` and `- Priority: P0..P3`, or `null` (ADR 0055 §7) |
 | `kanban[]` | `{state, tickets: [id]}`, one column per tower state in the table's order, then any other state; inside, P0 first, unprioritised last, then the oldest, then the id |
-| `docs_to_realign` | `null`: no record yet (M28, ADR 0054) |
-| `pending` | constant: what each empty panel waits for, `{wait, docs_to_realign}` |
+| `tickets[].wait` | `{since, refusals, holders, record}` when the ticket is at `opened` and its last `assign` was refused (ADR 0053 §5-§6); holders are the holding tickets of `perimeters/held` whose globs overlap its perimeter now |
+| `tickets[].map` | the merge step's `map: {sha, docs_ticket}` (ADR 0054) |
+| `perimeters_held[]` | StateStore `perimeters/held`: `{ticket, globs, state, holding}`, holding when the ticket's state keeps a PR open |
+| `docs_to_realign[]` | each ticket whose merge filed a docs ticket: `{ticket, merge_sha, docs_ticket, docs_ticket_state}` |
 
 Each timeline row is `{phase, at, verdict, line, record}` plus the fields of
 its phase; `record` names where it comes from. One row per history entry,
@@ -433,7 +435,8 @@ in the history's order:
   or `not consulted: <why>`), then `question` when it asked;
 - `answer` per answered question, with `by` and `via`;
 - `spec`, GO or NO-GO with the gate's line;
-- `assign` with `perimeter`, `wait: null` and `wait_from` (M27, ADR 0053),
+- `wait` per refused `assign` (ADR 0053); `assign` with `perimeter` and
+  `wait`, `{refusals, since}` or `null`,
   then `attempt` with the cost of that attempt; `rework` with the verdict
   that sent it back, then its `attempt`;
 - `gates` with the CI line, and one `gate` row per detail line of the last run;

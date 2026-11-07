@@ -108,10 +108,21 @@ class After(unittest.TestCase):
         self.assertEqual(phases(rows), ["open", "assign", "attempt", "gates", "rework", "attempt", "gates", "gate",
                                         "gate", "merge", "canary", "release", "outcome"])
 
-    def test_assign_holds_the_perimeter_and_an_empty_wait_named_for_m27(self):
+    def test_assign_holds_the_perimeter_and_no_wait_when_never_refused(self):
         row = [r for r in logbook.timeline(self.doc(), "0001", [], ["src/*"]) if r["phase"] == "assign"][0]
         self.assertEqual((row["line"], row["perimeter"], row["wait"]), ("PR #7", ["src/*"], None))
-        self.assertIn("M27", row["wait_from"])
+
+    def test_refused_assigns_are_wait_rows_and_the_assign_says_how_long(self):
+        doc = self.doc()
+        doc["history"][1:1] = [H("assign", "opened", "w1", error="step exited 1"),
+                               H("resume", "opened", "w2", resumed="assign"),
+                               H("assign", "opened", "w3", error="step exited 1")]
+        rows = logbook.timeline(doc, "0001", [], ["src/*"])
+        waits = [r for r in rows if r["phase"] == "wait"]
+        self.assertEqual([(r["at"], r["verdict"]) for r in waits], [("w1", "waiting"), ("w3", "waiting")])
+        self.assertIn("step exited 1", waits[0]["line"])
+        assign = [r for r in rows if r["phase"] == "assign"][0]
+        self.assertEqual(assign["wait"], {"refusals": 2, "since": "w1"})
 
     def test_each_attempt_has_its_own_cost(self):
         rows = [r for r in logbook.timeline(self.doc(), "0001", [], []) if r["phase"] == "attempt"]
@@ -199,6 +210,42 @@ class Kanban(unittest.TestCase):
     def test_an_unread_ticket_list_stays_unread(self):
         unread = {"ok": False, "error": "x"}
         self.assertEqual(logbook.kanban(unread), unread)
+
+
+class Wait(unittest.TestCase):
+    """docs/adr/0053 §5-§6 read by the logbook: a ticket at opened whose last
+    assign was refused waits; its holders are the holding tickets of
+    perimeters/held whose globs overlap its own."""
+
+    def ticket(self, tid="0002", state="opened", last_error=True, perimeter=("src/a.py",)):
+        history = [H("open", "opened", "t0"), H("assign", "opened", "t1", error="step exited 1")]
+        if not last_error:
+            history.append(H("assign", "pr-opened", "t2", attempt=1))
+        return {"id": tid, "state": state, "history": history, "perimeter": list(perimeter)}
+
+    def holds(self):
+        return [{"ticket": "0001", "globs": ["src/*"], "state": "pr-opened", "holding": True},
+                {"ticket": "0003", "globs": ["src/a.py"], "state": "merged", "holding": False},
+                {"ticket": "0004", "globs": ["docs/*"], "state": "review", "holding": True}]
+
+    def test_a_refused_ticket_waits_on_the_overlapping_holder(self):
+        got = logbook.waiting(self.ticket(), self.holds())
+        self.assertEqual((got["since"], got["refusals"], got["holders"]), ("t1", 1, ["0001"]))
+
+    def test_a_refusal_with_no_overlapping_holder_names_none(self):
+        self.assertEqual(logbook.waiting(self.ticket(perimeter=("lib/x.py",)), self.holds())["holders"], [])
+
+    def test_no_wait_unless_opened_and_the_last_assign_refused(self):
+        self.assertIsNone(logbook.waiting(self.ticket(last_error=False, state="pr-opened"), self.holds()))
+        self.assertIsNone(logbook.waiting(self.ticket(state="questions"), self.holds()))
+        self.assertIsNone(logbook.waiting({"id": "9", "state": "opened", "history": []}, self.holds()))
+
+    def test_docs_to_realign_come_from_the_merges_map(self):
+        tickets = [{"id": "0001", "state": "merged", "map": {"sha": "m1", "docs_ticket": "0014"}},
+                   {"id": "0002", "state": "merged", "map": {"sha": "m2", "docs_ticket": None}},
+                   {"id": "0014", "state": "requested", "map": None}]
+        self.assertEqual(logbook.docs_to_realign(tickets),
+                         [{"ticket": "0001", "merge_sha": "m1", "docs_ticket": "0014", "docs_ticket_state": "requested"}])
 
 
 class Run(unittest.TestCase):

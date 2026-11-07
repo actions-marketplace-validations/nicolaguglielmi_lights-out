@@ -3,7 +3,7 @@
 The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-reads-one-versioned-logbook-and-writes-only-go-for-launch.md), [ADR 0055](../docs/adr/0055-the-dev-phase-visible-from-request-to-release.md); every field, rule and route in [docs/plans/console.md](../docs/plans/console.md)). Seven screens:
 
 1. **Kanban**: one column per tower state, a card per ticket in its state's column, ordered by priority then age, filtered and grouped by feature and priority (`- Feature:` and `- Priority:` in the ticket's header). No drag-and-drop: a card moves when the tower moves its ticket.
-1. **Overview**: the tickets by state, the perimeters open tickets hold, the docs a merge left to realign. The last panel, and each ticket's perimeter wait, are drawn empty and say which milestone fills them (M28, M27): no record holds them yet.
+1. **Overview**: the tickets by state; the perimeters `perimeters/held` names and whether each still holds; the tickets waiting at `assign` and on whom (ADR 0053); the docs tickets merges filed (ADR 0054).
 2. **This week's tickets**: each with GO/NO-GO, the judge that decided, and its line.
 3. **One ticket's timeline**, one row per phase and each from its record: the request, the product role's questions and the answers (who, through what, when), the spec gate's verdict, assign with the perimeter, each worker attempt with turns, tokens and duration, each gate line, review, rework, merge, the canary stages with their `slo:` numbers, the human answer, 100% or rollback. A ticket waiting on a question shows an answer box.
 4. **Incidents and post mortems**, with their fix tickets and those tickets' states.
