@@ -201,5 +201,17 @@ class Kanban(unittest.TestCase):
         self.assertEqual(logbook.kanban(unread), unread)
 
 
+class Run(unittest.TestCase):
+    """docs/adr/0047 §2: a source it cannot read is the source's own last
+    stderr line, never a default."""
+
+    def test_the_code_the_output_and_the_last_stderr_line(self):
+        self.assertEqual(logbook.run("sh", "-c", "echo out; echo first >&2; echo last >&2; exit 3"),
+                         (3, "out\n", "last"))
+
+    def test_no_stderr_names_the_command_and_its_code(self):
+        self.assertEqual(logbook.run("sh", "-c", "exit 2"), (2, "", "sh -c exit 2: exit 2"))
+
+
 if __name__ == "__main__":
     unittest.main()
