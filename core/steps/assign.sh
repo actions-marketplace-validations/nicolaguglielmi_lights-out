@@ -23,16 +23,15 @@ TICKET="$TICKET" ROLE="$ROLE" sh core/crew.sh >&2
 
 # shellcheck disable=SC1090,SC1091 # written by crew.sh just now
 . "$crew_dir/pr-opened.env"
-harness=$(jq -r '.harness // "unknown"' "$crew_dir/out/run.json")
-# replay records the model of the run it replays, never one of its own.
-model=$(jq -r '.model // .recorded.model // null' "$crew_dir/out/run.json")
+# Who ran it and what it cost (docs/adr/0047 §2, P1), from run.json.
+task=$(python3 core/tower.py task "$crew_dir/out/run.json")
 spec_sha=$(sha256sum "$crew_dir/ticket.md" | cut -d' ' -f1)
 spec_title=$(head -n1 "$crew_dir/ticket.md" | sed 's/^# *//')
 
 jq -cn --arg n "$PR_NUMBER" --arg url "$PR_URL" --arg base "$BASE_SHA" --arg head "$HEAD_SHA" \
-  --arg harness "$harness" --arg model "$model" --arg role "$ROLE" \
-  --arg sha "$spec_sha" --arg title "$spec_title" \
+  --arg role "$ROLE" \
+  --arg sha "$spec_sha" --arg title "$spec_title" --argjson task "$task" \
   '{state: "pr-opened", attempt: 1,
     pr: {number: ($n | tonumber), url: $url, base_sha: $base, head_sha: $head},
-    task: {role: $role, harness: $harness, model: (if $model == "null" then null else $model end)},
+    task: ({role: $role} + $task),
     spec: {sha256: $sha, title: $title}}'

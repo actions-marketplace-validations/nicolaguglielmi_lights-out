@@ -122,14 +122,14 @@ else
   input_matches=true
 fi
 
-harness_reported=$(jq -r '.harness // "unknown"' "$review_dir/out/run.json")
-model=$(jq -r '.model // .recorded.model // null' "$review_dir/out/run.json")
+# Who ran the review and what it cost (docs/adr/0047 §2, P1), the rule of
+# assign; input_sha256 is this step's own, above.
+task=$(python3 core/tower.py task "$review_dir/out/run.json")
 
 sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" review "$verdict: $(printf '%s\n' "$reason" | head -n1)" \
   || { printf 'step-review: could not post the status\n' >&2; exit 1; }
 
 jq -cn --arg state "$state" --arg role "$ROLE" --arg verdict "$verdict" --arg reason "$reason" \
-  --arg harness "$harness_reported" --arg model "$model" --arg insha "$input_sha256" --argjson matches "$input_matches" \
-  '{state: $state, review: {role: $role, verdict: $verdict, reason: $reason, harness: $harness,
-    model: (if $model == "null" then null else $model end),
-    input_sha256: $insha, input_matches_recorded: $matches}}'
+  --arg insha "$input_sha256" --argjson matches "$input_matches" --argjson task "$task" \
+  '{state: $state, review: ($task + {role: $role, verdict: $verdict, reason: $reason,
+    input_sha256: $insha, input_matches_recorded: $matches})}'
