@@ -49,12 +49,12 @@ LABEL = "the board's scripted walk · real code paths, example numbers"
 # stops, instead of putting a caption over the wrong step.
 OVERVIEW = [
     ("ship", 0, 3, "A ticket declares its files. A coding agent works it in a sandbox.", "the PR opens"),
-    ("ship", 4, 7, "Six gates judge the pull request. Each prints one line: GO or NO-GO.", "Risk low"),
+    ("ship", 4, 8, "Eight gates judge the pull request. Each prints one line: GO or NO-GO.", "Risk low"),
     ("fake", 5, 6, "A test that tests nothing passes. Mutation testing says NO-GO.", "mutants survive"),
     ("perimeter", 1, 2, "A change outside the ticket's files never becomes a pull request.", "No PR is opened"),
-    ("ship", 8, 14, "Merged at the judged commit, built, signed, then 5% of real traffic.", "The decision is a number"),
-    ("rollback", 13, 15, "A bad canary: the numbers say NO-GO, and it rolls itself back.", "rolls back on its own"),
-    ("ship", 15, 18, "Held at 25%. One human says GO before 100%. Silence never promotes.", "takes every request"),
+    ("ship", 9, 15, "Merged at the judged commit, built, signed, then 5% of real traffic.", "The decision is a number"),
+    ("rollback", 14, 16, "A bad canary: the numbers say NO-GO, and it rolls itself back.", "rolls back on its own"),
+    ("ship", 16, 19, "Held at 25%. One human says GO before 100%. Silence never promotes.", "takes every request"),
 ]
 
 CSS = """
@@ -252,12 +252,12 @@ async def hero(page, start):
     box = await page.locator(".diagram").bounding_box()
     await start()
     await asyncio.sleep(0.8)
-    for _ in range(3):
+    for _ in range(4):
         await forward(page)
         await asyncio.sleep(1.5)
     poster = await page.screenshot(type="png", clip=box)
     await pick(page, "rollback")
-    await jump(page, 12)
+    await jump(page, 13)
     await asyncio.sleep(1.2)
     for _ in range(3):
         await forward(page)
