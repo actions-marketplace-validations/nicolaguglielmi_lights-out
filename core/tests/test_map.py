@@ -347,7 +347,7 @@ class Kinds(MapCase):
         finally:
             con.close()
 
-    def test_the_tables_are_the_four_of_the_schema(self):
+    def test_the_tables_are_the_five_of_schema_2(self):
         def columns(table):
             return [row[1] for row in query(self.out, f"PRAGMA table_info({table})")]
 
@@ -355,6 +355,11 @@ class Kinds(MapCase):
         self.assertEqual(columns("node"), ["id", "kind", "name", "title"])
         self.assertEqual(columns("edge"), ["src", "dst", "kind"])
         self.assertEqual(columns("cite"), ["src", "kind", "target", "line", "ok"])
+        self.assertEqual(columns("doc"), ["node", "status", "text"])
+        self.assertEqual(
+            {name for (name,) in query(self.out, "SELECT name FROM sqlite_master WHERE type = 'table'")},
+            {"meta", "node", "edge", "cite", "doc"},
+        )
 
 
 class TicketsDirectory(MapCase):
@@ -396,7 +401,7 @@ class Build(MapCase):
         repo, out = self.built({"a.txt": "a\n"}, "--exclude", "docs/PLAN.md docs/plans/*")
         values = meta(out)
         self.assertEqual(set(values), {"schema", "sha", "tickets", "exclude"})
-        self.assertEqual(str(values["schema"]), "2")  # docs/adr/0059 §3
+        self.assertEqual(str(values["schema"]), "2")
         self.assertEqual(values["sha"], repo.head())
         self.assertEqual(values["tickets"], "tickets")
         self.assertEqual(values["exclude"], "docs/PLAN.md docs/plans/*")
@@ -1143,6 +1148,209 @@ class CitationNodes(MapCase):
         )
 
 
+# ------------------------------------- docs/adr/0059 §3: schema 2, what search needs
+
+
+class Docs(MapCase):
+    """The `doc` table: one row per ADR node, its `- Status:` and its whole text."""
+
+    FILES = {
+        "docs/adr/0001-first.md": (
+            "# ADR 0001 — First\n\n- Status: accepted\n- Date: 2026-11-01\n\n"
+            "Body of the first, with a café — and a tab\there.\n"
+        ),
+        "docs/adr/0002-second.md": (
+            "# ADR 0002 — Second\n\nProse before the status line.\n\n"
+            "- Status:   proposed — amends ADR 0001  \n- Status: accepted\n"
+        ),
+        "docs/adrs/0003-third.md": "# ADR 0003 — Third\n\nNo status line here.\n",
+        "adr/0004-fourth.md": "# Fourth\n\n- Status:\n",
+        "docs/adr/0005-fifth.md": "# Fifth\n\nStatus: no dash, not a status line\n- Statusquo: nor this\n",
+        "docs/adr/README.md": "# Index\n\n- Status: not an ADR\n",
+        "docs/guide.md": "# Guide\n\n- Status: not an ADR either\n",
+        "tickets/0001.md": "# 0001 — T\n\n- Status: open\n",
+    }
+    STATUS = {
+        "docs/adr/0001-first.md": "accepted",
+        "docs/adr/0002-second.md": "proposed — amends ADR 0001",
+        "docs/adrs/0003-third.md": "",
+        "adr/0004-fourth.md": "",
+        "docs/adr/0005-fifth.md": "",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.repo, cls.out = cls.built(cls.FILES)
+
+    def rows(self):
+        return {
+            name: (status, text)
+            for name, status, text in query(
+                self.out, "SELECT n.name, d.status, d.text FROM doc d JOIN node n ON n.id = d.node"
+            )
+        }
+
+    def test_there_is_one_row_per_adr_node_and_none_for_anything_else(self):
+        self.assertEqual(set(self.rows()), set(self.STATUS))
+        self.assertEqual(set(self.rows()), names(self.out, "adr"))
+        count = query(self.out, "SELECT COUNT(*) FROM doc")[0][0]
+        self.assertEqual(count, len(self.STATUS))
+
+    def test_the_status_is_what_follows_the_first_status_line_stripped(self):
+        self.assertEqual({name: status for name, (status, _) in self.rows().items()}, self.STATUS)
+
+    def test_a_missing_status_is_the_empty_string_not_null(self):
+        for status, in query(self.out, "SELECT status FROM doc"):
+            self.assertIsInstance(status, str)
+
+    def test_the_text_is_the_whole_file(self):
+        for name, (_, text) in self.rows().items():
+            self.assertEqual(text, self.FILES[name], name)
+
+    def test_doc_is_keyed_by_the_node_and_neither_text_column_takes_null(self):
+        copy = self.workdir() / "doc.sqlite"
+        shutil.copy(self.out, copy)
+        con = sqlite3.connect(str(copy))
+        try:
+            node = query(copy, "SELECT node FROM doc LIMIT 1")[0][0]
+            with self.assertRaises(sqlite3.IntegrityError):
+                con.execute("INSERT INTO doc(node, status, text) VALUES (?, 'x', 'y')", (node,))
+            with self.assertRaises(sqlite3.IntegrityError):
+                con.execute("INSERT INTO doc(node, status, text) VALUES (-1, NULL, 'y')")
+            with self.assertRaises(sqlite3.IntegrityError):
+                con.execute("INSERT INTO doc(node, status, text) VALUES (-2, 'x', NULL)")
+        finally:
+            con.close()
+
+    def test_a_map_without_adrs_has_the_table_and_no_row(self):
+        _, out = self.built({"README.md": "# Readme\n"})
+        self.assertEqual(query(out, "SELECT COUNT(*) FROM doc"), [(0,)])
+
+    def test_the_same_commit_gives_the_same_doc_rows(self):
+        out = self.workdir() / "again.sqlite"
+        self.assertEqual(self.build_map(self.repo, out).code, 0)
+        self.assertEqual(sorted(query(out, "SELECT * FROM doc")), sorted(query(self.out, "SELECT * FROM doc")))
+
+
+class Mentions(MapCase):
+    """`mentions` edges: from an ADR or a ticket to the ADRs (`ADR NNNN`) and
+    tickets (`ticket NNNN`) its text names that the map holds. Not citations."""
+
+    FILES = {
+        "docs/adr/0001-first.md": (
+            "# ADR 0001 — First\n\n"
+            "See ADR 0002 and again ADR 0002; ADR 0999 is held nowhere; this is ADR 0001. "
+            "Ticket 0003 and ticket 0007 asked for it; ticket 9999 is held nowhere. "
+            "A neighbour in another folder is ADR 0004.\n"
+        ),
+        "docs/adr/0002-second.md": "# ADR 0002 — Second\n\nBuilds on ADR 0001 and on ADR 0003.\n",
+        "docs/adrs/0003-third.md": (
+            "# ADR 0003 — Third\n\nThese name nothing: "
+            "adr 0004, ADR-0004, ADR 00041, ADR 000, ADR 12345, ticket0007, TICKET 0007, ticket 00071.\n"
+        ),
+        "adr/0004-fourth.md": "# Fourth\n\nA heading with no number; its number is its file name's.\n",
+        "tickets/0003.md": (
+            "# 0003 — Three\n\n## Perimeter\n\n- `core/x.py`\n\n"
+            "This ticket 0003 follows ADR 0001 and ADR 0002, and ticket 0007, not ADR 0888.\n"
+        ),
+        "tickets/0007.md": "# 0007 — Seven\n\nNothing here.\n",
+        "README.md": "# Readme\n\nSee ADR 0001 and ticket 0003.\n",
+        "docs/guide.md": "# Guide\n\nThe decision is ADR 0002; the work is ticket 0007.\n",
+        "core/x.py": "x = 1\n",
+    }
+    A1, A2, A3, A4 = ("docs/adr/0001-first.md", "docs/adr/0002-second.md", "docs/adrs/0003-third.md",
+                      "adr/0004-fourth.md")
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.repo, cls.out = cls.built(cls.FILES)
+
+    def test_an_adr_or_a_ticket_mentions_the_adrs_and_tickets_the_map_holds(self):
+        self.assertEqual(
+            edges(self.out, "mentions"),
+            {
+                (self.A1, self.A2),
+                (self.A1, self.A4),
+                (self.A1, "0003"),
+                (self.A1, "0007"),
+                (self.A2, self.A1),
+                (self.A2, self.A3),
+                ("0003", self.A1),
+                ("0003", self.A2),
+                ("0003", "0007"),
+            },
+        )
+
+    def test_an_adr_is_named_by_the_four_digits_its_file_name_starts_with(self):
+        self.assertIn((self.A1, self.A4), edges(self.out, "mentions"))
+        self.assertIn((self.A2, self.A3), edges(self.out, "mentions"))
+
+    def test_a_thing_the_map_does_not_hold_is_no_edge_and_no_node(self):
+        self.assertEqual(names(self.out, "adr"), {self.A1, self.A2, self.A3, self.A4})
+        self.assertEqual(names(self.out, "ticket"), {"0003", "0007"})
+        reached = {dst for _, dst in edges(self.out, "mentions")}
+        self.assertFalse(reached & {"0999", "9999", "0888"}, reached)
+
+    def test_nothing_mentions_itself(self):
+        for src, dst in edges(self.out, "mentions"):
+            self.assertNotEqual(src, dst)
+
+    def test_only_adrs_and_tickets_mention(self):
+        sources = {src for src, _ in edges(self.out, "mentions")}
+        self.assertEqual(sources, {self.A1, self.A2, "0003"})
+
+    def test_a_mention_is_one_edge_however_often_it_is_made(self):
+        rows = query(self.out, "SELECT COUNT(*) FROM edge WHERE kind = 'mentions'")
+        self.assertEqual(rows, [(9,)])
+
+    def test_a_mention_is_not_a_citation(self):
+        self.assertEqual(cites(self.out), [])
+        self.assertEqual(edges(self.out, "cites"), set())
+        self.assertEqual(names(self.out, "command") | names(self.out, "key"), set())
+
+    def test_a_ticket_keeps_its_perimeter_and_its_citations_apart_from_its_mentions(self):
+        self.assertEqual(edges(self.out, "perimeter"), {("0003", "core/x.py")})
+        self.assertEqual(set(edges(self.out, "mentions")) & set(edges(self.out, "perimeter")), set())
+
+    def test_the_same_commit_gives_the_same_mentions(self):
+        out = self.workdir() / "again.sqlite"
+        self.assertEqual(self.build_map(self.repo, out).code, 0)
+        self.assertEqual(edges(out, "mentions"), edges(self.out, "mentions"))
+
+
+class MentionsAreNotDrift(MapCase):
+    """An ADR naming one the plan has reserved is not drift (docs/adr/0059 §3)."""
+
+    BASE = {"core/x.py": "x = 1\n", "profiles/p.env": "APP_PORT=1\n"}
+
+    def drift(self, files, *extra):
+        repo = self.new_repo()
+        repo.commit({**self.BASE, **files}, "base")
+        return run("drift", "--repo", str(repo.path), "--targets", str(self.targets_file()), *extra)
+
+    def test_names_of_adrs_and_tickets_the_map_does_not_hold_are_not_findings(self):
+        res = self.drift(
+            {
+                "docs/adr/0001-a.md": "# ADR 0001\n\nSee ADR 0999 and ticket 9999, reserved by the plan.\n",
+                "tickets/0001.md": "# 0001 — T\n\nSee ADR 0998 and Ticket 9998.\n",
+                "README.md": "# Readme\n\nThe next decision is ADR 0997; ticket 9997 waits.\n",
+                "docs/guide.md": "# Guide\n\nSee ADR 0001 and ticket 0001, which exist.\n",
+            }
+        )
+        self.assertEqual((res.code, res.out), (0, ""))
+
+    def test_a_real_finding_is_still_one_line_beside_the_mentions(self):
+        res = self.drift(
+            {
+                "docs/adr/0001-a.md": "# ADR 0001\n",
+                "README.md": "# Readme\n\nSee ADR 0999 and `core/gone.py`, and ticket 9999.\n",
+            }
+        )
+        self.assertEqual((res.code, res.out), (1, "README.md:3: path core/gone.py names nothing\n"))
+
+
 # --------------------------------------------------------- §3 docs-drift
 
 
@@ -1429,17 +1637,34 @@ class Slice(MapCase):
         self.assertIn("./go map", res.err)
 
     def test_a_map_of_another_schema_is_refused(self):
-        copy = self.workdir() / "other-schema.sqlite"
+        for other in ("1", "3", "banana"):
+            copy = self.workdir() / "other-schema.sqlite"
+            shutil.copy(self.out, copy)
+            con = sqlite3.connect(str(copy))
+            try:
+                con.execute("UPDATE meta SET value = ? WHERE key = 'schema'", (other,))
+                con.commit()
+            finally:
+                con.close()
+            res = self.slice(map_file=copy)
+            self.assertRefused(res)
+            self.assertTrue("schema" in res.err.lower() or "./go map" in res.err, res.err)
+
+    def test_a_map_of_schema_1_is_refused_naming_go_map(self):
+        """docs/adr/0059 §3: M28's maps are schema 1; every reader refuses them."""
+        copy = self.workdir() / "schema-1.sqlite"
         shutil.copy(self.out, copy)
         con = sqlite3.connect(str(copy))
         try:
-            con.execute("UPDATE meta SET value = '1' WHERE key = 'schema'")  # M28's, before ADR 0059
+            con.execute("UPDATE meta SET value = '1' WHERE key = 'schema'")
             con.commit()
         finally:
             con.close()
         res = self.slice(map_file=copy)
         self.assertRefused(res)
         self.assertTrue("schema" in res.err.lower() or "./go map" in res.err, res.err)
+        self.assertEqual(str(meta(self.out)["schema"]), "2")
+        self.assertEqual(self.slice().code, 0)
 
     def test_a_ticket_without_a_perimeter_is_refused(self):
         res = self.slice("# T\n\n## Problem\n\nText.\n")
