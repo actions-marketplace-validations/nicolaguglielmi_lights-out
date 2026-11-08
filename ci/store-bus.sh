@@ -9,7 +9,7 @@
 #   b  gates/eventbus-conformance.sh on adapters/spool, SPOOL_FILE a
 #      temporary file, SPOOL_ACK_DEADLINE=2 and CONFORMANCE_ACK_DEADLINE=2
 #      (a decision of ADR 0060 §4: a redelivery `./go ci` can wait for): its
-#      GO line with all six cases, so case 5 ran
+#      GO line with all six cases, so case 5 ran; run beside c, judged after
 #   c  each suite can fail. A temporary tree holds symlinks to this repo's
 #      gates/ and ci/, so the suites run unchanged from its root, and one
 #      stub StateStore and one stub EventBus in sh over plain files, each with
@@ -40,7 +40,8 @@ unset CONFORMANCE CONFORMANCE_ACK_DEADLINE STATE_STORE EVENT_BUS STATE_FILE SPOO
 
 repo=$(pwd)
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+bpid=""
+trap 'kill "$bpid" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 
 # suite_run DIR SUITE [VAR=value...]: gates/SUITE.sh run from DIR with exactly
 # those variables added; its stdout is in $tmp/out, its stderr in $tmp/err.
@@ -77,10 +78,14 @@ suite_run "$repo" statestore-conformance CONFORMANCE=1 STATE_STORE=sqlite STATE_
 expect_go "a: sqlite" '*8 cases'
 
 # --- b: spool, with case 5 ---
+# Started here and judged after c: its redelivery waits 3 s, which c's stubs
+# use (the demo's `ci` stage runs this check twice, once inside contract).
 bf=$tmp/spool.sqlite
 env SPOOL_FILE="$bf" SPOOL_ACK_DEADLINE=2 sh adapters/spool/ready.sh >&2 || nogo "b: adapters/spool/ready.sh failed on a temporary SPOOL_FILE"
-suite_run "$repo" eventbus-conformance CONFORMANCE=1 EVENT_BUS=spool SPOOL_FILE="$bf" SPOOL_ACK_DEADLINE=2 CONFORMANCE_ACK_DEADLINE=2
-expect_go "b: spool" '*6 cases'
+mkdir "$tmp/b"
+(env CONFORMANCE=1 EVENT_BUS=spool SPOOL_FILE="$bf" SPOOL_ACK_DEADLINE=2 CONFORMANCE_ACK_DEADLINE=2 \
+  sh gates/eventbus-conformance.sh >"$tmp/b/out" 2>"$tmp/b/err" </dev/null; echo "$?" > "$tmp/b/rc") &
+bpid=$!
 
 # --- c: the stubs ---
 root=$tmp/tree
@@ -251,6 +256,16 @@ reset
 suite_run "$root" eventbus-conformance CONFORMANCE=1 EVENT_BUS=stub-bus BREAK=3 ALSO="$foreign"
 expect_nogo "stub EventBus, BREAK=3 and another's message behind" "case2 "
 foreign_only "$foreign" || nogo "the suite's clean-up acked a message that was not its own, or left one of its own"
+
+# --- b, judged ---
+wait "$bpid" || :
+bpid=""
+rc=$(cat "$tmp/b/rc" 2>/dev/null || echo 1)
+lines=$(awk 'END{print NR}' "$tmp/b/out")
+line=$(cat "$tmp/b/out")
+cp "$tmp/b/err" "$tmp/err"
+suite=eventbus-conformance
+expect_go "b: spool" '*6 cases'
 
 # --- d: cold ---
 for s in statestore-conformance eventbus-conformance; do
