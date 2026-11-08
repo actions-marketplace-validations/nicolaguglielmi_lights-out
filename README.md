@@ -10,13 +10,13 @@ It runs complete on your laptop: no account, no API key, no cloud.
 
 | | |
 |---|---|
-| **Eight gates on every PR** | risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, and test-proof: a test the change adds must fail on the base. Each prints one line, `GO` or `NO-GO` with the reason, and every threshold says where it comes from. A PR is judged by its base's policy, never its own. |
+| **Eight gates on every PR** | risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, and test-proof: a test the change adds must fail on the base. Each prints one line, `GO` or `NO-GO` with the reason, and every threshold says where it comes from. A PR is judged by its base's policy, never its own: the principle GitHub applies to [`pull_request_target`](https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes/). GitHub takes the default branch, lights-out the PR's base commit, the same thing for a PR into the default branch. |
 | **A perimeter per ticket** | the diff must stay inside the files the ticket declares, checked before a PR exists. A ticket whose files another open ticket holds waits at assign. |
 | **The dev phase, visible** | a request becomes questions, answers and a spec, and the spec gate checks its criteria before an agent starts. The console shows every ticket on a kanban and on one timeline, from the request to the release. |
 | **Main stays green, without a queue** | a PR merges without a second judgment when nothing moved under its perimeter. Main is judged again after merging; a red main is bisected and the culprit reverted, and its ticket goes back to rework. |
 | **A canary that rolls itself back** | one signed image per merge, 5% then 25% of real traffic, compared with stable on errors and p95 latency. A bad number rolls it back with nobody paged. |
-| **One human gate** | the step to 100% waits for a person's GO. Silence never promotes. |
-| **Your model, your coding CLI** | Gemini, Claude or OpenAI, through `gemini-cli`, `claude-code` or `codex`, all behind the same guard; on Gemini, Antigravity CLI too (`antigravity-cli`, experimental) ([coding harnesses](docs/reference.md#coding-harnesses)). |
+| **One human gate** | the step to 100% waits for a person's GO. Silence never promotes. It has the semantics of Argo Rollouts' [indefinite pause](https://argo-rollouts.readthedocs.io/en/stable/features/canary/) and Flagger's [confirm-promotion webhook](https://docs.flagger.app/usage/webhooks), as the single human gate of a chain from ticket to production. |
+| **Your model, your coding CLI** | Gemini, Claude or OpenAI, through `gemini-cli`, `claude-code` or `codex`, all behind the same guard ([coding harnesses](docs/reference.md#coding-harnesses)). |
 | **Ops, too** | an alert becomes ranked hypotheses; an incident becomes a post mortem anchored to the audit chain, with each action item a ticket. |
 
 What is proven and what is not yet is said plainly below, in [What is real and what is recorded](#what-is-real-and-what-is-recorded).
@@ -33,7 +33,7 @@ Each step asks for one thing more than the one before, and gives back something 
 | Step | You need | You get |
 |---|---|---|
 | [0. Look](#0-look) | a browser | the site, a video tour, the board |
-| [1. Gates on your repository](#1-gates-on-your-repository) | podman or docker, and git | the eight gates on your last commit, from the published image, without cloning lights-out |
+| [1. Gates on your repository](#1-gates-on-your-repository) | podman or docker, and git | the eight gates on your last commit, from the gates image (`<measured>` MB unpacked) or the GitHub Action, without cloning lights-out |
 | [2. The whole loop](#2-the-whole-loop-on-your-laptop) | the clone | `./go demo`: a ticket to a canary that rolls itself back, no key |
 | [3. Agents on your repository](#3-agents-on-your-repository) | a model key | `./go init`, then tickets worked by real agents at L1 |
 | [4. Toward production](#4-toward-production) | your code host, delivery and metrics | what exists today for L2 and L3, and what does not yet |
@@ -44,26 +44,51 @@ Each step asks for one thing more than the one before, and gives back something 
 
 ### 1. Gates on your repository
 
-The `lights-out` wrapper runs init and the gates from the published image, `ghcr.io/nicolaguglielmi/lights-out:0.2.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The first run pulls the image, about 1.8 GB unpacked; `doctor`, `init` and `gates` took 65 s and 72 s on clean GitHub runners, first pull included.
+The `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is `<measured>` MB unpacked, with no cloud toolchain in it. `init` and `gates` on a clean runner, first pull included, took `<measured>` s. The full image, `ghcr.io/nicolaguglielmi/lights-out:0.3.0` (`<measured>` MB), is for `triage` and `postmortem` only.
+
+Version 0.3.0 is not published yet: publishing is the owner's tag `v0.3.0`. Until then, build the image from a clone with `./go package-gates` and point the wrapper at it with `LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev`. The commands below are the ones that work once it is out.
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH
-curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.2.0/lights-out
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.3.0/lights-out
 chmod +x ~/.local/bin/lights-out
 ```
 
 ```sh
 cd ~/code/your-repo
-lights-out doctor                  # engine, image, key: one line each
+lights-out doctor                  # engine, git, image, key: one line each
 lights-out init                    # drafts .lights-out/ outside your repository
 cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
 git add .lights-out && git commit -m "add lights-out contract"
 lights-out gates                   # judges the last commit
+lights-out test-proof              # only: the tests a change adds or changes must fail on its base
+lights-out test-integrity          # only: no test weakened, the changed lines' mutants killed
 ```
 
-Tags are mutable and the image is unsigned: to pin it, set `LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d647d0555ce8dbfb622da35f068a8883af8fcd0366d07beb0a7eb53e22aa3631`. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
+Each command prints one line, named for itself. The images are signed keyless with Sigstore, through GitHub's OIDC token. There is no key to trust. To check one:
 
-On pull requests, [the Action](docs/use-on-your-repo.md#the-action) posts the gates' line as a check run, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run them before a coding agent commits.
+```sh
+cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0 \
+  --certificate-identity-regexp '^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Tags are mutable. To pin the image, set `LIGHTS_OUT_IMAGE` to its digest. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
+
+On pull requests, the Action posts the gates as a check run, with one line per gate in its summary:
+
+```yaml
+permissions:
+  contents: read
+  checks: write
+steps:
+  - uses: actions/checkout@v7
+    with:
+      fetch-depth: 0
+  - uses: nicolaguglielmi/lights-out@v0.3.0
+```
+
+`gates: test-proof` or `gates: test-integrity` runs one part. Those two are also standalone Actions, `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`; their Marketplace pages will be repositories of their own. [The guide](docs/use-on-your-repo.md#the-action) has the details, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run the gates before a coding agent commits.
 
 ### 2. The whole loop on your laptop
 
@@ -145,7 +170,22 @@ What exists today, each opt-in, none yet run end to end on a repository of yours
 - **Pull requests on GitHub.** A merged change is built from your repository's own Containerfile, signed and released on the local plane. By default merges land on the plane's Gitea and you `git fetch` them back; with `CODE_HOST=github` and a token in `.env` the pull request lands on your GitHub repository instead ([ADR 0043](docs/adr/0043-github-code-host-and-attached-release.md)). There is no deploy to your production.
 - **Delivery on Kubernetes.** If you already ship with Argo Rollouts, `DELIVERY=argo-rollouts` drives your Rollout with kubectl, stage by stage, instead of Envoy. It needs a traffic router and a Rollout with the steps [its README](adapters/argo-rollouts/README.md) lists. `./go argo-conformance` proves it with the same conformance suite, on a k3s node beside the plane; under podman that needs a rootful engine ([ADR 0051](docs/adr/0051-delivery-on-kubernetes-with-argo-rollouts.md)).
 - **Your metrics.** `./go verify METRICS_URL=<any Prometheus-compatible endpoint> CANARY_VERSION=<v> STABLE_VERSION=<s>` judges your own canary with the unchanged `verify/slo.promql`. "Any Prometheus-compatible endpoint" means one that answers `/api/v1/query` with the OTel HTTP semconv histogram joined to `target_info{service_version}`. On other metrics the answer is NO-GO with "no data". An auth header goes in `.env` as `METRICS_AUTH_HEADER`.
-- **Not yet:** the Google Cloud profiles (L2, L3) are designed, not run. A check that says what a level still lacks, and a gate that says when a setup is ready for production, are the next milestone ([roadmap](ROADMAP.md)).
+
+Two commands say how far you are:
+
+```sh
+./go doctor --level l2        # what L2 still lacks, one line per item, then NO-GO or GO
+./go production-readiness     # GO only when all four hold
+```
+
+`./go production-readiness` is GO only with all four:
+
+- **Delivery:** the adapter in `DELIVERY` has a `rollback.sh` and passed its conformance suite here, for the adapter's files as they are now.
+- **Metrics:** `METRICS=promql`, and `METRICS_URL` answers `count(target_info)`.
+- **Secrets:** `.env` holds no value for a key ending `_KEY`, `_TOKEN`, `_SECRET` or `_PASSWORD`, nor for `METRICS_AUTH_HEADER`. `./go` passes those keys from your shell's environment, by name.
+- **Human gate:** `GO_FOR_LAUNCH` is not preset, and the console runs with `CONSOLE_AUTH=proxy`, a `CONSOLE_IDENTITY_HEADER` and named `CONSOLE_LAUNCHERS`.
+
+At L0 it is NO-GO by construction. [Toward production](docs/production.md) has every key behind these decisions, its default and where the default comes from.
 
 ## If something goes wrong
 
@@ -167,7 +207,7 @@ Run `./go doctor` first. It prints one line per item: the engine and whether it 
 - **lights-out judges itself:** every push and pull request here runs the Action on its own change, with the contract in [`.lights-out/`](.lights-out/workload.env) and a judge built from the base ([ADR 0049](docs/adr/0049-lights-out-judges-itself.md)). Risk, secrets and deps cover the whole repository; the test gate is `make ci`, the thirty self-checks; SAST and mutation cover `core/` only, about 5% of the code, against a measured baseline of 0.39. The shell, three quarters of the code, has no mutation score: there is no mutation tool for POSIX sh to run.
 - **Where shell is allowed:** on the host (`./go`), in adapter verbs, in the gate wrapper that prints the one line, and in thin entry points; logic goes to Python under `core/`, with unit tests from the ADRs. `ci/shell-boundary.sh` holds a `core/` shell file to 30 code lines and names the files over it as debt that can only shrink ([ADR 0052](docs/adr/0052-where-shell-is-allowed.md)).
 - **The project map:** a SQLite file rebuilt from one commit at every merge, with no model ([ADR 0054](docs/adr/0054-the-project-map.md)). A merge that changes a path a page or an ADR cites files a docs ticket for the coding role, and `ci/docs-drift.sh` fails when a page cites a path, a `./go` command or a key that no longer exists. Putting the map's slice in the worker's brief is off by default (`MAP_BRIEF=off`) until the experiment on an outside repository measures whether it helps.
-- **Not yet:** the GitHub Action is proven in lights-out's own workflows only; nothing is proven yet on a codebase that was not written for lights-out; the Google Cloud profiles are designed, not run; the coding harnesses' network stays open, because each must reach its provider; with the experimental `antigravity-cli` harness, a repository's own `.agents/hooks.json` runs its commands inside the worker's container, outside the guard (ADR 0050 §7), and agy is a proprietary Google binary you run under Google's terms. For plane commands `./go` hands its toolchain container your engine's socket, which means full control of the engine: run it where that is acceptable.
+- **Not yet:** the GitHub Action is proven in lights-out's own workflows only; nothing is proven yet on a codebase that was not written for lights-out; the coding harnesses' network stays open, because each must reach its provider. For plane commands `./go` hands its toolchain container your engine's socket, which means full control of the engine: run it where that is acceptable. The cloud track and the experimental harness are in [the reference](docs/reference.md#the-cloud-track).
 
 Every item, level by level: [what is real and what is recorded, in full](docs/reference.md#what-is-real-and-what-is-recorded).
 

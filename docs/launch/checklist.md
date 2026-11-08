@@ -129,11 +129,49 @@ the image, the issues and the announcement (plan §14, §15).
   Releases → Draft a new release → tag `v0.1.0`.
 - [ ] **Prove the plan's own criterion for M23** once the image is public:
   a PR on another repository with
-  `uses: nicolaguglielmi/lights-out/action@v0.1.0`, and `lights-out gates`
-  on a clean machine that pulls the published image. The 300 s does not
-  count the first pull (about 1.8 GB uncompressed).
+  `uses: nicolaguglielmi/lights-out@v0.3.0` (the root Action; up to
+  v0.2.0 the path was `nicolaguglielmi/lights-out/action@<tag>`), and
+  `lights-out gates` on a clean machine that pulls the published image.
+  Since ADR 0057 the 300 s include the first pull.
 - [x] **Update the README's "Not published yet" paragraph** once the image
   and the package are public. Done 2026-11-05 with `v0.1.0`.
+
+### The gates image and the three Actions (M31)
+
+Nothing here has run yet. Publishing is your act (ADR 0057).
+
+- [ ] **Check `version=0.3.0`** in `lights-out` (the wrapper). The
+  `publish` job refuses a tag that is not `v` plus that version.
+- [ ] **Tag `v0.3.0` from the merge on `main`.** The `publish` job of
+  `.github/workflows/package.yml` builds both images for amd64 and arm64,
+  pushes them to ghcr.io and signs both keyless. It has never run, so look
+  there first if anything fails.
+- [ ] **Make the new package `lights-out-gates` public**: GitHub → the
+  package → Package settings → Change visibility → Public.
+- [ ] **Verify both signatures** from a machine with cosign. Run it once
+  for `lights-out-gates:0.3.0` and once for `lights-out:0.3.0`:
+  ```sh
+  cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0 \
+    --certificate-identity-regexp '^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  ```
+- [ ] **Draft the root Action's Marketplace release** from the banner of
+  `action.yml`: GitHub → Releases → Draft a new release → tick "Publish
+  this Action to the GitHub Marketplace", pick a primary category, accept
+  the GitHub Marketplace Developer Agreement. Two-factor authentication
+  must be on for the account.
+- [ ] **For each standalone Action, a public repository of its own**:
+  `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`. Copy
+  `actions/test-proof/` (or `actions/test-integrity/`) to the root of the
+  repository, tag `v0.3.0`, and publish the release to the Marketplace the
+  same way. The copies can lag a version without any check failing:
+  `ci/package.sh` checks the sources here, never the copies.
+- [ ] **Measure the first pull.** Dispatch the workflow of the private
+  repository `nicolaguglielmi/lights-out-probe` with the published gates
+  image, read the time of `init` plus `gates` with the first pull
+  included, and write it in the README's step 1 (the `<measured>` there).
+  Write the two image sizes there too, from the `publish` and `package`
+  jobs' summaries.
 
 ### The README's front page
 
