@@ -440,7 +440,11 @@ def repo_logbook(tmp):
                   "--targets", str(targets), "--exclude", "docs/PLAN.md docs/plans/* .claude/*", "--out", str(out)],
                  ["python3", "core/logbook.py", "--out", str(book)]):
         p = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True,
-                           env={k: v for k, v in {**os.environ, "MAP_FILE": str(out)}.items() if k != "STATE_STORE"})
+                           env={k: v for k, v in {**os.environ, "MAP_FILE": str(out),
+                                                    # The header names them; this map is of the repository
+                                                    # itself, read with no key.
+                                                    "WORKLOAD": "lights-out", "LEVEL": "l0"}.items()
+                                if k != "STATE_STORE"})
         if p.returncode != 0:
             sys.exit(f"render: {' '.join(argv[:3])} failed: {(p.stderr or p.stdout)[-400:]}")
     return book
@@ -485,6 +489,9 @@ async def stills(site):
                         # A selector, not a string predicate: the console's CSP refuses eval.
                         await page.wait_for_selector("#spec-line:has-text('spec')")
                     await page.wait_for_timeout(300)
+                    who = await page.inner_text("#who")
+                    if "?" in who:
+                        sys.exit(f"render: {name}: the console's header has an unknown field: {who}")
                     jpg(await page.screenshot(type="png"), media / f"{name}.jpg", w)
                     await ctx.close()
                 finally:
