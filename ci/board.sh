@@ -14,6 +14,9 @@
 #   d. GET / serves the page, GET /state.json serves JSON.
 #   e. With BOARD_STATIC=1 (§6) GET / serves the page and GET /state.json
 #      answers 404, so a hosted copy offers no live view.
+#   f. The board's gate lights are the Makefile's GATES, in that order
+#      (docs/adr/0053 §4): the first NO-GO stops the rest, and LIVE mode
+#      lights the gates before the failed one GO.
 set -eu
 name=board
 . ci/lib.sh
@@ -36,6 +39,12 @@ for fn, table in (("precondition", tower.PRECONDITION), ("next", tower.NEXT)):
         sys.exit(f"{fn}: board {board.get(fn)} vs core/tower.py {table}")
 PY
 ) || nogo "the board's tower table disagrees with core/tower.py" "$out"
+
+# f. Cold, like a.
+want=$(sed -n 's/^GATES := //p' Makefile)
+have=$(sed -n 's/^const GATES = \[\(.*\)\];$/\1/p' board/index.html | tr -d '",' )
+[ -n "$want" ] || nogo "the Makefile has no GATES := line"
+[ "$have" = "$want" ] || nogo "the board's GATES ($have) are not the Makefile's ($want)"
 
 # b.
 tmp=$(mktemp -d)
