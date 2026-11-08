@@ -482,7 +482,8 @@ async def stills(site):
                     for selector, text in typed or ():
                         await page.fill(selector, text)
                     if typed:
-                        await page.wait_for_function("document.getElementById('spec-line').textContent.includes('spec')")
+                        # A selector, not a string predicate: the console's CSP refuses eval.
+                        await page.wait_for_selector("#spec-line:has-text('spec')")
                     await page.wait_for_timeout(300)
                     jpg(await page.screenshot(type="png"), media / f"{name}.jpg", w)
                     await ctx.close()
