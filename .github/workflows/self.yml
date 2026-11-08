@@ -1,5 +1,5 @@
 # lights-out judges its own changes with its own gates (docs/adr/0049):
-# the Action in ./action, on this repository, with the contract committed
+# the Action at the root (docs/adr/0057 §6), on this repository, with the contract committed
 # in .lights-out/. Every push judges its commit against its parent; a pull
 # request, GitHub's merge commit against its first parent, the PR's base.
 # The judge is built from the base, in this run: the base's image with
@@ -38,7 +38,7 @@ jobs:
           git worktree add -q --detach "$RUNNER_TEMP/judge" "$base"
           sh "$RUNNER_TEMP/judge/package/build.sh" docker localhost/lights-out:judge
       - name: lights-out gates on this change
-        uses: ./action
+        uses: ./
         with:
           base: ${{ steps.range.outputs.base }}
           head: ${{ steps.range.outputs.head }}
