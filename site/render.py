@@ -13,7 +13,8 @@ encodes the takes with ffmpeg into <site dir>/media/:
     hero.webm, hero.mp4, hero.gif, hero.jpg   a short loop, cropped to the diagram
     <scenario>.mp4, <scenario>.jpg            one clip per scenario on the board
     scenarios.json               id, name, blurb and seconds of each clip
-    console-<screen>.jpg         stills of the console's screens (CONSOLE below)
+    console-<screen>.jpg         stills of the console's screens (CONSOLE below), the
+                                 ADR search over a logbook built from this repository's map
 
 Every frame says what it shows: the board's scripted walks, the real code
 paths with example versions and numbers. With SHOTS=<dir> it also takes
@@ -398,19 +399,46 @@ async def shots(site, out):
 
 # ---- the console --------------------------------------------------------------
 
-# The console's screens as stills (docs/adr/0047, docs/adr/0055), served by
+# The console's screens as stills (docs/adr/0047, 0055, 0059), served by
 # console/serve.py itself in snapshot mode, where nothing can be pressed:
-# (still, logbook, screen, hide the empty columns, viewport). All three read
-# the logbook ci/logbook.sh builds over stub sources, the one with tickets
-# in more states than one demo leaves; the landing says so under them. A
-# demo's own logbook is not committed: a threshold's name in its `key` field
-# reads as a secret to gitleaks, and a change cannot excuse its own finding
-# (docs/adr/0049 §4).
+# (still, logbook, screen with its view, viewport, theme, what to type).
+# The kanban, the ticket, the overview and the editor read the logbook
+# ci/logbook.sh builds over stub sources, the one with tickets in more
+# states than one demo leaves; the landing says so under them. The ADR
+# search reads a logbook built here from this repository's own project map
+# (REPO below): its ADRs are the real ones. A demo's own logbook is not
+# committed: a threshold's name in its `key` field reads as a secret to
+# gitleaks, and a change cannot excuse its own finding (docs/adr/0049 §4).
+GOLDEN = "fixtures/logbook/golden-1.2.json"
+REPO = "this repository's map"
+DRAFT = [("input[name=title]", "Show who requested a ticket on its card"),
+         ("textarea[name=context]", "A card says what a ticket is, not who asked for it."),
+         ("input[name=given]", "a ticket requested from the console"),
+         ("input[name=when]", "the kanban draws its card"),
+         ("input[name=then]", "the card shows the identity on the request row and `via console`"),
+         ("textarea[name=perimeter]", "console/index.html"),
+         ("input[name=feature]", "console")]
 CONSOLE = [
-    ("console-kanban", "fixtures/logbook/golden-1.1.json", "kanban", True, (1520, 560)),
-    ("console-ticket", "fixtures/logbook/golden-1.1.json", "ticket/0009", False, (1440, 1040)),
-    ("console-overview", "fixtures/logbook/golden-1.1.json", "overview", False, (1440, 1000)),
+    ("console-kanban", GOLDEN, "kanban?empty=hide&card=0009", (1520, 640), "light", None),
+    ("console-ticket", GOLDEN, "ticket/0009", (1440, 1040), "light", None),
+    ("console-overview", GOLDEN, "overview", (1440, 1000), "light", None),
+    ("console-request", GOLDEN, "request", (1440, 1200), "light", DRAFT),
+    ("console-adrs", REPO, "adrs?q=kanban", (1440, 1000), "dark", None),
 ]
+
+
+def repo_logbook(tmp):
+    """A logbook whose ADRs are this repository's, from its project map at HEAD;
+    no plane, so its tickets say they could not be read."""
+    out, book = tmp / "map.sqlite", tmp / "logbook.json"
+    for argv in (["python3", "core/map.py", "build", "--repo", ".", "--rev", "HEAD", "--tickets", "tickets",
+                  "--exclude", "docs/PLAN.md docs/plans/* .claude/*", "--out", str(out)],
+                 ["python3", "core/logbook.py", "--out", str(book)]):
+        p = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True,
+                           env={k: v for k, v in {**os.environ, "MAP_FILE": str(out)}.items() if k != "STATE_STORE"})
+        if p.returncode != 0:
+            sys.exit(f"render: {' '.join(argv[:3])} failed: {(p.stderr or p.stdout)[-400:]}")
+    return book
 
 
 def console(logbook):
@@ -434,25 +462,29 @@ def console(logbook):
 async def stills(site):
     media = site / "media"
     media.mkdir(parents=True, exist_ok=True)
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        for name, logbook, screen, hide, (w, h) in CONSOLE:
-            proc, base = console(logbook)
-            try:
-                ctx = await browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=2,
-                                                color_scheme="light")
-                page = await ctx.new_page()
-                await page.goto(f"{base}/#{screen}")
-                await page.wait_for_selector("main h1")
-                if hide:
-                    await page.locator("main select").last.select_option("hide")
-                    await page.wait_for_timeout(200)
-                jpg(await page.screenshot(type="png"), media / f"{name}.jpg", w)
-                await ctx.close()
-            finally:
-                proc.kill()
-            log(f"still {name}: {screen} over {logbook}")
-        await browser.close()
+    with tempfile.TemporaryDirectory(prefix="render-map-") as tmp:
+        repo = repo_logbook(pathlib.Path(tmp))
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            for name, logbook, screen, (w, h), theme, typed in CONSOLE:
+                proc, base = console(repo if logbook == REPO else logbook)
+                try:
+                    ctx = await browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=2,
+                                                    color_scheme=theme)
+                    page = await ctx.new_page()
+                    await page.goto(f"{base}/#{screen}")
+                    await page.wait_for_selector("main h1")
+                    for selector, text in typed or ():
+                        await page.fill(selector, text)
+                    if typed:
+                        await page.wait_for_function("document.getElementById('spec-line').textContent.includes('spec')")
+                    await page.wait_for_timeout(300)
+                    jpg(await page.screenshot(type="png"), media / f"{name}.jpg", w)
+                    await ctx.close()
+                finally:
+                    proc.kill()
+                log(f"still {name}: {screen} over {logbook}, {theme}")
+            await browser.close()
 
 
 def main():
