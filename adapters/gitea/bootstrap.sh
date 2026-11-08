@@ -1,15 +1,13 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# bootstrap-gitea: creates the admin user, the lights-out/workload repo
-# with Actions on, and force-pushes the workload repository's HEAD to its
-# main branch (docs/adr/0017 §5): this checkout's for a bundled workload,
-# the attached clone's otherwise (docs/adr/0037 §9). Idempotent: safe on every `assign`, because
-# Gitea holds no persistent volume (docs/adr/0012) and starts empty on
-# every `./go up`. Actions were off through M7 — a job nobody consulted
-# was noise, not proof — and turn on at M8 (docs/adr/0025 §4): the runner
-# gets its first real job, the release image build, and
-# core/steps/release.sh's await.sh call needs the `image` status it posts.
+# bootstrap-gitea: creates the admin user, the lights-out/workload repo,
+# and force-pushes the workload repository's HEAD to its main branch
+# (docs/adr/0017 §5): this checkout's for a bundled workload, the attached
+# clone's otherwise (docs/adr/0037 §9). Idempotent: safe on every `assign`,
+# because Gitea holds no persistent volume (docs/adr/0012) and starts empty
+# on every `./go up`. Actions are off for the whole instance (compose.yaml,
+# docs/adr/0060 §5): no runner exists, the release step builds the merge.
 # Adapter convention (docs/adr/0012 §6): not a gate, silent on success,
 # one stderr line and exit 1 on failure.
 set -eu
@@ -43,18 +41,7 @@ case "$code" in
   *) printf 'bootstrap-gitea: create repo returned %s: %s\n' "$code" "$body" >&2; exit 1 ;;
 esac
 
-# 3. Actions on (docs/adr/0025 §4): the runner's first job needs them.
-# Off for an attached repository (docs/adr/0037 §9): its workflows were
-# written for its own CI, not for this runner, which holds the engine
-# socket; ADR 0015 §7's conditions hold for this checkout's workflow only.
-actions=true
-[ -z "${WORKLOAD_ATTACHED:-}" ] || actions=false
-curl -fsS --connect-timeout 2 --max-time 15 -u "$GITEA_USER:$GITEA_PASSWORD" -H 'Content-Type: application/json' \
-  -X PATCH -d "{\"has_actions\":$actions}" \
-  "$GITEA_API/repos/$GITEA_OWNER/$GITEA_REPO" >/dev/null \
-  || { printf 'bootstrap-gitea: could not set Actions to %s\n' "$actions" >&2; exit 1; }
-
-# 4. Mirror the workload repository's HEAD onto Gitea's main. Force: the
+# 3. Mirror the workload repository's HEAD onto Gitea's main. Force: the
 # L0 repo is a mirror of the local clone, not a place to keep hand-made
 # history; merged changes are fetched from it before the next assign.
 # CODE_HOST_KEEP_MAIN (core/crew.sh, a rework): main stays as the tower
@@ -64,7 +51,7 @@ if [ -z "${CODE_HOST_KEEP_MAIN:-}" ]; then
     || { printf 'bootstrap-gitea: push to main failed\n' >&2; exit 1; }
 fi
 
-# 5. Wait until Gitea has processed that push. The repo is created empty
+# 4. Wait until Gitea has processed that push. The repo is created empty
 # and stays `empty: true` until the post-receive hook has run, which is
 # asynchronous to `git push` returning; an empty repo has no pulls unit,
 # so open-pr.sh right after this got 404 from mustAllowPulls (docs/adr/

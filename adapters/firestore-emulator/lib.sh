@@ -11,6 +11,8 @@
 : "${FIRESTORE_PROJECT:=lights-out}"
 : "${FIRESTORE_URL:=http://$PLANE_HOST:8086/v1/projects/$FIRESTORE_PROJECT/databases/(default)/documents}"
 
+# A document is an object: an array or a scalar on stdin is refused, not
+# stored as an object keyed by index (docs/adr/0060 §4, case 5).
 # integerValue is a string on the wire; an empty array or map carries no
 # `values`/`fields` key at all, hence the `// []` and `// {}` on the way back.
 FS_ENCODE='
@@ -22,7 +24,7 @@ def enc:
   elif type == "array" then {arrayValue: {values: map(enc)}}
   else {mapValue: {fields: with_entries(.value |= enc)}}
   end;
-{fields: with_entries(.value |= enc)}'
+if type == "object" then {fields: with_entries(.value |= enc)} else error("not an object") end'
 
 FS_DECODE='
 def dec:
