@@ -257,7 +257,7 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
 
 ## The owner does: on launch day
 
-- [ ] **Flip the repository to public**: Settings → General → Danger
+- [x] **Flip the repository to public** (done 2026-11-04): Settings → General → Danger
   Zone → Change repository visibility → Public. Only then does the
   wrapper's raw-URL download work for strangers (HANDOFF M23).
 - [ ] **`./go demo` from a clean clone of the public URL**, once more, on
@@ -273,6 +273,32 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   soft launch's fixes and the weekly diary (phase 1).
 - [ ] **Answer outside issues and PRs within 48 hours** (plan §15, "Il
   ritmo settimanale").
+
+### Product Hunt, the week after Show HN
+
+A second wave, not the launch. Product Hunt's readers are makers and
+product people; fewer of them run a DevOps toolchain, and a dev tool there
+converts to stars far below Hacker News (the adoption roadmap, section 3.3:
+Hacker News exposure is worth about +121 stars in 24 h). A first impression
+there happens once, so it waits for the prerequisites.
+
+- [ ] **Prerequisites**: `v0.3.0` tagged and both images signed, the
+  package on PyPI, the root Action on the Marketplace, the README's
+  recording real, M24's numbers published, Show HN done (plan §15, phase 2).
+- [ ] **The "coming soon" page**, any time before: it costs nothing and
+  collects followers who are told on launch day.
+- [ ] **Launch on a Tuesday or Wednesday at 00:01 Pacific**, the week
+  after Show HN. The tagline is the one message in under 60 characters
+  (draft: "Autonomous agents to production, behind gates, one human GO").
+- [ ] **The gallery from the console** (M33): the kanban, a ticket's
+  timeline down to the rollback, the overview; the demo's recording from
+  the README. The first comment tells the one human gate, the 15-minute
+  demo with no account and no card, and gives `uvx lights-out gates
+  --light` as the ten-second try.
+- [ ] **Stay in the comments all day** and answer within the hour: launch
+  day costs a day of the owner's time.
+- [ ] **Measure** stars and unique visitors over the 48 h after, beside
+  Show HN's, in the adoption roadmap's section 8.
 
 ## Done in the repository
 

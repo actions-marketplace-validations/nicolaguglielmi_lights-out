@@ -1,6 +1,12 @@
-# Handoff: M34, M35 and M31 merged on `fix/adr-still-header`, 2026-11-08
+# Handoff: M31, M34 and M35 merged on `fix/adr-still-header`, 2026-11-08
 
-Three milestones landed by merge on the integration branch; each section below is the branch's own handoff, kept whole.
+The integration branch is `main` (761450f, M33 on it) + the adoption roadmap (30ca9dc) + three merge commits, M34 (aacab9e), M35 (daf3e15) and M31 (c9cc1f7), + the commit after them. Pushed; nothing tagged or published.
+
+Resolved at the merges: the Makefile's `CI_CHECKS` (gitea-compat out, readiness, store-bus and gates-light in); `ci/gitea-compat.sh` deleted, ADR 0060 §6 over M31's widening of its exemption; `docs/reference.md`'s first-run paragraph keeps both facts (no emulator pull at L0, no gcloud or terraform in the image); `docs/launch/checklist.md` keeps M31's and M35's sections. After the merges: `core/doctor.sh`, the README and the tutorial require 8085 and 8086 only when a profile names an emulator (M34 left it to M31, which left it to the merge); the nightly workflow's comment no longer cites the deleted check. The ROADMAP moves M31, M33, M34 and M35 to Done, and the checklist gains a Product Hunt section (a second wave, the week after Show HN).
+
+Host checks on the merged tree, 2026-11-08: `docs-drift`, `gates-light`, `store-bus` and `readiness` GO; the 681 unit tests OK in 72 s; `./go doctor` GO at L0 without the emulator ports. The proof is the six workflows on the branch head, after which `main` is fast-forwarded to it. The owner's steps are in `docs/launch/checklist.md`: tag `v0.3.0`, PyPI, the three Marketplace pages, the first-pull measure on the probe.
+
+Each section below is the branch's own handoff, kept whole.
 
 ## Handoff: M34, the lean plane (ADR 0060), 2026-11-08
 

@@ -29,6 +29,10 @@ wins when the two disagree. Decisions behind each step are in
 | M28 | The project map: `./go map` builds a SQLite file of one commit's tickets, files, tests, ADRs and pages, rebuilt at every merge, which files a docs ticket when a merge changes a path a page cites; `ci/docs-drift.sh` fails on a page citing a path, command or key that no longer exists; the map's slice in the worker's brief stays off (`MAP_BRIEF=off`) until M24 measures it (ADR 0054, *proposed*) |
 | M29 | The dev phase visible: the console recovered (M11's five screens, ADR 0047), then `requested` → `questions` → `spec-ready` → `opened` in the tower, `./go request` and `./go answer`, the `spec` gate, one timeline per ticket from the request to the release, an overview and a kanban whose columns are the tower's states (ADR 0055, *proposed*) |
 | M30 | Main stays green without a queue: no second judgment when nothing moved under a PR's perimeter, main judged again after merging in groups of at most four, a red group bisected and the culprit reverted through the code host, `assign`, `rework` and `release` stopped while main is red; `./go demo-mainline` (ADR 0056, *proposed*) |
+| M31 | The stepped way in: a gates image (508 MB) beside the full one (1.25 GB, was 1.77), `action.yml` at the root with a `gates` input and a summary per gate in the check run, `test-proof` and `test-integrity` as standalone Actions, `./go doctor --level`, the `production-readiness` gate, the README along five steps with the reuse said as reuse (ADR 0057, *proposed*). Tagging `v0.3.0`, the Marketplace pages and the first-pull measure are the owner's (`docs/launch/checklist.md`) |
+| M33 | The console as a workbench: the kanban gains a drawer, search, keys, a view in the link, collapsible columns and a highlight on a moved card, and still moves none; a light and dark theme; a specs screen and a request editor the spec gate checks as you type, saved through `./go request`; ADR search from the project map, schema 2, through logbook 1.2 (ADR 0059, *proposed*) |
+| M34 | The lean plane: a `sqlite` StateStore and a `spool` EventBus, files under `.crew/`, the defaults at L0 and L1; the emulators opt-in (compose profile `emulators`); the Gitea runner, its `image` job and `ci/gitea-compat.sh` gone, the release step builds every workload's merge; five plane services instead of eight; the tower's documents outlive `./go down`. Measured on Actions, 719 to 873 s, so the demo budget stays 900 s (ADR 0060, *proposed*) |
+| M35 | Gates without a container: `lights-out gates --light`, a standard-library Python package (the root `pyproject.toml`, `lights_out` is `core/`), runs the gates that need only git and Python, two by default, four with `TICKET=`, six with `TEST_ON_HOST=1`, in 0.14 s on this repository, and never prints `GO: gates`; the `--light` hook recipes verified once per CLI (ADR 0061, *proposed*). On PyPI once the owner publishes it |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
@@ -39,44 +43,23 @@ end-to-end on GitHub. Two things close before M24, each in
 a session of its own: egress for the harnesses, and the tower restoring
 `.lights-out/runners/` from the base.
 
+- **The owner's release steps** (`docs/launch/checklist.md`): the tag
+  `v0.3.0`, which builds and signs both images; the package on PyPI; the
+  three Marketplace pages; the first-pull measure on the probe repository.
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.
   The exit criterion is §14's: if at least two tickets in three do not
   reach a mergeable PR without a human touching the code, the thesis is
   weaker than expected.
-- **M31 — the stepped way in** (ADR 0057). Five steps, each asking for
-  one thing more: look, gates on your repository, the whole loop, agents
-  on your repository, production. A gates-only image, `./go doctor` per
-  level, configuration in layers with a provenance on every default, and a
-  `production-readiness` gate. The README already follows the steps.
 - **M32 — outside adapters, other CIs, one more delivery** (ADR 0058). An
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
   GitLab proven locally; one more delivery adapter when someone needs it.
 
-- **M33 — the console as a workbench** (ADR 0059, *proposed*). Built on
-  its branch, `claude/m33-console`, not merged yet. The kanban gains
-  a drawer, search, keys, a view in the link, collapsible columns and a
-  highlight on a moved card, and still moves none. A light and dark theme,
-  on the board too. A specs screen, and a request editor that the spec gate
-  checks as you type and saves through `./go request` (`REQUEST_BY` records
-  who). ADR search from the project map, which is now schema 2, through
-  logbook 1.2.
-
-- **M34 — the lean plane** (ADR 0060, *proposed*). A `sqlite`
-  StateStore and a `spool` EventBus, files under `.crew/`, at L0 and L1 in
-  place of the Pub/Sub and Firestore emulators, which stay opt-in; the
-  Gitea Actions runner gone, the bundled app released the way an attached
-  repository is; the tower's documents outlive `./go down`. Measured on
-  Actions, the demo takes 719 to 873 s, so the budget stays 900 s.
-- **M35 — gates without a container** (ADR 0061, *proposed*). The gates
-  that need only git and Python run from a `uvx` package in seconds, as a
-  declared lighter tier that never prints the judge's line; the hook
-  recipes gain `--light`.
-
-The adoption roadmap behind M31's amendment, M34 and M35, with what to
-drop, what to change and the sequence after them, is
+The adoption roadmap behind M31, M34 and M35, with what to drop, what to
+change and the sequence after them (attestation, the jury, `./go
+demo-loop`, the toolbelt, then the launch), is
 [docs/plans/adoption-roadmap-2026-11.md](docs/plans/adoption-roadmap-2026-11.md).
 
 ## Later

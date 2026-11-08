@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   # GitHub-only like every job that needs a real engine (docs/adr/0039).
-  # A single run: step, so no status function is needed (ci/gitea-compat.sh).
+  # A single run: step; nothing reads this file but GitHub since docs/adr/0060 §6.
   codehost-conformance:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
