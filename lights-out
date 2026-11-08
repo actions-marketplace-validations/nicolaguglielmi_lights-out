@@ -9,11 +9,17 @@
 #
 #   lights-out init                     draft .lights-out/ for this repository, outside it
 #   lights-out gates [BASE= HEAD=]      judge the last commit, or a range; STAGED=1 judges what is staged
+#   lights-out test-proof [BASE= HEAD=]     only test and test-proof: the tests a change adds fail on its base
+#   lights-out test-integrity [BASE= HEAD=] only test-weakening and mutation: no test weakened, mutants killed
 #   lights-out triage ALERT=<file>      an alert in, an incident out (PROFILE=l1 and a key on your alerts)
 #   lights-out postmortem INCIDENT=<file>   an incident document in, a post mortem and tickets out
 #   lights-out doctor                   engine, image, key: one line each, then GO or NO-GO
 #   lights-out version
 #
+# init, gates, test-proof and test-integrity run the gates image,
+# ghcr.io/nicolaguglielmi/lights-out-gates; triage and postmortem the full
+# one, ghcr.io/nicolaguglielmi/lights-out (docs/adr/0057 §5).
+# LIGHTS_OUT_IMAGE, when set, is the image for every command.
 # The repository is mounted read-only; what lights-out writes (the init
 # draft, the gates' details, incidents, post mortems, tickets) goes to
 # LIGHTS_OUT_OUT, default ~/.local/state/lights-out/<repository>. The
@@ -21,8 +27,9 @@
 # your environment by name, never from a file.
 set -eu
 
-version=0.2.0
-image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out:$version}
+version=0.3.0
+gates_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out-gates:$version}
+full_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out:$version}
 keys="GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY"
 
 die() { printf 'lights-out: %s\n' "$*" >&2; exit 1; }
@@ -34,9 +41,9 @@ usage() {
 cmd=${1:-help}
 [ $# -gt 0 ] && shift
 case "$cmd" in
-  init|gates|triage|postmortem|doctor|version) ;;
+  init|gates|test-proof|test-integrity|triage|postmortem|doctor|version) ;;
   help|-h|--help) usage; exit 0 ;;
-  *) die "unknown command '$cmd'; one of: init gates triage postmortem doctor version" ;;
+  *) die "unknown command '$cmd'; one of: init gates test-proof test-integrity triage postmortem doctor version" ;;
 esac
 for a do
   case "$a" in
@@ -45,8 +52,13 @@ for a do
   esac
 done
 
+case "$cmd" in
+  triage|postmortem) image=$full_image ;;
+  *) image=$gates_image ;;
+esac
+
 if [ "$cmd" = version ]; then
-  printf 'lights-out %s (image %s)\n' "$version" "$image"
+  printf 'lights-out %s (gates image %s, full image %s)\n' "$version" "$gates_image" "$full_image"
   exit 0
 fi
 
@@ -95,7 +107,7 @@ if [ "$cmd" = doctor ]; then
   elif [ -z "$bad" ] && "$engine" manifest inspect "$image" >/dev/null 2>&1; then
     item image "ok, $image is in the registry, pulled on the first run"
   elif [ -z "$bad" ]; then
-    item image "FAIL, $image is neither here nor reachable: not published yet, private, or no login (docker login ghcr.io); from a clone, ./go package builds localhost/lights-out:dev for LIGHTS_OUT_IMAGE"
+    item image "FAIL, $image is neither here nor reachable: not published yet, private, or no login (docker login ghcr.io); from a clone, ./go package-gates builds localhost/lights-out-gates:dev for LIGHTS_OUT_IMAGE"
     bad="$bad image"
   fi
   if [ "$profile" = l0 ]; then
@@ -117,7 +129,7 @@ fi
 # init and gates judge a repository: run from its top level, whatever the
 # subdirectory. triage and postmortem read files under the current one.
 case "$cmd" in
-  init|gates)
+  init|gates|test-proof|test-integrity)
     top=$(git rev-parse --show-toplevel 2>/dev/null) || die "lights-out $cmd runs inside a git repository"
     cd "$top" ;;
 esac
@@ -125,6 +137,18 @@ here=$(pwd -P)
 out=${LIGHTS_OUT_OUT:-${XDG_STATE_HOME:-$HOME/.local/state}/lights-out/$(basename "$here")}
 mkdir -p "$out" || die "cannot create $out (LIGHTS_OUT_OUT)"
 out=$(CDPATH='' cd -- "$out" && pwd -P)
+
+# STAGED=1: the staged changes as this host's git sees them, handed to the
+# image as a file. Read through the engine's mount, .git/index can be a
+# stale copy right after `git add` (podman machine's file sharing,
+# observed 2026-11-08), and the patch would be another change.
+rm -f "$out/staged.patch"
+for a do
+  case "$a" in
+    STAGED=0|STAGED=) ;;
+    STAGED=*) git diff --cached --binary > "$out/staged.patch" || die "git diff --cached failed in $here" ;;
+  esac
+done
 
 # SELinux: never :z, which would relabel your repository (docs/adr/0045 §2).
 engine_flags="--security-opt label=disable"
@@ -144,7 +168,7 @@ rc=0
   -e LIGHTS_OUT_HOST_OUT="$out" -e PROFILE="$profile" \
   "$image" "$cmd" "$@" || rc=$?
 if [ "$rc" = 125 ]; then
-  die "$engine could not start $image (exit 125, see above): not published yet, private, or no login (docker login ghcr.io); from a clone, ./go package builds localhost/lights-out:dev for LIGHTS_OUT_IMAGE"
+  die "$engine could not start $image (exit 125, see above): not published yet, private, or no login (docker login ghcr.io); from a clone, ./go package-gates (./go package for triage and postmortem) builds one for LIGHTS_OUT_IMAGE"
 fi
-[ "$rc" = 0 ] || [ "$cmd" != gates ] || printf 'lights-out: the details of a NO-GO are above and in %s/gates/\n' "$out" >&2
+[ "$rc" = 0 ] || [ "$cmd" = triage ] || [ "$cmd" = postmortem ] || [ "$cmd" = init ] || printf 'lights-out: the details of a NO-GO are above and in %s/gates/\n' "$out" >&2
 exit "$rc"

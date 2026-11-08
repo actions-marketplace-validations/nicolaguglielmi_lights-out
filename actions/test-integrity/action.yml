@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# test-integrity, as a GitHub Action of its own (docs/adr/0057 §7): a pull
+# request may not weaken the tests (a deleted test file, fewer assertions,
+# a new skip or only marker), and the lines it changes must be covered by
+# tests that kill their mutants. A shim over the lights-out Action at the
+# same version, `gates: test-integrity`: test-weakening, then mutation on
+# the changed lines. One check run, one line. Its source lives in
+# nicolaguglielmi/lights-out/actions/test-integrity; its Marketplace page is
+# a repository of its own with this directory at the root.
+name: lights-out test-integrity
+description: No weakened tests, and the changed lines' mutants killed. One GO/NO-GO check, no model, from the lights-out gates image
+author: nicolaguglielmi
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  base:
+    description: The base of the range judged. Default the pull request's base, else the parent of the checked-out commit.
+    required: false
+    default: ""
+  head:
+    description: The head of the range judged. Default the checked-out commit.
+    required: false
+    default: ""
+  sha:
+    description: The commit the check run is posted on. Default the pull request's head, else github.sha.
+    required: false
+    default: ""
+  path:
+    description: The repository's directory, relative to the workspace.
+    required: false
+    default: "."
+  image:
+    description: The lights-out gates image. Default the one the pinned lights-out version names.
+    required: false
+    default: ""
+  name:
+    description: The check run's name.
+    required: false
+    default: lights-out test-integrity
+  token:
+    description: The token that posts the check run.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  line:
+    description: The one GO/NO-GO line
+    value: ${{ steps.run.outputs.line }}
+  verdict:
+    description: GO or NO-GO
+    value: ${{ steps.run.outputs.verdict }}
+  check_url:
+    description: The check run's URL, when it was posted
+    value: ${{ steps.run.outputs.check_url }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      uses: nicolaguglielmi/lights-out@v0.3.0
+      with:
+        gates: test-integrity
+        base: ${{ inputs.base }}
+        head: ${{ inputs.head }}
+        sha: ${{ inputs.sha }}
+        path: ${{ inputs.path }}
+        image: ${{ inputs.image }}
+        name: ${{ inputs.name }}
+        token: ${{ inputs.token }}

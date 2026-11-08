@@ -678,7 +678,7 @@ Read it in order:
 
 ### The GitHub Action
 
-`action/action.yml` runs the wrapper on a pull request and posts one check
+`action.yml` at the root of lights-out runs the wrapper on a pull request and posts one check
 run, `lights-out gates`, whose title is the GO or NO-GO line:
 
 ```yaml
@@ -689,12 +689,12 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out/action@v0.2.0
+  - uses: nicolaguglielmi/lights-out@v0.3.0
 ```
 
-**`@v0.2.0` is published and not yet run on another repository.** The
-Action is proven in lights-out's own workflow only, with
-`uses: ./action` on a scratch repository, once with a good change and
+**`@v0.3.0` is not published yet, and nothing has run on another repository.** The
+Action is proven in lights-out's own workflow only, on a scratch
+repository, once with a good change and
 once with a broken test:
 
 <!-- source: GitHub Actions run 41866972365 (workflow package, commit ee2f679), job action (126703546538); the verdict and check-run lines of the two cases -->
@@ -709,8 +709,10 @@ verdict and check-run lines of the two cases.*
 
 Linux runners only. A fork PR's token cannot write checks: the post is
 skipped with a warning, and the job status still carries the verdict. Tags
-are mutable and the image is unsigned, so pin the image by digest with the
-`image` input.
+are mutable, so pin the image by digest with the `image` input. The images
+are signed keyless; [the README](../README.md#1-gates-on-your-repository)
+has the check. `gates: test-proof` and `gates: test-integrity` run one part
+each.
 
 ## 4. A ticket, assigned to an agent at L1
 

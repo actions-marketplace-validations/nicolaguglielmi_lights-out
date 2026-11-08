@@ -104,7 +104,7 @@ jobs:
     env:
       TIMES: ${{ github.workspace }}/../stranger-times.txt
       GH_TOKEN: ${{ github.token }}
-      LIGHTS_OUT_IMAGE: localhost/lights-out:dev
+      LIGHTS_OUT_IMAGE: localhost/lights-out-gates:dev
     steps:
       - name: Install podman (README, Linux)
         run: |
@@ -120,13 +120,13 @@ jobs:
           git -c "http.extraheader=AUTHORIZATION: basic $auth" clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" lights-out
           git -C lights-out checkout -q "$GITHUB_SHA"
           echo "git clone: $(( $(date +%s) - s ))s" >> "$TIMES"
-      - name: ./go package
+      - name: ./go package-gates
         working-directory: lights-out
         run: |
           s=$(date +%s)
-          rc=0; ./go package || rc=$?
-          echo "./go package: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
-          podman image ls localhost/lights-out
+          rc=0; ./go package-gates || rc=$?
+          echo "./go package-gates: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          podman image ls localhost/lights-out-gates
           exit "$rc"
       - name: The wrapper on your PATH (README)
         run: |

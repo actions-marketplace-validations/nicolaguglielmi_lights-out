@@ -20,7 +20,7 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The platform reads only your `.lights-out/`, and never names your repository | Proven: `ci/attach.sh` and `ci/app-free.sh` run in `./go ci` |
 | A PR is judged by your base branch's policy and runners, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
 | The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
-| The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository |
+| The Action `action.yml` at the root, and the two standalone Actions in `actions/` | Proven in lights-out's own workflow (`uses: ./` on a scratch repository posts a GO and a NO-GO check run, and the two standalone Actions' gates run the same way) and on one repository that is not lights-out, [a probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1), with the image built in the job before 0.3.0 is published |
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | The `--light` recipes **verified** once per CLI on 2026-11-08 (Claude Code 2.1.311, Codex 0.166.0, Gemini CLI 0.61.0-preview.0) against the scripted model, not a vendor; each recipe says what was not covered. The full variant was not run against the CLIs |
 | The light tier, `lights-out gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. Not on PyPI yet |
@@ -492,8 +492,9 @@ your `TOOLCHAIN_IMAGE` when that names an image, and the workbench otherwise
 
 ### The Action
 
-`action/action.yml` runs the wrapper on a pull request and posts one check
-run, `lights-out gates`, with the GO or NO-GO line as its title.
+`action.yml` at the root of lights-out runs the wrapper on a pull request and
+posts one check run, `lights-out gates`, with the GO or NO-GO line as its
+title.
 
 ```yaml
 permissions:
@@ -503,18 +504,33 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out/action@v0.2.0
+  - uses: nicolaguglielmi/lights-out@v0.3.0
 ```
 
+- **The check run's summary** has one line per gate, the gates that did not
+  run ("not run: stopped at the first NO-GO"), and for a NO-GO the first 20
+  lines of that gate's details, such as the surviving mutants or the file
+  outside the perimeter. The same summary goes to the job's step summary.
+- **The `gates` input** is `all` (the default, the eight gates),
+  `test-proof` or `test-integrity`. `test-proof` runs the tests, then checks
+  that the tests a change adds or changes fail on its base.
+  `test-integrity` runs test-weakening, then mutation on the changed lines.
+- **Two standalone Actions** run one of those each:
+  `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and
+  `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`. Their sources
+  are `actions/test-proof/` and `actions/test-integrity/`. Their Marketplace
+  pages will be repositories of their own.
 - Linux runners only. The Action needs docker.
 - A fork PR's token cannot write checks. The post is skipped with a warning,
   and the job status still carries the verdict.
 - A private package needs `docker login ghcr.io` before the Action.
-- Tags are mutable and the image is unsigned. Pin the image by digest with
-  the `image` input.
+- The images are signed keyless; tags are mutable. To pin, set the `image`
+  input to a digest. The check is in [the README](../README.md#1-gates-on-your-repository).
+- Up to v0.2.0 the path was `nicolaguglielmi/lights-out/action@<tag>`. Those
+  tags keep it.
 - **Not proven on another repository.** It is proven in lights-out's own
-  workflow, with `uses: ./action` on a scratch repository (a GO and a NO-GO
-  check run). `@v0.2.0` is published and not yet run on another repository.
+  workflow, with `uses: ./` on a scratch repository (a GO and a NO-GO check
+  run). `@v0.3.0` is not published yet.
 
 ### Hook recipes for coding agents
 

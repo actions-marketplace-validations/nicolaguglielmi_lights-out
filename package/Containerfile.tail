@@ -1,23 +1,26 @@
 
 # ---- package/Containerfile.tail, appended to workbench/Containerfile by
-# package/build.sh (docs/adr/0045 §1): the lights-out tree at
-# /opt/lights-out, its version on the image, the entrypoint the wrapper
-# calls. Under docker the container runs as the host user, so the two
+# package/build.sh (docs/adr/0045 §1, 0057 §3), on the workbench stage
+# (full) or on the gates stage (gates): the lights-out tree at
+# /opt/lights-out, its version and flavour on the image, the entrypoint
+# the wrapper calls. Under docker the container runs as the host user, so the two
 # scratch directories the gates write into are world-writable; everything
 # else the platform holds stays as copied.
 ARG LIGHTS_OUT_VERSION=0.0.0
 ARG LIGHTS_OUT_REVISION=unknown
+ARG LIGHTS_OUT_FLAVOUR=full
 COPY lights-out /opt/lights-out
 RUN mkdir -p /opt/lights-out/.crew /opt/lights-out/.gates-out \
  && chmod 1777 /opt/lights-out/.crew /opt/lights-out/.gates-out
-LABEL org.opencontainers.image.title="lights-out" \
-      org.opencontainers.image.description="lights-out gates, init, triage and post mortem on any repository (docs/adr/0045)" \
+LABEL org.opencontainers.image.title="lights-out ($LIGHTS_OUT_FLAVOUR)" \
+      org.opencontainers.image.description="lights-out on any repository: init and the gates; triage and post mortem in the full image (docs/adr/0045, 0057)" \
       org.opencontainers.image.source="https://github.com/nicolaguglielmi/lights-out" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="$LIGHTS_OUT_VERSION" \
       org.opencontainers.image.revision="$LIGHTS_OUT_REVISION"
 ENV LIGHTS_OUT_VERSION=$LIGHTS_OUT_VERSION \
-    LIGHTS_OUT_REVISION=$LIGHTS_OUT_REVISION
+    LIGHTS_OUT_REVISION=$LIGHTS_OUT_REVISION \
+    LIGHTS_OUT_FLAVOUR=$LIGHTS_OUT_FLAVOUR
 WORKDIR /opt/lights-out
 ENTRYPOINT ["/bin/sh", "/opt/lights-out/package/entrypoint.sh"]
 CMD ["help"]
