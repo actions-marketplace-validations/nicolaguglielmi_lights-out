@@ -242,7 +242,6 @@ fi
 # whose toolchain is the workbench never needs it, and one that does gets
 # a NO-GO naming it inside, never a silent in-process run.
 socket_flags=""
-host_sock_flag=""
 socket_optional=""
 case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook) socket_optional=1 ;; esac
 case "$cmd" in
@@ -275,11 +274,6 @@ case "$cmd" in
         sock_gid=$(stat -c %g "$sock" 2>/dev/null || stat -f %g "$sock")
         socket_flags="$socket_flags --group-add $sock_gid"
       fi
-      # The same host path, passed through so compose can give the Gitea
-      # runner service its own copy of the socket (docs/adr/0015 §7, 0025
-      # §4: the runner is the only *compose service* with it; this is a
-      # separate mount from workbench's own above, not a second grant of it).
-      host_sock_flag="-e HOST_DOCKER_SOCK=$sock"
     fi ;;
 esac
 
@@ -311,7 +305,7 @@ run() {
     -v "$here:$here$label" -w "$here" \
     -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
     -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" -e LIGHTS_OUT_FIRST_RUN="$first_run" -e LIGHTS_OUT_CI="${CI:-}" \
-    $engine_flags $socket_flags $host_sock_flag $port_flags \
+    $engine_flags $socket_flags $port_flags \
     "$image" "$@"
 }
 
