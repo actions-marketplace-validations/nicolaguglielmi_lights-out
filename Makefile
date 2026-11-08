@@ -116,6 +116,11 @@ export READY_TIMEOUT
 
 # Adapters that run as plane services at this profile, in readiness order.
 PLANE_ADAPTERS := $(CODE_HOST) $(DELIVERY) $(METRICS) $(FLAGS) $(REGISTRY) $(EVENT_BUS) $(STATE_STORE)
+# The emulators are opt-in (docs/adr/0060 §3): their compose profile starts
+# only when the profile's EventBus or StateStore names one; spool and sqlite,
+# the L0/L1 defaults, are files under .crew/ and start nothing.
+COMPOSE_PROFILES := $(if $(filter %-emulator,$(EVENT_BUS) $(STATE_STORE)),emulators)
+export COMPOSE_PROFILES
 
 # The gemini-cli worker's compose service writes into its workspace bind
 # mount as this uid:gid, so workbench (running as the host user under
@@ -168,7 +173,8 @@ export RELEASES_LOG
 # CI (LIGHTS_OUT_CI, the host's CI variable) and on every run that found the
 # workbench already built; a local first run (LIGHTS_OUT_FIRST_RUN=1: ./go
 # built the workbench) over budget reports its time and passes
-# (docs/adr/0013, amendment 2026-11-04).
+# (docs/adr/0013, amendment 2026-11-04). Measured again for docs/adr/0060
+# §7, 719 to 873 s on Actions: no lower budget is supported.
 DEMO_BUDGET_SECONDS ?= 900
 
 # The PR gates (docs/adr/0015 §2), cheap and stable ones first, the ones
@@ -206,7 +212,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map gitea-compat profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics package shell-boundary contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics package shell-boundary store-bus contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -257,7 +263,7 @@ up: ## Start the L0 plane, wait until every adapter is ready, then publish the s
 	@[ -f "$(WORKLOAD_CONTRACT)/compose.yaml" ] || { printf 'NO-GO: up — %s has no compose.yaml: this workload has the gates half of the contract only (docs/adr/0042 §7); ./go gates runs without the plane, docs/use-on-your-repo.md says what the plane half needs\n' "$(WORKLOAD_CONTRACT)"; exit 1; }
 	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
 	@$(COMPOSE) up -d --build >&2 || { \
-		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, 3000, 5050, 8016, 8085, 8086, 9090 and 9901 on the host; only the app port (%s) moves, with APP_PORT=<port> in .env.\n' "$(APP_PORT)" "$(APP_PORT)" >&2; \
+		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, 3000, 5050, 8016, 9090 and 9901 on the host (8085 and 8086 too with the emulators); only the app port (%s) moves, with APP_PORT=<port> in .env.\n' "$(APP_PORT)" "$(APP_PORT)" >&2; \
 		exit 1; }
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
@@ -372,7 +378,7 @@ smoke: ## Run the workload's happy path through Envoy (its contract's smoke.sh)
 
 .PHONY: down
 down: ## Stop the app, including a held canary revision if one is running
-	@$(COMPOSE) --profile test --profile canary --profile crew down --remove-orphans
+	@$(COMPOSE) --profile test --profile canary --profile crew --profile emulators down --remove-orphans
 
 .PHONY: test
 test: ## Run the backend test suite against compose Postgres (docs/adr/0010)
@@ -839,7 +845,7 @@ demo-rework: ## Prove the rework loop: ticket 0013 NO-GO at the gates, reworked 
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: demo-rework — a step failed; see the [tower] lines above\n'; exit 1; }
 	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)") || { printf 'NO-GO: demo-rework — no document for ticket %s\n' "$(TICKET)"; exit 1; }; \
 	trail=$$(printf '%s' "$$doc" | jq -r '[.history[] | "\(.step):\(.state):\(.attempt // "-")"] | join(" ")'); \
-	want='open:opened:- assign:pr-opened:1 ci:ci-failed:1 rework:pr-opened:2 ci:ci-passed:2 merge:merged:2 release:rolled-back:2'; \
+	want='open:opened:- assign:pr-opened:1 ci:ci-failed:1 rework:pr-opened:2 ci:ci-passed:2 merge:merged:2 mainline:main-green:2 release:rolled-back:2'; \
 	[ "$$trail" = "$$want" ] || { printf 'NO-GO: demo-rework — history is %s, want %s\n' "$$trail" "$$want"; exit 1; }; \
 	line=$$(printf '%s' "$$doc" | jq -r '.rework[0].line // empty'); \
 	case "$$line" in "NO-GO: gates — mutation"*) : ;; \
@@ -1286,6 +1292,16 @@ codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST se
 # releases on the plane, four to five minutes (docs/adr/0026 §7), and the
 # acceptance command is `./go delivery-conformance` (PROFILE=l2 at L2), never
 # a bare `make`/`sh gates/…` invocation.
+# The StateStore and EventBus conformance suites (docs/adr/0060 §4): the
+# profile's adapters, through their verbs only. At L0 they need no plane
+# (sqlite and spool are files under .crew/); an emulator needs `./go up`
+# with it named first. The bus suite refuses a bus that is not idle.
+.PHONY: statestore-conformance eventbus-conformance
+statestore-conformance: ## Eight-case StateStore conformance suite on the STATE_STORE set: sqlite at L0, no plane (docs/adr/0060 §4)
+	@CONFORMANCE=1 sh gates/statestore-conformance.sh
+eventbus-conformance: ## Six-case EventBus conformance suite on the EVENT_BUS set, an idle bus: spool at L0, no plane; the redelivery case needs CONFORMANCE_ACK_DEADLINE (docs/adr/0060 §4)
+	@CONFORMANCE=1 sh gates/eventbus-conformance.sh
+
 .PHONY: delivery-conformance
 delivery-conformance: ## Six-case Delivery/Flags conformance suite, real releases on the plane (docs/adr/0026)
 	@CONFORMANCE=1 sh gates/delivery-conformance.sh

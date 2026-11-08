@@ -50,14 +50,14 @@ Quattro profili (`profiles/l0.env` … `profiles/l3.env`), in due gruppi:
 | Modelli | risposte registrate (fixture) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform (ex Vertex AI), `gemini-3.8-flash` | idem + thinking level per ruolo |
 | Harness worker | replay | Gemini CLI headless in container | Gemini CLI su Cloud Run Job | + adapter Antigravity SDK |
 | Git e PR | Gitea in compose | Gitea; GitHub per un repo attaccato (adapter a M21) | GitHub reale | GitHub reale |
-| CI | Gitea Actions (act runner) | Gitea Actions | GitHub Actions o Cloud Build | idem |
+| CI | `./go ci` e i gate della torre sulla PR, nessun runner (ADR 0060) | idem | GitHub Actions o Cloud Build | idem |
 | Registry e firma | Zot locale, firma con chiave locale, verifica della firma nel launchpad prima dello staging | idem | Artifact Registry, firma con chiave KMS, verifica con la stessa cosign, Binary Authorization come seconda serratura | idem |
 | Canary | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + opzione GKE |
 | Database dell'app | Postgres in compose | idem | Cloud SQL — **non scala a zero, unico costo fisso**: si ferma o si cancella fra un test e l'altro | idem |
 | Metriche | Prometheus | Prometheus | Managed Prometheus + Cloud Monitoring | idem |
 | Grafici della console | Grafana | Grafana | Cloud Monitoring | idem |
 | Flag | flagd (file) | flagd | flagd su Cloud Run (file su GCS) o Unleash | idem |
-| Eventi e stato | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore (adapter a M10) | + adapter Cloud Workflows |
+| Eventi e stato | `spool` + `sqlite`, file sotto `.crew/` (ADR 0060) | idem | Pub/Sub + Firestore (adapter a M10) | + adapter Cloud Workflows |
 | Agenti ADK | stub | ADK locale (`adk web`) | ADK su Cloud Run | Agent Engine + BigQuery analytics |
 | Console | in compose, legge git e state store | idem | su Cloud Run, legge GitHub e Firestore | idem |
 | Tempo al primo rollback | < 15 min | < 20 min | ~45 min (terraform apply) | ~90 min |
@@ -75,6 +75,8 @@ Due scelte che tengono in piedi la tabella:
 - **PromQL ovunque.** L'app espone metriche OTel in formato Prometheus. La query che decide se il canary passa è un file solo, `verify/slo.promql`, e gira identica su Prometheus locale e su Managed Prometheus. È la riga più importante di tutto il progetto: senza, L0 e L2 divergono subito.
 - **Gitea Actions usa la sintassi di GitHub Actions.** Gli stessi workflow YAML girano in locale e su GitHub. Se qualcosa non è supportato dal runner locale, va isolato in uno step separato e saltato con una condizione, non duplicato.
 
+*Emendamento 2026-11-08 (ADR 0060):* il runner di Gitea Actions esce dal piano L0; il suo ultimo job, `image`, lo fa ora il passo di rilascio della torre, come per un repository attaccato. La promessa diventa "la stessa CI ovunque": i workflow girano su GitHub Actions, e il job `ci` esegue `./go ci`, lo stesso comando di un portatile. Pub/Sub e Firestore escono da L0 e L1 come default: al loro posto `spool` e `sqlite`, due file sotto `.crew/`; gli emulatori restano, opt-in.
+
 ---
 
 ## 4. Porte e adapter
@@ -86,8 +88,8 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
 | `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
-| `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
-| `StateStore` | `firestore-emulator`, `firestore` | stato del workflow, idempotenza |
+| `EventBus` | `spool`, `pubsub-emulator`, `pubsub` | `spool` (default a L0 e L1, ADR 0060): una coda in un file SQLite sotto `.crew/`; gli emulatori opt-in; `pubsub` stesso codice dell'emulatore, cambia l'endpoint |
+| `StateStore` | `sqlite`, `firestore-emulator`, `firestore` | stato del workflow, idempotenza; `sqlite` (default a L0 e L1, ADR 0060): un file sotto `.crew/` che sopravvive a `./go down` |
 | `Orchestrator` | `inproc`, `cloud-workflows` | macchina a stati del ciclo di vita del ticket |
 | `Delivery` | `envoy-canary`, `cloud-deploy`, `argo-rollouts` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
 | `Metrics` | `promql`, `prometheus`, `managed-prometheus` | stessa query PromQL; `promql` interroga `METRICS_URL`; `prometheus` ne è il caso del piano a `http://$PLANE_HOST:9090`, non `prometheus:9090`, che il workbench non risolve |
@@ -809,6 +811,8 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
 - **La conformità come prova**: ogni adapter nuovo passa la suite della sua porta prima di diventare default; `ci/vendor-free.sh` non cambia.
 - **Un budget nuovo con la sua misura**: l'ADR dichiara il budget di `./go demo` dopo il taglio, dalla misura su Actions, non da una scelta.
 - **Fatto quando:** `./go demo` è `GO` da clone pulito, senza chiave, sotto il budget nuovo dichiarato nell'ADR (proposta: 600 s a caldo su Actions, da misurare); `compose.yaml` ha tre servizi in meno a L0; dopo `./go down` e `./go up` il logbook di un demo si rigenera identico; `./go ci` è verde; `./go demo-mainline`, `./go demo-rework`, `./go demo-seam` e `./go demo-console` invariati.
+
+*Stato 2026-11-08 (sessione M34, branch `claude/m34-lean-plane-a0d988`, sopra 30ca9dc):* ADR 0060 scritta prima del codice, le due suite di conformità e `ci/store-bus.sh` scritti da un subagente dall'ADR senza vedere gli adapter. StateStore `sqlite` (`.crew/state.sqlite`) ed EventBus `spool` (`.crew/spool.sqlite`, lease di 600 s come l'`ackDeadlineSeconds` dell'emulatore), Python della libreria standard dietro i verbi `.sh`, default a L0 e L1; il bus non si chiama `inproc`, che è già l'Orchestrator. Gli emulatori restano dietro il profilo compose `emulators`, opt-in; il runner di Gitea, il job `image` e `ci/gitea-compat.sh` sono tolti, Gitea ha Actions spente, nessun servizio compose tiene più la socket del motore; `core/steps/release.sh` costruisce il merge di ogni workload in un worktree usa e getta, per l'app inclusa con il Makefile, gli adapter e la chiave del checkout ripristinati sopra quelli del merge. Servizi del piano a L0: da 8 a 5. Prove su GitHub Actions, sei workflow verdi (a0fc792: ci 42510074390, stranger 42510074189, self 42510074229, package 42510074180, podman 42510074435; site 42506965553 su e2599c8, l'ultimo commit che tocca i suoi percorsi): `GO: demo, milestone M9, 825s to rollback` (engine-compat) e 719 s (stranger); su 8fd756c 757 e 801 s, su e2599c8 873 e 852 s. `GO: demo-mainline`, `GO: demo-rework` (aggiunto al job `mainline`: nessun workflow lo eseguiva), `GO: demo-seam`, `GO: demo-console`; le due suite GO su `sqlite` e `spool` in `./go ci` e sugli emulatori nel job `launch`; dopo `./go down` e `./go up` il logbook del demo è identico byte per byte tranne `launch.plane`, l'unico campo letto dal piano vivo: `down` toglie la revisione canary tornata indietro che il demo lascia a peso 0. Scostamenti: il budget resta 900 s, perché la misura non permette di meno (i run dello stesso branch vanno da 719 a 873 s; i 600 s della roadmap non reggono: lo stadio `ci` del demo è il 43 % del tempo, ogni check gira due volte, e il build del workbench il 15 %); il guadagno di M34 su Actions è un modo di fallire in meno (l'attesa di 300 s dell'immagine), non secondi. Trovato: `demo-rework` era rotto da M30 (la sua storia attesa non aveva il passo `mainline`) e nessuno lo vedeva; l'emulatore Firestore rifiutava un array solo per un errore di jq, ora lo rifiuta per regola; lo stato della torre ora sopravvive a `./go down`, quindi un ticket bloccato o un `mainline/main` rosso restano finché qualcuno non fa `./go resume` o cancella `.crew/state.sqlite` (`docs/reference.md` lo dice). Lasciato a M31: `core/doctor.sh` e le righe del README che lo descrivono chiedono ancora le porte 8085 e 8086 libere.
 
 ### M35 — Gate senza container (ADR 0061)
 

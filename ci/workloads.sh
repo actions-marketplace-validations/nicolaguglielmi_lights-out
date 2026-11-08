@@ -52,7 +52,7 @@
 # `docker-compose config` only renders the merged project; it needs no
 # engine socket (ci/compose.sh's own rationale, docs/adr/0012), only the
 # WORKBENCH_IMAGE precondition every other compose call in this repo has
-# (the root compose.yaml's gemini-cli and runner services require it, :?).
+# (the root compose.yaml's harness and egress services require it, :?).
 set -eu
 name=workloads
 . ci/lib.sh

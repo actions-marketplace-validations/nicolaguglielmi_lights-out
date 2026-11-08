@@ -315,8 +315,8 @@ const NODES = [
    what:"The merge names the head commit CI judged. If anything was pushed in between, the code host answers 409 and nothing merges.",
    files:["core/steps/merge.sh","adapters/gitea/merge.sh","docs/adr/0019 (amended 2026-11-02)"], lines:[]},
   {id:"build", x:1400, y:R1, w:180, t:"BUILD + SIGN", s:"one image, merge commit", s2:"cosign · registry", step:"release",
-   what:"The code host's image job builds one image from the merge commit, pushes it to the registry (Zot at L0) under sha-<commit> and signs it. The release step waits for that job's status before it starts launchpad.",
-   files:["adapters/zot/publish.sh","adapters/gitea/await.sh","core/steps/release.sh","docs/adr/0025"], lines:[]},
+   what:"The release step builds one image from the merge commit, in a throwaway worktree, pushes it to the registry (Zot at L0) under sha-<commit> and signs it, then starts launchpad.",
+   files:["adapters/zot/publish.sh","core/steps/release.sh","docs/adr/0025","docs/adr/0060"], lines:[]},
 
   {id:"freeze", x:20, y:R2, w:150, t:"FREEZE CHECK", s:"release-freeze flag", s2:"fails closed", step:"release",
    what:"Launchpad first rolls back to a known state and reads the stable version, then asks the Flags port for release-freeze, before anything is staged and again before every shift. On: refuse. No answer: refuse too.",
@@ -358,7 +358,7 @@ const BRACKETS = [
   {id:"assign", x1:180, x2:670, y:R1+H+10, label:"tower step: assign · rework"},
   {id:"ci", x1:690, x2:1010, y:R1+H+10, label:"tower step: ci"},
   {id:"merge", x1:1210, x2:1380, y:R1+H+10, label:"tower step: merge"},
-  {id:"release", x1:20, x2:1040, y:R2+H+10, label:"tower step: release — awaits the image, then runs launchpad"},
+  {id:"release", x1:20, x2:1040, y:R2+H+10, label:"tower step: release — builds and signs the image, then runs launchpad"},
   {id:"promote", x1:1060, x2:1400, y:R2+H+10, label:"./go promote"},
   {id:"triage", x1:1420, x2:1580, y:R2+H+10, label:"./go triage"},
 ];
@@ -504,7 +504,7 @@ const P = {
   merge: {focus:["merge"], br:"merge", n:{merge:"go"}, lock:{pinned:"on"}, tower:["merge","merged"],
     say:"The merge names the head commit CI judged. Had anyone pushed in between, the code host would answer 409 and nothing would merge.", ref:"adapters/gitea/merge.sh · docs/adr/0019"},
   build: {focus:["build"], br:"release", n:{build:"go"}, lock:{signed:"on"},
-    say:"The `release` step waits for the image job: one image from the merge commit, pushed to the registry (Zot at L0) and signed with cosign.", ref:"core/steps/release.sh · adapters/zot/publish.sh · docs/adr/0025"},
+    say:"The `release` step builds one image from the merge commit, pushes it to the registry (Zot at L0) and signs it with cosign.", ref:"core/steps/release.sh · adapters/zot/publish.sh · docs/adr/0060"},
   freeze: {focus:["freeze"], br:"release", n:{freeze:"go"},
     say:"Launchpad rolls back to a known state, reads the stable version, then asks the Flags port for `release-freeze`. Off: go on.", ref:"core/launchpad.sh · docs/adr/0013 §6"},
   sign: {focus:["sign"], n:{sign:"go"},

@@ -65,10 +65,11 @@ a session of its own: egress for the harnesses, and the tower restoring
   logbook 1.2.
 
 - **M34 — the lean plane** (ADR 0060, *proposed*). A `sqlite`
-  StateStore and an `inproc` EventBus at L0 and L1 in place of the
-  Pub/Sub and Firestore emulators; the Gitea Actions runner out of the
-  demo path, the bundled app released the way an attached repository is;
-  a new demo budget stated from the measure.
+  StateStore and a `spool` EventBus, files under `.crew/`, at L0 and L1 in
+  place of the Pub/Sub and Firestore emulators, which stay opt-in; the
+  Gitea Actions runner gone, the bundled app released the way an attached
+  repository is; the tower's documents outlive `./go down`. Measured on
+  Actions, the demo takes 719 to 873 s, so the budget stays 900 s.
 - **M35 — gates without a container** (ADR 0061, *proposed*). The gates
   that need only git and Python run from a `uvx` package in seconds, as a
   declared lighter tier that never prints the judge's line; the hook

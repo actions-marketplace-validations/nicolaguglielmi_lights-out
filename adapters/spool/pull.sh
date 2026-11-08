@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+#
+# pull-spool: leases at most one message and prints "<ackId> <data>" on
+# one stdout line, or nothing when none is waiting (docs/adr/0019 §3). A
+# lease lasts SPOOL_ACK_DEADLINE seconds (default 600). One stderr line and
+# exit 1 on failure.
+# The logic is spool.py's (docs/adr/0060 §2); this file is the port's verb
+# (docs/adr/0024, docs/adr/0052 §1). Not a gate.
+set -eu
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python3 -I "$here/spool.py" pull "$@"
