@@ -1,10 +1,18 @@
 # Handoff: M33, the console as a workbench (ADR 0059), 2026-11-08
 
-Branch `claude/m33-console-7b5d5d`, rebased on main 7153de5. Pushed, no pull request, not merged: landing is the parent session's.
+Branch `claude/m33-console-7b5d5d` (at c387961) and `claude/m33-console` (this handoff on top, pushed under a new name so the self workflow judges the whole range from main), rebased on main 7153de5. Pushed, no pull request, not merged: landing is the parent session's.
 
 ## Acceptance, on GitHub Actions
 
-RUNS
+On c387961, six workflows green: ci 42435760042, stranger 42435759957, self 42435759934, site 42435759984, package 42435760204, podman 42435759945.
+
+```
+engine-compat  GO: demo, milestone M9, 834s to rollback (budget 900s, plan §2)
+stranger       GO: demo, milestone M9, 828s to rollback
+ci             GO: ci (599 unit tests, GO: logbook), console-ui job green, GO: demo-console in launch
+```
+
+The last main runs gave 807 s and 803 s: about 25 s more, from the demo's `ci` stage (a longer `ci/logbook.sh`). The margin on the 900 s budget is now about a minute.
 
 ## What changed
 
