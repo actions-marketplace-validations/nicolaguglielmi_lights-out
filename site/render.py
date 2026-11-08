@@ -420,7 +420,7 @@ DRAFT = [("input[name=title]", "Show who requested a ticket on its card"),
          ("textarea[name=perimeter]", "console/index.html"),
          ("input[name=feature]", "console")]
 CONSOLE = [
-    ("console-kanban", GOLDEN, "kanban?empty=hide&card=0009", (1520, 640), "light", None),
+    ("console-kanban", GOLDEN, "kanban?empty=hide&card=0001", (1520, 640), "light", None),
     ("console-ticket", GOLDEN, "ticket/0009", (1440, 1040), "light", None),
     ("console-overview", GOLDEN, "overview", (1440, 1000), "light", None),
     ("console-request", GOLDEN, "request", (1440, 1200), "light", DRAFT),

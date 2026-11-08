@@ -56,7 +56,7 @@ a session of its own: egress for the harnesses, and the tower restoring
   GitLab proven locally; one more delivery adapter when someone needs it.
 
 - **M33 — the console as a workbench** (ADR 0059, *proposed*). Built on
-  its branch, `claude/m33-console-7b5d5d`, not merged yet. The kanban gains
+  its branch, `claude/m33-console`, not merged yet. The kanban gains
   a drawer, search, keys, a view in the link, collapsible columns and a
   highlight on a moved card, and still moves none. A light and dark theme,
   on the board too. A specs screen, and a request editor that the spec gate
