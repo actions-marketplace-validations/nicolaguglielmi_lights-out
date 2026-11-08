@@ -2,9 +2,9 @@
 # the README's Linux path followed literally on a fresh runner, with podman,
 # the reference engine, and no CONTAINER_ENGINE anywhere. Every other job
 # runs docker; this one is the README's own promise. Each step's wall time
-# is printed and lands in the run's summary. GitHub-only, every job: the
-# L0 Gitea runner reads this directory too and holds the engine socket
-# (docs/adr/0039).
+# is printed and lands in the run's summary. GitHub-only, every job
+# (docs/adr/0039); the guard is inert since the L0 runner left (docs/adr/
+# 0060 §6).
 name: stranger
 
 on:
@@ -70,7 +70,6 @@ jobs:
         name: The plane, as the demo left it
         run: |
           podman ps -a --format '{{.Names}} {{.Status}}' || true
-          podman logs --tail 40 lights-out-runner-1 || true
       # verify's judgement reads target_info joined on (job, instance): a
       # 422 from Prometheus is two target_info series on one side.
       - if: always()

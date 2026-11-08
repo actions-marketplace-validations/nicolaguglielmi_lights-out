@@ -6,8 +6,8 @@
 # (COMPOSE_FILE=compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml, docs/adr/
 # 0037 §2) — this file never names one. Vendor config lives in adapters/<name>/ and is copied into
 # images at build; the only bind mount is the workload's flags/ directory
-# into flagd. Run through ./go: WORKBENCH_IMAGE is set there and the
-# runner image is built from it.
+# into flagd. Run through ./go: WORKBENCH_IMAGE is set there. No service
+# holds the engine socket (docs/adr/0060 §5).
 name: lights-out
 
 # What every CLI AgentHarness worker shares (docs/adr/0017 §3, 0041 §1,
@@ -194,81 +194,33 @@ services:
     ports:
       - "5050:5000"
 
-  # Gitea, rootless image, sqlite, installer skipped. The runner token is
-  # fixed and public: at L0 Gitea has no users and no data worth protecting;
-  # the README names the LAN risk.
+  # Gitea, rootless image, sqlite, installer skipped. Actions off: no
+  # runner exists at L0, the release step builds the merge itself (docs/adr/
+  # 0060 §5). At L0 Gitea has no users and no data worth protecting; the
+  # README names the LAN risk.
   gitea:
     image: docker.gitea.com/gitea:1.27.3-rootless@sha256:1c17ecaead42eb3b5391553d8708103a4beb0e86edf5b9ebc1eb269c318845f2
     environment:
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__server__ROOT_URL: http://localhost:3000/
-      GITEA__actions__ENABLED: "true"
-      GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
+      GITEA__actions__ENABLED: "false"
     ports:
       - "3000:3000"
 
-  # Host-mode runner built from the workbench image (docs/adr/0012 §3).
-  # Registers against gitea with the fixed token; restarts while gitea boots.
-  # The engine socket (docs/adr/0015 §7, 0025 §4): the runner is the only
-  # compose service with it, jobs run only on refs the workbench user
-  # pushed (no fork PRs, no external webhook — this Gitea has neither),
-  # and the README's L0 trusted-network line names it. HOST_DOCKER_SOCK is
-  # the same path ./go resolves for its own socket mount into workbench;
-  # its `:-` default only keeps `docker-compose config -q` (ci-workloads)
-  # clean when no target grants it — never used to start the service for
-  # real, exactly like the workload's own canary service's image default.
-  runner:
-    build:
-      context: ./adapters/gitea/runner
-      dockerfile: Containerfile
-      args:
-        WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
-    restart: on-failure
-    depends_on:
-      - gitea
-    environment:
-      GITEA_INSTANCE_URL: http://gitea:3000
-      GITEA_RUNNER_NAME: lights-out-l0
-      GITEA_RUNNER_REGISTRATION_TOKEN: lights-out-local-runner-token-not-a-secret-0000
-      DOCKER_HOST: unix:///var/run/docker.sock
-      # `./go` sets this on workbench's own process (an -e flag on a
-      # per-invocation container), which is why every other docker-compose
-      # call in this repo has it — the runner is a long-lived service, not
-      # a fresh ./go invocation, so a job step's own `docker-compose push`
-      # (inside publish.sh) never would otherwise: docker-compose
-      # interpolates the whole file, gemini-cli's and this service's own
-      # build.args included, both `:?`-required. Baked in at container
-      # create time from workbench's own value, same as the image tag.
-      WORKBENCH_IMAGE: ${WORKBENCH_IMAGE:?set by ./go}
-      # A job's own workdir is a fresh git clone (act_runner's host mode,
-      # not this compose mount) — it never sees the cosign key ./go up
-      # generated at $here/.crew/cosign.key on the workbench side.
-      # COSIGN_KEY overrides publish.sh's relative default to the one
-      # mounted below, read-only: the job signs with the same key
-      # core/launchpad.sh already has the public half of (docs/adr/0025 §2).
-      COSIGN_KEY: /crew/cosign.key
-    # A job reaches Gitea, Zot and the app at host.containers.internal, the
-    # name the signature's reference carries. podman provides it in every
-    # container; docker only when asked, as ./go asks for workbench. Same
-    # address under podman (192.168.127.254 on podman machine, checked
-    # 2026-11-02), so this only changes docker.
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
-    volumes:
-      - ${HOST_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
-      - ./.crew:/crew:ro
-    security_opt:
-      - label=disable
-
   # Both emulators come from the one official image (447 MB amd64, 356 MB
-  # arm64 compressed, measured 2026-09-14): one pull, two containers.
+  # arm64 compressed, measured 2026-09-14): one pull, two containers. Opt-in
+  # (docs/adr/0060 §3): the Makefile starts the `emulators` profile only when
+  # EVENT_BUS or STATE_STORE names pubsub-emulator or firestore-emulator; L0
+  # and L1 default to spool and sqlite, files under .crew/.
   pubsub-emulator:
+    profiles: ["emulators"]
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:584.0.0-emulators@sha256:45a15cc163d2df13137478856b4b9bb90426100fa8aec542269460c10110b727
     command: ["gcloud", "beta", "emulators", "pubsub", "start", "--host-port=0.0.0.0:8085", "--project=lights-out"]
     ports:
       - "8085:8085"
 
   firestore-emulator:
+    profiles: ["emulators"]
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:584.0.0-emulators@sha256:45a15cc163d2df13137478856b4b9bb90426100fa8aec542269460c10110b727
     command: ["gcloud", "emulators", "firestore", "start", "--host-port=0.0.0.0:8086", "--project=lights-out"]
     ports:

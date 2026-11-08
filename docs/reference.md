@@ -66,7 +66,7 @@ Before merge, a NO-GO is not the end (ADR 0038). A gates NO-GO or a review's CHA
 
 Before `opened` (ADR 0055) there are three states. `./go request TICKET=<id>` (`REQUEST_BY=<who>` records who requested, `unauthenticated` by default, and the request row shows it with the way in, `cli` or `console`) writes the document at `requested` and runs `clarify`: the product role reads the request and either asks one question (`questions`) or confirms the criteria (`spec-ready`). At `questions` the tower waits for a person: `./go answer TICKET=<id> ANSWER=<text>`, or the console's answer box, records the answer with who answered, through what and when, and runs the role again with every answer so far as later turns of the same conversation. At `spec-ready` the spec gate (`gates/spec.sh`, deterministic, no model) judges the request with the confirmed criteria: every criterion has Given, When and Then in that order and an outcome with no word from the ADR's vague list, `## Perimeter` declares a path, and the optional header fields `- Feature: <slug>` and `- Priority: P0|P1|P2|P3`, when present, are well formed (a ticket without them is valid and shows as unprioritised on the console's kanban). GO opens the ticket and requests `assign`; NO-GO sends it back to `questions` with the reason as the question. `core/tower.sh open`, which the other demos use, still starts a ticket at `opened` directly. The tower also keeps every attempt's task in `tasks`, so the console shows each attempt's turns, tokens and duration.
 
-Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the gates run by the tower on the PR head (with the base's gates, Makefile and policy, and the ticket's perimeter checked again, ADR 0033) and posted as the `gates` commit status on the PR, not a Gitea Actions job — the runner's first job, from M8, is the release image build on `main`; the PR-gates job itself moves to the milestone that runs the tower on GCP. The canary the tower releases after the merge is a real build of the merge commit, signed by the `Registry` port and verified by the launchpad before it takes any traffic — `./go audit` prints the verified digest, not a placeholder. The bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay on a per-`up` plane that a production tower never does. The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
+Declared at L0 (ADR 0019, amended by ADR 0025): the CI leg of `e2e` is still the gates run by the tower on the PR head (with the base's gates, Makefile and policy, and the ticket's perimeter checked again, ADR 0033) and posted as the `gates` commit status on the PR; no Actions runner exists at L0 (ADR 0060). The canary the tower releases after the merge is a real build of the merge commit, made by the release step itself in a throwaway worktree (ADR 0043 §4, ADR 0060 §5), signed by the `Registry` port and verified by the launchpad before it takes any traffic — `./go audit` prints the verified digest, not a placeholder. The bus carries the tower's own messages back to itself in one process — at L2 the same message starts a job; `e2e` deletes the ticket's document before opening it again, a replay that a production tower never does. At L0 and L1 the bus and the store are files under `.crew/` (`spool`, `sqlite`), so the documents outlive `./go down` (ADR 0060). The merge happens on the L0 Gitea only; nothing merges into this repository's own `main`.
 
 Declared at L0 (ADR 0020): the three ADK roles (product, ops-triage, release) answer from model responses recorded once at L1 under `fixtures/adk/<role>/`, keyed by the input text — the tools, the eval and the drivers run for real, the model does not; a missing recording is a NO-GO naming `./go record-evals PROFILE=l1`, never a fallback. `./go promote` at L0 renders the promotion brief from the release record itself (a live record carries live numbers no recording can match) and says so on the line above the brief; from L1 the release role writes it. Promotion at L0 is Envoy weight 100 on the canary cluster; the canary does not become the new stable image (M8). Since M22 (ADR 0044) ops-triage has a fourth tool, `file_postmortem(title, timeline, causes, actions)`, answered once for an incident document; its recording does not exist until the owner runs `./go record-postmortem PROFILE=l1`. Each timeline entry carries one anchor that core checks against the document, and each action item becomes a ticket through the Tracker's `put` verb, with no `## Perimeter`. The tower does not call the triage role on a real rollback at M7; `./go triage ALERT=<file>` and `./go demo-triage` do, on alerts taken from the evalset. Since M18 (ADR 0040) a recording and its `run.json` carry `provider` and the served `model`; all seven ADK recordings are Gemini's, and recording the roles on Claude or OpenAI is `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` (or `openai` / `gpt-6.1-sol`). It ran once on Claude, on GitHub Actions on 2026-11-04, GO for product, ops-triage and release; the recordings are not committed (see [Coding harnesses](#coding-harnesses)).
 
@@ -140,7 +140,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 
 With no container engine on your machine, the same three recordings run on GitHub Actions: add the key once as a repository secret (`gh secret set GEMINI_API_KEY`), then `gh workflow run record -f target=record -f ticket=0001 -f provider=gemini` (or `target=record-evals`, `target=record-postmortem`; `provider=anthropic` runs claude-code and claude-sonnet-5-5, `provider=openai` codex and gpt-6.1-sol, each from its own secret). The workflow is manual only, writes the key into a `.env` that it deletes at the end, keeps each target's own guard, and uploads the fixtures as an artifact for you to read and commit; it never pushes (`.github/workflows/record.yml`).
 
-The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulls about 840 MB (amd64) / 720 MB (arm64) of images on the first run, the emulators image being more than half (measured 2026-09-14, ADR 0012). The image includes gcloud and terraform, although nothing uses them before M8. `./go demo` now needs the network for the `deps` gate (osv-scanner) inside e2e, not only for image pulls.
+The first run builds the workbench image (about 1 GB on disk, 350–400 MB download, 3–6 minutes depending on connection speed). The plane pulled about 840 MB (amd64) / 720 MB (arm64) of images on the first run, more than half of it the emulators image (measured 2026-09-14, ADR 0012), which L0 no longer pulls (ADR 0060); the new total is not measured. The image includes gcloud and terraform, although nothing uses them before M8. `./go demo` now needs the network for the `deps` gate (osv-scanner) inside e2e, not only for image pulls.
 
 ## The image, the wrapper and the Action
 
@@ -216,13 +216,13 @@ Local first, cloud optional (ADR 0022): L0 and L1 are the whole product, no capa
 | **Models** | Recorded responses (fixtures) | The profile's `MODEL_PROVIDER`/`MODEL` (ADR 0040): Gemini API `gemini-3.8-flash` by default; Claude or OpenAI for the ADK roles | idem, Gemini via Gemini Enterprise Agent Platform | idem + thinking level per role |
 | **Harness worker** | Replay from `fixtures/` | Gemini CLI headless in compose | Gemini CLI on Cloud Run Job | + adapter Antigravity SDK |
 | **Git and PR** | Gitea in compose | Gitea; GitHub for an attached repository with `CODE_HOST=github` (M21, ADR 0043; run end to end only by the owner, once) | GitHub real | GitHub real |
-| **CI** | Gitea Actions (act runner) | Gitea Actions | GitHub Actions or Cloud Build | idem |
+| **CI** | `./go ci`; the tower's gates on each PR (no runner, ADR 0060) | idem | GitHub Actions or Cloud Build | idem |
 | **Registry and signing** | Zot local, local key, signature verified before staging (M8) | idem | Artifact Registry, KMS key, Binary Authorization | idem |
 | **App database** | Postgres in compose | idem | Cloud SQL — does not scale to zero, the one fixed cost; stop or delete it between runs (`infra/README.md`) | idem |
 | **Canary** | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + option GKE |
 | **Metrics** | `promql` on `METRICS_URL`; `prometheus` is its case at `http://$PLANE_HOST:9090` | idem | Managed Prometheus + Cloud Monitoring | idem |
 | **Flags** | flagd (file) | flagd | flagd on Cloud Run or Unleash | idem |
-| **Events and state** | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore | + adapter Cloud Workflows |
+| **Events and state** | `spool` + `sqlite`, files under `.crew/` (ADR 0060) | idem | Pub/Sub + Firestore | + adapter Cloud Workflows |
 | **Agent ADK** | Replay of recorded model responses (`fixtures/adk/`) | ADK 2.9.1 in workbench on the profile's model: Gemini natively, Claude and OpenAI through ADK's `LiteLlm` (`litellm` 1.106.6), thinking per role mapped in `adapters/adk/thinking.env` | ADK on Cloud Run | Agent Engine + BigQuery analytics |
 | **Time to first rollback** | < 15 min | < 20 min | ~45 min (terraform apply) | ~90 min |
 
@@ -258,7 +258,7 @@ Eight gates run in order on a git range (the merge-base of `BASE` and `HEAD`, or
 
 ## The L0 plane
 
-Eight services run beside the app in `compose.yaml`. `./go up` returns only after each adapter's `adapters/<name>/ready.sh` answered.
+Five services run beside the app in `compose.yaml` (eight before ADR 0060: the Gitea runner left, the two emulators became opt-in). `./go up` returns only after each adapter's `adapters/<name>/ready.sh` answered; `sqlite` and `spool` answer by creating their file under `.crew/`.
 
 | Service | Host port | What |
 |---|---|---|
@@ -266,16 +266,18 @@ Eight services run beside the app in `compose.yaml`. `./go up` returns only afte
 | Envoy admin | 9901 | Runtime config: `GET /runtime` reads weights, `POST /runtime_modify` shifts traffic between stable and canary |
 | backend | implicit | Stable revision, answering at port 8000 inside compose |
 | backend-canary | implicit | Canary revision (started on-demand by deploy, same image as backend); answering at port 8000 inside compose |
-| Gitea | 3000 | Rootless, sqlite; bootstrap creates a fixed admin user (`lights-out` / `lights-out-local-not-a-secret`) and a public `lights-out/workload` repo holding the workload's repository (this checkout, or the attached one; Actions on only for this checkout); the runner registers on start in host mode |
+| Gitea | 3000 | Rootless, sqlite; bootstrap creates a fixed admin user (`lights-out` / `lights-out-local-not-a-secret`) and a public `lights-out/workload` repo holding the workload's repository (this checkout, or the attached one); Actions off and no runner (ADR 0060 §5) |
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by the `service_version` label reached via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves the active workload's `flags/flags.json` (`$WORKLOAD_CONTRACT/flags/flags.json`, bind-mounted dynamically); edit the file and the flag flips within seconds |
-| Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
-| Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
+| Pub/Sub emulator | 8085 | Opt-in, `EVENT_BUS=pubsub-emulator` (compose profile `emulators`): event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
+| Firestore emulator | 8086 | Opt-in, `STATE_STORE=firestore-emulator` (compose profile `emulators`): one JSON document per ticket (`tickets/<id>`) |
+
+At L0 and L1 the event bus and the state store are not services: `spool` keeps the tower's step events in `.crew/spool.sqlite`, `sqlite` keeps one JSON document per ticket in `.crew/state.sqlite`. Both outlive `./go down`, and no harness container mounts them. So does a stranded ticket, a red `mainline/main` that refuses `assign`, or an open ticket's perimeter hold: the demos delete their own documents first; otherwise `./go resume TICKET=<id>`, or remove `.crew/state.sqlite` and `.crew/spool.sqlite` with the plane down to start empty. `./go statestore-conformance` and `./go eventbus-conformance` prove an adapter against its port (ADR 0060 §4).
 
 `./go smoke` signs up, logs in and creates a meetup through Envoy.
 
-**L0 assumes a trusted network**: every port is unauthenticated on every interface, the runner registration token in compose.yaml is public by design, and anyone on the LAN can register a runner or push to Zot. From M8, the Gitea runner also controls your container engine (docs/adr/0015 §7, docs/adr/0025 §4): it is the only compose service with the socket, and it only runs jobs on refs pushed through this same workbench.
+**L0 assumes a trusted network**: every port is unauthenticated on every interface, and anyone on the LAN can push to Gitea or Zot. No compose service holds the engine socket since ADR 0060 retired the Gitea runner (ADR 0015 §7's grant).
 
 At L0 the canary revision reuses the same image as stable, with the `waitlist` feature flag (the app's `WORKLOAD_KILL_SWITCH`) targeted at the version string `0.2.0-waitlist` (the app's `CANARY_VERSION`): the failing version is the same code, different flag targeting. The Workload port generalizes this to any workload (ADR 0030). The first real code diff arrives with the M5 worker.
 
@@ -335,7 +337,6 @@ systemctl --user enable --now podman.socket
 
 (On macOS, `podman machine` enables it automatically.)
 
-This is the same socket path for the Gitea runner.
 
 Rootless podman usage:
 
@@ -406,9 +407,9 @@ lights-out/
     help.sh                 # make help exits 0
     docs-drift.sh           # every path, ./go command and NAME= key a page cites exists (ADR 0054 §3)
     map.sh                  # the project map end to end: this repository, workloads/minimal, a stale map refused, a docs ticket (ADR 0054)
-    gitea-compat.sh         # workflow uses only what Gitea Actions supports
     codehost.sh             # every code host adapter: the eight verbs and ready.sh, credential.sh answers, the Makefile's git config index, the token never in argv (curl and git replaced by recorders, `date` by a clock that moves a second per read; no network, no fake GitHub; ADR 0043 §5)
     profiles.sh             # profiles are plain KEY=value, same keys
+    store-bus.sh            # the StateStore and EventBus suites on sqlite and spool, and each suite failing on a broken adapter (ADR 0060 §4)
     workloads.sh            # validate every workload's workload.env (replaces compose.sh)
     app-free.sh             # verify core/gates/verify/adapters never name the app (ADR 0030)
     engine-compat.sh        # host side, runs first in ./go (ADR 0012)
@@ -462,19 +463,21 @@ lights-out/
     minimal-js/              # a second workload, javascript, gates half only: the gates on a repository with no plane (ADR 0042 §9)
 
   stacks/                   # the gate runners ./go init copies into a repository, one directory per stack, each with its lockfile (ADR 0042 §7)
-  compose.yaml               # the L0 plane: workload + Gitea, runner, Zot, Envoy, Prometheus, flagd, emulators
+  compose.yaml               # the L0 plane: workload + Gitea, Zot, Envoy, Prometheus, flagd; the emulators opt-in
 
   adapters/                 # one directory per adapter named in profiles/*.env
     adk/                    # M7: ADK roles, replay/recording model, evalsets
     envoy-canary/           # Containerfile, envoy.yaml, ready.sh, deploy.sh, shift.sh, rollback.sh
     prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh (calls promql with http://$PLANE_HOST:9090)
     promql/                 # M22: query.sh, any Prometheus-compatible endpoint at METRICS_URL
-    gitea/                  # ready.sh, runner/Containerfile, runner/config.yaml
+    gitea/                  # ready.sh and the eight CodeHost verbs; no runner (ADR 0060)
     github/                 # M21: the eight CodeHost verbs, ready.sh, env.sh, credential.sh; GitHub's REST API, an attached repository only (ADR 0043)
     flagd/                  # ready.sh
     zot/                    # ready.sh
-    pubsub-emulator/        # ready.sh
-    firestore-emulator/     # ready.sh
+    sqlite/                 # M34: get.sh, put.sh, delete.sh, ready.sh over store.py; the L0/L1 StateStore, .crew/state.sqlite (ADR 0060)
+    spool/                  # M34: publish.sh, pull.sh, ack.sh, ready.sh over spool.py; the L0/L1 EventBus, .crew/spool.sqlite (ADR 0060)
+    pubsub-emulator/        # opt-in EventBus, compose profile emulators
+    firestore-emulator/     # opt-in StateStore, compose profile emulators
 
   roles/                    # M5/M7: agent role definitions (prompt.md + role.env; the three ADK roles name HARNESS=adk)
   policy/                   # from M4: policy-as-code

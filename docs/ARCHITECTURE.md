@@ -10,8 +10,8 @@ The core knows no vendor. Every integration sits behind a port with at least two
 | `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-sdk`, `adk` | `replay`: copies fixture files from `fixtures/<ticket>/<role>/`; `gemini-cli`: runs a Gemini CLI container session with role prompt and budgets, records transcript and events; `claude-code` and `codex`: the same contract with Claude Code 2.1.311 (provider `anthropic`) or Codex 0.166.0 (provider `openai`), one provider per harness, the guard in the CLI's `PreToolUse` hook and the container as the boundary (ADR 0041); coding roles produce `OUT/patch`, `pr.json`, `run.json`; review roles produce `OUT/final.md` (first line APPROVED or CHANGES-REQUESTED, rest reason), `input_sha256` (sha256 of the document), `run.json`; `adk`: no workspace; `INPUT` file → `OUT/calls.json`, `final.md`, `run.json`; a role selects it with `HARNESS=adk` in its role.env (ADR 0020 §1); review roles use `HARNESS=gemini-cli` (ADR 0021 §3) |
 | `CodeHost` | `gitea`, `github` | `gitea`: bootstrap (admin user, repo, Actions off), clone-url, push, open-pr, status, merge, pr; `github` (M21, ADR 0043): the same eight verbs (bootstrap, clone-url, push, open-pr, status, merge, pr, await), plus ready.sh, env.sh and credential.sh, on GitHub's REST API. Serves an attached repository only. Bootstrap creates and pushes nothing: it checks that the clone's HEAD is the default branch head and refuses otherwise. open-pr bases on the default branch; status descriptions are cut to 140 characters; merge sends `merge_method=merge` with `sha=<judged head>`; pr reports `merge_sha` null until merged |
 | `Tracker` | `file`, `github-issues`, `linear` | `file`: reads `tickets/<id>.md` (`get.sh`) and writes a new one (`put.sh <title> <origin>`, body on stdin, idempotent on the origin; M22); others read from external service |
-| `EventBus` | `pubsub-emulator`, `pubsub` | Verbs: `publish`, `pull`, `ack` |
-| `StateStore` | `firestore-emulator`, `firestore` | Verbs: `get`, `put`, `delete` |
+| `EventBus` | `spool`, `pubsub-emulator`, `pubsub` | Verbs: `publish`, `pull`, `ack`; `spool` (L0/L1 default): a queue in one SQLite file, `.crew/spool.sqlite`, leases of 600 s; `pubsub-emulator` opt-in, behind the compose profile `emulators` ([ADR 0060](adr/0060-the-lean-plane.md)) |
+| `StateStore` | `sqlite`, `firestore-emulator`, `firestore` | Verbs: `get`, `put`, `delete`; `sqlite` (L0/L1 default): one file, `.crew/state.sqlite`, that outlives `./go down`; `firestore-emulator` opt-in, behind the compose profile `emulators` ([ADR 0060](adr/0060-the-lean-plane.md)) |
 | `Orchestrator` | `inproc`, `cloud-workflows` | Verbs: `inproc/run.sh` |
 | `Delivery` | `envoy-canary`, `cloud-deploy` | Stages, promote, rollback |
 | `Metrics` | `promql`, `prometheus`, `managed-prometheus` | Same PromQL query; `promql` asks `METRICS_URL`, any Prometheus-compatible endpoint; `prometheus` is its case at `http://$PLANE_HOST:9090` (M22) |
@@ -45,7 +45,7 @@ Four integration levels, each a profile (`profiles/l0.env` … `profiles/l3.env`
 
 1. **One PromQL file:** `verify/slo.promql` is the only query that decides if the canary passes. It runs identically on Prometheus local (L0/L1) and on Managed Prometheus (L2/L3). This is the line that prevents L0 and L2 from diverging. At L2 this means Cloud Deploy's own `verify` stanza stays off: `core/launchpad.sh` decides at every level (ADR 0027 §3).
 
-2. **One workflow YAML:** the same `.github/workflows/ci.yml` runs on Gitea Actions (L0/L1, where only the `image` job runs, [ADR 0039](adr/0039-the-gitea-runner-runs-only-the-image-job.md)) and GitHub Actions (L2/L3). The syntax is GitHub Actions. Gitea unsupported features are isolated in steps and skipped with conditions, never duplicated. See [ADR 0002](adr/0002-self-ci-is-make-ci.md).
+2. **One CI, run the same way everywhere:** `.github/workflows/ci.yml`'s `ci` job runs `./go ci`, and so does a laptop; the workflows run on GitHub Actions. Since [ADR 0060](adr/0060-the-lean-plane.md) no runner executes them inside the plane (the L0 Gitea runner, whose last job was `image`, [ADR 0039](adr/0039-the-gitea-runner-runs-only-the-image-job.md), is gone). See [ADR 0002](adr/0002-self-ci-is-make-ci.md).
 
 3. **Nothing reaches staging unsigned:** the `Registry` port signs what it publishes and `core/launchpad.sh` verifies the signature before the first traffic, at every level — a local key pair at L0/L1, a KMS key at L2, the same cosign command. An unsigned image is `NO-GO: launchpad — unsigned image`. See [ADR 0022](adr/0022-local-first-cloud-optional.md) and [ADR 0025](adr/0025-release-artefact-build-sign-verify.md).
 
@@ -118,12 +118,14 @@ Eight services in `compose.yaml`:
 | Envoy admin | 9901 | Runtime config: `GET /runtime` reads weights, `POST /runtime_modify` shifts traffic |
 | backend | implicit | Stable revision at port 8000 inside compose |
 | backend-canary | implicit | Canary revision (started on-demand by deploy); at port 8000 inside compose |
-| Gitea | 3000 | Rootless, sqlite; the Actions runner registers on start in host mode |
+| Gitea | 3000 | Rootless, sqlite; Actions off, no runner: the release step builds the merge itself ([ADR 0060](adr/0060-the-lean-plane.md)) |
 | Prometheus | 9090 | Scrapes both backends every 5 s; canary and stable tell apart by `service_version` label via `target_info` join |
 | Zot | 5050 | OCI registry, empty until a merged PR is built into an image (M5 at the earliest); 5000 is macOS AirPlay |
 | flagd | 8016 | OFREP; serves the active workload's `flags/flags.json` (`$WORKLOAD/flags/flags.json`, bind-mounted dynamically), the one bind mount |
-| Pub/Sub emulator | 8085 | Event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
-| Firestore emulator | 8086 | State store: one JSON document per ticket (`tickets/<id>`) |
+| Pub/Sub emulator | 8085 | Opt-in (`EVENT_BUS=pubsub-emulator`, compose profile `emulators`): event bus for the tower's step events (topic `tower`, subscription `tower-inproc`) |
+| Firestore emulator | 8086 | Opt-in (`STATE_STORE=firestore-emulator`, compose profile `emulators`): one JSON document per ticket (`tickets/<id>`) |
+
+At L0 and L1 the tower's documents and its step events are files, not services: `.crew/state.sqlite` (`sqlite`) and `.crew/spool.sqlite` (`spool`), which no harness container mounts ([ADR 0060](adr/0060-the-lean-plane.md)).
 
 Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (the active workload's `flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
 

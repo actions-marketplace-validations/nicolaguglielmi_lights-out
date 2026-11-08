@@ -9,7 +9,9 @@
 #      PRECONDITION and NEXT tables (docs/adr/0052 §3).
 #   b. With nothing to read, every probe in /state.json answers ok:false
 #      with a non-empty error and no value: no default ever stands in for
-#      the plane.
+#      the plane. Nothing to read: no plane on PLANE_HOST, and STATE_FILE
+#      a directory, which the file StateStore cannot open (docs/adr/0060
+#      §1), so the check writes no store into the checkout either.
 #   c. board/serve.py calls no adapter verb but get, evaluate and status.
 #   d. GET / serves the page, GET /state.json serves JSON.
 #   e. With BOARD_STATIC=1 (§6) GET / serves the page and GET /state.json
@@ -50,7 +52,7 @@ have=$(sed -n 's/^const GATES = \[\(.*\)\];$/\1/p' board/index.html | tr -d '",'
 tmp=$(mktemp -d)
 trap 'kill "$pid" 2>/dev/null || true; rm -rf "$tmp"' EXIT
 pid=""
-out=$(PLANE_HOST=127.0.0.1 DOCKER_HOST="unix://$tmp/no.sock" \
+out=$(PLANE_HOST=127.0.0.1 DOCKER_HOST="unix://$tmp/no.sock" STATE_FILE="$tmp" \
   RELEASE_RECORD="$tmp/release.json" PROMOTE_OUT="$tmp/promote" WORKLOAD_KILL_SWITCH=flag \
   python3 - <<'PY' 2>&1
 import importlib.util, sys
@@ -80,7 +82,7 @@ done
 
 # d.
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
-PLANE_HOST=127.0.0.1 DOCKER_HOST="unix://$tmp/no.sock" BOARD_LISTEN="$port" BOARD_POLL_S=60 \
+PLANE_HOST=127.0.0.1 DOCKER_HOST="unix://$tmp/no.sock" STATE_FILE="$tmp" BOARD_LISTEN="$port" BOARD_POLL_S=60 \
   python3 board/serve.py 2>"$tmp/serve.log" &
 pid=$!
 i=0

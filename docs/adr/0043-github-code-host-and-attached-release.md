@@ -61,6 +61,7 @@ Plan §16 M21: the ticket's PR lands on the user's GitHub repository, is judged 
      - On GitHub no core step calls it today (§4). It stays for the port and is proven by the suite.
 4. **Release of an attached merge, at any code host.**
    - `core/steps/release.sh` keeps the `image` wait for a bundled workload, so L0 is unchanged.
+     *Amended 2026-11-08 (ADR 0060 §5):* no longer. A bundled workload takes the same five steps, with `make publish` run inside the worktree of this repository (its own Makefile, the workload at the same path, this checkout's signing key), and the `image` wait is gone with the Gitea runner.
    - When `WORKLOAD_ATTACHED` is set, it does five things instead:
      1. It fetches `HEAD` of `clone-url.sh` into `$WORKLOAD` and checks that `merge.sha` is an ancestor of `FETCH_HEAD`, or equal to it. It fetches no branch name and no SHA directly, so core stays vendor-free and needs no `allowReachableSHA1InWant`.
      2. It adds a detached worktree at `merge.sha` under `mktemp -d`, as `ci.sh` does. A classic-builder context there already works for `compose:backend-test` in the gates. It is not under `.crew/`, which the worker mounts.
