@@ -1,6 +1,7 @@
 # ADR 0043 — GitHub as a code host: `adapters/github/` with the eight CodeHost verbs on the REST API, the token from `.env` handed to curl on stdin and to git through an env-scoped credential helper, never in argv or a `.git/config`; an attached repository's merge is built, signed and verified by the tower's release step instead of the Gitea `image` job; a conformance suite proves the verbs on Gitea on every push and on GitHub every night
 
 - Status: accepted (amendments listed under "Amends")
+- Amended 2026-11-08 (main red at 373da51 in `ci`, green on rerun): `ready.sh` and `await.sh` read their deadline after a call, never before the first, so every run asks at least once. Read first, with `ci/codehost.sh`'s `READY_TIMEOUT=1`, a wall-clock second that turned between `start=$(date +%s)` and the loop test left `ready` with no call, and the recorder check said it proved nothing. The recorders now include a `date` that moves one second at every read, so that race happens on every run, and a self-test plants the old loop shape (§3, §5).
 - Date: 2026-11-04
 - Milestone: M21
 
@@ -47,7 +48,7 @@ Plan §16 M21: the ticket's PR lands on the user's GitHub repository, is judged 
      - The verb's postcondition is unchanged: after it, the code host's base branch head is `git -C "$WORKLOAD" rev-parse HEAD`. Gitea gets there by pushing; GitHub checks it and refuses otherwise.
      - It refuses when `WORKLOAD_ATTACHED` is empty: "`CODE_HOST=github` serves an attached repository: `./go attach <your clone>`".
      - It reads `default_branch` from `GET /repos/{repo}` and that branch's head. If the head differs from the attached clone's HEAD, it refuses: "`<repo>`'s `<branch>` is at X, the attached clone at Y: pull, then `./go attach` again".
-   - **`ready.sh`** exists because `up` iterates `PLANE_ADAPTERS`. It is `GET /repos/{repo}` → 200. It does not claim to check push permission: as far as I could read, `permissions` reports the account's role, not a fine-grained token's grants, and the first push proves the grant anyway.
+   - **`ready.sh`** exists because `up` iterates `PLANE_ADAPTERS`. It is `GET /repos/{repo}` → 200. Like `await.sh`, it calls first and reads its deadline after, so a timeout shorter than a clock tick still asks once. It does not claim to check push permission: as far as I could read, `permissions` reports the account's role, not a fine-grained token's grants, and the first push proves the grant anyway.
    - **`open-pr.sh`** bases on `default_branch`, not on a hardcoded `main`. It reuses an open PR from the same head.
    - **`status.sh`** truncates `description` to 140 characters. Provenance: external, reported by Zuul's GitHub driver (opendev commit fb6cc99); GitHub's reference gives no limit (read 2026-11-04). The suite posts a 200-character line (§5).
    - **`merge.sh`** sends `PUT /pulls/{n}/merge` with `merge_method=merge` and `sha=<judged head>`.
@@ -73,7 +74,7 @@ Plan §16 M21: the ticket's PR lands on the user's GitHub repository, is judged 
      - every `adapters/*/` that has `clone-url.sh` also ships the eight verbs and `ready.sh`;
      - `credential.sh`'s answers, for the right host, a wrong host, and `store`/`erase`;
      - the Makefile's helper entry is index 1, and `safe.directory` is still at index 0;
-     - with `curl` and `git` replaced on `PATH` by recorders that log argv, `GIT_CONFIG_*` and stdin, then exit 1, each GitHub verb run with a dummy token: the token is never in any argv, reaches curl only on stdin, and never appears on stdout or stderr. This catches what a grep misses, such as a token copied into another variable first;
+     - with `curl` and `git` replaced on `PATH` by recorders that log argv, `GIT_CONFIG_*` and stdin, then exit 1, each GitHub verb run with a dummy token: the token is never in any argv, reaches curl only on stdin, and never appears on stdout or stderr. This catches what a grep misses, such as a token copied into another variable first; a `date` on the same `PATH` moves one second at every read, so a poller that reads its deadline before its first call is caught every time, not one run in many;
      - a grep finds no `git config`, `git remote add` or `remote set-url` in any code host adapter.
    - **`gates/codehost-conformance.sh`** follows the ADR 0026/0041 shape. It runs only with `CONFORMANCE=1`, which only the `codehost-conformance` target sets, and `./go` gives that target the socket. It drives whichever `CODE_HOST` is set:
      1. bootstrap, then check its postcondition;
