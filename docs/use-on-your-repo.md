@@ -21,7 +21,7 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | A PR is judged by your base branch's policy and runners, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
 | The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
 | The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository |
-| The image `ghcr.io/nicolaguglielmi/lights-out:0.1.0` published | **Yes**, 2026-11-05, tag `v0.1.0`, public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
+| The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | **Not run** in this repository. The shapes come from ADR 0045 "Verified while writing"; some parts are unverified, and the recipes say which |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
@@ -239,17 +239,17 @@ copied out. `./go detach` drops it.
 The gates half also runs from the `lights-out` wrapper, with no clone of
 lights-out. The host needs podman or docker, and git.
 
-The image is `ghcr.io/nicolaguglielmi/lights-out:0.1.0`, public, for amd64
+The image is `ghcr.io/nicolaguglielmi/lights-out:0.2.0`, public, for amd64
 and arm64. Install the wrapper of the same version:
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH
-curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.2.0/lights-out
 chmod +x ~/.local/bin/lights-out
 ```
 
 Tags are mutable and the image is unsigned. To pin it, set
-`LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d1a227d4b3ebfa47b0c21268276279ee80e5c7ffdc345e4cde49ae866e8cc840`.
+`LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d647d0555ce8dbfb622da35f068a8883af8fcd0366d07beb0a7eb53e22aa3631`.
 From a clone of lights-out, `./go package` builds
 `localhost/lights-out:dev` instead, for `LIGHTS_OUT_IMAGE`.
 
@@ -502,7 +502,7 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out/action@v0.1.0
+  - uses: nicolaguglielmi/lights-out/action@v0.2.0
 ```
 
 - Linux runners only. The Action needs docker.
@@ -513,7 +513,7 @@ steps:
   the `image` input.
 - **Not proven on another repository.** It is proven in lights-out's own
   workflow, with `uses: ./action` on a scratch repository (a GO and a NO-GO
-  check run). `@v0.1.0` is published and not yet run on another repository.
+  check run). `@v0.2.0` is published and not yet run on another repository.
 
 ### Hook recipes for coding agents
 

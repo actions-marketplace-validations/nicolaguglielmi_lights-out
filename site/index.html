@@ -340,7 +340,7 @@ html:not(.js) .scene:first-child{opacity:1;visibility:visible;transform:none}
 <header class="hero" id="top">
   <div class="field" aria-hidden="true"><svg id="runway" viewBox="0 0 1600 1000" preserveAspectRatio="xMaxYMid slice"></svg><div class="house"></div></div>
   <div class="wrap">
-    <div class="eyebrow"><span class="dot"></span>GO / NO-GO · v0.1.0 · Apache-2.0</div>
+    <div class="eyebrow"><span class="dot"></span>GO / NO-GO · v0.2.0 · Apache-2.0</div>
     <h1>The safety system for a <em>dark factory</em> of AI coding agents.</h1>
     <p class="lead">A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system: the guardrails for agents that write and ship code, with Claude Code, Gemini CLI or Codex at the keyboard.</p>
     <div class="cta">
@@ -547,7 +547,7 @@ Then the response is not 500 …
       <h2 id="proof-h">Numbers, with where they come from.</h2>
     </div>
     <div class="proof">
-      <div class="stat reveal"><div class="v">434<small> s</small></div><p><code>./go demo</code> from a clone to the canary's automatic rollback, after the first run, measured on a MacBook with podman. The first run downloads about 1.2 GB: expect 10–15 minutes.</p><a href="https://github.com/nicolaguglielmi/lights-out#try-it">README · Try it</a></div>
+      <div class="stat reveal"><div class="v">434<small> s</small></div><p><code>./go demo</code> from a clone to the canary's automatic rollback, after the first run, measured on a MacBook with podman. The first run downloads about 1.2 GB: expect 10–15 minutes.</p><a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">README · the whole loop</a></div>
       <div class="stat reveal"><div class="v">65<small> s</small> · 72<small> s</small></div><p><code>lights-out doctor</code>, <code>init</code> and <code>gates</code> from the published image on clean GitHub runners, amd64 and arm64, first pull included.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md">docs/reference.md · the image</a></div>
       <div class="stat red reveal"><div class="v">0.625<small> &lt; 0.666</small></div><p>Claude Code's first live run, ticket 0001: 5 of 8 mutants killed on the changed lines. The mutation gate said NO-GO. Nothing merged.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">docs/reference.md · live, on Claude</a></div>
       <div class="stat reveal"><div class="v">0<small> keys</small></div><p>The demo needs no account, no API key and no cloud. Without a key no model is called: the agents replay answers recorded once.</p><a href="https://github.com/nicolaguglielmi/lights-out#what-is-real-and-what-is-recorded">README · what is recorded</a></div>
@@ -585,14 +585,14 @@ Then the response is not 500 …
 <pre><span class="p">$ </span>git clone https://github.com/nicolaguglielmi/lights-out.git
 <span class="p">$ </span>cd lights-out
 <span class="p">$ </span>./go demo</pre></div>
-        <p class="fine">First run 10–15 minutes (it downloads about 1.2 GB and builds the toolchain), then about 7. <a href="https://github.com/nicolaguglielmi/lights-out#try-it">Installing podman →</a></p>
+        <p class="fine">First run 10–15 minutes (it downloads about 1.2 GB and builds the toolchain), then about 7. <a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">Installing podman →</a></p>
       </div>
       <div class="panel reveal">
         <h3>Gates on your repository</h3>
         <p>The <code>lights-out</code> wrapper runs init and the gates from the published image, inside your repository, without cloning lights-out.</p>
-        <div class="code"><button class="copy" type="button" data-copy="mkdir -p ~/.local/bin&#10;curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out&#10;chmod +x ~/.local/bin/lights-out">copy</button>
+        <div class="code"><button class="copy" type="button" data-copy="mkdir -p ~/.local/bin&#10;curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.2.0/lights-out&#10;chmod +x ~/.local/bin/lights-out">copy</button>
 <pre><span class="p">$ </span>mkdir -p ~/.local/bin
-<span class="p">$ </span>curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+<span class="p">$ </span>curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.2.0/lights-out
 <span class="p">$ </span>chmod +x ~/.local/bin/lights-out</pre></div>
         <div class="code"><button class="copy" type="button" data-copy="cd ~/code/your-repo&#10;lights-out doctor&#10;lights-out init&#10;cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/&#10;git add .lights-out &amp;&amp; git commit -m &quot;add lights-out contract&quot;&#10;lights-out gates">copy</button>
 <pre><span class="p">$ </span>cd ~/code/your-repo
@@ -601,7 +601,7 @@ Then the response is not 500 …
 <span class="p">$ </span>cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
 <span class="p">$ </span>git add .lights-out &amp;&amp; git commit -m "add lights-out contract"
 <span class="p">$ </span>lights-out gates     <span class="m"># judges the last commit</span></pre></div>
-        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out:0.1.0</code>, amd64 and arm64, about 1.8 GB unpacked. Tags are mutable and the image is unsigned: <a href="https://github.com/nicolaguglielmi/lights-out#on-your-own-repository">pin it by digest</a>.</p>
+        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out:0.2.0</code>, amd64 and arm64, about 1.8 GB unpacked. Tags are mutable and the image is unsigned: <a href="https://github.com/nicolaguglielmi/lights-out#1-gates-on-your-repository">pin it by digest</a>.</p>
       </div>
     </div>
   </div>
@@ -616,7 +616,7 @@ Then the response is not 500 …
     </div>
     <ul>
       <li><a href="https://github.com/nicolaguglielmi/lights-out">Repository</a></li>
-      <li><a href="https://github.com/nicolaguglielmi/lights-out/releases/tag/v0.1.0">Release v0.1.0</a></li>
+      <li><a href="https://github.com/nicolaguglielmi/lights-out/releases/tag/v0.2.0">Release v0.2.0</a></li>
       <li><a href="https://github.com/nicolaguglielmi/lights-out/discussions">Discussions</a></li>
       <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/tutorial.md">Tutorial</a></li>
       <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md">Reference</a></li>
