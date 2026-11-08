@@ -100,6 +100,35 @@ jobs:
         env:
           CONTAINER_ENGINE: docker
 
+  # The console's interactions in a browser (docs/adr/0059 §5): the kanban
+  # moves no card and sends no POST, a view survives in its link, the theme
+  # changes no word, the editor's line is the spec gate's, the ADR search
+  # finds an ADR by number, title word and file. Playwright is not in the
+  # workbench, so this is a job and not a `./go ci` check; the image and the
+  # pip install are site.yml's, so one pin moves both. GitHub-only like the
+  # jobs above (docs/adr/0039). ci/console-ui.py prints the one gate line.
+  console-ui:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    timeout-minutes: 15
+    container:
+      # Playwright 1.64.1 with Chromium and the Python package, the image
+      # site.yml pins; the digest is the multi-arch index's.
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble@sha256:330d401ae23c905896a0c26c66c36fc971b621519e7b11b435a8328d7bf6e031
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # core/map.py reads this repository's commit with git: the image may
+      # not carry it, and the checkout belongs to another user than the job's.
+      - name: git, and the workspace as a safe directory
+        run: |
+          command -v git >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git >/dev/null; }
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # The image bakes in the browsers, not the package that drives them:
+      # the same version, so it finds them under /ms-playwright.
+      - name: playwright from PyPI
+        run: pip install --no-cache-dir --quiet playwright==1.64.1
+      - run: python3 ci/console-ui.py
+
   # The release artefact (docs/adr/0025 §4): the merge commit, built,
   # pushed to Zot and signed. Gitea-only and main-only — ADR 0015 §7's
   # three conditions (the runner is the only compose service with the
