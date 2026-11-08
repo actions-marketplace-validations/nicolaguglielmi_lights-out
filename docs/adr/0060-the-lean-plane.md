@@ -166,15 +166,39 @@ a measurement, and is not adopted (§7).
    the runner. The `github.server_url` guards stay, inert; removing them
    is a later cleanup.
 
-7. **Budget.** `DEMO_BUDGET_SECONDS` is the slower of two measured runs
-   of this branch on GitHub Actions (engine-compat on docker, stranger
-   on podman) plus a headroom that is a decision. Before: 834 s
-   engine-compat (run 42435760042), 828 s stranger (42435759957), on
-   c387961; ceiling 900 s (plan §2). After: **TBD.** Measured after the
-   first green run of this branch; the number and its run ids are written
-   here before the milestone closes. Engine-compat **TBD s** (run
-   **TBD**), stranger **TBD s** (run **TBD**), headroom **TBD s**
-   (decision), budget **TBD s**.
+7. **Budget: it stays 900 s, because the measure allows nothing lower.**
+   `./go demo` on GitHub Actions, the clock `DEMO_BUDGET_SECONDS` judges
+   (from before engine-compat, the workbench build included):
+
+   | commit | engine-compat (docker) | stranger (podman) |
+   |---|---|---|
+   | c387961, M33, before | 834 s (run 42435760042) | 828 s (42435759957) |
+   | e2599c8, this branch | 873 s (42506965618) | 852 s (42506965640) |
+   | 8fd756c, this branch | 757 s (42508676734) | 801 s (42508676759) |
+
+   Two runs of this branch differ by 116 s on the same job, more than
+   anything this ADR changes. Where the stranger's time goes, e2599c8
+   against c387961: the workbench build 127 s against 112; the demo's `ci`
+   stage 363 s against 336 (`store-bus` 11 s, run again inside
+   `contract`'s cold re-run of every check, 176 s against 162; 8fd756c
+   runs the spool suite beside the stubs, 13.5 s to 9.4 s locally); `up`
+   and `smoke` 24 s both; `demo-rollback` 76 s both; `e2e` 245 s against
+   260 (its `up` 8 s against 13; the release step 77 s against 78, of
+   which building, pushing and signing the merge is 2 s on cached layers
+   and the rest the launchpad's 60 s stage window). On a green run the
+   `image` wait cost about a second: what this ADR removes on Actions is
+   a failure mode, the 300 s timeouts of ADR 0025 §5's amendment, not
+   seconds. The emulator pull costs a few seconds on GitHub's network and
+   more on a slow one, not measured here.
+
+   The rule this section was to apply, the slower run plus a headroom,
+   gives more than plan §2's 900 s ceiling, which it may not exceed; so
+   `DEMO_BUDGET_SECONDS` stays 900 (plan §2, an owner's decision), with 27 s
+   of margin on the slowest run measured. The roadmap's 600 s warm is not
+   supported: Actions runs are cold, and the measured runs less the
+   workbench build give 630 to 760 s (derived, not measured). Where the
+   time is: the `ci` stage, about 43 % of the run, every check run twice;
+   the workbench build, about 15 %; the PR gates in `e2e`, about 15 %.
 
 8. **Done when:** `./go demo` GO from a clean clone, no key, under §7's
    budget; default-profile plane services in `compose.yaml` go from 8 to
