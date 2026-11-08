@@ -347,6 +347,11 @@ PY
     case "$toolchain" in
       compose:*) nogo "$f: TOOLCHAIN_IMAGE=$toolchain needs $cd_/compose.yaml, which does not exist (docs/adr/0042 §7)" ;;
     esac
+  elif [ "${LIGHTS_OUT_FLAVOUR:-}" = gates ] && ! command -v docker-compose >/dev/null 2>&1; then
+    # The gates image (docs/adr/0057 §3) has no docker-compose and no plane:
+    # the plane half is not rendered here, and the gates never use it (the
+    # image refuses a compose: toolchain). ./go attach checks it from a clone.
+    printf 'workloads: %s has a plane half, not rendered in the gates image; ./go attach checks it from a clone\n' "$cd_" >&2
   else
 
   # (b) the merged project, with this workload's compose.yaml explicit,

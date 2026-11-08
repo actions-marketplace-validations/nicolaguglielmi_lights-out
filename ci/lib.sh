@@ -83,6 +83,14 @@ effective_policy() {
     || nogo "${policy_reason:-core/policy.py failed without a reason; see stderr}"
 }
 
+# adapter_hash DIR: one sha256 over DIR's files, their relative paths and
+# contents in a fixed order (docs/adr/0057 §9). The delivery conformance
+# suite writes it into its record and production-readiness compares it, so
+# an adapter changed after its suite passed is not taken as conformant.
+adapter_hash() {
+  (cd "$1" && find . -type f ! -path '*/__pycache__/*' | LC_ALL=C sort | xargs sha256sum) | sha256sum | cut -d' ' -f1
+}
+
 # egress_flaw LIST: the first thing wrong with LIST, a space-separated list of
 # `name:port` (an adapter's EGRESS, a contract's crew-egress.txt, docs/adr/0046
 # §4-§5), as a short phrase on stdout, or nothing when every entry is fine. A

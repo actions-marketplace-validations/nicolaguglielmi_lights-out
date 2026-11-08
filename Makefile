@@ -187,8 +187,9 @@ DEMO_BUDGET_SECONDS ?= 900
 GATES := risk secrets test-weakening deps sast test mutation test-proof
 
 # Where a gate run's data beyond its one-line verdict lands: risk.json,
-# mutation.json, and gates' own verdict.env (docs/adr/0015 §2). Gitignored;
-# a fresh gates run wipes and recreates it.
+# mutation.json, gates' own verdict.env (docs/adr/0015 §2), and lines,
+# each gate's one line in the order run, which the Action's summary reads
+# (docs/adr/0057 §6). Gitignored; a fresh gates run wipes and recreates it.
 GATES_OUT ?= .gates-out
 export GATES_OUT
 
@@ -202,17 +203,18 @@ help: ## List the targets
 	@printf 'lights-out  (profile: %s)\n\n' "$(PROFILE)"
 	@awk 'BEGIN{FS=":.*## "} /^[a-z][a-z0-9-]*:.*## /{printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
-	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
+	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
-		doctor "engine, versions, ports, the key: one line each, then GO or NO-GO (docs/adr/0045 §4)" \
-		package "build the lights-out image, localhost/lights-out:dev, for the lights-out wrapper (docs/adr/0045 §1)" \
-		demo-package "prove the wrapper: init and gates from the image on workloads/minimal as its own repository (docs/adr/0045 §8)" \
+		doctor "engine, versions, ports, the key: one line each, then GO or NO-GO; --level <l0|l1|l2|l3>: what that level lacks (docs/adr/0045 §4, 0057 §8)" \
+		package "build the full lights-out image, localhost/lights-out:dev (docs/adr/0045 §1)" \
+		package-gates "build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (docs/adr/0057 §3)" \
+		demo-package "prove the wrapper from the gates image: init, gates, test-proof and test-integrity on workloads/minimal (docs/adr/0045 §8, 0057)" \
 		attach "clone a repository and make it the workload; with a .lights-out/ contract it is checked: ./go attach <path> (docs/adr/0037, 0042)" \
 		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics package shell-boundary store-bus gates-light contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light contract
 
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
@@ -392,6 +394,13 @@ verify: ## Check verify/slo.promql: against the live app's scrape, or with METRI
 		APP_URL="$(APP_URL)" sh verify/metric-shape.sh; \
 	fi
 
+# Not a PR gate: whether this setup may take real traffic. NO-GO at L0 by
+# construction; the profile's DELIVERY and METRICS, .env and the console's
+# variables, overridable on the command line (docs/adr/0057 §10).
+.PHONY: production-readiness
+production-readiness: ## GO only with a delivery adapter that passed its conformance, metrics from your endpoint, no secrets in .env and a human gate with named launchers (docs/adr/0057 §10)
+	@sh gates/production-readiness.sh
+
 # Each gate's own stdout line is the verdict; a gate's stderr (compose
 # builds, pytest, bandit, cosmic-ray) streams straight through, live, never
 # captured here. A NO-GO's own details (nogo's DETAILS lines, e.g. the
@@ -418,6 +427,7 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk,
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
 		out=$$(BASE="$$base" HEAD="$$head" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
+		printf '%s\n' "$$out" >> "$(GATES_OUT)/lines"; \
 		case "$$out" in \
 			"GO: $$g"|"GO: $$g — "*) ;; \
 			*) failed=$$g; failreason=$$out; break ;; \

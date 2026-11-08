@@ -9,8 +9,10 @@
 #   init                     attach /repo, draft .lights-out/, copy it to /out/.lights-out
 #   gates [BASE= HEAD=]      attach /repo, judge the range (default the last commit)
 #   gates STAGED=1           ... with what /repo has staged as one more commit, judged alone
-#   triage ALERT=<file>      a path under /repo
-#   postmortem INCIDENT=<file>   a path under /repo; tickets go to /out/tickets
+#   test-proof [BASE= HEAD=]     the gates test and test-proof only: the tests a change adds fail on its base
+#   test-integrity [BASE= HEAD=] the gates test-weakening and mutation only: no test weakened, the changed lines' mutants killed
+#   triage ALERT=<file>      a path under /repo (the full image only)
+#   postmortem INCIDENT=<file>   a path under /repo; tickets go to /out/tickets (the full image only)
 #   version
 #
 # One stdout line in the gate output contract (CLAUDE.md), the make
@@ -25,14 +27,18 @@ name=$sub
 . ci/lib.sh
 
 case "$sub" in
-  init|gates|triage|postmortem) ;;
+  init|gates|test-proof|test-integrity) ;;
+  triage|postmortem)
+    # The gates image has no ADK and no recordings' runtime (docs/adr/0057 §3).
+    [ "${LIGHTS_OUT_FLAVOUR:-full}" != gates ] \
+      || nogo "this is the gates image; $sub runs in ghcr.io/nicolaguglielmi/lights-out:${LIGHTS_OUT_VERSION:-<version>} (LIGHTS_OUT_IMAGE)" ;;
   version)
-    printf 'lights-out %s (%s)\n' "${LIGHTS_OUT_VERSION:-?}" "${LIGHTS_OUT_REVISION:-?}"
+    printf 'lights-out %s (%s, %s)\n' "${LIGHTS_OUT_VERSION:-?}" "${LIGHTS_OUT_FLAVOUR:-full}" "${LIGHTS_OUT_REVISION:-?}"
     exit 0 ;;
   *)
     sed -n 's/^#   //p' "$0" >&2
     name=lights-out
-    nogo "unknown command '$sub'; one of: init gates triage postmortem version" ;;
+    nogo "unknown command '$sub'; one of: init gates test-proof test-integrity triage postmortem version" ;;
 esac
 
 host_out=${LIGHTS_OUT_HOST_OUT:-/out}
@@ -53,8 +59,6 @@ for a do
   esac
   set -- "$@" "$a"
 done
-
-run() { make --no-print-directory "$@" || exit 1; exit 0; }
 
 # At L0 the roles replay lights-out's own recordings only (docs/adr/0045
 # §3): on any other alert or incident the NO-GO says what runs it live.
@@ -108,7 +112,13 @@ git -C "$attached" cat-file -e HEAD:.lights-out/workload.env 2>/dev/null \
 if [ -n "$staged" ] && [ "$staged" != 0 ]; then
   [ -z "$base$head" ] || nogo "STAGED=1 judges the staged changes on HEAD; it takes no BASE or HEAD"
   patch=/tmp/lights-out/staged.patch
-  git -C /repo diff --cached --binary > "$patch"
+  # The wrapper writes the patch with the host's git (a mounted .git/index
+  # can be stale right after `git add`); without one, read it here.
+  if [ -f /out/staged.patch ]; then
+    cp /out/staged.patch "$patch"
+  else
+    git -C /repo diff --cached --binary > "$patch"
+  fi
   [ -s "$patch" ] || nogo "STAGED=1, and nothing is staged"
   git -C "$attached" apply --index "$patch" >&2 || nogo "the staged changes do not apply on HEAD"
   git -C "$attached" -c user.name=lights-out -c user.email=lights-out@localhost.invalid -c commit.gpgsign=false \
@@ -147,4 +157,52 @@ toolchain=$(sed -n 's/^TOOLCHAIN_IMAGE=//p' "$attached/.lights-out/workload.env"
 [ "$toolchain" = workbench ] \
   || nogo "TOOLCHAIN_IMAGE=$toolchain needs the engine socket, which the lights-out image never gets (docs/adr/0045 §3); judge it from a clone with ./go gates, or set TOOLCHAIN_IMAGE=workbench"
 
-run gates WORKLOAD="$attached" ATTACHED="$attached" GATES_OUT=/out/gates "$@"
+# gates runs the eight; test-proof and test-integrity (docs/adr/0057 §5) the
+# same target on a subset, its one line renamed for the subcommand: GO joins
+# the gates' own details, NO-GO names the gate that stopped it. test runs
+# before test-proof: a test-proof GO (the changed tests fail on the base)
+# proves nothing when they fail on the head too.
+case "$sub" in
+  gates) subset=$(sed -n 's/^GATES := //p' Makefile) ;;
+  test-proof) subset="test test-proof" ;;
+  test-integrity) subset="test-weakening mutation" ;;
+esac
+out=$(make --no-print-directory gates WORKLOAD="$attached" ATTACHED="$attached" GATES_OUT=/out/gates GATES="$subset" "$@") && rc=0 || rc=$?
+case "$out" in
+  "GO: gates"*) [ "$rc" = 0 ] || out="NO-GO: gates — the gates exited $rc after a GO line: $out" ;;
+  "NO-GO: gates — "*) ;;
+  *) out="NO-GO: gates — the gates gave no verdict: $out" ;;
+esac
+if [ "$sub" = gates ]; then
+  line=$out
+else
+  case "$out" in
+    "NO-GO: gates — "*)
+      # "<gate>: NO-GO: <gate> — <reason>" reads "<gate>: <reason>".
+      line="NO-GO: $sub — $(printf '%s' "${out#NO-GO: gates — }" | sed 's/^\([a-z-]*\): NO-GO: \1 — /\1: /')" ;;
+    *)
+      details=$(sed -n 's/^GO: [a-z-]* — //p' /out/gates/lines 2>/dev/null | awk 'NR > 1 { printf "; " } { printf "%s", $0 }')
+      line="GO: $sub — ${details:-$subset GO}" ;;
+  esac
+fi
+
+# The summary the Action posts (docs/adr/0057 §6): the line, one line per
+# gate in the order run, the gates not run, and the first 20 lines of a
+# NO-GO's details (20: a decision, the survivors a changed-line run leaves).
+# shellcheck disable=SC2016 # the backticks are Markdown, not a command
+{
+  printf '### lights-out %s\n\n`%s`\n\n' "$sub" "$line"
+  for g in $subset; do
+    l=$(grep -E "^(NO-)?GO: $g( |\$)" /out/gates/lines 2>/dev/null | head -n 1) || l=""
+    if [ -n "$l" ]; then printf -- '- `%s`\n' "$l"; else printf -- '- %s: not run, stopped at the first NO-GO\n' "$g"; fi
+  done
+  for f in /out/gates/*.details; do
+    [ -s "$f" ] || continue
+    printf '\n%s, details (first 20 lines):\n\n```\n' "$(basename "$f" .details)"
+    head -n 20 "$f"
+    printf '```\n'
+  done
+} > /out/gates/summary.md 2>/dev/null || :
+
+printf '%s\n' "$line"
+case "$line" in GO:*) exit 0 ;; *) exit 1 ;; esac

@@ -1,19 +1,27 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# The M23 acceptance (docs/adr/0045 §8), `./go demo-package`, on the host
-# because its subject is the wrapper a stranger runs there. Builds the
-# image (or takes LIGHTS_OUT_IMAGE as given), turns workloads/minimal into
-# a fresh repository outside the checkout, and runs the wrapper on it the
-# way a developer would. Its committed .lights-out/ stays (its tests read
-# the flag file there) and names compose:backend-test, which the image
-# refuses without the socket; init drafts the workbench form over it:
+# The M23 acceptance (docs/adr/0045 §8) and M31's (docs/adr/0057 §3, §5),
+# `./go demo-package`, on the host because its subject is the wrapper a
+# stranger runs there. Builds the gates image (or takes LIGHTS_OUT_IMAGE
+# as given), measures it, turns workloads/minimal into a fresh repository
+# outside the checkout, and runs the wrapper on it the way a developer
+# would. Its committed .lights-out/ stays (its tests read the flag file
+# there) and names compose:backend-test, which the image refuses without
+# the socket; init drafts the workbench form over it:
 #
 #   lights-out gates              NO-GO: compose:backend-test needs the socket
 #   lights-out init               the draft lands in LIGHTS_OUT_OUT, not in the repository
 #   (copy the draft in, commit; then a change to the code and its test, committed)
 #   lights-out gates              GO on the change, in workbench, judged by the draft at its
-#                                 base; init plus gates timed against the budget
+#                                 base; init plus gates timed against the budget; the
+#                                 summary has one GO line per gate
+#   lights-out test-proof         GO: the new test fails on the base
+#   lights-out test-integrity     GO: no test weakened, the changed lines' mutants killed
+#   (a code change with a test that already passes on the base, committed)
+#   lights-out test-proof         NO-GO at test-proof
+#   (an assertion removed, committed)
+#   lights-out test-integrity     NO-GO at test-weakening
 #   lights-out gates STAGED=1     a staged change that breaks a test: NO-GO at test,
 #                                 what a hook before a commit sees
 #
@@ -27,10 +35,14 @@ engine=${CONTAINER_ENGINE:?CONTAINER_ENGINE not set; run this via ./go demo-pack
 budget=${INIT_BUDGET_SECONDS:-300}
 here=$(pwd -P)
 if [ -z "${LIGHTS_OUT_IMAGE:-}" ]; then
-  LIGHTS_OUT_IMAGE=localhost/lights-out:dev
-  sh package/build.sh "$engine" "$LIGHTS_OUT_IMAGE" >&2 || nogo "the image did not build (see above)"
+  LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev
+  PACKAGE_FLAVOUR=gates sh package/build.sh "$engine" "$LIGHTS_OUT_IMAGE" >&2 || nogo "the gates image did not build (see above)"
 fi
 export LIGHTS_OUT_IMAGE CONTAINER_ENGINE
+# The measure ADR 0057 §3 records: the image as unpacked on this engine.
+bytes=$("$engine" image inspect --format '{{.Size}}' "$LIGHTS_OUT_IMAGE" 2>/dev/null) || bytes=0
+size="$((bytes / 1000000)) MB unpacked"
+printf '[demo-package] image %s, %s\n' "$LIGHTS_OUT_IMAGE" "$size" >&2
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -71,13 +83,44 @@ case "$out" in "GO: gates — "*", in workbench") ;; *) nogo "gates did not run 
 if [ "$budget" -gt 0 ] && [ "$elapsed" -gt "$budget" ]; then
   nogo "init and gates took ${elapsed}s, over the ${budget}s budget (plan §16)"
 fi
+# The summary the Action posts (docs/adr/0057 §6): one GO line per gate.
+summary=$LIGHTS_OUT_OUT/gates/summary.md
+per_gate=$(grep -c '^- `GO: ' "$summary" 2>/dev/null) || per_gate=0
+[ "$per_gate" = 8 ] || nogo "the summary has $per_gate GO lines for the eight gates" "$(cat "$summary" 2>/dev/null)"
+
+# The two standalone commands on the same change (docs/adr/0057 §5).
+out=$(lo test-proof) || nogo "lights-out test-proof on a change and its new test: $out"
+case "$out" in "GO: test-proof — "*) ;; *) nogo "test-proof did not name itself: $out" ;; esac
+printf '[demo-package] %s\n' "$out" >&2
+out=$(lo test-integrity) || nogo "lights-out test-integrity on a change and its new test: $out"
+case "$out" in "GO: test-integrity — "*) ;; *) nogo "test-integrity did not name itself: $out" ;; esac
+printf '[demo-package] %s\n' "$out" >&2
+
+# A code change with a test that passes on the base too: it proves nothing.
+printf '\n# healthz answers the version the image was built with.\n' >> "$repo/minimal/app.py"
+printf '\n\ndef test_healthz_answers_ok_again(client):\n    assert client.get("/healthz").status_code == 200\n' >> "$repo/tests/test_app.py"
+git -C "$repo" add -A
+commit -m "a comment, and a test that already passed"
+out=$(lo test-proof) && nogo "a test that passes on the base passed test-proof: $out"
+case "$out" in "NO-GO: test-proof — test-proof: "*) ;; *) nogo "test-proof did not stop at test-proof: $out" ;; esac
+printf '[demo-package] %s\n' "$out" >&2
+
+# An assertion removed: the suite is weaker.
+grep -v 'assert resp.json() == {"ok": True}' "$repo/tests/test_app.py" > "$work/t.py"
+cp "$work/t.py" "$repo/tests/test_app.py"
+git -C "$repo" add -A
+commit -m "one assertion fewer"
+out=$(lo test-integrity) && nogo "a removed assertion passed test-integrity: $out"
+case "$out" in "NO-GO: test-integrity — test-weakening: "*) ;; *) nogo "test-integrity did not stop at test-weakening: $out" ;; esac
+printf '[demo-package] %s\n' "$out" >&2
 
 # A staged change that breaks the suite: what a hook sees before a commit.
+commits=$(git -C "$repo" rev-list --count HEAD)
 printf '\n\ndef test_staged_break():\n    assert False, "staged by demo-package"\n' >> "$repo/tests/test_app.py"
 git -C "$repo" add tests/test_app.py
 staged=$(lo gates STAGED=1) && nogo "a staged change that breaks a test passed: $staged"
 printf '[demo-package] staged, breaking a test: %s\n' "$staged" >&2
 case "$staged" in "NO-GO: gates — test: "*) ;; *) nogo "STAGED=1 did not stop at the test gate: $staged" ;; esac
-[ "$(git -C "$repo" rev-list --count HEAD)" = 3 ] && [ -n "$(git -C "$repo" diff --cached --name-only)" ] || nogo "STAGED=1 committed into the repository"
+[ "$(git -C "$repo" rev-list --count HEAD)" = "$commits" ] && [ -n "$(git -C "$repo" diff --cached --name-only)" ] || nogo "STAGED=1 committed into the repository"
 
-go_with "init and gates ${elapsed}s in workbench (budget ${budget}s), a staged break NO-GO at test, image $LIGHTS_OUT_IMAGE"
+go_with "init and gates ${elapsed}s in workbench (budget ${budget}s), test-proof and test-integrity GO and NO-GO, a staged break NO-GO at test, image $LIGHTS_OUT_IMAGE, $size"

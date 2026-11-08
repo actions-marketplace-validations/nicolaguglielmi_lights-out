@@ -201,6 +201,24 @@ jobs:
       - run: ./go argo-conformance KEEP_CLUSTER=1
         env:
           CONTAINER_ENGINE: docker
+      # production-readiness (docs/adr/0057 §10): NO-GO on the L0 defaults,
+      # GO on real local adapters: argo-rollouts with the record its suite
+      # just wrote, promql on the plane's Prometheus, named launchers.
+      - name: production-readiness, L0 defaults, NO-GO expected
+        env:
+          CONTAINER_ENGINE: docker
+        run: |
+          set -u
+          out=$(./go production-readiness) && { echo "GO at L0: $out"; exit 1; }
+          echo "$out"
+          case "$out" in "NO-GO: production-readiness — "*) ;; *) echo "not the gate's NO-GO"; exit 1 ;; esac
+      - name: production-readiness, argo-rollouts and promql, GO expected
+        env:
+          CONTAINER_ENGINE: docker
+          CONSOLE_AUTH: proxy
+          CONSOLE_IDENTITY_HEADER: X-Auth-User
+          CONSOLE_LAUNCHERS: owner@example.invalid
+        run: ./go production-readiness DELIVERY=argo-rollouts METRICS=promql METRICS_URL=http://host.containers.internal:9090
       # The node and the controller are the evidence when a case NO-GOes.
       - if: always()
         run: |

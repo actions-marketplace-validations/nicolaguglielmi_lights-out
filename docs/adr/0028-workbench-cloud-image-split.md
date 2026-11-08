@@ -1,6 +1,6 @@
 # ADR 0028 — gcloud and terraform leave the base workbench for `workbench/cloud/Containerfile`, built `FROM` it; the profile says which flavour it needs and `./go` reads that one line
 
-- Status: accepted (amends ADR 0004 §1 [the tool list of the base image loses gcloud and terraform] and its first consequence [the 1 GB image that "serves nobody before M8" is answered here]; consistent with ADR 0012 §3 [the runner image is already built `FROM` the workbench image])
+- Status: accepted (amends ADR 0004 §1 [the tool list of the base image loses gcloud and terraform] and its first consequence [the 1 GB image that "serves nobody before M8" is answered here]; consistent with ADR 0012 §3 [the runner image is already built `FROM` the workbench image]); amended by ADR 0057 [never built until M31: gcloud and terraform leave the base now, the cloud image and `WORKBENCH_FLAVOUR` are written with L2]
 - Date: 2026-09-20
 - Milestone: M8
 
@@ -77,3 +77,31 @@ base image (ADR 0025 §2), so the base grows on the same day it shrinks.
 This is the only decision in M8 that makes the cloner's path *shorter*:
 the first `./go demo` downloads 474 MB less, minus whatever cosign adds
 back. Nothing about `PROFILE=l0` changes otherwise. Passes.
+
+## Amendment 2026-11-08 (ADR 0057)
+
+**Context.** The split decided here in M8 was never built: M28's drift
+check found `workbench/Containerfile` still fetching gcloud and terraform,
+no `workbench/cloud/Containerfile`, and no `WORKBENCH_FLAVOUR` in any
+profile or in `./go`. On 2026-11-08 nothing in the repository calls either
+tool (git grep), and every published lights-out image (ADR 0045) carries
+both.
+
+**Decision.** gcloud and terraform leave the base now, with `unzip` (which
+served terraform only), their `ARG`s and the `CLOUDSDK_*` environment,
+without the cloud image. §1's cloud image and §2's `WORKBENCH_FLAVOUR` are
+written the day L2 is, not before: an image no command uses has nothing to
+prove it builds. The base becomes two stages of one file (ADR 0057 §2).
+
+**Measure.** The full image, unpacked on amd64: 1.77 GB before (ADR
+0045's measure), 1,246 MB after (1,246,550,245 bytes, `docker image
+inspect`, package.yml run 42519069964 on 0a0d073), 524 MB less; 65 MB of
+that is node's C headers, dropped in the same milestone (ADR 0057 §2). The
+workbench under podman on arm64: 1.81 GB before, 1.30 GB after (local,
+2026-11-08).
+
+**Consequences.** Until L2 is written, `PROFILE=l2` has no gcloud or
+terraform anywhere; `./go doctor --level l2` says so (ADR 0057 §8). This
+ADR's hurting consequence (two Containerfiles of hashes) is deferred, not
+gone; ADR 0057 open point 3 asks whether the cloud flavour becomes a third
+stage instead.
