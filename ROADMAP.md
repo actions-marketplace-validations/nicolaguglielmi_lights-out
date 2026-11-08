@@ -64,6 +64,20 @@ a session of its own: egress for the harnesses, and the tower restoring
   who). ADR search from the project map, which is now schema 2, through
   logbook 1.2.
 
+- **M34 — the lean plane** (ADR 0060, *proposed*). A `sqlite`
+  StateStore and an `inproc` EventBus at L0 and L1 in place of the
+  Pub/Sub and Firestore emulators; the Gitea Actions runner out of the
+  demo path, the bundled app released the way an attached repository is;
+  a new demo budget stated from the measure.
+- **M35 — gates without a container** (ADR 0061, *proposed*). The gates
+  that need only git and Python run from a `uvx` package in seconds, as a
+  declared lighter tier that never prints the judge's line; the hook
+  recipes gain `--light`.
+
+The adoption roadmap behind M31's amendment, M34 and M35, with what to
+drop, what to change and the sequence after them, is
+[docs/plans/adoption-roadmap-2026-11.md](docs/plans/adoption-roadmap-2026-11.md).
+
 ## Later
 
 - **M16 — the agent network**, reviewed and decided: who splits a
