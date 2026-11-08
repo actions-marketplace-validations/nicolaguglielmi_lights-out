@@ -36,6 +36,8 @@ ARG OSV_SCANNER_VERSION=2.6.0
 ARG OSV_SCANNER_SHA256_AMD64=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
 ARG OSV_SCANNER_SHA256_ARM64=2c71403eb443d05891c4f268c3ad771cf4f16e5443463fd7851ef8f454d3c7e4
 
+# node's include/ (C headers for native addons, 65 MB measured 2026-11-08)
+# is left out: no image here has a compiler to build one with.
 # procps: `ps`, which Stryker's command runner needs to end each test run
 # (tree-kill) when a javascript workload's gates run in the workbench
 # (docs/adr/0042 §2; found 2026-11-03, debian slim ships none).
@@ -60,7 +62,7 @@ RUN set -eu; \
     esac; \
     cd /tmp; \
     fetch "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" "$NODE_SHA" node.tar.xz; \
-    tar -xJf node.tar.xz -C /usr/local --strip-components=1 --exclude='*/CHANGELOG.md' --exclude='*/README.md' --exclude='*/LICENSE'; \
+    tar -xJf node.tar.xz -C /usr/local --strip-components=1 --exclude='*/CHANGELOG.md' --exclude='*/README.md' --exclude='*/LICENSE' --exclude='node-*/include'; \
     fetch "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${uv_arch}-unknown-linux-gnu.tar.gz" "$UV_SHA" uv.tar.gz; \
     tar -xzf uv.tar.gz --strip-components=1 -C /usr/local/bin; \
     fetch "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${gl_arch}.tar.gz" "$GL_SHA" gitleaks.tar.gz; \
