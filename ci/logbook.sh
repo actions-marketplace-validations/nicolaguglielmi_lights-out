@@ -4,30 +4,48 @@
 # ci-logbook: the logbook and the console tell the truth and stay inside
 # their perimeter (docs/adr/0047 §2-§5, Consequences; field by field in
 # docs/plans/console.md, "Decided at build"), cold: no plane, no socket.
-# Needs python3, jq, curl and the `jsonschema` package, all in the
+# Needs python3, jq, curl, git and the `jsonschema` package, all in the
 # workbench. Written from that ADR and that plan, not from core/logbook.py
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.1.json, written by hand from the
-#      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6. Then variants of the sources, each checked on the
-#      one field the plan's rule decides.
+#      golden fixtures/logbook/golden-1.2.json, written by hand from the
+#      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6 and
+#      its 1.2 `adrs` against the stub map (docs/adr/0059 §3). The stub root
+#      holds three ADRs, the files they cite and a ticket that names one in
+#      its one commit; its map is built from that commit with core/map.py,
+#      and the logbook's `adrs` and each ticket's `adrs` are worked out
+#      again here from the map's rows with sqlite3 and fnmatch, not by
+#      calling the reader's functions. Then variants of the sources, each
+#      checked on the one field the plan's rule decides: no map, a map of
+#      schema 1, a map at another commit, a map with no ADR, a map opened
+#      read-only, a wide glob, who requested.
 #      The kanban's every card sits in its ticket's state's column, and moves
 #      when the tower moves the ticket (docs/adr/0055 §7).
-#   b. The golden validates against every committed schema of its major.
+#   b. The golden validates against every committed schema of its major,
+#      and against the schema file of its own minor.
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
 #      snapshot is drift; with neither, this point is skipped.
 #   d. console/ names no adapter, no .crew/ and no store; serve.py starts
-#      two scripts and `make answer` only, and has two POST routes, the
-#      second answering a ticket's open question (docs/adr/0055 §2);
-#      index.html fetches /v1/ only.
-#   e. The console at runtime: snapshot mode refuses to write; the start-up
+#      `core/logbook.sh`, `core/promote.sh`, `gates/spec.sh`,
+#      `core/spec.py draft` and `make answer` / `make request` only, and has
+#      four POST routes (docs/adr/0055 §2, docs/adr/0059 §4); index.html
+#      fetches /v1/ only, POSTs to those four routes and declares no
+#      `draggable` and no drag or drop listener (docs/adr/0059 §1).
+#   e. The console at runtime: snapshot mode refuses to write and answers the
+#      spec check without writing; the ETag answers 304; the start-up
 #      refusals (§5); LIVE mode in the stub root refuses every bad press
 #      before anything runs, and one good press moves the plane and records
 #      who pressed; an answer to anything but the open question runs
 #      nothing, and the good one runs `make answer` as `./go answer` does,
-#      with who answered and `via: console` (docs/adr/0055 §2).
+#      with who answered and `via: console` (docs/adr/0055 §2); the spec
+#      check gives the line gates/spec.sh gives on the same file, on a GO
+#      draft and on a NO-GO one per rule of ADR 0055 §4, and leaves the root
+#      as it was; a request is refused in snapshot, public and without the
+#      proxy header, refuses a NO-GO draft with nothing written, and on a GO
+#      draft writes the next id and runs `make request` with who pressed and
+#      `via: console` (docs/adr/0059 §4).
 #   f. Every numeric policy key has a "# Provenance, <kind>:" line above it
 #      (Consequences).
 # Before any of that, every checker runs on a bad input and must reject it:
@@ -38,22 +56,22 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.1.json"
+golden="$repo/fixtures/logbook/golden-1.2.json"
 tmp=$(mktemp -d)
 pids=""
 # shellcheck disable=SC2154 # p is the loop's own variable, assigned when the trap runs
 trap 'for p in $pids; do kill "$p" 2>/dev/null || :; done; rm -rf "$tmp"' EXIT
 
-for tool in python3 jq curl sha256sum timeout; do
+for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.1.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.2.json not found"
 [ -d "$stub" ] || nogo "fixtures/logbook/stub not found"
 
 # --- the checkers, one python file, one subcommand each ---------------------
 cat > "$tmp/checks.py" <<'PY'
-import ast, glob, hashlib, json, os, re, sys
+import ast, fnmatch, glob, hashlib, json, os, posixpath, re, sqlite3, sys
 
 import jsonschema
 
@@ -80,6 +98,9 @@ def validate(path):
     files = sorted(glob.glob(f"core/logbook/{m.group(1)}.*.schema.json"))
     if not files:
         die(f"no core/logbook/{m.group(1)}.*.schema.json to validate {path} against")
+    own = f"core/logbook/{m.group(1)}.{m.group(2)}.schema.json"
+    if own not in files:
+        die(f"{path} says {doc['schema']}, but {own} is not committed")
     for schema_file in files:
         schema = load(schema_file)
         jsonschema.Draft202012Validator.check_schema(schema)
@@ -131,7 +152,13 @@ def cmd_names(root):
         die("; ".join(bad))
 
 
-SCRIPTS = {"logbook.sh", "promote.sh"}
+# What console/serve.py may run (docs/adr/0047 §3, docs/adr/0055 §2,
+# docs/adr/0059 §4): three scripts, one command of core/spec.py, two recipes.
+SCRIPTS = {"core/logbook.sh", "core/promote.sh", "gates/spec.sh"}
+MAKES = {"answer", "request"}
+GETS = {"/v1/logbook.json", "/v1/console.json"}
+WRITES = {"/v1/go-for-launch", "/v1/answer", "/v1/spec-check", "/v1/request"}
+DRAG = r"(?:drag|dragstart|dragover|dragend|dragenter|dragleave|drop)"
 
 
 def docstrings(tree):
@@ -151,31 +178,44 @@ def cmd_serve(path):
               if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in skip]
     found = set()
     for c in consts:
-        for token in re.findall(r"[\w./-]+\.sh\b", c):
-            d, base = os.path.split(token)
-            if d not in ("", "core"):
-                die(f"{path} names the script {token}; only core/logbook.sh and core/promote.sh")
-            found.add(base)
+        found.update(re.findall(r"[\w./-]+\.sh\b", c))
     if found != SCRIPTS:
         die(f"{path} names the scripts {sorted(found)}; want exactly {sorted(SCRIPTS)}")
     for c in consts:
         if c in ("git", "curl", "jq", "docker", "podman", "docker-compose", "bash"):
-            die(f"{path} names the program {c}; it starts core/logbook.sh and core/promote.sh only")
+            die(f"{path} names the program {c}; it starts {sorted(SCRIPTS)}, core/spec.py draft and make only")
+    makes, drafts = set(), 0
     for n in ast.walk(tree):
-        if isinstance(n, ast.List) and n.elts and isinstance(n.elts[0], ast.Constant) and n.elts[0].value == "make":
-            targets = [e.value for e in n.elts[1:] if isinstance(e, ast.Constant) and not str(e.value).startswith("-") and "=" not in str(e.value)]
-            if targets != ["answer"]:
-                die(f"{path} runs make {targets}; `make answer` is the one recipe it may run")
+        if not (isinstance(n, ast.List) and n.elts):
+            continue
+        head, rest = n.elts[0], n.elts[1:]
+        word = head.value if isinstance(head, ast.Constant) else None
+        if word == "make":
+            targets = [e.value for e in rest if isinstance(e, ast.Constant) and not str(e.value).startswith("-") and "=" not in str(e.value)]
+            if len(targets) != 1 or targets[0] not in MAKES:
+                die(f"{path} runs make {targets}; `make answer` and `make request` are the recipes it may run")
+            makes.add(targets[0])
+        elif word == "sh":
+            if not (rest and isinstance(rest[0], ast.Constant) and rest[0].value in SCRIPTS):
+                die(f"{path} runs sh on {ast.dump(rest[0]) if rest else 'nothing'}; only {sorted(SCRIPTS)}")
+        elif word in ("python3", "python") or (isinstance(head, ast.Attribute) and head.attr == "executable"):
+            if [e.value if isinstance(e, ast.Constant) else None for e in rest[:2]] != ["core/spec.py", "draft"]:
+                die(f"{path} runs python on something but `core/spec.py draft`; that is the one command it may run")
+            drafts += 1
+    if makes != MAKES:
+        die(f"{path} runs make {sorted(makes)}; want exactly {sorted(MAKES)}")
+    if not drafts:
+        die(f"{path} never runs `python3 core/spec.py draft`; the spec check and the request write their draft with it")
     for n in ast.walk(tree):
         if isinstance(n, ast.keyword) and n.arg == "shell" and not (isinstance(n.value, ast.Constant) and n.value.value is False):
             die(f"{path} passes shell={ast.dump(n.value)}; argv only")
         if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "os" \
                 and (n.attr in ("system", "popen") or n.attr.startswith(("exec", "spawn"))):
-            die(f"{path} calls os.{n.attr}; the two scripts go through subprocess only")
+            die(f"{path} calls os.{n.attr}; the commands go through subprocess only")
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in ("do_PUT", "do_DELETE", "do_PATCH"):
-            die(f"{path} defines {n.name}; go-for-launch is the one write")
+            die(f"{path} defines {n.name}; POST is the only write")
     v1 = {c for c in consts if re.fullmatch(r"/v1/[\w.\-]+", c)}
-    want = {"/v1/logbook.json", "/v1/console.json", "/v1/go-for-launch", "/v1/answer"}
+    want = GETS | WRITES
     if v1 != want:
         die(f"{path} names the routes {sorted(v1)}; want exactly {sorted(want)}")
     posts = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "do_POST"]
@@ -183,16 +223,28 @@ def cmd_serve(path):
         die(f"{path} has {len(posts)} do_POST; want 1")
     in_post = {n.value for n in ast.walk(posts[0]) if isinstance(n, ast.Constant) and isinstance(n.value, str)
                and n.value.startswith("/")}
-    writes = {"/v1/go-for-launch", "/v1/answer"}
-    if in_post - writes:
-        die(f"{path}: do_POST names {sorted(in_post - writes)}; the POST routes are {sorted(writes)}")
+    if in_post - WRITES:
+        die(f"{path}: do_POST names {sorted(in_post - WRITES)}; the POST routes are {sorted(WRITES)}")
 
 
 def cmd_index(path):
     src = open(path, encoding="utf-8").read()
     for banned in ("XMLHttpRequest", "sendBeacon", "<form"):
         if banned in src:
-            die(f"{path} uses {banned}; the page reads with GET fetch and writes with the one POST")
+            die(f"{path} uses {banned}; the page reads with GET fetch and writes with POST fetch")
+    # No drag and drop (docs/adr/0055 §7, docs/adr/0059 §1): a card moves only
+    # when the tower moves its ticket. The attribute, the property, the
+    # handler attributes and a listener named by a string; prose is not read.
+    for form, what in ((r"\bdraggable\s*[=:]", "a draggable attribute or key"),
+                       (r"\.draggable\b", "the draggable property"),
+                       (r"""\bsetAttribute\s*\(\s*['"`]draggable['"`]""", "setAttribute('draggable')"),
+                       (r"\bon" + DRAG + r"\s*[=:]", "a drag or drop handler attribute or key"),
+                       (r"""['"`]on""" + DRAG + r"""['"`]""", "a drag or drop handler named by a string"),
+                       (r"""\baddEventListener\s*\(\s*['"`]""" + DRAG + r"""['"`]""", "a drag or drop listener")):
+        hit = re.search(form, src)
+        if hit:
+            die(f"{path} has {what} ({hit.group(0).strip()}); a card moves only when the tower moves its ticket")
+    posted = set()
     root_literals = re.findall(r"""(['"`])(/[A-Za-z0-9_.\-][^'"`\s]*)\1""", src)
     stray = sorted({lit for _, lit in root_literals if not lit.startswith("/v1/")})
     for m in re.finditer(r"\bfetch\s*\(", src):
@@ -214,15 +266,102 @@ def cmd_index(path):
         if meth:
             if meth.group(1).strip("'\",`") != "POST":
                 die(f"{path} fetches with method {meth.group(1)}; POST is the only write")
-            if goes not in ("/v1/go-for-launch", "/v1/answer"):
-                die(f"{path}: a POST to {goes or args[:30]}; /v1/go-for-launch and /v1/answer are the POST routes")
-        elif goes in ("/v1/go-for-launch", "/v1/answer"):
+            if goes not in WRITES:
+                die(f"{path}: a POST to {goes or args[:30]}; the POST routes are {sorted(WRITES)}")
+            posted.add(goes)
+        elif goes in WRITES:
             die(f"{path} fetches {goes} without method POST")
     for m in re.finditer(r"\bmethod\s*:\s*(\S+)", src):
         if m.group(1).strip("'\",`") != "POST":
             die(f"{path} has method {m.group(1)}; POST is the only write")
+    if posted != WRITES:
+        die(f"{path} POSTs to {sorted(posted)}; want a POST fetch to each of {sorted(WRITES)}")
     if "/v1/logbook.json" not in src:
         die(f"{path} never names /v1/logbook.json")
+
+
+def cmd_adrs(logbook, mapfile):
+    """The logbook's `adrs` and each ticket's `adrs` against the map at MAPFILE
+    (docs/adr/0059 §3), worked out again here from the map's rows with sqlite3
+    and fnmatch: an ADR's files are the paths it cites that exist, its adrs and
+    tickets the ones it mentions or that mention it, plus the logbook's tickets
+    its files govern; a ticket's ADRs are those one of whose files one of its
+    globs matches."""
+    book = load(logbook)
+    db = sqlite3.connect(f"file:{mapfile}?mode=ro", uri=True)
+    try:
+        sha = db.execute("SELECT value FROM meta WHERE key = 'sha'").fetchone()[0]
+        nodes = {i: (k, n, t) for i, k, n, t in db.execute("SELECT id, kind, name, title FROM node")}
+        docs = {i: (s, t) for i, s, t in db.execute("SELECT node, status, text FROM doc")}
+        cited = {}
+        for src, target in db.execute("SELECT src, target FROM cite WHERE kind = 'path' AND ok = 1"):
+            cited.setdefault(src, set()).add(target)
+        mentions = set(db.execute("SELECT src, dst FROM edge WHERE kind = 'mentions'"))
+    finally:
+        db.close()
+    adr_ids = sorted((posixpath.basename(n)[:4], i) for i, (k, n, _) in nodes.items() if k == "adr")
+    number = {i: num for num, i in adr_ids}
+    tickets = book.get("tickets") if isinstance(book.get("tickets"), list) else []
+
+    def governs(adr, ticket):
+        globs = ticket.get("perimeter")
+        return isinstance(globs, list) and any(fnmatch.fnmatchcase(f, g) for f in cited.get(adr, ()) for g in globs)
+
+    items = []
+    for num, i in adr_ids:
+        by_mention, tied = set(), set()
+        for src, dst in mentions:
+            if i in (src, dst):
+                other = dst if src == i else src
+                if nodes[other][0] == "adr" and other != i:
+                    by_mention.add(number[other])
+                if nodes[other][0] == "ticket":
+                    tied.add(nodes[other][1])
+        tied |= {t["id"] for t in tickets if governs(i, t)}
+        items.append({"number": num, "path": nodes[i][1], "title": nodes[i][2], "status": docs[i][0],
+                      "text": docs[i][1], "files": sorted(cited.get(i, ())), "tickets": sorted(tied),
+                      "adrs": sorted(by_mention)})
+    got = book.get("adrs")
+    if not isinstance(got, dict) or set(got) != {"map_sha", "items"}:
+        die(f"{logbook}: adrs is {json.dumps(got)[:120]}; the map at {mapfile} was readable, want {{map_sha, items}}")
+    if got["map_sha"] != sha:
+        die(f"{logbook}: adrs.map_sha is {got['map_sha']}, the map says {sha}")
+    if not isinstance(got["items"], list) or [i.get("number") if isinstance(i, dict) else i for i in got["items"]] != [i["number"] for i in items]:
+        die(f"{logbook}: adrs.items are numbered {[i.get('number') if isinstance(i, dict) else i for i in got['items']] if isinstance(got['items'], list) else got['items']}, "
+            f"the map holds {[i['number'] for i in items]}, in that order")
+    for have, want in zip(got["items"], items):
+        if set(have) != set(want):
+            die(f"{logbook}: adrs item {want['number']} has the keys {sorted(have)}, want {sorted(want)}")
+        for key in want:
+            if have[key] != want[key]:
+                die(f"{logbook}: adrs item {want['number']} {key} is {json.dumps(have[key], ensure_ascii=False)[:100]}, "
+                    f"the map's rules give {json.dumps(want[key], ensure_ascii=False)[:100]}")
+    for t in tickets:
+        want = [num for num, i in adr_ids if governs(i, t)]
+        if t.get("adrs") != want:
+            die(f"{logbook}: ticket {t['id']} adrs is {json.dumps(t.get('adrs'))}, the perimeter {json.dumps(t.get('perimeter'))} gives {want}")
+
+
+def cmd_unread(logbook, needle=""):
+    """No usable map: `adrs` is {ok: false, error} and no ticket has an ADR."""
+    book = load(logbook)
+    got = book.get("adrs")
+    if not (isinstance(got, dict) and set(got) == {"ok", "error"} and got["ok"] is False
+            and isinstance(got["error"], str) and got["error"]):
+        die(f"{logbook}: adrs is {json.dumps(got)[:120]}, want {{ok: false, error: <why>}}")
+    if needle not in got["error"]:
+        die(f"{logbook}: adrs.error is {got['error']!r}, want it to mention {needle!r}")
+    for t in book.get("tickets") if isinstance(book.get("tickets"), list) else []:
+        if t.get("adrs") != []:
+            die(f"{logbook}: ticket {t['id']} has adrs {json.dumps(t.get('adrs'))}, want [] with no map")
+
+
+def cmd_mapset(mapfile, key, value):
+    """Change a meta value of a copy of the map, to make a map the readers must refuse."""
+    db = sqlite3.connect(mapfile)
+    db.execute("UPDATE meta SET value = ? WHERE key = ?", (value, key))
+    db.commit()
+    db.close()
 
 
 NUM = re.compile(r"^[0-9]+(\.[0-9]+)?$")
@@ -282,11 +421,23 @@ cp -R "$repo/core/logbook" "$st/core/logbook" 2>/dev/null || :
 jq '.tickets[0].outcome.verdict = "maybe"' "$golden" > "$st/bad-enum.json"
 jq 'del(.launch)' "$golden" > "$st/bad-missing.json"
 jq '.schema = "lights-out/logbook/9.0"' "$golden" > "$st/bad-major.json"
+# 1.2 (docs/adr/0059 §3): the document's own minor has its schema file, and
+# `adrs` is typed.
+jq '.schema = "lights-out/logbook/1.9"' "$golden" > "$st/bad-minor.json"
+jq '.adrs.items[0].number = 59' "$golden" > "$st/bad-adr-number.json"
+jq '.adrs.items[0].files = "app/backend/router.py"' "$golden" > "$st/bad-adr-files.json"
+jq '.adrs.map_sha = 5' "$golden" > "$st/bad-adr-sha.json"
+jq '.tickets[0].adrs = "0001"' "$golden" > "$st/bad-ticket-adrs.json"
 (
   cd "$st"
   must_reject "schema validation (an enum value)" valid bad-enum.json
   must_reject "schema validation (a missing top-level key)" valid bad-missing.json
   must_reject "schema validation (a major with no schema)" valid bad-major.json
+  must_reject "schema validation (a minor with no schema file)" valid bad-minor.json
+  must_reject "schema validation (an ADR number that is not a string)" valid bad-adr-number.json
+  must_reject "schema validation (an ADR's files that is not a list)" valid bad-adr-files.json
+  must_reject "schema validation (a map_sha that is not a string)" valid bad-adr-sha.json
+  must_reject "schema validation (a ticket's adrs that is not a list)" valid bad-ticket-adrs.json
   must_accept "schema validation" valid "$golden"
 ) || exit 1
 
@@ -315,7 +466,8 @@ must_reject "the console's names (.crew/)" names "$st/names-bad"
 printf 'STATE_STORE\n' > "$st/names-bad/a.py"
 must_reject "the console's names (STATE_STORE)" names "$st/names-bad"
 
-# serve.py: two scripts and `make answer`, two POST routes.
+# serve.py: three scripts, `core/spec.py draft` and two recipes, four POST
+# routes (docs/adr/0059 §4).
 cat > "$st/serve-good.py" <<'PY'
 """Docstring naming core/anything-else.sh is not an argv."""
 import subprocess
@@ -326,30 +478,49 @@ class H:
         if self.path in ("/", "/v1/logbook.json", "/v1/console.json"):
             return
     def do_POST(self):
-        if self.path not in ("/v1/go-for-launch", "/v1/answer"):
+        if self.path not in ("/v1/go-for-launch", "/v1/answer", "/v1/spec-check", "/v1/request"):
             return
         subprocess.run(["sh", "core/promote.sh"], check=False)
         subprocess.run(["sh", "core/logbook.sh"], check=False)
+        subprocess.run(["sh", "gates/spec.sh", "draft.md"], check=False)
+        subprocess.run(["python3", "core/spec.py", "draft", "fields.json", "tickets"], check=False)
         subprocess.run(["make", "--no-print-directory", "answer", "TICKET=1"], check=False)
+        subprocess.run(["make", "--no-print-directory", "request", "TICKET=1"], check=False)
 PY
 { cat "$st/serve-good.py"; printf 'subprocess.run(["sh", "adapters/x/get.sh"])\n'; } > "$st/serve-adapter.py"
-sed 's|"/v1/answer"):|"/v1/answer", "/other"):|' "$st/serve-good.py" > "$st/serve-two-posts.py"
+sed 's|"/v1/request"):|"/v1/request", "/other"):|' "$st/serve-good.py" > "$st/serve-two-posts.py"
 sed 's|"answer", "TICKET=1"|"release", "TICKET=1"|' "$st/serve-good.py" > "$st/serve-make.py"
+sed 's|"request", "TICKET=1"|"answer", "TICKET=1"|' "$st/serve-good.py" > "$st/serve-no-request-recipe.py"
+sed 's|"request", "TICKET=1"|"request", "deploy", "TICKET=1"|' "$st/serve-good.py" > "$st/serve-two-targets.py"
 sed 's|check=False)|check=False, shell=True)|' "$st/serve-good.py" > "$st/serve-shell.py"
 sed 's|"/v1/console.json"|"/v1/console.json", "/v1/extra"|' "$st/serve-good.py" > "$st/serve-route.py"
+sed 's|, "/v1/request"):|):|; s|, "/v1/request")|)|' "$st/serve-good.py" > "$st/serve-no-request-route.py"
+sed 's|"/v1/spec-check", ||' "$st/serve-good.py" > "$st/serve-no-spec-route.py"
 sed 's|\["sh", "core/promote.sh"\]|["git", "core/promote.sh"]|' "$st/serve-good.py" > "$st/serve-git.py"
+sed 's|"gates/spec.sh"|"gates/other.sh"|' "$st/serve-good.py" > "$st/serve-gate.py"
+sed '/gates\/spec.sh/d' "$st/serve-good.py" > "$st/serve-no-gate.py"
+sed 's|"core/spec.py", "draft"|"core/other.py", "draft"|' "$st/serve-good.py" > "$st/serve-python.py"
+sed 's|"core/spec.py", "draft"|"-c", "print(1)"|' "$st/serve-good.py" > "$st/serve-python-c.py"
+sed 's|"core/spec.py", "draft"|"core/spec.py", "check"|' "$st/serve-good.py" > "$st/serve-spec-command.py"
+sed '/core\/spec.py/d' "$st/serve-good.py" > "$st/serve-no-draft.py"
+sed 's|\["sh", "core/logbook.sh"\]|["sh", script]|' "$st/serve-good.py" > "$st/serve-computed.py"
 { cat "$st/serve-good.py"; printf '\n\nclass X:\n    def do_DELETE(self):\n        pass\n'; } > "$st/serve-delete.py"
 must_accept "serve.py" serve "$st/serve-good.py"
-for v in adapter two-posts shell route git delete make; do
+for v in adapter two-posts shell route git delete make no-request-recipe two-targets no-request-route no-spec-route gate no-gate python python-c spec-command no-draft computed; do
   must_reject "serve.py ($v)" serve "$st/serve-$v.py"
 done
 
-# index.html: GET fetch on /v1/, two POST routes.
+# index.html: GET fetch on /v1/, a POST fetch to each of the four routes, and
+# no drag and drop (docs/adr/0059 §1).
 cat > "$st/index-good.html" <<'HTML'
+<!-- no drag-and-drop here: a card is not draggable, and a dropdown is a select -->
 <script>
 fetch('/v1/logbook.json').then(r => r.json());
 fetch("/v1/go-for-launch", {method: 'POST', body: '{}'});
 fetch("/v1/answer", {method: 'POST', body: '{}'});
+fetch("/v1/spec-check", {method: 'POST', body: '{}'});
+fetch("/v1/request", {method: 'POST', body: '{}'});
+const label = "drop";
 </script>
 HTML
 sed "s|fetch('/v1/logbook.json')|fetch('https://example.invalid/l.json')|" "$st/index-good.html" > "$st/index-external.html"
@@ -358,11 +529,159 @@ sed "s|fetch('/v1/logbook.json')|fetch('/v1/logbook.json', {method: 'PUT'})|" "$
 sed "s|fetch('/v1/logbook.json')|fetch('/v1/console.json', {method: 'POST'})|" "$st/index-good.html" > "$st/index-post-elsewhere.html"
 sed "s|\"/v1/go-for-launch\", {method: 'POST', body|\"/v1/go-for-launch\", {body|" "$st/index-good.html" > "$st/index-get-go.html"
 sed "s|\"/v1/answer\", {method: 'POST', body|\"/v1/answer\", {body|" "$st/index-good.html" > "$st/index-get-answer.html"
+sed "s|\"/v1/spec-check\", {method: 'POST', body|\"/v1/spec-check\", {body|" "$st/index-good.html" > "$st/index-get-spec.html"
+sed "s|\"/v1/request\", {method: 'POST', body|\"/v1/request\", {body|" "$st/index-good.html" > "$st/index-get-request.html"
+sed '/"\/v1\/request"/d' "$st/index-good.html" > "$st/index-no-request.html"
+sed '/"\/v1\/spec-check"/d' "$st/index-good.html" > "$st/index-no-spec.html"
 sed 's|<script>|<script>var x = new XMLHttpRequest();|' "$st/index-good.html" > "$st/index-xhr.html"
+sed 's|<script>|<li draggable="true">card</li><script>|' "$st/index-good.html" > "$st/index-draggable-attr.html"
+sed 's|<script>|<script>h("li", {draggable: true});|' "$st/index-good.html" > "$st/index-draggable-key.html"
+sed 's|<script>|<script>card.draggable = true;|' "$st/index-good.html" > "$st/index-draggable-prop.html"
+sed 's|<script>|<script>card.setAttribute("draggable", "true");|' "$st/index-good.html" > "$st/index-draggable-set.html"
+sed 's|<script>|<div ondrop="move()">x</div><script>|' "$st/index-good.html" > "$st/index-ondrop-attr.html"
+sed 's|<script>|<script>h("div", {ondragover: stop});|' "$st/index-good.html" > "$st/index-ondragover-key.html"
+sed 's|<script>|<script>h("div", {"ondragstart": begin});|' "$st/index-good.html" > "$st/index-ondragstart-string.html"
+sed 's|<script>|<script>card.ondragend = end;|' "$st/index-good.html" > "$st/index-ondragend-prop.html"
+sed "s|<script>|<script>col.addEventListener('drop', move);|" "$st/index-good.html" > "$st/index-listener-drop.html"
+sed 's|<script>|<script>col.addEventListener("dragover", stop);|' "$st/index-good.html" > "$st/index-listener-dragover.html"
+sed 's|<script>|<script>col.addEventListener("dragenter", stop);|' "$st/index-good.html" > "$st/index-listener-dragenter.html"
+sed 's|<script>|<script>col.addEventListener("dragleave", stop);|' "$st/index-good.html" > "$st/index-listener-dragleave.html"
+sed 's|<script>|<script>card.addEventListener("dragstart", begin);|' "$st/index-good.html" > "$st/index-listener-dragstart.html"
 must_accept "index.html" index "$st/index-good.html"
-for v in external other put post-elsewhere get-go get-answer xhr; do
+for v in external other put post-elsewhere get-go get-answer get-spec get-request no-request no-spec xhr \
+  draggable-attr draggable-key draggable-prop draggable-set ondrop-attr ondragover-key ondragstart-string ondragend-prop \
+  listener-drop listener-dragover listener-dragenter listener-dragleave listener-dragstart; do
   must_reject "index.html ($v)" index "$st/index-$v.html"
 done
+
+# The checkers the stub root's logbook is judged by (docs/adr/0059 §3): a map
+# by hand, a logbook by hand, and each rule broken once.
+mkdir -p "$st/adrmap"
+python3 - "$st/adrmap" <<'PY'
+import json, sqlite3, sys
+d = sys.argv[1]
+db = sqlite3.connect(d + "/map.sqlite")
+db.executescript("""
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE node (id INTEGER PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', UNIQUE (kind, name));
+CREATE TABLE edge (src INTEGER NOT NULL, dst INTEGER NOT NULL, kind TEXT NOT NULL, PRIMARY KEY (src, dst, kind));
+CREATE TABLE cite (src INTEGER NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL, line INTEGER NOT NULL, ok INTEGER NOT NULL);
+CREATE TABLE doc (node INTEGER PRIMARY KEY, status TEXT NOT NULL, text TEXT NOT NULL);
+INSERT INTO meta VALUES ('schema', '2'), ('sha', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), ('tickets', 'tickets'), ('exclude', '');
+INSERT INTO node VALUES (1, 'adr', 'docs/adr/0001-first.md', 'First'), (2, 'adr', 'docs/adr/0002-second.md', 'Second'),
+  (3, 'ticket', '0007', 'Seven'), (4, 'ticket', '0008', 'Eight');
+INSERT INTO edge VALUES (1, 2, 'mentions'), (2, 3, 'mentions'), (4, 1, 'mentions'), (1, 3, 'perimeter');
+INSERT INTO cite VALUES (1, 'path', 'app/a.py', 3, 1), (1, 'path', 'app/gone.py', 4, 0), (1, 'key', 'APP_PORT', 5, 1),
+  (2, 'path', 'app/sub/b.py', 3, 1), (2, 'path', 'README.md', 4, 1);
+INSERT INTO doc VALUES (1, 'accepted', 'text one'), (2, '', 'text two');
+""")
+db.commit()
+tickets = [
+    {"id": "0007", "perimeter": ["app/*"], "adrs": ["0001", "0002"]},
+    {"id": "0008", "perimeter": ["README.md", "docs/x.md"], "adrs": ["0002"]},
+    {"id": "0009", "perimeter": {"ok": False, "error": "no perimeter"}, "adrs": []},
+    {"id": "0010", "perimeter": ["other/*"], "adrs": []},
+]
+book = {"tickets": tickets, "adrs": {"map_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "items": [
+    {"number": "0001", "path": "docs/adr/0001-first.md", "title": "First", "status": "accepted", "text": "text one",
+     "files": ["app/a.py"], "tickets": ["0007", "0008"], "adrs": ["0002"]},
+    {"number": "0002", "path": "docs/adr/0002-second.md", "title": "Second", "status": "", "text": "text two",
+     "files": ["README.md", "app/sub/b.py"], "tickets": ["0007", "0008"], "adrs": ["0001"]}]}}
+json.dump(book, open(d + "/good.json", "w"))
+none = {"tickets": [dict(t, adrs=[]) for t in tickets],
+        "adrs": {"ok": False, "error": "no map at .crew/map.sqlite; build it with ./go map"}}
+json.dump(none, open(d + "/none.json", "w"))
+PY
+am="$st/adrmap"
+# bad VARIANT JQ: the hand-made logbook with one rule broken.
+bad() { jq "$2" "$am/good.json" > "$am/bad-$1.json"; }
+bad status '.adrs.items[0].status = "banana"'
+bad title '.adrs.items[0].title = "Second"'
+bad text '.adrs.items[0].text = "text on"'
+bad path '.adrs.items[0].path = "docs/adr/0001-other.md"'
+bad ghost '.adrs.items[0].files += ["app/gone.py"] | .adrs.items[0].files |= sort'
+bad key '.adrs.items[0].files += ["APP_PORT"] | .adrs.items[0].files |= sort'
+bad no-file '.adrs.items[1].files -= ["README.md"]'
+bad unsorted '.adrs.items[1].files |= reverse'
+bad self '.adrs.items[0].adrs = ["0001", "0002"]'
+bad no-mention '.adrs.items[1].adrs = []'
+bad no-governed '.adrs.items[0].tickets -= ["0007"]'
+bad no-mentioned '.adrs.items[0].tickets -= ["0008"]'
+bad stranger '.adrs.items[0].tickets += ["0010"]'
+bad sha '.adrs.map_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"'
+bad order '.adrs.items |= reverse'
+bad dropped '.adrs.items |= .[0:1]'
+bad extra-key '.adrs.items[0].size = 1'
+bad extra-top '.adrs.error = "none"'
+bad ticket '(.tickets[] | select(.id == "0007") | .adrs) = ["0001"]'
+bad ticket-star '(.tickets[] | select(.id == "0007") | .adrs) = ["0002"]'
+bad ticket-unread '(.tickets[] | select(.id == "0009") | .adrs) = ["0001"]'
+bad ticket-glob '(.tickets[] | select(.id == "0010") | .adrs) = ["0002"]'
+bad ticket-missing 'del(.tickets[0].adrs)'
+bad unread '.adrs = {ok: false, error: "x"}'
+must_accept "the ADRs of a logbook" adrs "$am/good.json" "$am/map.sqlite"
+for v in status title text path ghost key no-file unsorted self no-mention no-governed no-mentioned stranger sha order dropped \
+  extra-key extra-top ticket ticket-star ticket-unread ticket-glob ticket-missing unread; do
+  must_reject "the ADRs of a logbook ($v)" adrs "$am/bad-$v.json" "$am/map.sqlite"
+done
+# With no map: {ok: false, error}, and no ticket has an ADR.
+jq '.adrs.error = ""' "$am/none.json" > "$am/bad-none-silent.json"
+jq '.tickets[0].adrs = ["0001"]' "$am/none.json" > "$am/bad-none-ticket.json"
+jq '.adrs.ok = true' "$am/none.json" > "$am/bad-none-ok.json"
+jq 'del(.adrs.error)' "$am/none.json" > "$am/bad-none-noerror.json"
+must_accept "an unread map" unread "$am/none.json" "./go map"
+must_reject "an unread map (the ADRs of a map that was read)" unread "$am/good.json"
+for v in none-silent none-ticket none-ok none-noerror; do
+  must_reject "an unread map ($v)" unread "$am/bad-$v.json"
+done
+must_reject "an unread map (an error that does not say ./go map)" unread "$am/none.json" "build the moon"
+# The map made unreadable on purpose: the schema is changed on a copy.
+cp "$am/map.sqlite" "$am/map-1.sqlite"
+chk mapset "$am/map-1.sqlite" schema 1 >"$tmp/chk.out" || nogo "could not make a schema 1 copy of the hand-made map" "$(cat "$tmp/chk.out")"
+[ "$(python3 -c 'import sqlite3, sys; print(sqlite3.connect(sys.argv[1]).execute("SELECT value FROM meta WHERE key = ?", ("schema",)).fetchone()[0])' "$am/map-1.sqlite")" = 1 ] \
+  || nogo "the schema 1 copy of the hand-made map still says another schema"
+
+# A directory listing and a tree digest: the tools the runtime part judges
+# "the root is unchanged" and "the next id" with, each shown to see a change.
+tree_digest() { (cd "$1" && find . -path ./.git -prune -o -type f -exec sha256sum {} + | sort -k2 | sha256sum | cut -d' ' -f1); }
+next_id() { find "$1" -maxdepth 1 -name '[0-9][0-9][0-9][0-9].md' | awk -F/ '{ n = substr($NF, 1, 4) + 0; if (n > m) m = n } END { printf "%04d", m + 1 }'; }
+mkdir -p "$st/digest/sub" "$st/ids"
+printf 'a\n' > "$st/digest/a.txt"
+d1=$(tree_digest "$st/digest")
+printf 'b\n' > "$st/digest/sub/b.txt"
+d2=$(tree_digest "$st/digest")
+[ "$d1" != "$d2" ] || nogo "the tree digest does not see a new file"
+printf 'c\n' >> "$st/digest/a.txt"
+[ "$(tree_digest "$st/digest")" != "$d2" ] || nogo "the tree digest does not see a changed file"
+[ "$(tree_digest "$st/digest")" = "$(tree_digest "$st/digest")" ] || nogo "the tree digest is not the same twice over the same tree"
+[ "$(next_id "$st/ids")" = 0001 ] || nogo "the next id of an empty tickets directory is not 0001"
+for f in 0001.md 0002.md 0007.md README.md notes.txt 0099.txt 12.md 00100.md; do : > "$st/ids/$f"; done
+[ "$(next_id "$st/ids")" = 0008 ] || nogo "the next id after 0007 is $(next_id "$st/ids"), want 0008"
+
+# gate_line ROOT FILE: the one line gates/spec.sh prints on FILE, run in ROOT.
+# It must tell a good spec from a bad one, or every comparison below is empty.
+gate_line() { (cd "$1" && sh gates/spec.sh "$2" 2>/dev/null) || :; }
+cat > "$st/spec-good.md" <<'MD'
+# 0099 — A request
+
+## Acceptance criteria
+
+Given a meetup at capacity
+When a new member signs up
+Then they join the waiting list and see their position
+
+## Perimeter
+
+- `app/backend/waitlist/*`
+MD
+sed 's|^Then .*|Then it works|' "$st/spec-good.md" > "$st/spec-bad.md"
+[ "$(gate_line "$repo" "$st/spec-good.md")" = "GO: spec" ] \
+  || nogo "gates/spec.sh does not say GO: spec on a good spec: '$(gate_line "$repo" "$st/spec-good.md")'"
+case "$(gate_line "$repo" "$st/spec-bad.md")" in
+  "NO-GO: spec — "?*) : ;;
+  *) nogo "gates/spec.sh does not say NO-GO on a vague spec: '$(gate_line "$repo" "$st/spec-bad.md")'" ;;
+esac
+
 
 # provenance.
 cat > "$st/prov-good.env" <<'ENV'
@@ -387,20 +706,75 @@ printf '# only a comment\nA=1\n' > "$st/prov-other-key.env"
 must_accept "provenance in baseline mode ignores other keys" prov baseline "$st/prov-other-key.env"
 
 # --- the stub root ----------------------------------------------------------
-# mkroot DIR: core/, ci/ symlinked from this repository, a copy of console/,
-# stub policy files, a stub contract, tickets, tower documents (one file per
-# <collection>.<id>), a release log, a record, a post mortem, a brief, a stub
-# StateStore and a stub Delivery, and a git repository whose one commit is
-# the same in every run.
+# stub_tree DIR: the tracked files of the stub root besides its tickets
+# (docs/adr/0059 §3): three ADRs, the files they cite, and a README. The ADRs
+# are written here and not kept as fixtures, so that this repository's own
+# map and ADR search do not hold them. What the rules must find in them:
+#   0001 accepted; cites two files that exist and one that does not; names
+#        ADR 0002, ADR 0999 (held nowhere) and ticket 0007
+#   0002 two Status lines (the first is the status, stripped); cites two
+#        files; names Ticket 0002, Tickets 0004 (and a bare 0008, which no
+#        pattern reads) and ADR 0001
+#   0003 no Status line; cites the README by a link; names itself, ADR 0001
+#        and ticket 0006, which names it back
+stub_tree() {
+  mkdir -p "$1/docs/adr" "$1/app/backend/meetups" "$1/app/backend/waitlist" "$1/app/backend/migrations"
+  printf '# Stub\n' > "$1/README.md"
+  printf '# Venues\n' > "$1/docs/venues.md"
+  printf 'def venue():\n    return 404\n' > "$1/app/backend/meetups/views.py"
+  printf 'def queue():\n    return []\n' > "$1/app/backend/waitlist/queue.py"
+  printf 'def route():\n    return None\n' > "$1/app/backend/router.py"
+  printf 'x = 1\n' > "$1/app/backend/migrations/0001_init.py"
+  cat > "$1/docs/adr/0001-venues-are-checked.md" <<'ADR'
+# ADR 0001 — Venues are checked at the edge
+
+- Status: accepted
+- Date: 2026-11-01
+
+An unknown venue answers 404, not 500. The check is in
+`app/backend/meetups/views.py` and the page `docs/venues.md` says so;
+`app/backend/ghost.py` was removed. It sits beside ADR 0002, ADR 0999 is
+reserved and held nowhere, and ticket 0007 asked for the cache.
+ADR
+  # Written with printf: its first Status line ends in two spaces.
+  # shellcheck disable=SC2016 # the backticks are the ADR's own
+  printf '%s\n' '# ADR 0002 — The waitlist is first in, first out' '' \
+    '- Status:   proposed — supersedes nothing  ' '- Status: accepted' '' \
+    'The queue is `app/backend/waitlist/queue.py`, routed by' \
+    '`app/backend/router.py`. Ticket 0002 builds it and tickets 0004 and 0008' \
+    'touch the router. It follows ADR 0001.' > "$1/docs/adr/0002-waitlist-order.md"
+  cat > "$1/docs/adr/0003-keep-the-readme-short.md" <<'ADR'
+# ADR 0003 — Keep the README short
+
+The [README](../../README.md) names the demo command and nothing more.
+This is ADR 0003 and it records no status. It builds on ADR 0001 and was
+asked for by ticket 0006, which never ran.
+ADR
+}
+
+# The hash of that one commit, which the golden's source.commit and adrs.map_sha
+# name; it changes with any byte of stub_tree, of the tickets or of the commit.
+stub_commit=cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4
+
+# mkroot DIR: core/, ci/, gates/ symlinked from this repository, a copy of
+# console/, stub policy files, a stub contract, tickets, tower documents (one
+# file per <collection>.<id>), a release log, a record, a post mortem, a brief,
+# a stub StateStore and a stub Delivery, a git repository whose one commit is
+# the same in every run and holds the tickets and stub_tree's files, and the
+# project map core/map.py builds from that commit, in .crew/map.sqlite.
 mkroot() {
   r=$1
   mkdir -p "$r/adapters/stub-state" "$r/adapters/stub-delivery" "$r/world" "$r/roles/release"
   printf 'THINKING=low\nTIMEOUT_S=900\nHARNESS=stub-harness\n' > "$r/roles/release/role.env"
   ln -s "$repo/core" "$r/core"
   ln -s "$repo/ci" "$r/ci"
+  ln -s "$repo/gates" "$r/gates"
   [ ! -d "$repo/console" ] || cp -R "$repo/console" "$r/console"
   cp -R "$stub/policy" "$stub/contract" "$stub/tickets" "$stub/state" "$stub/postmortem" "$stub/promote" "$r/"
   cp "$stub/releases.jsonl" "$stub/release.json" "$r/"
+  stub_tree "$r"
+  # Ticket 0006 never ran, so it is no card; it names an ADR that names it.
+  printf '\nGoverned by ADR 0003; the router is ticket 0008.\n' >> "$r/tickets/0006.md"
   cat > "$r/adapters/stub-state/get.sh" <<'STUB'
 #!/bin/sh
 set -eu
@@ -430,18 +804,28 @@ STUB
   # `make answer`, as the console runs it: records what it was given.
   # shellcheck disable=SC2016 # the stub Makefile expands its own variables
   printf 'answer:\n\t@printf '"'"'answer %%s %%s %%s %%s\\n'"'"' "$(TICKET)" "$$ANSWER" "$$ANSWER_BY" "$$ANSWER_VIA" >> effects.log\n\t@echo "GO: answer"\n' > "$r/Makefile"
+  # `make request`, as the console runs it after writing the ticket (docs/adr/0059 §4).
+  # shellcheck disable=SC2016 # the stub Makefile expands its own variables
+  printf 'request:\n\t@printf '"'"'request %%s %%s %%s\\n'"'"' "$(TICKET)" "$$REQUEST_BY" "$$REQUEST_VIA" >> effects.log\n\t@echo "GO: request"\n' >> "$r/Makefile"
   chmod +x "$r"/adapters/stub-state/get.sh "$r"/adapters/stub-delivery/*.sh
   printf '{"stable":"0.3.0-b","canary":"0.5.0-d","weight":25}\n' > "$r/world/status.json"
   : > "$r/effects.log"
-  # An empty commit with fixed names and dates: the same hash in every run,
-  # whatever the root holds (the golden names it).
+  # One commit with fixed names and dates and the same files: the same hash in
+  # every run (the golden names it). Only the tickets and stub_tree's files
+  # are added; the symlinks and the rest of the root are not in it.
   git -C "$r" init -q . >/dev/null 2>&1
+  git -C "$r" add README.md docs app tickets >/dev/null 2>&1
   GIT_AUTHOR_NAME=stub GIT_AUTHOR_EMAIL=stub@example.invalid GIT_COMMITTER_NAME=stub \
     GIT_COMMITTER_EMAIL=stub@example.invalid GIT_AUTHOR_DATE="1793491200 +0000" \
     GIT_COMMITTER_DATE="1793491200 +0000" \
-    git -C "$r" -c commit.gpgsign=false commit -q --allow-empty -m stub >/dev/null 2>&1
-  [ "$(git -C "$r" rev-parse HEAD 2>/dev/null)" = bc8b42b2ce93f7048f60e5a1aade7f58b05e6d3b ] \
-    || nogo "the stub root's commit is not the one the golden names; this git writes another commit object"
+    git -C "$r" -c commit.gpgsign=false commit -q -m stub >/dev/null 2>&1
+  [ "$(git -C "$r" rev-parse HEAD 2>/dev/null)" = "$stub_commit" ] \
+    || nogo "the stub root's commit is not the one the golden names; this git writes another commit object, or the stub files changed" \
+      "the stub root's commit is $(git -C "$r" rev-parse HEAD 2>&1)"
+  # The map of that commit (docs/adr/0054, schema 2), where the reader looks by default.
+  env -u GIT_DIR -u GIT_WORK_TREE python3 "$repo/core/map.py" build --repo "$r" --rev HEAD --tickets tickets \
+    --targets "$tmp/targets.txt" --out "$r/.crew/map.sqlite" >"$r/map.out" 2>"$r/map.err" \
+    || nogo "core/map.py could not build the map of the stub root" "$(cat "$r/map.err")"
 }
 
 # run_reader [VAR=val...]: core/logbook.sh in $root, the stub sources by
@@ -453,9 +837,11 @@ run_reader() {
     "$@" sh core/logbook.sh 2>reader.err </dev/null) && rc=0 || rc=$?
 }
 
+[ -f "$repo/core/logbook.sh" ] || nogo "core/logbook.sh not found"
+[ -f "$repo/core/map.py" ] || nogo "core/map.py not found"
+printf 'demo\n' > "$tmp/targets.txt"  # the ./go targets the map's command citations are judged by
 root="$tmp/root"
 mkroot "$root"
-[ -f "$repo/core/logbook.sh" ] || nogo "core/logbook.sh not found"
 
 # --- a. the reader, twice, against the golden --------------------------------
 run_reader LOGBOOK_FILE=out1.json
@@ -467,7 +853,34 @@ run_reader LOGBOOK_FILE=out2.json
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.1.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.2.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+
+# The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
+# the day it was blessed; these are the rules, worked out again from the
+# stub map's rows, and then the stub's facts written down by hand.
+chk adrs "$root/out1.json" "$root/.crew/map.sqlite" >"$tmp/chk.out" \
+  || nogo "the logbook's adrs or a ticket's adrs break the rules over the stub map" "$(cat "$tmp/chk.out")"
+jq -e --arg sha "$stub_commit" '
+  .adrs.map_sha == $sha and .source.commit == $sha
+  and (.adrs.items | map(.number) == ["0001", "0002", "0003"])
+  and (.adrs.items | map({(.number): .status}) | add) == {"0001": "accepted", "0002": "proposed — supersedes nothing", "0003": ""}
+  and (.adrs.items | map({(.number): .path}) | add) == {"0001": "docs/adr/0001-venues-are-checked.md",
+       "0002": "docs/adr/0002-waitlist-order.md", "0003": "docs/adr/0003-keep-the-readme-short.md"}
+  and (.adrs.items | map({(.number): .title}) | add) == {"0001": "ADR 0001 — Venues are checked at the edge",
+       "0002": "ADR 0002 — The waitlist is first in, first out", "0003": "ADR 0003 — Keep the README short"}
+  and (.adrs.items | map({(.number): .files}) | add) == {"0001": ["app/backend/meetups/views.py", "docs/venues.md"],
+       "0002": ["app/backend/router.py", "app/backend/waitlist/queue.py"], "0003": ["README.md"]}
+  and (.adrs.items | map({(.number): .adrs}) | add) == {"0001": ["0002", "0003"], "0002": ["0001"], "0003": ["0001"]}
+  and (.adrs.items | map({(.number): .tickets}) | add) == {"0001": ["0001", "0007"], "0002": ["0002", "0004", "0008"], "0003": ["0003", "0006"]}
+  and (.tickets | map({(.id): .adrs}) | add) == {"0001": ["0001"], "0002": ["0002"], "0003": ["0003"], "0004": [],
+       "0005": [], "0007": [], "0008": ["0002"], "0009": []}' "$root/out1.json" >/dev/null \
+  || nogo "the stub map's ADRs are not what the stub files give" \
+    "$(jq -c '{adrs: (.adrs | if has("items") then {map_sha, items: [.items[] | del(.text)]} else . end), tickets: [.tickets[] | {id, adrs}]}' "$root/out1.json")"
+for f in "$root"/docs/adr/*.md; do
+  n=$(basename "$f" | cut -c1-4)
+  jq -j --arg n "$n" '.adrs.items[] | select(.number == $n) | .text' "$root/out1.json" | cmp -s - "$f" \
+    || nogo "ADR $n's text in the logbook is not the file's, byte for byte"
+done
 
 # The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
 # state, and every ticket is on exactly one card. Then the tower moves a
@@ -602,6 +1015,83 @@ var_case "a post mortem that is not JSON" '.postmortems | type == "object" and .
 mkdir -p "$root/pm-none"
 var_case "no post mortem" '.postmortems == []' POSTMORTEM_DIR=pm-none
 
+# The map is one more source of the reader's (docs/adr/0059 §3): its absence
+# or refusal is {ok: false, error} where `adrs` would be, and no ticket then
+# has an ADR; a map at another commit than HEAD is still read; the reader
+# opens it read-only; a ticket's glob crosses `/`.
+# commit_all DIR: a git repository of whatever DIR holds, one commit.
+commit_all() {
+  git -C "$1" init -q . >/dev/null 2>&1
+  git -C "$1" add -A >/dev/null 2>&1
+  GIT_AUTHOR_NAME=stub GIT_AUTHOR_EMAIL=stub@example.invalid GIT_COMMITTER_NAME=stub \
+    GIT_COMMITTER_EMAIL=stub@example.invalid GIT_AUTHOR_DATE="1793491200 +0000" \
+    GIT_COMMITTER_DATE="1793491200 +0000" \
+    git -C "$1" -c commit.gpgsign=false commit -q -m stub >/dev/null 2>&1
+}
+# map_of DIR FILE: the map core/map.py builds from DIR's one commit.
+map_of() {
+  env -u GIT_DIR -u GIT_WORK_TREE python3 "$repo/core/map.py" build --repo "$1" --rev HEAD --tickets tickets \
+    --targets "$tmp/targets.txt" --out "$2" >/dev/null 2>"$tmp/map.err" \
+    || nogo "core/map.py could not build the map of $1" "$(cat "$tmp/map.err")"
+}
+var_case "no map" '.adrs | type == "object"' MAP_FILE=absent.sqlite
+chk unread "$root/var.json" "./go map" >"$tmp/chk.out" || nogo "with no map, adrs is not {ok: false, error} naming ./go map" "$(cat "$tmp/chk.out")"
+cp "$root/.crew/map.sqlite" "$root/map-1.sqlite"
+chk mapset "$root/map-1.sqlite" schema 1 >"$tmp/chk.out" || nogo "could not make a schema 1 map" "$(cat "$tmp/chk.out")"
+var_case "a map of schema 1" '.adrs | type == "object"' MAP_FILE=map-1.sqlite
+chk unread "$root/var.json" >"$tmp/chk.out" || nogo "a map of schema 1 was read: adrs is not {ok: false, error}" "$(cat "$tmp/chk.out")"
+printf 'not a database\n' > "$root/map-text.sqlite"
+var_case "a map that is not a database" '.adrs | type == "object"' MAP_FILE=map-text.sqlite
+chk unread "$root/var.json" >"$tmp/chk.out" || nogo "a file that is not a database was read: adrs is not {ok: false, error}" "$(cat "$tmp/chk.out")"
+: > "$root/map-empty.sqlite"
+var_case "an empty map file" '.adrs | type == "object"' MAP_FILE=map-empty.sqlite
+chk unread "$root/var.json" >"$tmp/chk.out" || nogo "an empty file was read: adrs is not {ok: false, error}" "$(cat "$tmp/chk.out")"
+
+other="$tmp/other"
+mkdir -p "$other/docs/adr" "$other/app/backend"
+# shellcheck disable=SC2016 # the backticks are the ADR's own
+printf '%s\n' '# ADR 0042 — Another world' '' '- Status: accepted' '' 'It cites `app/backend/router.py`.' > "$other/docs/adr/0042-another-world.md"
+printf 'x = 1\n' > "$other/app/backend/router.py"
+commit_all "$other"
+other_sha=$(git -C "$other" rev-parse HEAD)
+map_of "$other" "$root/other.sqlite"
+var_case "a map at another commit than HEAD" ".adrs.map_sha == \"$other_sha\" and .adrs.map_sha != .source.commit
+  and (.adrs.items | map(.number) == [\"0042\"]) and .adrs.items[0].files == [\"app/backend/router.py\"]
+  and .adrs.items[0].tickets == [\"0008\"] and .adrs.items[0].status == \"accepted\"
+  and ([.tickets[] | {(.id): .adrs}] | add) == {\"0001\": [], \"0002\": [], \"0003\": [], \"0004\": [], \"0005\": [], \"0007\": [], \"0008\": [\"0042\"], \"0009\": []}" \
+  MAP_FILE=other.sqlite
+chk adrs "$root/var.json" "$root/other.sqlite" >"$tmp/chk.out" || nogo "the ADRs of a map at another commit break the rules" "$(cat "$tmp/chk.out")"
+
+noadr="$tmp/noadr"
+mkdir -p "$noadr"
+printf '# Readme\n' > "$noadr/README.md"
+commit_all "$noadr"
+map_of "$noadr" "$root/noadr.sqlite"
+var_case "a map with no ADR" '.adrs.items == [] and (.adrs.map_sha | test("^[0-9a-f]{40}$")) and (.adrs | keys == ["items", "map_sha"])
+  and all(.tickets[]; .adrs == [])' MAP_FILE=noadr.sqlite
+chk adrs "$root/var.json" "$root/noadr.sqlite" >"$tmp/chk.out" || nogo "a map with no ADR gives the wrong adrs" "$(cat "$tmp/chk.out")"
+
+mkdir -p "$root/ro"
+cp "$root/.crew/map.sqlite" "$root/ro/map.sqlite"
+ro_sum=$(sha256sum "$root/ro/map.sqlite" | cut -d' ' -f1)
+var_case "a map in its own directory" '(.adrs.items | length) == 3' MAP_FILE=ro/map.sqlite
+[ "$(find "$root/ro" -type f | wc -l | tr -d ' ')" = 1 ] || nogo "reading the map left a file beside it (a journal?): $(find "$root/ro" -type f)"
+[ "$(sha256sum "$root/ro/map.sqlite" | cut -d' ' -f1)" = "$ro_sum" ] || nogo "reading the map changed it: the reader must open it read-only"
+
+mkdir -p "$root/tickets-wide"
+cp "$root"/tickets/*.md "$root/tickets-wide/"
+printf '# 0008 — Split the router\n\n## Perimeter\n\n- app/*\n' > "$root/tickets-wide/0008.md"
+var_case "a glob that crosses /" '(.tickets[] | select(.id == "0008") | .adrs) == ["0001", "0002"]' TICKETS_DIR=tickets-wide
+chk adrs "$root/var.json" "$root/.crew/map.sqlite" >"$tmp/chk.out" || nogo "a wide glob gives the wrong adrs" "$(cat "$tmp/chk.out")"
+
+# Who requested and through what (docs/adr/0059 §4): the tower's history entry
+# reaches the timeline's request row.
+cp "$root/state/tickets.0009.json" "$tmp/0009.keep"
+jq '.history[0] += {by: "ada@example.org", via: "console"}' "$tmp/0009.keep" > "$root/state/tickets.0009.json"
+var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009") | .timeline[] | select(.phase == "request")]
+  | length == 1 and .[0].by == "ada@example.org" and .[0].via == "console"'
+cp "$tmp/0009.keep" "$root/state/tickets.0009.json"
+
 # --- b. the golden against every committed schema of its major ---------------
 chk valid "$golden" >"$tmp/chk.out" || nogo "the golden does not validate" "$(cat "$tmp/chk.out")"
 
@@ -652,8 +1142,10 @@ stop_console() {
   wait "$pid" 2>/dev/null || :
 }
 
-# req [curl args...]: sets $code and $body (a file).
+# req [curl args...]: sets $code and $body (a file; empty when the answer has
+# no body, a 304 for one, which curl does not write at all).
 req() {
+  : > "$tmp/body"
   code=$(curl -s -o "$tmp/body" -w '%{http_code}' --max-time 60 "$@") || code=000
   body="$tmp/body"
 }
@@ -676,16 +1168,124 @@ reply() {
     -H "${PH:-X-Noop: 1}" -d "$r_body" "$(base)/v1/answer"
 }
 
+# post_json PATH BODY: the POST, every header right unless PO (the Origin) or
+# PH (one more header: a Host, an identity) is set, as for press.
+post_json() {
+  printf '%s' "$2" > "$tmp/post.json"
+  req -X POST -H 'Content-Type: application/json' -H "Origin: ${PO:-http://127.0.0.1:$port}" \
+    -H "${PH:-X-Noop: 1}" --data-binary "@$tmp/post.json" "$(base)$1"
+}
+
+# The editor's request (docs/adr/0059 §4): one draft the spec gate passes, and
+# edit EDIT, a jq filter, to break one rule of ADR 0055 §4 in it.
+draft_go='{"title":"A waiting list when a meetup is full","context":"A full meetup refuses every further signup.","criteria":[{"given":"a meetup at capacity","when":"a new member signs up","then":"they join the waiting list and see their position"}],"perimeter":["app/backend/waitlist/*"],"feature":"waiting-list","priority":"P1"}'
+draft() { printf '%s' "$draft_go" | jq -c "$1"; }
+
+# parity NAME WANT EDIT: /v1/spec-check on the draft EDIT makes answers
+# {ticket, markdown, line}, and line is the very line gates/spec.sh prints on
+# that Markdown, run in $gate_root; WANT is its verdict, GO or NO-GO, or `-`
+# when the draft leaves the form of an empty field to the draft (a bare
+# `Given` or none): parity only. The id is the next in $ticket_dir.
+parity() {
+  pa_name=$1
+  pa_want=$2
+  pa_req=$(draft "$3")
+  post_json /v1/spec-check "$pa_req"
+  [ "$code" = 200 ] || nogo "spec check ($pa_name): answered $code, want 200" "$(cat "$body")" "$pa_req"
+  jq -e '(.ticket | type == "string") and (.markdown | type == "string") and (.line | type == "string")' "$body" >/dev/null \
+    || nogo "spec check ($pa_name): the answer is not {ticket, markdown, line}" "$(cat "$body")"
+  jq -j '.markdown' "$body" > "$tmp/draft.md"
+  pa_have=$(jq -r '.line' "$body")
+  pa_gate=$(gate_line "$gate_root" "$tmp/draft.md")
+  [ "$pa_have" = "$pa_gate" ] \
+    || nogo "spec check ($pa_name): the line is '$pa_have', gates/spec.sh says '$pa_gate' on the Markdown it was given" "$(cat "$tmp/draft.md")"
+  case "$pa_have" in
+    "GO: spec") pa_is=GO ;;
+    "NO-GO: spec — "?*) pa_is=NO-GO ;;
+    *) nogo "spec check ($pa_name): '$pa_have' is not a gate line" ;;
+  esac
+  [ "$pa_want" = - ] || [ "$pa_is" = "$pa_want" ] \
+    || nogo "spec check ($pa_name): the verdict is $pa_is ($pa_have), want $pa_want" "$(cat "$tmp/draft.md")"
+  pa_id=$(next_id "$ticket_dir")
+  jq -e --arg id "$pa_id" '.ticket == $id' "$body" >/dev/null \
+    || nogo "spec check ($pa_name): the ticket is $(jq -r .ticket "$body"), want the next id, $pa_id"
+  [ "$(head -n 1 "$tmp/draft.md")" = "# $pa_id — $(printf '%s' "$pa_req" | jq -r .title)" ] \
+    || nogo "spec check ($pa_name): the Markdown does not start with '# $pa_id — <title>'" "$(head -n 3 "$tmp/draft.md")"
+}
+# The drafts: a GO one and a NO-GO one per rule of ADR 0055 §4 (a spec with no
+# `## Acceptance criteria` section at all cannot come from the editor).
+spec_batch() {
+  parity "a draft the gate passes" GO '.'
+  parity "no context, feature or priority" GO 'del(.context, .feature, .priority)'
+  parity "a title that is not ASCII" GO '.title = "Più posti — non sempre"'
+  parity "two criteria" GO '.criteria += [{"given": "a waiting list with one member", "when": "an attendee cancels", "then": "the first member on the list becomes an attendee"}]'
+  parity "no criterion" NO-GO '.criteria = []'
+  parity "a Then with no outcome" NO-GO '.criteria[0].then = ""'
+  parity "a vague outcome" NO-GO '.criteria[0].then = "it works"'
+  parity "a vague outcome in capitals" NO-GO '.criteria[0].then = "The page loads FAST"'
+  parity "a second criterion that is vague" NO-GO '.criteria += [{"given": "x", "when": "y", "then": "it is handled correctly"}]'
+  parity "no perimeter path" NO-GO '.perimeter = []'
+  parity "a Feature that is not a slug" NO-GO '.feature = "Waiting List"'
+  parity "a Priority that is not P0 to P3" NO-GO '.priority = "urgent"'
+  parity "an empty Given" - '.criteria[0].given = ""'
+  parity "an empty When" - '.criteria[0].when = ""'
+  parity "a Given that ends its paragraph" - '.criteria[0].given = "a meetup\n\nWhen it is full"'
+}
+# body_refusals PATH: bodies the console turns away with 400 before it runs
+# anything, on the two routes that take the editor's fields.
+body_refusals() {
+  for br_body in '{"context":"no title"}' '{"title":5}' '{"title":null}' '[]' '"title"' 'null' 'not json' ''; do
+    post_json "$1" "$br_body"
+    [ "$code" = 400 ] || nogo "$1: the body '$br_body' answered $code, want 400" "$(cat "$body")"
+  done
+  br_big=$(head -c 20000 /dev/zero | tr '\0' x)
+  post_json "$1" "{\"title\":\"too big\",\"context\":\"$br_big\"}"
+  [ "$code" = 400 ] || nogo "$1: a body over 16384 bytes answered $code, want 400" "$(head -c 300 "$body")"
+}
+# route_refusals PATH: the checks of every POST, before the body is read.
+route_refusals() {
+  req -X POST -H 'Content-Type: text/plain' -H "Origin: http://127.0.0.1:$port" -d "$draft_go" "$(base)$1"
+  [ "$code" = 415 ] || nogo "$1: a POST with Content-Type text/plain answered $code, want 415"
+  req -X POST -H "Origin: http://127.0.0.1:$port" --data-binary "$draft_go" -H 'Content-Type:' "$(base)$1"
+  [ "$code" = 415 ] || nogo "$1: a POST with no Content-Type answered $code, want 415"
+  PO=http://evil.invalid post_json "$1" "$draft_go"
+  [ "$code" = 403 ] || nogo "$1: a POST with a foreign Origin answered $code, want 403"
+  PH='Host: evil.invalid' post_json "$1" "$draft_go"
+  [ "$code" = 403 ] || nogo "$1: a POST with a foreign Host answered $code, want 403"
+}
+# etag_checks WHAT: /v1/logbook.json carries the sha256 of its bytes as its
+# ETag, answers 304 and no body to the same tag, and 200 to another.
+etag_checks() {
+  curl -s -D "$tmp/hdr" -o "$tmp/body" --max-time 10 "$(base)/v1/logbook.json" || nogo "$1: GET /v1/logbook.json failed"
+  et_tag=$(sed -n 's/^[Ee][Tt][Aa][Gg]: *//p' "$tmp/hdr" | tr -d '\r')
+  et_want="\"$(sha256sum "$tmp/body" | cut -d' ' -f1)\""
+  [ "$et_tag" = "$et_want" ] || nogo "$1: the ETag is '$et_tag', want $et_want, the sha256 of the bytes between quotes" "$(cat "$tmp/hdr")"
+  req -H "If-None-Match: $et_tag" "$(base)/v1/logbook.json"
+  [ "$code" = 304 ] || nogo "$1: a matching If-None-Match answered $code, want 304"
+  [ ! -s "$body" ] || nogo "$1: the 304 carries a body"
+  req -H 'If-None-Match: "0000"' "$(base)/v1/logbook.json"
+  [ "$code" = 200 ] || nogo "$1: another If-None-Match answered $code, want 200"
+  [ -s "$body" ] || nogo "$1: the 200 to another If-None-Match has no body"
+}
+
 # --- e1. snapshot mode, with a tripwire where the scripts would be ----------
+# The console's temporary files go to $tmp/ctmp, to see the spec check delete
+# its own.
+mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
-mkdir -p "$trip/core" "$trip/fixtures/logbook"
+mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.1.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.2.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
 done
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.1.json
+# The spec check runs the gate and the draft, and nothing else of core/.
+for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
+cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
+cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
+cp -R "$stub/tickets" "$trip/tickets"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.2.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"
@@ -705,13 +1305,53 @@ reply 0009 1 "a perimeter"
 [ "$code" = 403 ] || nogo "snapshot mode: an answer POST answered $code, want 403" "$(cat "$body")"
 for path in /v1/logbook.json /v1/console.json /; do
   req -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" -d '{}' "$(base)$path"
-  case "$code" in 404 | 405) : ;; *) nogo "POST $path answered $code, want 404 or 405: go-for-launch and answer are the writes" ;; esac
+  case "$code" in 404 | 405) : ;; *) nogo "POST $path answered $code, want 404 or 405: the four POST routes are the writes" ;; esac
 done
 for verb in PUT DELETE PATCH; do
   req -X "$verb" -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" -d '{}' "$(base)/v1/go-for-launch"
-  case "$code" in 2*) nogo "$verb /v1/go-for-launch answered $code; go-for-launch is the one POST" ;; esac
+  case "$code" in 2*) nogo "$verb /v1/go-for-launch answered $code; POST is the only write" ;; esac
 done
+etag_checks "snapshot mode"
+
+# docs/adr/0059 §4 in snapshot mode: the spec check runs (it runs no plane and
+# writes nothing), on every draft the gate judges, with the gate's own line;
+# a request is refused.
+gate_root=$trip
+ticket_dir=$trip/tickets
+snap_digest=$(tree_digest "$trip")
+snap_ctmp=$(ls "$tmp/ctmp")
+spec_batch
+body_refusals /v1/spec-check
+route_refusals /v1/spec-check
+for sc_body in '{"title":"x","criteria":"Given a, when b, then c"}' '{"title":"x","criteria":["Given a, when b, then c"]}' \
+  '{"title":"x","perimeter":"app/*"}' '{"title":"x","perimeter":[3]}'; do
+  post_json /v1/spec-check "$sc_body"
+  [ "$code" = 400 ] || nogo "spec check: the fields $sc_body answered $code, want 400 (the draft refuses them)" "$(cat "$body")"
+  jq -e '.error | type == "string" and length > 0' "$body" >/dev/null || nogo "spec check: a refused draft's answer is not {error}" "$(cat "$body")"
+done
+sc_pad=$(head -c 16000 /dev/zero | tr '\0' x)
+post_json /v1/spec-check "{\"title\":\"long\",\"context\":\"$sc_pad\"}"
+[ "$code" = 200 ] || nogo "spec check: a body of 16000 bytes, under the limit of 16384, answered $code, want 200" "$(head -c 300 "$body")"
+post_json /v1/request "$draft_go"
+[ "$code" = 403 ] || nogo "snapshot mode: a request answered $code, want 403" "$(cat "$body")"
+[ "$(tree_digest "$trip")" = "$snap_digest" ] || nogo "snapshot mode: the spec check or a request changed the files under the root"
+[ "$(ls "$tmp/ctmp")" = "$snap_ctmp" ] || nogo "the spec check left its temporary files behind: $(ls "$tmp/ctmp")"
 [ ! -e "$trip/ran" ] || nogo "snapshot mode started $(cat "$trip/ran"); it must run nothing"
+stop_console
+
+# Public: the page and the logbook, nothing that runs a process per request.
+mkdir -p "$trip/console/snapshot"
+cp "$golden" "$trip/console/snapshot/logbook.json"
+public_digest=$(tree_digest "$trip")
+start_console "$trip" "$tmp/public.log" CONSOLE_AUTH=public CONSOLE_SNAPSHOT=console/snapshot/logbook.json TMPDIR="$tmp/ctmp"
+req "$(base)/v1/logbook.json"
+[ "$code" = 200 ] || nogo "public mode: GET /v1/logbook.json answered $code, want 200" "$(cat "$tmp/public.log")"
+post_json /v1/spec-check "$draft_go"
+[ "$code" = 403 ] || nogo "public mode: a spec check answered $code, want 403" "$(cat "$body")"
+post_json /v1/request "$draft_go"
+[ "$code" = 403 ] || nogo "public mode: a request answered $code, want 403" "$(cat "$body")"
+[ "$(tree_digest "$trip")" = "$public_digest" ] || nogo "public mode: a POST changed the files under the root"
+[ ! -e "$trip/ran" ] || nogo "public mode started $(cat "$trip/ran"); it must run nothing"
 stop_console
 
 # --- e2. the start-up refusals: one stderr line naming the key ---------------
@@ -847,6 +1487,22 @@ PH='X-Test-User: alice' press GO 0.5.0-d 25 "$want_sha"
 [ "$(cat "$live/effects.log")" = "shift 100" ] || nogo "proxy mode: the delivery stub saw '$(cat "$live/effects.log")', want exactly 'shift 100'"
 jq -e '.promoted.by == "alice" and .promoted.via == "console"' "$live/release.json" >/dev/null \
   || nogo "proxy mode: the record's promoted is not by alice via console" "$(cat "$live/release.json")"
+# docs/adr/0059 §4: a request without the identity header is 401, and any
+# identity the proxy sets may request, launcher or not; its name is `by`.
+gate_root=$live
+ticket_dir=$live/tickets
+want_id=$(next_id "$live/tickets")
+post_json /v1/request "$draft_go"
+[ "$code" = 401 ] || nogo "proxy mode: a request without the identity header answered $code, want 401" "$(cat "$body")"
+[ "$(next_id "$live/tickets")" = "$want_id" ] || nogo "proxy mode: a request without the identity header wrote a ticket"
+: > "$live/effects.log"
+PH='X-Test-User: mallory' post_json /v1/request "$draft_go"
+[ "$code" = 200 ] || nogo "proxy mode: a request by an identity that is no launcher answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/proxy.log")"
+jq -e --arg id "$want_id" '.ticket == $id and .exit == 0' "$body" >/dev/null \
+  || nogo "proxy mode: the answer to a request is not {ticket: $want_id, exit: 0, ...}" "$(cat "$body")"
+[ -f "$live/tickets/$want_id.md" ] || nogo "proxy mode: a request wrote no tickets/$want_id.md"
+[ "$(cat "$live/effects.log")" = "request $want_id mallory console" ] \
+  || nogo "proxy mode: make request saw '$(cat "$live/effects.log")', want the ticket, mallory and console"
 stop_console
 
 # Back to the held record, as launchpad left it, for the loopback press.
@@ -856,7 +1512,7 @@ cp "$tmp/releases.held.jsonl" "$live/releases.jsonl"
 
 # --- e5. LIVE on loopback: the good press ---------------------------------------
 # shellcheck disable=SC2046
-start_console "$live" "$tmp/live2.log" $(live_env)
+start_console "$live" "$tmp/live2.log" $(live_env) TMPDIR="$tmp/ctmp"
 first_read
 pressable_again
 press GO 0.5.0-d 25 "$want_sha"
@@ -894,6 +1550,66 @@ reply 0009 1 "app/backend/meetups/*.py"
 jq -e '.line == "GO: answer" and .exit == 0' "$body" >/dev/null || nogo "the answer POST is not {line: 'GO: answer', exit: 0}" "$(cat "$body")"
 [ "$(cat "$live/effects.log")" = "answer 0009 app/backend/meetups/*.py unauthenticated console" ] \
   || nogo "make answer saw '$(cat "$live/effects.log")', want the ticket, the text, unauthenticated and console"
+
+# The ETag, on the logbook this console reads now (docs/adr/0059 §1).
+etag_checks "live mode"
+
+# The spec check, live (docs/adr/0059 §4): the gate's line on every draft, and
+# the root, the repository's status, the tickets, the log of what ran and the
+# console's temporary files as they were.
+: > "$live/effects.log"
+gate_root=$live
+ticket_dir=$live/tickets
+live_digest=$(tree_digest "$live")
+live_status=$(git -C "$live" status --porcelain)
+live_tickets=$(ls "$live/tickets")
+live_ctmp=$(ls "$tmp/ctmp")
+spec_batch
+body_refusals /v1/spec-check
+route_refusals /v1/spec-check
+[ "$(tree_digest "$live")" = "$live_digest" ] || nogo "the spec check changed the files under the root"
+[ "$(git -C "$live" status --porcelain)" = "$live_status" ] || nogo "the spec check changed the repository's status" "$(git -C "$live" status --porcelain)"
+[ "$(ls "$live/tickets")" = "$live_tickets" ] || nogo "the spec check changed tickets/: $(ls "$live/tickets")"
+[ ! -s "$live/effects.log" ] || nogo "the spec check ran something: $(cat "$live/effects.log")"
+[ "$(ls "$tmp/ctmp")" = "$live_ctmp" ] || nogo "the spec check left its temporary files behind: $(ls "$tmp/ctmp")"
+
+# A request (docs/adr/0059 §4). Refused with nothing written and nothing run:
+# a body that is no request (400), a draft the gate refuses (409, with the
+# gate's line), a POST that is not the console's own.
+body_refusals /v1/request
+route_refusals /v1/request
+for edit in '.criteria = []' '.criteria[0].then = "it works"' '.perimeter = []' '.feature = "Waiting List"' '.priority = "urgent"'; do
+  post_json /v1/request "$(draft "$edit")"
+  [ "$code" = 409 ] || nogo "a request whose draft the gate refuses ($edit) answered $code, want 409" "$(cat "$body")"
+  jq -e '(.error | type == "string" and length > 0) and (.line | startswith("NO-GO: spec — "))' "$body" >/dev/null \
+    || nogo "the 409 to a refused draft ($edit) is not {error, line: <the gate's NO-GO line>}" "$(cat "$body")"
+done
+[ "$(tree_digest "$live")" = "$live_digest" ] || nogo "a refused request changed the files under the root"
+[ ! -s "$live/effects.log" ] || nogo "a refused request ran something: $(cat "$live/effects.log")"
+# A good draft: the next id, the very Markdown the spec check showed, and
+# `make request` with who pressed and via console.
+want_id=$(next_id "$live/tickets")
+post_json /v1/spec-check "$draft_go"
+jq -e --arg id "$want_id" '.ticket == $id and .line == "GO: spec"' "$body" >/dev/null || nogo "the spec check of the good draft is not GO for ticket $want_id" "$(cat "$body")"
+jq -j '.markdown' "$body" > "$tmp/shown.md"
+post_json /v1/request "$draft_go"
+[ "$code" = 200 ] || nogo "a request of a good draft answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/live2.log")"
+jq -e --arg id "$want_id" '.ticket == $id and .line == "GO: request" and .exit == 0' "$body" >/dev/null \
+  || nogo "the answer to a request is not {ticket: $want_id, line: 'GO: request', exit: 0}" "$(cat "$body")"
+cmp -s "$live/tickets/$want_id.md" "$tmp/shown.md" || nogo "tickets/$want_id.md is not the Markdown the spec check showed" "$(diff "$tmp/shown.md" "$live/tickets/$want_id.md" | head -20)"
+[ "$(gate_line "$live" "$live/tickets/$want_id.md")" = "GO: spec" ] || nogo "the gate does not pass tickets/$want_id.md"
+[ "$(cat "$live/effects.log")" = "request $want_id unauthenticated console" ] \
+  || nogo "make request saw '$(cat "$live/effects.log")', want the ticket, unauthenticated and console"
+# The next one takes the next id, and never overwrites the first.
+: > "$live/effects.log"
+second_id=$(next_id "$live/tickets")
+[ "$second_id" != "$want_id" ] || nogo "the next id after a request is the request's own"
+post_json /v1/request "$(draft '.title = "A second request"')"
+[ "$code" = 200 ] || nogo "a second request answered $code, want 200" "$(cat "$body")"
+jq -e --arg id "$second_id" '.ticket == $id' "$body" >/dev/null || nogo "the second request's ticket is not $second_id" "$(cat "$body")"
+cmp -s "$live/tickets/$want_id.md" "$tmp/shown.md" || nogo "the second request changed tickets/$want_id.md"
+[ "$(head -n 1 "$live/tickets/$second_id.md")" = "# $second_id — A second request" ] || nogo "tickets/$second_id.md does not start with its id and title" "$(head -n 3 "$live/tickets/$second_id.md")"
+[ "$(cat "$live/effects.log")" = "request $second_id unauthenticated console" ] || nogo "the second make request saw '$(cat "$live/effects.log")'"
 stop_console
 
 # --- f. every numeric policy key has its provenance --------------------------
