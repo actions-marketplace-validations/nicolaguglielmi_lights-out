@@ -1,9 +1,11 @@
-# The lights-out image, the wrapper and the Action (docs/adr/0045 §7, §8).
-# On every push: the image built through package/build.sh, the wrapper's
-# acceptance (./go demo-package) and the Action's own test. On a v* tag
-# or a manual dispatch only: publish to ghcr.io, the one job with
-# packages: write. GitHub-only, every job: the L0 Gitea runner reads this
-# directory too and holds the engine socket (docs/adr/0039).
+# The lights-out images, the wrapper and the Actions (docs/adr/0045 §7,
+# §8; 0057). On every push: the gates image built through package/build.sh
+# and the wrapper's acceptance on it (./go demo-package), the full image
+# built and both measured, and the root Action's own test with each of its
+# three `gates` values. On a v* tag or a manual dispatch only: publish both
+# images to ghcr.io and sign them keyless, the one job with packages: write
+# and id-token: write. GitHub-only, every job: the L0 Gitea runner reads
+# this directory too and holds the engine socket (docs/adr/0039).
 name: package
 
 on:
@@ -14,9 +16,11 @@ permissions:
   contents: read
 
 jobs:
-  # M23's acceptance: the image built, then `lights-out init` and
-  # `lights-out gates` from it on workloads/minimal as a repository of its
-  # own, timed against 300 s, and a staged break NO-GO at test.
+  # M23's and M31's acceptance: the gates image built, then `lights-out
+  # init`, `gates`, `test-proof` and `test-integrity` from it on
+  # workloads/minimal as a repository of its own, init and gates timed
+  # against 300 s; then the full image, and both sizes (docs/adr/0057 §3,
+  # ADR 0028's amendment).
   package:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
@@ -25,15 +29,27 @@ jobs:
       - run: ./go demo-package
         env:
           CONTAINER_ENGINE: docker
+      - run: ./go package
+        env:
+          CONTAINER_ENGINE: docker
       - if: always()
-        run: docker image ls localhost/lights-out
+        name: The two images, unpacked
+        run: |
+          docker image ls localhost/lights-out
+          docker image ls localhost/lights-out-gates
+          { echo '### the images, unpacked (docker image inspect .Size)'; echo '```'
+            for i in localhost/lights-out-gates:dev localhost/lights-out:dev; do
+              b=$(docker image inspect --format '{{.Size}}' "$i" 2>/dev/null) && echo "$i $((b / 1000000)) MB ($b bytes)"
+            done; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # The Action's own test, on a scratch repository made from
+  # The root Action's own test, on a scratch repository made from
   # workloads/minimal with the drafted contract committed: a good change
-  # (GO, a check run `success` on this commit) and a change that breaks a
-  # test (NO-GO, a check run `failure`). Both check runs land on this
-  # workflow's commit, where the branch's checks show them: the second is
-  # red on purpose, and its name says so.
+  # (GO, a check run `success` on this commit, its summary one line per
+  # gate), a change that breaks a test (NO-GO, a check run `failure`), and
+  # the good change again with `gates: test-proof` and `gates:
+  # test-integrity`, what the two standalone Actions run. Every check run
+  # lands on this workflow's commit, where the branch's checks show them:
+  # the NO-GO one is red on purpose, and its name says so.
   action:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
@@ -42,10 +58,10 @@ jobs:
       checks: write
     env:
       CONTAINER_ENGINE: docker
-      LIGHTS_OUT_IMAGE: localhost/lights-out:dev
+      LIGHTS_OUT_IMAGE: localhost/lights-out-gates:dev
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: ./go package
+      - run: ./go package-gates
       - name: A scratch repository with the drafted contract, then a good change and a bad one
         id: scratch
         run: |
@@ -69,52 +85,87 @@ jobs:
           echo "bad=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: The Action on the good change
         id: good
-        uses: ./action
+        uses: ./
         with:
           path: scratch
           base: ${{ steps.scratch.outputs.base }}
           head: ${{ steps.scratch.outputs.good }}
-          image: localhost/lights-out:dev
+          image: localhost/lights-out-gates:dev
           name: "lights-out gates (Action test: a good change, GO expected)"
       - name: The Action on the bad change
         id: bad
         continue-on-error: true
-        uses: ./action
+        uses: ./
         with:
           path: scratch
           base: ${{ steps.scratch.outputs.good }}
           head: ${{ steps.scratch.outputs.bad }}
-          image: localhost/lights-out:dev
+          image: localhost/lights-out-gates:dev
           name: "lights-out gates (Action test: a broken test, NO-GO expected)"
-      - name: Both verdicts are what they must be, and both check runs were posted
+      - name: The Action with gates test-proof on the good change
+        id: proof
+        uses: ./
+        with:
+          gates: test-proof
+          path: scratch
+          base: ${{ steps.scratch.outputs.base }}
+          head: ${{ steps.scratch.outputs.good }}
+          image: localhost/lights-out-gates:dev
+          name: "lights-out test-proof (Action test: a good change, GO expected)"
+      - name: The Action with gates test-integrity on the good change
+        id: integrity
+        uses: ./
+        with:
+          gates: test-integrity
+          path: scratch
+          base: ${{ steps.scratch.outputs.base }}
+          head: ${{ steps.scratch.outputs.good }}
+          image: localhost/lights-out-gates:dev
+          name: "lights-out test-integrity (Action test: a good change, GO expected)"
+      - name: Every verdict is what it must be, and every check run was posted with its summary
         env:
           GOOD: ${{ steps.good.outputs.line }}
           BAD: ${{ steps.bad.outputs.line }}
           BAD_OUTCOME: ${{ steps.bad.outcome }}
+          PROOF: ${{ steps.proof.outputs.line }}
+          INTEGRITY: ${{ steps.integrity.outputs.line }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          printf 'good: %s\nbad: %s (step %s)\n' "$GOOD" "$BAD" "$BAD_OUTCOME"
+          printf 'good: %s\nbad: %s (step %s)\ntest-proof: %s\ntest-integrity: %s\n' "$GOOD" "$BAD" "$BAD_OUTCOME" "$PROOF" "$INTEGRITY"
           case "$GOOD" in "GO: gates — "*) ;; *) echo "the good change was not GO"; exit 1 ;; esac
           case "$BAD" in "NO-GO: gates — test: "*) ;; *) echo "the bad change was not NO-GO at test"; exit 1 ;; esac
+          case "$PROOF" in "GO: test-proof — "*) ;; *) echo "gates: test-proof was not GO under its own name"; exit 1 ;; esac
+          case "$INTEGRITY" in "GO: test-integrity — "*) ;; *) echo "gates: test-integrity was not GO under its own name"; exit 1 ;; esac
           [ "$BAD_OUTCOME" = failure ] || { echo "the Action did not fail on NO-GO"; exit 1; }
           runs=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
             "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?filter=all&per_page=100")
-          printf '%s' "$runs" | jq -r '.check_runs[] | select(.name | startswith("lights-out gates")) | "\(.id) \(.name): \(.conclusion), \(.output.title)"'
-          printf '%s' "$runs" | jq -e --arg l "$GOOD" '[.check_runs[] | select(.name | startswith("lights-out gates (Action test: a good")) | select(.conclusion == "success" and .output.title == $l)] | length > 0' >/dev/null \
-            || { echo "no success check run carries the GO line"; exit 1; }
-          printf '%s' "$runs" | jq -e --arg l "$BAD" '[.check_runs[] | select(.name | startswith("lights-out gates (Action test: a broken")) | select(.conclusion == "failure" and .output.title == $l)] | length > 0' >/dev/null \
-            || { echo "no failure check run carries the NO-GO line"; exit 1; }
+          printf '%s' "$runs" | jq -r '.check_runs[] | select(.name | startswith("lights-out ")) | "\(.id) \(.name): \(.conclusion), \(.output.title)"'
+          # check NAME-PREFIX CONCLUSION LINE PER-GATE-LINES: a check run with that title, and its summary one line per gate.
+          check() {
+            printf '%s' "$runs" | jq -e --arg p "$1" --arg c "$2" --arg l "$3" --argjson n "$4" \
+              '[.check_runs[] | select(.name | startswith($p)) | select(.conclusion == $c and .output.title == $l)
+                | select([.output.summary | splits("\n") | select(test("^- (`|[a-z-]+: not run)"))] | length == $n)] | length > 0' >/dev/null \
+              || { echo "no $2 check run named $1… carries its line and $4 gate lines"; exit 1; }
+          }
+          check "lights-out gates (Action test: a good" success "$GOOD" 8
+          check "lights-out gates (Action test: a broken" failure "$BAD" 8
+          check "lights-out test-proof (Action test" success "$PROOF" 2
+          check "lights-out test-integrity (Action test" success "$INTEGRITY" 2
 
   # Publishing is the owner's act: never on a branch push, only on a v*
   # tag (which must equal the wrapper's version=) or a manual dispatch.
-  # amd64 and arm64 through QEMU and buildx, the same package/build.sh.
+  # Both images, amd64 and arm64 through QEMU and buildx, the same
+  # package/build.sh; then each signed keyless by its digest (docs/adr/0057
+  # §4): the signer is this workflow at this ref, through GitHub's OIDC,
+  # recorded in Sigstore's public log. No key, no secret.
   publish:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The tag is the wrapper's version
@@ -135,5 +186,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - name: Build amd64 and arm64, push
-        run: sh package/build.sh "docker buildx" "ghcr.io/nicolaguglielmi/lights-out:${{ steps.version.outputs.tag }}" --platform linux/amd64,linux/arm64 --push
+      - name: Build both images for amd64 and arm64, push
+        run: |
+          set -eu
+          PACKAGE_FLAVOUR=gates sh package/build.sh "docker buildx" "ghcr.io/nicolaguglielmi/lights-out-gates:${{ steps.version.outputs.tag }}" \
+            --platform linux/amd64,linux/arm64 --push --metadata-file "$RUNNER_TEMP/gates.json"
+          PACKAGE_FLAVOUR=full sh package/build.sh "docker buildx" "ghcr.io/nicolaguglielmi/lights-out:${{ steps.version.outputs.tag }}" \
+            --platform linux/amd64,linux/arm64 --push --metadata-file "$RUNNER_TEMP/full.json"
+      # cosign at the workbench's pin, fetched and checked the way the
+      # workbench fetches it: one version and one hash in the repository.
+      - name: Sign both indexes keyless, by digest
+        run: |
+          set -eu
+          v=$(sed -n 's/^ARG COSIGN_VERSION=//p' workbench/Containerfile)
+          sha=$(sed -n 's/^ARG COSIGN_SHA256_AMD64=//p' workbench/Containerfile)
+          sh workbench/fetch.sh "https://github.com/sigstore/cosign/releases/download/v$v/cosign-linux-amd64" "$sha" "$RUNNER_TEMP/cosign"
+          chmod +x "$RUNNER_TEMP/cosign"
+          for f in gates full; do
+            name=$(jq -r '."image.name"' "$RUNNER_TEMP/$f.json" | cut -d, -f1 | sed 's/:[^:/]*$//')
+            digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/$f.json")
+            "$RUNNER_TEMP/cosign" sign --yes "$name@$digest"
+            printf '%s@%s signed\n' "$name" "$digest" | tee -a "$GITHUB_STEP_SUMMARY"
+          done

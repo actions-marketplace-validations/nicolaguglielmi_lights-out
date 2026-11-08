@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# lights-out gates, as a GitHub Action (docs/adr/0045 §5). Runs the
+# lights-out gates, as a GitHub Action (docs/adr/0045 §5, 0057 §6). At the
+# repository root because the Marketplace lists only that file. Runs the
 # lights-out wrapper of this same ref on the checked-out repository, so the
 # Action's tag and the image's version cannot drift, and posts the one
-# GO/NO-GO line as a check run named "lights-out gates". Linux runners
-# only (it needs docker). The caller grants `contents: read` and
+# GO/NO-GO line as a check run whose summary has one line per gate. Linux
+# runners only (it needs docker). The caller grants `contents: read` and
 # `checks: write`, and checks out with `fetch-depth: 0`:
 #
 #   permissions:
@@ -14,19 +15,27 @@
 #     - uses: actions/checkout@v7
 #       with:
 #         fetch-depth: 0
-#     - uses: nicolaguglielmi/lights-out/action@v0.2.0
+#     - uses: nicolaguglielmi/lights-out@v0.3.0
+#
+# `gates: test-proof` or `gates: test-integrity` runs only those gates, as
+# the two standalone Actions in actions/ do. Up to v0.2.0 the path was
+# nicolaguglielmi/lights-out/action@<tag>; those tags keep it.
 #
 # The token is used only after the container has exited, never passed into
 # it. On a pull request from a fork the token cannot write checks: the post
 # is skipped with a warning, and the job's own status carries the verdict.
 name: lights-out gates
-description: Judge a pull request with the lights-out gates and post the GO/NO-GO line as a check
+description: Judge a pull request with the lights-out gates and post the GO/NO-GO line as a check, one line per gate
 author: nicolaguglielmi
 branding:
   icon: check-circle
   color: gray-dark
 
 inputs:
+  gates:
+    description: Which gates. all (default, the eight), test-proof (test, then the changed tests must fail on the base) or test-integrity (test-weakening, then mutation on the changed lines).
+    required: false
+    default: all
   base:
     description: The base of the range judged. Default the pull request's base, else the parent of the checked-out commit.
     required: false
@@ -44,13 +53,13 @@ inputs:
     required: false
     default: "."
   image:
-    description: The lights-out image. Default the one this ref's wrapper names.
+    description: The lights-out image. Default the gates image this ref's wrapper names.
     required: false
     default: ""
   name:
-    description: The check run's name.
+    description: The check run's name. Default "lights-out gates", or "lights-out test-proof" and "lights-out test-integrity".
     required: false
-    default: lights-out gates
+    default: ""
   token:
     description: The token that posts the check run.
     required: false
@@ -63,6 +72,9 @@ outputs:
   verdict:
     description: GO or NO-GO
     value: ${{ steps.gates.outputs.verdict }}
+  check_url:
+    description: The check run's URL, when it was posted
+    value: ${{ steps.check.outputs.check_url }}
 
 runs:
   using: composite
@@ -72,6 +84,7 @@ runs:
       env:
         CONTAINER_ENGINE: docker
         LIGHTS_OUT_IMAGE: ${{ inputs.image }}
+        LO_GATES: ${{ inputs.gates }}
         LO_BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
         LO_HEAD: ${{ inputs.head }}
         LO_PATH: ${{ inputs.path }}
@@ -79,39 +92,57 @@ runs:
       run: |
         set -u
         [ -n "$LIGHTS_OUT_IMAGE" ] || unset LIGHTS_OUT_IMAGE
+        case "$LO_GATES" in
+          all|"") cmd=gates ;;
+          test-proof|test-integrity) cmd=$LO_GATES ;;
+          *) cmd="" ;;
+        esac
         cd "$GITHUB_WORKSPACE/$LO_PATH"
         set --
         [ -z "$LO_BASE" ] || set -- "$@" "BASE=$LO_BASE"
         head=${LO_HEAD:-$(git rev-parse HEAD)}
         set -- "$@" "HEAD=$head"
-        if [ -n "$LO_BASE" ] && ! git cat-file -e "$LO_BASE^{commit}" 2>/dev/null; then
-          line="NO-GO: gates — the base $LO_BASE is not in the checkout; check out with fetch-depth: 0"
+        rm -f "$LO_OUT/gates/summary.md"
+        if [ -z "$cmd" ]; then
+          line="NO-GO: gates — gates: $LO_GATES is not all, test-proof or test-integrity"
+        elif [ -n "$LO_BASE" ] && ! git cat-file -e "$LO_BASE^{commit}" 2>/dev/null; then
+          line="NO-GO: $cmd — the base $LO_BASE is not in the checkout; check out with fetch-depth: 0"
         else
-          line=$(LIGHTS_OUT_OUT="$LO_OUT" sh "$GITHUB_ACTION_PATH/../lights-out" gates "$@") || true
-          [ -n "$line" ] || line="NO-GO: gates — lights-out gave no verdict; see the log above"
+          line=$(LIGHTS_OUT_OUT="$LO_OUT" sh "$GITHUB_ACTION_PATH/lights-out" "$cmd" "$@") || true
+          [ -n "$line" ] || line="NO-GO: $cmd — lights-out gave no verdict; see the log above"
         fi
         case "$line" in GO:*) verdict=GO ;; *) verdict=NO-GO ;; esac
         printf '%s\n' "$line"
         printf 'line=%s\n' "$line" >> "$GITHUB_OUTPUT"
         printf 'verdict=%s\n' "$verdict" >> "$GITHUB_OUTPUT"
-        printf '### lights-out gates\n\n`%s`\n' "$line" >> "$GITHUB_STEP_SUMMARY"
+        printf 'name=lights-out %s\n' "${cmd:-gates}" >> "$GITHUB_OUTPUT"
+        # The summary the image wrote, one line per gate; the line alone otherwise.
+        summary="$LO_OUT/gates/summary.md"
+        [ -s "$summary" ] || printf '### lights-out %s\n\n`%s`\n' "${cmd:-gates}" "$line" > "$summary.line"
+        [ -s "$summary" ] || summary="$summary.line"
+        cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+        printf 'summary=%s\n' "$summary" >> "$GITHUB_OUTPUT"
 
     - id: check
       shell: sh
       env:
         GH_TOKEN: ${{ inputs.token }}
         LO_SHA: ${{ inputs.sha || github.event.pull_request.head.sha || github.sha }}
-        LO_NAME: ${{ inputs.name }}
+        LO_NAME: ${{ inputs.name || steps.gates.outputs.name }}
         LO_LINE: ${{ steps.gates.outputs.line }}
         LO_VERDICT: ${{ steps.gates.outputs.verdict }}
+        LO_SUMMARY: ${{ steps.gates.outputs.summary }}
       run: |
         set -u
         conclusion=failure
         [ "$LO_VERDICT" != GO ] || conclusion=success
+        # The checks API takes up to 65535 characters of summary.
+        summary=$(head -c 65000 "$LO_SUMMARY" 2>/dev/null) || summary=$LO_LINE
         body=$(jq -n --arg name "$LO_NAME" --arg sha "$LO_SHA" --arg c "$conclusion" --arg line "$LO_LINE" \
+          --arg summary "$summary" \
           --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
           '{name: $name, head_sha: $sha, status: "completed", conclusion: $c,
-            details_url: $url, output: {title: ($line | .[0:255]), summary: $line}}')
+            details_url: $url, output: {title: ($line | .[0:255]), summary: $summary}}')
         resp=$(mktemp)
         code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST \
           -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
@@ -121,13 +152,14 @@ runs:
           printf '%s: check run posted on %s, %s\n' "$LO_NAME" "$LO_SHA" "$conclusion"
           printf 'check_url=%s\n' "$(jq -r .html_url "$resp")" >> "$GITHUB_OUTPUT"
         else
-          printf '::warning title=lights-out gates::the check run was not posted (HTTP %s; a fork pull request has a read-only token, or checks: write is missing); the job status carries the verdict\n' "$code"
+          printf '::warning title=%s::the check run was not posted (HTTP %s; a fork pull request has a read-only token, or checks: write is missing); the job status carries the verdict\n' "$LO_NAME" "$code"
           cat "$resp" >&2 || true
         fi
 
     - shell: sh
       env:
+        LO_NAME: ${{ inputs.name || steps.gates.outputs.name }}
         LO_LINE: ${{ steps.gates.outputs.line }}
         LO_VERDICT: ${{ steps.gates.outputs.verdict }}
       run: |
-        [ "$LO_VERDICT" = GO ] || { printf '::error title=lights-out gates::%s\n' "$LO_LINE"; exit 1; }
+        [ "$LO_VERDICT" = GO ] || { printf '::error title=%s::%s\n' "$LO_NAME" "$LO_LINE"; exit 1; }
