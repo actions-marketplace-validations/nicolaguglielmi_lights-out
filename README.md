@@ -24,7 +24,7 @@ What is proven and what is not yet is said plainly below, in [What is real and w
 <p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature"></p>
 <p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="A ticket's timeline in the console: the request, a question, the answer, the confirmed criteria and the spec gate" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: tickets by state, perimeters held, tickets waiting, docs to realign" width="49%"></p>
 
-The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, and the overview. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.1.json`](fixtures/logbook/golden-1.1.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
+The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, and the overview. It also has a specs screen, an editor for a new request that the spec gate checks as you type, a search over the project's ADRs from the project map, and a light and a dark theme. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.2.json`](fixtures/logbook/golden-1.2.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
 
 ## Five ways in
 
@@ -107,7 +107,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ./go demo-rollback   # just the self-rollback, about a minute
 ./go board           # the pipeline explained, and live while the plane runs: localhost:8099
 ./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
-./go console         # the client's view: kanban, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
+./go console         # the client's view: kanban, specs, a new-request editor, ADR search, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
 ./go request TICKET=<id>   # start a ticket before the code: the product role asks or confirms, then the spec gate
 ./go answer TICKET=<id> ANSWER="<text>"   # answer its open question, then the product role again
 ./go down            # stop everything

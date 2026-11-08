@@ -383,11 +383,11 @@ error}`.
 ### The console's routes
 
 - `GET /`: `console/index.html`. `GET /v1/logbook.json`: the logbook's
-  bytes as the reader wrote them (or the snapshot file's). `GET
+  bytes as the reader wrote them (or the snapshot file's), with an `ETag` and `304` for a matching `If-None-Match` (1.2). `GET
   /v1/console.json`: `{mode: live|snapshot, auth, identity, can_launch,
   reason, read_at, read_error, snapshot}` about this console and this
   request, not part of the logbook (ADR 0047, provisional 17).
-- `POST /v1/go-for-launch`, the only write, body `{answer:
+- `POST /v1/go-for-launch`, the first write (1.2 adds two more and a check, below), body `{answer:
   "GO"|"NO-GO"|"PREPARE", version, held_at, brief_sha256}` (`brief_sha256`
   not needed for `PREPARE`). Refused before anything runs: 415 without
   `Content-Type: application/json`; 403 when `Host` is not the console's
@@ -448,3 +448,58 @@ in the history's order:
 
 A phase with no record has no row.
 
+
+## 1.2: the workbench (ADR 0059, 2026-11-08)
+
+A minor: every 1.1 field is unchanged, and these are added, all optional.
+The 1.2 schema is `core/logbook/1.2.schema.json`.
+
+| Logbook field | Source |
+|---|---|
+| `adrs` | `{map_sha, items: [{number, path, title, status, text, files, tickets, adrs}]}` from the project map (`MAP_FILE`, default `.crew/map.sqlite`), or `{ok: false, error}` |
+| `tickets[].adrs` | the numbers of the ADRs that govern the ticket's perimeter |
+| `timeline[]` request row, `by`, `via` | tower `history`: who requested (`REQUEST_BY`, default `unauthenticated`) and through what (`REQUEST_VIA`, default `cli`; `console` from the console) |
+
+Rules for `adrs` (ADR 0059 §3):
+
+- The map is opened read-only. With no file at `MAP_FILE`, or a map of a
+  schema other than `2`, or a file that is not a map, `adrs` is
+  `{ok: false, error}`, and the error names `./go map`. The console shows
+  it on the ADRs screen. The tickets' `adrs` are then `[]`.
+- `map_sha` is the commit the map was built at. A map built at another
+  commit than HEAD is still read; `map_sha` says which.
+- `items` has one entry per ADR in the map, in file-name order. `number` is
+  the four digits of the file name, `path` the file, `title` the first
+  heading, `status` the `- Status:` line, `text` the whole document.
+- `files` are the paths the ADR cites that exist at the map's commit.
+- `adrs` are the ADRs it mentions or that mention it (`ADR NNNN`); `tickets`
+  the tickets it mentions or that mention it (`ticket NNNN`), plus the
+  logbook's tickets it governs. A mention is not a citation: the drift check
+  does not read it.
+- A ticket's `adrs` are the ADRs with a file that one of the ticket's
+  perimeter globs matches, as `core/perimeter.sh` matches (`*` crosses `/`).
+  The page draws it and computes no relation of its own.
+
+### The console's routes, 1.2
+
+- `POST /v1/spec-check` writes nothing. Body `{title, context, criteria:
+  [{given, when, then}], perimeter, feature, priority}`, at most 16 KiB.
+  `core/spec.py draft` writes the draft into a temporary directory, `sh
+  gates/spec.sh` judges it, the directory is deleted, and the answer is
+  `{ticket, markdown, line}` with the gate's one line. Refused with 403 under
+  `CONSOLE_AUTH=public`; allowed in snapshot mode. The same checks as every
+  POST apply: `Content-Type`, `Origin`, `Host`, and the identity header in
+  `proxy` mode.
+- `POST /v1/request`, the third write, the same body. Refused with 403 in
+  snapshot mode and under `public`; 401 in `proxy` mode without the identity
+  header, and any identity the proxy sets may request (`CONSOLE_LAUNCHERS`
+  stays the go-for-launch list). The draft is checked again; a NO-GO draft
+  gets 409 and nothing is written. A GO draft is created as
+  `TICKETS_DIR/<id>.md`, the next id after the highest four-digit id there,
+  with an exclusive create (a second one at once gets 409). Then `make
+  request TICKET=<id>` runs with `REQUEST_BY` the identity and
+  `REQUEST_VIA=console`, and the answer is `{ticket, line, exit}`. The file
+  is not committed. One press at a time, as for the other writes; timeout
+  900 s.
+- At L0 the product role is not consulted on a new request (it has no
+  recording for it), and the editor says so before saving.

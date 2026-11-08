@@ -1,16 +1,45 @@
 # console
 
-The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-reads-one-versioned-logbook-and-writes-only-go-for-launch.md), [ADR 0055](../docs/adr/0055-the-dev-phase-visible-from-request-to-release.md); every field, rule and route in [docs/plans/console.md](../docs/plans/console.md)). Seven screens:
+The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-reads-one-versioned-logbook-and-writes-only-go-for-launch.md), [ADR 0055](../docs/adr/0055-the-dev-phase-visible-from-request-to-release.md); every field, rule and route in [docs/plans/console.md](../docs/plans/console.md)). Ten screens:
 
-1. **Kanban**: one column per tower state, a card per ticket in its state's column, ordered by priority then age, filtered and grouped by feature and priority (`- Feature:` and `- Priority:` in the ticket's header), with the empty columns shown or hidden; it takes the page's full width. No drag-and-drop: a card moves when the tower moves its ticket.
 1. **Overview**: the tickets by state; the perimeters `perimeters/held` names and whether each still holds; the tickets waiting at `assign` and on whom (ADR 0053); the docs tickets merges filed (ADR 0054).
-2. **This week's tickets**: each with GO/NO-GO, the judge that decided, and its line.
-3. **One ticket's timeline**, one row per phase and each from its record: the request, the product role's questions and the answers (who, through what, when), the spec gate's verdict, assign with the perimeter, each worker attempt with turns, tokens and duration, each gate line, review, rework, merge, the canary stages with their `slo:` numbers, the human answer, 100% or rollback. A ticket waiting on a question shows an answer box.
-4. **Incidents and post mortems**, with their fix tickets and those tickets' states.
-5. **Go-for-launch**: the release record, what the plane runs now, the brief, and the button.
-6. **Thresholds**: every number that can stop a change, where it is set, and its provenance ("undeclared" when it has none).
+2. **Kanban**: one column per tower state, a card per ticket in its state's column, ordered by priority then age, filtered and grouped by feature and priority (`- Feature:` and `- Priority:` in the ticket's header), with the empty columns shown or hidden; it takes the page's full width. See "The kanban" below.
+3. **This week's tickets**: each with GO/NO-GO, the judge that decided, and its line.
+4. **One ticket's timeline**, one row per phase and each from its record: the request (who requested and through what), the product role's questions and the answers (who, through what, when), the spec gate's verdict, assign with the perimeter, each worker attempt with turns, tokens and duration, each gate line, review, rework, merge, the canary stages with their `slo:` numbers, the human answer, 100% or rollback. A ticket waiting on a question shows an answer box.
+5. **Specs**: every ticket with its state, the confirmed criteria and who confirmed them, the last `spec` verdict with its line and time, and the open question with its answer box.
+6. **New request**: an editor for a ticket's title, context, criteria (Given, When, Then), perimeter, feature and priority. It shows the ticket's Markdown as it would be written and, 300 ms after the last keystroke, the line of the spec gate itself. See "The request editor" below.
+7. **ADRs and one ADR**: a search over the project map's ADRs (number, title, status, text, or a path an ADR cites). Each result shows its status, files, tickets and ADRs, each a link. A ticket's drawer lists the ADRs that govern its perimeter. The search needs a project map: `./go map` builds it at `MAP_FILE` (default `.crew/map.sqlite`). With none, the screen says so and names `./go map`.
+8. **Incidents and post mortems**, with their fix tickets and those tickets' states.
+9. **Go-for-launch**: the release record, what the plane runs now, the brief, and the button.
+10. **Thresholds**: every number that can stop a change, where it is set, and its provenance ("undeclared" when it has none).
 
-It reads **one document, the logbook** (`lights-out/logbook/1.1`, [schema](../core/logbook/1.1.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. It has **two writes**: go-for-launch, through the same `core/promote.sh` and the same checks as `./go promote`; and the answer to a ticket's open question, through `make answer`, the recipe `./go answer` runs, accepted only for the question the logbook shows open. Both record who pressed and `via: console`. `ci/logbook.sh` checks both.
+A switch in the header sets the theme: `system` (the default, it follows `prefers-color-scheme`), `light` or `dark`. The choice is kept in the browser's `localStorage` under `lights-out.theme`. A browser that refuses storage gets the system theme, and the switch works until the page closes. The theme changes colours only.
+
+It reads **one document, the logbook** (`lights-out/logbook/1.2`, [schema](../core/logbook/1.2.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. It has **three writes**: go-for-launch, through the same `core/promote.sh` and the same checks as `./go promote`; the answer to a ticket's open question, through `make answer`, the recipe `./go answer` runs, accepted only for the question the logbook shows open; and a new request, through `make request`, the recipe `./go request` runs. Each records who pressed and `via: console`. One more route, `/v1/spec-check`, writes nothing. `ci/logbook.sh` checks all of it. `GET /v1/logbook.json` carries an `ETag` and answers `304` to a matching `If-None-Match`, so the 2 s poll of an unchanged logbook costs no body.
+
+## The kanban
+
+A card's column is the logbook's `kanban`. Nothing on the page moves a card: there is no drag-and-drop, and a card changes column only when the tower moves its ticket. What the page adds is a view:
+
+- **Drawer**: click a card, or press Enter on it. It shows the state, the outcome verdict and line, the last timeline row, the perimeter, the wait (ADR 0053), the ADRs that govern the perimeter and a link to the whole timeline.
+- **Search**: by ticket id, title, or a path in a perimeter. A path matches a card when one of its globs matches it or contains it.
+- **Keys**: the arrows move the focus between cards (left and right across columns, up and down inside one), Enter opens the drawer, Esc closes it, `/` focuses the search.
+- **Collapsible columns**: a collapsed column shows its state and count only.
+- **The view is the link**: `#kanban?q=…&feature=…&priority=…&group=…&empty=hide&collapsed=a,b&card=0005`. Defaults are left out and values are percent-encoded. A page opened on that hash draws the same board.
+- **A moved card shows its move**: when a refresh puts a card in another column, it is drawn there with a mark naming the column it left, highlighted for 4 s. With `prefers-reduced-motion` the slide is off and the mark stays.
+
+A refresh redraws only when the logbook changed, and keeps the focus, the drawer and the search box.
+
+## The request editor
+
+`POST /v1/spec-check` takes the fields, has `core/spec.py draft` write the draft into a temporary directory, runs `gates/spec.sh` on it and answers `{ticket, markdown, line}`. The line is the gate's own: `GO: spec` or `NO-GO: spec — <why>`. Nothing is written in the repository or the tower. It is refused with `CONSOLE_AUTH=public`.
+
+Save is the third write, `POST /v1/request`:
+
+- It is refused in snapshot mode and with `CONSOLE_AUTH=public`. It checks the draft again and refuses a NO-GO draft with nothing written.
+- On a GO draft it creates `TICKETS_DIR/<id>.md`, the next id after the highest four-digit id there, with an exclusive create (a second save at once gets 409). It then runs `make request TICKET=<id>` with `REQUEST_BY` set to the identity and `REQUEST_VIA=console`. The tower records both on the request, and the timeline's request row shows them.
+- The file is written, not committed. The editor says so and names the file. Committing it is yours.
+- At L0 the product role is not consulted on a new request: it replays recordings and a new request has none. The editor says so before saving, and the spec gate alone judges the request. At L1, with a key, saving is how the role is consulted; its questions open the ticket at `questions` and the answer box takes them.
 
 ## Run it
 
@@ -24,7 +53,7 @@ It reads **one document, the logbook** (`lights-out/logbook/1.1`, [schema](../co
 
 Open http://localhost:8098. After `./go demo` it shows ticket 0001's timeline from `requested` to the rollback. At L0 the product role has no recording for that request, and its row says it was not consulted (ADR 0055 §3). To press the button, hold a canary first: `./go kill-switch`, then `./go release`, which holds the canary at 25% when verify passes (`git checkout app/flags/flags.json` undoes the kill switch afterwards). `CONSOLE_PORT` moves the port.
 
-Without the plane, serve a logbook file instead; nothing can be pressed:
+Without the plane, serve a logbook file instead; nothing can be pressed, answered or saved (the spec check still works):
 
 ```bash
 CONSOLE_SNAPSHOT=console/snapshot/logbook.json ./go console
@@ -39,10 +68,10 @@ The console has no login, no session and no password. It does not start unless t
 | `CONSOLE_AUTH` | When | Who presses |
 |---|---|---|
 | `loopback` (default) | published on 127.0.0.1, ::1 or localhost only | anyone at that machine; recorded as `unauthenticated` |
-| `proxy` | behind a proxy that authenticates, with `CONSOLE_IDENTITY_HEADER` naming the header it sets | the identities listed in `CONSOLE_LAUNCHERS` (comma-separated, compared verbatim); a request without the header gets 401 |
-| `public` | only with `CONSOLE_SNAPSHOT=console/snapshot/logbook.json` | nobody |
+| `proxy` | behind a proxy that authenticates, with `CONSOLE_IDENTITY_HEADER` naming the header it sets | go-for-launch: the identities listed in `CONSOLE_LAUNCHERS` (comma-separated, compared verbatim). Answer and request: any identity the proxy sets. A request without the header gets 401 |
+| `public` | only with `CONSOLE_SNAPSHOT=console/snapshot/logbook.json` | nobody: no write, and no spec check |
 
-The POST also needs `Content-Type: application/json`, an `Origin` and `Host` that are the console's own (`CONSOLE_HOSTS` adds host names a proxy uses), and a body that matches the record and the brief as they are now.
+Every POST also needs `Content-Type: application/json`, an `Origin` and `Host` that are the console's own (`CONSOLE_HOSTS` adds host names a proxy uses). go-for-launch also needs a body that matches the record and the brief as they are now. Only one press runs at a time. `CONSOLE_LAUNCHERS` stays the go-for-launch list: it does not limit who may answer or request.
 
 **`proxy` trusts a header.** The console cannot tell whether a request came through the proxy. Make it reachable from the proxy only (bind it to a private interface, a firewall rule, or the same pod), or anyone can claim any identity. Behind Google's Identity-Aware Proxy the header is `X-Goog-Authenticated-User-Email` and its value carries the `accounts.google.com:` prefix, which `CONSOLE_LAUNCHERS` must repeat. The first version does not verify IAP's signed `X-Goog-IAP-JWT-Assertion` (ADR 0047, provisional decision 8). oauth2-proxy's header names were not verified when this was written; check your proxy's documentation.
 

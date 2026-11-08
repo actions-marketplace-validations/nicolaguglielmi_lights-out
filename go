@@ -23,7 +23,7 @@
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
-#   ./go request        start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id>
+#   ./go request        start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> [REQUEST_BY=<who>]
 #   ./go answer         answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text>
 #   ./go demo-rework    prove a NO-GO goes back to the worker with its verdict, then GO and merged
 #   ./go demo-mainline  prove main stays green without a queue: unjudged disjoint merges, an overlap reworked, a breaking merge bisected and reverted

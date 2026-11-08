@@ -55,6 +55,15 @@ a session of its own: egress for the harnesses, and the tower restoring
   suite; other CIs show the gates' verdict and never judge; Jenkins and
   GitLab proven locally; one more delivery adapter when someone needs it.
 
+- **M33 — the console as a workbench** (ADR 0059, *proposed*). Built on
+  its branch, `claude/m33-console-7b5d5d`, not merged yet. The kanban gains
+  a drawer, search, keys, a view in the link, collapsible columns and a
+  highlight on a moved card, and still moves none. A light and dark theme,
+  on the board too. A specs screen, and a request editor that the spec gate
+  checks as you type and saves through `./go request` (`REQUEST_BY` records
+  who). ADR search from the project map, which is now schema 2, through
+  logbook 1.2.
+
 ## Later
 
 - **M16 — the agent network**, reviewed and decided: who splits a
