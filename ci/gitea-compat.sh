@@ -27,14 +27,16 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 
 # The Pages workflow (docs/adr/0048) needs an environment and id-token:
-# write to deploy, and Pages has no Gitea counterpart. Those two checks are
-# lifted for that file alone, on one condition: every job in it carries the
-# github.com guard (ADR 0039), so the Gitea runner skips all of it.
-github_only=.github/workflows/site.yml
+# write to deploy, and Pages has no Gitea counterpart; the package
+# workflow's publish job needs id-token: write to sign keyless (docs/adr/
+# 0057 §4). Those two checks are lifted for these files alone, on one
+# condition: every job in them carries the github.com guard (ADR 0039), so
+# the Gitea runner skips all of it.
+github_only=".github/workflows/site.yml .github/workflows/package.yml"
 
 for f in $workflows; do
   {
-    if [ "$f" = "$github_only" ]; then
+    if case " $github_only " in *" $f "*) true ;; *) false ;; esac; then
       jobs=$(grep -c -E '^[[:space:]]*runs-on:' "$f" || true)
       guarded=$(grep -c -E "^[[:space:]]*if: github\.server_url == 'https://github\.com'" "$f" || true)
       [ "$jobs" = "$guarded" ] || printf '%s:1:\t-- %s jobs, %s with the github.com guard: a job without it would run on Gitea\n' "$f" "$jobs" "$guarded"
