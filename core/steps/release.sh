@@ -7,7 +7,7 @@
 # the Registry port (`make publish`), for every workload: an attached
 # repository by its own contract's `backend` service (its Containerfile), a
 # workload of this repository by `make publish` run inside the worktree,
-# which is what the Gitea runner's `image` job did before it was retired.
+# which is what the code host's CI job did until docs/adr/0060 retired it.
 # Then runs the Makefile's `release` (load generator beside
 # core/launchpad.sh) with CANARY_VERSION and CANARY_TAG=sha-<merge sha>, its
 # stderr kept at .crew/<ticket>/release.log. Records the version,
