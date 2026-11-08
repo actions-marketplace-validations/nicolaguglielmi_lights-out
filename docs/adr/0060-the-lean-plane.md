@@ -181,7 +181,11 @@ a measurement, and is not adopted (§7).
    5 (envoy, prometheus, flagd, zot, gitea); in engine-compat, after
    `./go demo` and `./go logbook`, `./go down && ./go up && ./go logbook`
    writes a byte-identical file (`core/logbook.py`: "No clock of its
-   own: equal sources give equal bytes"); `./go ci` GO; `demo-mainline`,
+   own: equal sources give equal bytes") but for `launch.plane`, the one
+   field read from the live plane (the Delivery port's `status.sh`):
+   `down` removes the rolled-back canary revision the demo leaves running
+   at weight 0, so `canary` goes from its version to null (found on the
+   first run of this branch, 42506965618, `cmp` at that field); `./go ci` GO; `demo-mainline`,
    `demo-rework` (added to the `mainline` job, which no workflow ran
    before), `demo-seam`, `demo-console` GO.
 

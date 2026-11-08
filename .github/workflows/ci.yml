@@ -76,12 +76,16 @@ jobs:
             console-shots/
           if-no-files-found: warn
       # The tower's documents outlive the plane (docs/adr/0060 §1, §8): down
-      # and up again, and the logbook of the demo regenerates byte for byte.
+      # and up again, and the logbook of the demo regenerates byte for byte,
+      # but for launch.plane, the live Delivery status: down removes the
+      # rolled-back canary revision the demo left running at weight 0.
       - name: the logbook survives ./go down and ./go up
         run: |
           ./go down && ./go up
           ./go logbook LOGBOOK_FILE=.crew/logbook-restarted.json
-          cmp .crew/logbook-demo.json .crew/logbook-restarted.json
+          for f in demo restarted; do jq 'del(.launch.plane)' ".crew/logbook-$f.json" > ".crew/logbook-$f.stored.json"; done
+          jq -c .launch.plane .crew/logbook-demo.json .crew/logbook-restarted.json
+          diff .crew/logbook-demo.stored.json .crew/logbook-restarted.stored.json
         env:
           CONTAINER_ENGINE: docker
 

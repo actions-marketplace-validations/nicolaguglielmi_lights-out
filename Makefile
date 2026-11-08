@@ -844,7 +844,7 @@ demo-rework: ## Prove the rework loop: ticket 0013 NO-GO at the gates, reworked 
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: demo-rework — a step failed; see the [tower] lines above\n'; exit 1; }
 	@doc=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)") || { printf 'NO-GO: demo-rework — no document for ticket %s\n' "$(TICKET)"; exit 1; }; \
 	trail=$$(printf '%s' "$$doc" | jq -r '[.history[] | "\(.step):\(.state):\(.attempt // "-")"] | join(" ")'); \
-	want='open:opened:- assign:pr-opened:1 ci:ci-failed:1 rework:pr-opened:2 ci:ci-passed:2 merge:merged:2 release:rolled-back:2'; \
+	want='open:opened:- assign:pr-opened:1 ci:ci-failed:1 rework:pr-opened:2 ci:ci-passed:2 merge:merged:2 mainline:main-green:2 release:rolled-back:2'; \
 	[ "$$trail" = "$$want" ] || { printf 'NO-GO: demo-rework — history is %s, want %s\n' "$$trail" "$$want"; exit 1; }; \
 	line=$$(printf '%s' "$$doc" | jq -r '.rework[0].line // empty'); \
 	case "$$line" in "NO-GO: gates — mutation"*) : ;; \
