@@ -29,6 +29,7 @@ import http.server
 import json
 import os
 import pathlib
+import re
 import shutil
 import socket
 import subprocess
@@ -430,9 +431,13 @@ CONSOLE = [
 def repo_logbook(tmp):
     """A logbook whose ADRs are this repository's, from its project map at HEAD;
     no plane, so its tickets say they could not be read."""
-    out, book = tmp / "map.sqlite", tmp / "logbook.json"
+    out, book, targets = tmp / "map.sqlite", tmp / "logbook.json", tmp / "targets"
+    # The Makefile's targets, read here: the Playwright image has no make,
+    # which core/map.py would run for `make help` without --targets.
+    targets.write_text("\n".join(sorted(set(re.findall(r"^([a-z][a-z0-9-]*):", (ROOT / "Makefile").read_text(
+        encoding="utf-8"), re.M)))) + "\n", encoding="utf-8")
     for argv in (["python3", "core/map.py", "build", "--repo", ".", "--rev", "HEAD", "--tickets", "tickets",
-                  "--exclude", "docs/PLAN.md docs/plans/* .claude/*", "--out", str(out)],
+                  "--targets", str(targets), "--exclude", "docs/PLAN.md docs/plans/* .claude/*", "--out", str(out)],
                  ["python3", "core/logbook.py", "--out", str(book)]):
         p = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True,
                            env={k: v for k, v in {**os.environ, "MAP_FILE": str(out)}.items() if k != "STATE_STORE"})

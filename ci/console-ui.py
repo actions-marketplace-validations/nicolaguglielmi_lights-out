@@ -138,7 +138,9 @@ BOARD_JS = """() => {
   const lane = (el) => { const l = el.closest('.lane[data-lane]'); return l ? l.dataset.lane : null; };
   const cols = [...document.querySelectorAll('.col[data-state]')].map((c) => ({
     state: c.dataset.state, lane: lane(c), collapsed: c.classList.contains('collapsed'),
-    cards: [...c.querySelectorAll('.card[data-id]')].map((k) => k.dataset.id), text: c.innerText}));
+    // textContent, not innerText: a column's words are the DOM's, and the
+    // CSS that sets their case is presentation, like the theme.
+    cards: [...c.querySelectorAll('.card[data-id]')].map((k) => k.dataset.id), text: c.textContent}));
   const drawer = document.querySelector('aside#drawer');
   const q = document.querySelector('input#kanban-q');
   const val = (n) => { const s = document.querySelector('main select[name=' + n + ']'); return s ? s.value : null; };
