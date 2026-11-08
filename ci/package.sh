@@ -1,27 +1,49 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# ci-package: docs/adr/0045 §8, engine-free and network-free (the engine half
-# is `./go demo-package`); written from the ADR, not from the wrapper.
+# ci-package: docs/adr/0045 §8 and docs/adr/0057 §3-§8, engine-free and
+# network-free (the engine half is `./go demo-package`); written from the
+# ADRs, not from the wrapper.
 #   wrapper    lights-out is an executable #!/bin/sh file, clean under
 #              `shellcheck -s sh` (ci/shell.sh does not list it), one semver
-#              version= line, no socket, --env-file or :z in its code; an
-#              unknown subcommand or KEY=VALUE is refused, naming the accepted
-#              ones, before any engine is touched; with no engine on PATH an
-#              engine subcommand exits non-zero with one stderr line and
-#              nothing on stdout; `version` still works.
+#              version= line, no socket, --env-file or :z in its code; the
+#              subcommands are eight (init gates test-proof test-integrity
+#              triage postmortem doctor version); an unknown subcommand or
+#              KEY=VALUE is refused, naming the accepted ones, before any
+#              engine is touched (test-proof and test-integrity take BASE=
+#              and HEAD=); with no engine on PATH an engine subcommand exits
+#              non-zero with one stderr line and nothing on stdout; `version`
+#              still works.
 #   allowlist  the wrapper's KEY=* case arms equal package/entrypoint.sh's and
 #              each is taken.
-#   yaml       (PyYAML) action.yml is composite, runs $GITHUB_ACTION_PATH/../
-#              lights-out gates, calls no REST path but check-runs; jobs that
-#              use ./action hold at most contents: read + checks: write;
-#              packages: write only package.yml's publish (v* tag or
-#              workflow_dispatch); every job has the github.com guard (ADR 0039).
+#   yaml       (PyYAML) the Action is action.yml at the repository root, and
+#              action/action.yml is gone: composite, runs $GITHUB_ACTION_PATH/
+#              lights-out (no /../) with the subcommand chosen by its `gates`
+#              input (default all), posts summary.md, calls no REST path but
+#              check-runs; jobs that use ./ hold at most contents: read +
+#              checks: write, and none still uses ./action; packages: write
+#              and id-token: write only package.yml's publish (v* tag or
+#              workflow_dispatch), which runs a keyless cosign sign; every job
+#              has the github.com guard (ADR 0039).
+#   shims      actions/test-proof and actions/test-integrity: composite, a
+#              README.md beside, name, description, branding, exactly one step
+#              `uses: nicolaguglielmi/lights-out@v<the wrapper's version=>`
+#              with `gates: <the directory's name>`, every declared input
+#              passed through as ${{ inputs.<same name> }}, and every name
+#              there an input of the root action.yml.
 #   doctor     core/doctor.sh with no engine: one `NO-GO: doctor —` line naming
-#              the engine, exit 1, no ANSI.
+#              the engine, exit 1, no ANSI. With --level (ADR 0057 §8): l2 and
+#              l3 are one `NO-GO: doctor — <level> lacks ` line naming
+#              DELIVERY=cloud-deploy and toolchain; l0 and l1 do not name
+#              toolchain; --level l9 and an unknown argument are one NO-GO
+#              line; with a fake engine that answers, plain doctor and
+#              --level l0 are GO, so the last two are refused for the
+#              argument, not for the engine.
 # Each judge is then run on copies of the real files with one defect each (the
 # edits name the real text; if it moves, the defect is not applied and this
-# says it cannot fail).
+# says it cannot fail). The --level judge, whose real subject may not do
+# --level yet, is run on a small stand-in doctor written from the ADR: it must
+# pass that one, and fail on each copy of it with one defect.
 # shellcheck disable=SC2016,SC2086 # edits are text; word lists are split on purpose
 set -eu
 name=package
@@ -29,7 +51,7 @@ name=package
 
 for t in shellcheck python3; do command -v "$t" >/dev/null 2>&1 || nogo "$t is not on PATH (./go ci runs in the workbench)"; done
 python3 -c 'import yaml' 2>/dev/null || nogo "python3 cannot import yaml (PyYAML, workbench/uv.lock)"
-for f in lights-out package/entrypoint.sh action/action.yml .github/workflows/package.yml core/doctor.sh; do
+for f in lights-out package/entrypoint.sh action.yml .github/workflows/package.yml core/doctor.sh; do
   [ -e "$f" ] || nogo "$f not found"
 done
 
@@ -38,7 +60,7 @@ sh_bin=$(command -v sh)
 w=$(mktemp -d)
 trap 'rm -rf "$w"' EXIT
 # tools: a PATH of plain tools and no engine. trip: a podman and docker that only leave a mark.
-mkdir "$w/tools" "$w/trip" "$w/repo"
+mkdir "$w/tools" "$w/trip" "$w/repo" "$w/fake"
 for t in git awk sed grep tr sort head tail cut cksum cat uname basename dirname mkdir rm mktemp id env wc; do
   p=$(command -v "$t" 2>/dev/null || true)
   case "$p" in /*) ln -s "$p" "$w/tools/$t" ;; esac
@@ -46,6 +68,9 @@ done
 printf '#!/bin/sh\n: > %s/tripped\n' "$w" > "$w/trip/podman"
 cp "$w/trip/podman" "$w/trip/docker"
 chmod +x "$w/trip/podman" "$w/trip/docker"
+# fake: a podman that answers every call, for a doctor whose only failing item is the one under test.
+printf '#!/bin/sh\ncase "$*" in *RemoteSocket*) echo true ;; *Client.Version*) echo 5.0.0 ;; esac\nexit 0\n' > "$w/fake/podman"
+chmod +x "$w/fake/podman"
 git init -q "$w/repo" >/dev/null 2>&1 || nogo "git init failed in a temporary directory"
 
 lines() { awk 'END{print NR}' "$1"; }
@@ -68,17 +93,25 @@ wrapper_flaws() {
     || echo "the wrapper names an engine socket, --env-file or a :z/:Z mount"
   { [ -n "$k" ] && [ "$k" = "$(keys "$f")" ]; } || echo "the allowlists differ: the wrapper takes [$(keys "$f")], the entrypoint [$k]"
   run "$w/trip:$w/tools" "$f" frobnicate
-  { [ "$rc" -ne 0 ] && [ ! -e "$w/tripped" ] && [ ! -s "$w/o" ] && has_all "$w/e" init gates triage postmortem doctor version; } \
-    || echo "an unknown subcommand is not refused on stderr, before any engine, naming the six"
+  { [ "$rc" -ne 0 ] && [ ! -e "$w/tripped" ] && [ ! -s "$w/o" ] && has_all "$w/e" init gates test-proof test-integrity triage postmortem doctor version; } \
+    || echo "an unknown subcommand is not refused on stderr, before any engine, naming the eight"
   for a in "init NOPE=1" "gates NOPE=1" "triage BASEX=1" "postmortem base=x"; do
     run "$w/trip:$w/tools" "$f" $a
     { [ "$rc" -ne 0 ] && [ ! -e "$w/tripped" ] && has_all "$w/e" $k; } || echo "'$a' is not refused before any engine, naming $k"
+  done
+  for a in "test-proof NOPE=1" "test-integrity NOPE=1" "test-proof base=x" "test-integrity BASEX=1"; do
+    run "$w/trip:$w/tools" "$f" $a
+    { [ "$rc" -ne 0 ] && [ ! -e "$w/tripped" ] && [ ! -s "$w/o" ]; } || echo "'$a' is not refused before any engine"
   done
   for x in $k; do
     run "$w/trip:$w/tools" "$f" gates "$x=x"
     [ -e "$w/tripped" ] || echo "$x= is in the entrypoint's allowlist and the wrapper refuses it"
   done
-  for a in init gates "triage ALERT=a" "postmortem INCIDENT=i"; do
+  for s in test-proof test-integrity; do
+    run "$w/trip:$w/tools" "$f" "$s" BASE=x HEAD=y
+    [ -e "$w/tripped" ] || echo "$s refuses BASE= HEAD=, the range it judges"
+  done
+  for a in init gates test-proof test-integrity "triage ALERT=a" "postmortem INCIDENT=i"; do
     run "$w/tools" "$f" $a
     { [ "$rc" -ne 0 ] && [ ! -s "$w/o" ] && [ "$(lines "$w/e")" = 1 ] && grep -qi engine "$w/e"; } \
       || echo "'$a' with no engine: want non-zero, nothing on stdout, one stderr line naming the engine"
@@ -96,45 +129,166 @@ doctor_flaws() {
   :
 }
 
+# dlevel PATH DOCTOR ARGS...: DOCTOR from the repository root with ARGS, PATH as given; stdout in $w/o, status in $rc.
+dlevel() { dp=$1; dd=$2; shift 2; (cd "$root" && env -i PATH="$dp" HOME="$w" "$sh_bin" "$dd" "$@") >"$w/o" 2>"$w/e" && rc=0 || rc=$?; }
+# shape: the last dlevel exited 1 with one stdout line and no ANSI.
+shape() { [ "$rc" -eq 1 ] && [ "$(lines "$w/o")" = 1 ] && ! grep -q "$(printf '\033')" "$w/o"; }
+# doctor_level_flaws ROOT: ROOT/core/doctor.sh --level, docs/adr/0057 §8; what is wrong, one line each.
+doctor_level_flaws() {
+  dr=$1/core/doctor.sh
+  for lv in l2 l3; do
+    dlevel "$w/tools" "$dr" --level "$lv"
+    { shape && grep -q "^NO-GO: doctor — $lv lacks " "$w/o" && grep -qF DELIVERY=cloud-deploy "$w/o" && grep -q toolchain "$w/o"; } \
+      || echo "doctor --level $lv with no engine: want exit 1 and the one line NO-GO: doctor — $lv lacks <n>: <items> naming DELIVERY=cloud-deploy and toolchain, no ANSI; got exit $rc: $(cat "$w/o")"
+  done
+  for lv in l0 l1; do
+    dlevel "$w/tools" "$dr" --level "$lv"
+    { shape && grep -q "^NO-GO: doctor — $lv lacks " "$w/o" && grep -q engine "$w/o" && ! grep -q toolchain "$w/o"; } \
+      || echo "doctor --level $lv with no engine: want exit 1 and the one line NO-GO: doctor — $lv lacks <n>: <items> naming the engine and not toolchain, no ANSI; got exit $rc: $(cat "$w/o")"
+  done
+  for a in "--level l9" "--frobnicate"; do
+    dlevel "$w/tools" "$dr" $a
+    { shape && grep -q '^NO-GO: doctor — ' "$w/o"; } \
+      || echo "doctor $a with no engine: want exit 1 and the one line NO-GO: doctor —, no ANSI; got exit $rc: $(cat "$w/o")"
+  done
+  # With an engine that answers, only the argument can fail.
+  dlevel "$w/fake:$w/tools" "$dr"
+  { [ "$rc" -eq 0 ] && [ "$(lines "$w/o")" = 1 ] && grep -q '^GO: doctor' "$w/o"; } \
+    || echo "doctor with a fake engine that answers: want the one line GO: doctor, exit 0; got exit $rc: $(cat "$w/o")"
+  dlevel "$w/fake:$w/tools" "$dr" --level l0
+  { [ "$rc" -eq 0 ] && [ "$(lines "$w/o")" = 1 ] && grep -q '^GO: doctor — l0 has what its profile names' "$w/o"; } \
+    || echo "doctor --level l0 with a fake engine that answers: want the one line GO: doctor — l0 has what its profile names, exit 0; got exit $rc: $(cat "$w/o")"
+  for a in "--level l9" "--frobnicate"; do
+    dlevel "$w/fake:$w/tools" "$dr" $a
+    { shape && grep -q '^NO-GO: doctor — ' "$w/o"; } \
+      || echo "doctor $a with a fake engine that answers: want exit 1 and the one line NO-GO: doctor — (the argument is refused, not the engine); got exit $rc: $(cat "$w/o")"
+  done
+  :
+}
+doctor_all_flaws() { doctor_flaws "$1"; doctor_level_flaws "$1"; }
+
+# A doctor that does what docs/adr/0057 §8 says of the exit and the lines, no more:
+# the judge above must pass it, and fail on a copy with `mut` set to each defect.
+cat > "$w/doctor.ok" <<'SH'
+#!/bin/sh
+mut=NONE
+lv=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --level) [ $# -ge 2 ] || { echo "NO-GO: doctor — --level needs a level"; exit 1; }; lv=$2; shift 2 ;;
+    *) [ "$mut" = ignores-unknown ] && { shift; continue; }; echo "NO-GO: doctor — $1 is not an argument"; exit 1 ;;
+  esac
+done
+bad=""
+add() { bad="$bad${bad:+, }$1"; }
+command -v podman >/dev/null 2>&1 || command -v docker >/dev/null 2>&1 || [ "$mut" = ignores-engine ] || add engine
+case "$lv" in
+  "" | l0 | l1) [ "$mut" = toolchain-at-l0 ] && add toolchain ;;
+  l2 | l3)
+    [ "$mut" = no-delivery-item ] || add DELIVERY=cloud-deploy
+    [ "$mut" = no-toolchain-item ] || add toolchain
+    [ "$mut" = l2-is-go ] && bad="" ;;
+  *) [ "$mut" = accepts-l9 ] || { echo "NO-GO: doctor — $lv has no profile"; exit 1; } ;;
+esac
+tail=""
+[ "$mut" = ansi ] && tail=$(printf '\033[0m')
+if [ -n "$bad" ]; then
+  if [ -z "$lv" ]; then
+    echo "NO-GO: doctor — $bad"
+  else
+    word=lacks
+    [ "$mut" = wrong-words ] && word=missing
+    echo "NO-GO: doctor — $lv $word $(echo "$bad" | awk -F', ' '{ print NF }'): $bad$tail"
+  fi
+  [ "$mut" = nogo-exit0 ] && exit 0
+  [ "$mut" = two-lines ] && echo "and more"
+  exit 1
+fi
+if [ -z "$lv" ]; then echo "GO: doctor"
+elif [ "$mut" = other-go-line ]; then echo "GO: doctor — $lv is fine"
+else echo "GO: doctor — $lv has what its profile names"; fi
+SH
+mkdir -p "$w/ok/core"
+cp "$w/doctor.ok" "$w/ok/core/doctor.sh"
+
 cat > "$w/chk.py" <<'PY'
-import copy, glob, os, re, sys, yaml
+import copy, glob, json, os, re, sys, yaml
 
 root, mode = sys.argv[1], sys.argv[2]
-PKG, ACT = ".github/workflows/package.yml", "action/action.yml"
+PKG, ACT, OLD = ".github/workflows/package.yml", "action.yml", "action/action.yml"
+SHIMS = ("actions/test-proof", "actions/test-integrity")
 S = "github.server_url == 'https://github.com'"
 TAG, DISP = r"startsWith\(github\.ref, 'refs/tags/v'\)", r"github\.event_name == 'workflow_dispatch'"
 PUB = re.compile(re.escape(S) + r" && \((%s \|\| %s|%s \|\| %s)\)" % (TAG, DISP, DISP, TAG))
-names = glob.glob(".github/workflows/*.y*ml", root_dir=root) + [ACT]
-d0 = {n: yaml.safe_load(open(os.path.join(root, n))) for n in names if os.path.isfile(os.path.join(root, n))}
+AP = r"(\$GITHUB_ACTION_PATH|\$\{GITHUB_ACTION_PATH\}|\$\{\{\s*github\.action_path\s*\}\})"
+names = glob.glob(".github/workflows/*.y*ml", root_dir=root) + [ACT, OLD] + [s + "/action.yml" for s in SHIMS]
+files = [s + "/README.md" for s in SHIMS]
+m = re.search(r"^version=(.*)$", open(os.path.join(root, "lights-out")).read(), re.M)
+d0 = {
+    "yaml": {n: yaml.safe_load(open(os.path.join(root, n))) for n in names if os.path.isfile(os.path.join(root, n))},
+    "version": m.group(1) if m else "",
+    "files": {f for f in files if os.path.isfile(os.path.join(root, f))},
+}
+Y = lambda d: d["yaml"]
 
 
 def uses(j):
-    return any(str(s.get("uses", "")).startswith("./action") for s in j.get("steps") or [])
+    return any(str(s.get("uses", "")).strip() == "./" for s in j.get("steps") or [])
 
 
-def pw(p):
-    return p == "write-all" or (isinstance(p, dict) and p.get("packages") == "write")
+def stale(j):
+    return any(str(s.get("uses", "")).strip() == "./action" or str(s.get("uses", "")).startswith("./action/") for s in j.get("steps") or [])
+
+
+def perm(p, k):
+    return p == "write-all" or (isinstance(p, dict) and p.get(k) == "write")
+
+
+def passes(v, i):
+    return re.fullmatch(r"\$\{\{\s*inputs\.%s\s*\}\}" % re.escape(i), str(v).strip()) is not None
 
 
 def flaws(d):
-    a = d.get(ACT)
+    y = Y(d)
+    a = y.get(ACT)
+    root_inputs = (a or {}).get("inputs") or {} if isinstance(a, dict) else {}
+    if OLD in y:
+        yield "action/action.yml exists: the Action is action.yml at the repository root, and action/ is removed (ADR 0057 §6)"
     if not isinstance(a, dict) or (a.get("runs") or {}).get("using") != "composite":
-        yield "action/action.yml is missing or is not a composite action"
+        yield "action.yml (repository root) is missing or is not a composite action"
     else:
-        run = "\n".join(str(s.get("run", "")) for s in a["runs"].get("steps") or [])
-        if not re.search(r"(\$GITHUB_ACTION_PATH|\$\{GITHUB_ACTION_PATH\}|\$\{\{\s*github\.action_path\s*\}\})/\.\./lights-out\"?\s+gates", run):
-            yield "action/action.yml does not run $GITHUB_ACTION_PATH/../lights-out gates"
+        steps = a["runs"].get("steps") or []
+        run = "\n".join(str(s.get("run", "")) for s in steps)
+        if re.search(AP + r"/\.\./", run):
+            yield "action.yml reaches $GITHUB_ACTION_PATH/../: the wrapper is at the Action's own root (ADR 0057 §6)"
+        elif not re.search(AP + r"/lights-out\"?(\s|$)", run):
+            yield "action.yml does not run $GITHUB_ACTION_PATH/lights-out"
+        if not re.search(r"inputs\.gates|inputs\['gates'\]", json.dumps(steps)):
+            yield "action.yml does not choose the subcommand from its gates input"
+        g = root_inputs.get("gates")
+        if not isinstance(g, dict) or str(g.get("default")) != "all":
+            yield "action.yml has no input gates whose default is all"
+        if "summary.md" not in json.dumps(steps):
+            yield "action.yml does not post the summary.md the image writes (ADR 0057 §6)"
         for p in re.findall(r"(?:GITHUB_API_URL\}?|api\.github\.com)(/[^\s\"'?]*)", run) + re.findall(r"\bgh\s+api\s+(\S+)", run):
             if not p.endswith("check-runs"):
-                yield "action/action.yml calls %s, a permission beyond checks: write" % p
-    for path, doc in d.items():
-        for n, j in (doc.get("jobs") or {}).items() if path != ACT else ():
+                yield "action.yml calls %s, a permission beyond checks: write" % p
+    for path, doc in y.items():
+        if not path.startswith(".github/workflows/"):
+            continue
+        for n, j in (doc.get("jobs") or {}).items():
             p = j.get("permissions", doc.get("permissions"))
-            if pw(p) and not (path == PKG and n == "publish"):
-                yield "%s: job %s holds packages: write; only package.yml's publish may" % (path, n)
+            for k in ("packages", "id-token"):
+                if perm(p, k) and not (path == PKG and n == "publish"):
+                    # The one other id-token: write is a GitHub Pages deploy (pages: write, site.yml), which signs nothing.
+                    if k == "id-token" and path != PKG and isinstance(p, dict) and p.get("pages") == "write":
+                        continue
+                    yield "%s: job %s holds %s: write; only package.yml's publish may" % (path, n, k)
+            if stale(j):
+                yield "%s: job %s uses ./action, which is gone: the Action is ./ (ADR 0057 §6)" % (path, n)
             if uses(j) and not (isinstance(p, dict) and all(v == "none" or (k, v) in (("contents", "read"), ("checks", "write")) for k, v in p.items())):
-                yield "%s: job %s uses ./action with permissions %s, want at most contents: read and checks: write" % (path, n, p)
-    jobs = (d.get(PKG) or {}).get("jobs") or {}
+                yield "%s: job %s uses ./ with permissions %s, want at most contents: read and checks: write" % (path, n, p)
+    jobs = (y.get(PKG) or {}).get("jobs") or {}
     if "publish" not in jobs:
         yield "package.yml has no publish job"
     for n, j in jobs.items():
@@ -142,44 +296,143 @@ def flaws(d):
         if n == "publish":
             if not PUB.fullmatch(c):
                 yield "package.yml: job publish: if: %r is not the github.com guard and a v* tag or workflow_dispatch" % c
-            if not (isinstance(j.get("permissions"), dict) and j["permissions"].get("packages") == "write"):
+            if not perm(j.get("permissions"), "packages"):
                 yield "package.yml: job publish has no packages: write"
+            if not perm(j.get("permissions"), "id-token"):
+                yield "package.yml: job publish has no id-token: write"
+            pr = "\n".join(str(s.get("run", "")) for s in j.get("steps") or [])
+            if not re.search(r"\bcosign\s+sign\b", pr):
+                yield "package.yml: job publish does not run cosign sign (ADR 0057 §4)"
+            if re.search(r"(^|\s)--key\b", pr, re.M) or re.search(r"COSIGN_PRIVATE_KEY|COSIGN_PASSWORD", json.dumps(j)):
+                yield "package.yml: job publish signs with a key; the signing is keyless (ADR 0057 §4)"
         elif not re.fullmatch(re.escape(S) + r"( && [^|]*)?", c):
             yield "package.yml: job %s: if: %r is not the github.com guard (ADR 0039)" % (n, c)
+    for s in SHIMS:
+        base, p = os.path.basename(s), s + "/action.yml"
+        sh = y.get(p)
+        if not isinstance(sh, dict):
+            yield "%s is missing" % p
+            continue
+        if (sh.get("runs") or {}).get("using") != "composite":
+            yield "%s is not a composite action" % p
+        if s + "/README.md" not in d["files"]:
+            yield "%s/README.md is missing" % s
+        for k in ("name", "description"):
+            if not str(sh.get(k) or "").strip():
+                yield "%s has no %s" % (p, k)
+        b = sh.get("branding")
+        if not (isinstance(b, dict) and b.get("icon") and b.get("color")):
+            yield "%s has no branding (icon and color)" % p
+        st = (sh.get("runs") or {}).get("steps") or []
+        if len(st) != 1:
+            yield "%s: want exactly one step, it has %d" % (p, len(st))
+        else:
+            want = "nicolaguglielmi/lights-out@v" + d["version"]
+            if str(st[0].get("uses", "")) != want:
+                yield "%s: the step uses %r, want %r (v + the wrapper's version=)" % (p, st[0].get("uses"), want)
+            w = st[0].get("with") or {}
+            if str(w.get("gates")) != base:
+                yield "%s: the step's with: gates is %r, want %r" % (p, w.get("gates"), base)
+            for i in sh.get("inputs") or {}:
+                if not passes(w.get(i, ""), i):
+                    yield "%s: input %s is not passed through as ${{ inputs.%s }}" % (p, i, i)
+            for i in w:
+                if i not in root_inputs:
+                    yield "%s: the step passes %s, which is not an input of the root action.yml" % (p, i)
+        for i in sh.get("inputs") or {}:
+            if i not in root_inputs:
+                yield "%s: input %s is not an input of the root action.yml" % (p, i)
 
 
-J = lambda d: d[PKG]["jobs"]
+J = lambda d: Y(d)[PKG]["jobs"]
 A = lambda d: next(j for j in J(d).values() if uses(j))
 Q = lambda d: next(j for n, j in J(d).items() if n != "publish" and not uses(j))
+SP, ST = SHIMS[0] + "/action.yml", SHIMS[1] + "/action.yml"
 
 
-def other(d):
-    d[".github/workflows/o.yml"] = {"jobs": {"x": {"permissions": {"packages": "write"}, "steps": []}}}
+def other(d, **perms):
+    Y(d)[".github/workflows/o.yml"] = {"jobs": {"x": {"permissions": perms, "steps": []}}}
 
 
 def no_perms(d):
     A(d).pop("permissions")
-    d[PKG].pop("permissions", None)
+    Y(d)[PKG].pop("permissions", None)
 
 
 def runs(d, a, b):
-    for s in d[ACT]["runs"]["steps"]:
+    for s in Y(d)[ACT]["runs"]["steps"]:
         s["run"] = str(s.get("run", "")).replace(a, b)
 
 
+def text(d, p, a, b):
+    Y(d)[p] = json.loads(json.dumps(Y(d)[p]).replace(a, b))
+
+
+def signs_with_key(d):
+    for s in J(d)["publish"]["steps"]:
+        s["run"] = str(s.get("run", "")).replace("cosign sign", "cosign sign --key cosign.key")
+
+
+def declare(d, p, name="zz", root_too=False, pass_as="${{ inputs.%s }}"):
+    Y(d)[p].setdefault("inputs", {})[name] = {"description": "x", "required": False, "default": ""}
+    if root_too:
+        Y(d)[ACT].setdefault("inputs", {})[name] = {"description": "x", "required": False, "default": ""}
+    if pass_as:
+        Y(d)[p]["runs"]["steps"][0].setdefault("with", {})[name] = pass_as % name if "%s" in pass_as else pass_as
+
+
 CASES = [
-    ("the Action job holds packages: write", lambda d: A(d)["permissions"].update(packages="write"), "uses ./action"),
-    ("the Action job sets no permissions", no_perms, "uses ./action"),
-    ("another job holds packages: write", lambda d: Q(d).update(permissions={"packages": "write"}), "only package.yml's publish"),
-    ("another workflow holds packages: write", other, "only package.yml's publish"),
+    ("a job that uses ./ holds packages: write", lambda d: A(d)["permissions"].update(packages="write"), "uses ./ with"),
+    ("a job that uses ./ sets no permissions", no_perms, "uses ./ with"),
+    ("a job that uses ./ holds contents: write", lambda d: A(d)["permissions"].update(contents="write"), "uses ./ with"),
+    ("a job still uses ./action", lambda d: A(d)["steps"].append({"uses": "./action"}), "which is gone"),
+    ("another job holds packages: write", lambda d: Q(d).update(permissions={"packages": "write"}), "holds packages: write; only package.yml's publish"),
+    ("another workflow holds packages: write", lambda d: other(d, packages="write"), "holds packages: write; only package.yml's publish"),
+    ("another job holds id-token: write", lambda d: Q(d).update(permissions={"id-token": "write"}), "holds id-token: write; only package.yml's publish"),
+    ("another workflow holds id-token: write", lambda d: other(d, **{"id-token": "write"}), "holds id-token: write; only package.yml's publish"),
+    ("a package.yml job holds pages: write and id-token: write", lambda d: Q(d).update(permissions={"pages": "write", "id-token": "write"}), "holds id-token: write; only package.yml's publish"),
+    ("another workflow's job holds id-token: write and nothing for Pages", lambda d: other(d, **{"id-token": "write", "contents": "read"}), "holds id-token: write; only package.yml's publish"),
+    ("a workflow holds write-all", lambda d: Y(d)[PKG].update(permissions="write-all"), "only package.yml's publish"),
     ("publish runs on every push", lambda d: J(d)["publish"].update({"if": S}), "job publish: if"),
     ("publish: && and || ungrouped", lambda d: J(d)["publish"].update({"if": S + " && startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'"}), "job publish: if"),
-    ("publish without packages: write", lambda d: J(d)["publish"].pop("permissions"), "no packages: write"),
+    ("publish without packages: write", lambda d: J(d)["publish"]["permissions"].pop("packages"), "no packages: write"),
+    ("publish without id-token: write", lambda d: J(d)["publish"]["permissions"].pop("id-token"), "no id-token: write"),
+    ("publish does not run cosign sign", lambda d: text(d, PKG, "cosign sign", "cosign verify"), "does not run cosign sign"),
+    ("publish signs with a key", signs_with_key, "keyless"),
     ("a job without the github.com guard", lambda d: Q(d).pop("if"), "ADR 0039"),
     ("a job whose guard has an ||", lambda d: Q(d).update({"if": S + " || github.event_name == 'push'"}), "ADR 0039"),
-    ("action.yml is not composite", lambda d: d[ACT]["runs"].update(using="node20"), "composite"),
-    ("action.yml does not reach ../lights-out", lambda d: runs(d, "/../lights-out", "/../x"), "does not run"),
+    ("action.yml is not composite", lambda d: Y(d)[ACT]["runs"].update(using="node20"), "composite"),
+    ("action.yml is gone", lambda d: Y(d).pop(ACT), "missing or is not a composite"),
+    ("action/action.yml is back", lambda d: Y(d).update({OLD: {"runs": {"using": "composite"}}}), "action/action.yml exists"),
+    ("action.yml reaches ../lights-out", lambda d: runs(d, "/lights-out", "/../lights-out"), "reaches $GITHUB_ACTION_PATH/../"),
+    ("action.yml does not run its own lights-out", lambda d: runs(d, "/lights-out", "/x"), "does not run $GITHUB_ACTION_PATH/lights-out"),
+    ("action.yml ignores its gates input", lambda d: text(d, ACT, "inputs.gates", "inputs.base"), "does not choose the subcommand"),
+    ("action.yml has no gates input", lambda d: Y(d)[ACT]["inputs"].pop("gates"), "default is all"),
+    ("action.yml's gates defaults to test-proof", lambda d: Y(d)[ACT]["inputs"]["gates"].update(default="test-proof"), "default is all"),
+    ("action.yml does not post summary.md", lambda d: text(d, ACT, "summary.md", "details.txt"), "summary.md"),
     ("action.yml calls another REST path", lambda d: runs(d, "check-runs", "issues/1/comments"), "beyond"),
+    ("test-proof's action.yml is gone", lambda d: Y(d).pop(SP), "actions/test-proof/action.yml is missing"),
+    ("test-integrity's action.yml is gone", lambda d: Y(d).pop(ST), "actions/test-integrity/action.yml is missing"),
+    ("test-proof is not composite", lambda d: Y(d)[SP]["runs"].update(using="node20"), "not a composite"),
+    ("test-proof has no README", lambda d: d["files"].discard(SHIMS[0] + "/README.md"), "actions/test-proof/README.md is missing"),
+    ("test-integrity has no README", lambda d: d["files"].discard(SHIMS[1] + "/README.md"), "actions/test-integrity/README.md is missing"),
+    ("test-proof has no name", lambda d: Y(d)[SP].pop("name"), "has no name"),
+    ("test-integrity has no description", lambda d: Y(d)[ST].pop("description"), "has no description"),
+    ("test-proof has no branding", lambda d: Y(d)[SP].pop("branding"), "has no branding"),
+    ("test-integrity has a branding with no color", lambda d: Y(d)[ST]["branding"].pop("color"), "has no branding"),
+    ("test-proof has two steps", lambda d: Y(d)[SP]["runs"]["steps"].append({"run": "true", "shell": "sh"}), "exactly one step"),
+    ("test-integrity has no step", lambda d: Y(d)[ST]["runs"].update(steps=[]), "exactly one step"),
+    ("test-proof uses another version", lambda d: Y(d)[SP]["runs"]["steps"][0].update(uses="nicolaguglielmi/lights-out@v0.0.1"), "want 'nicolaguglielmi/lights-out@v"),
+    ("test-integrity uses a branch", lambda d: Y(d)[ST]["runs"]["steps"][0].update(uses="nicolaguglielmi/lights-out@main"), "want 'nicolaguglielmi/lights-out@v"),
+    ("test-proof uses the old path", lambda d: Y(d)[SP]["runs"]["steps"][0].update(uses="nicolaguglielmi/lights-out/action@v" + d["version"]), "want 'nicolaguglielmi/lights-out@v"),
+    ("the wrapper's version moved on, the shims did not", lambda d: d.update(version="9.9.9"), "want 'nicolaguglielmi/lights-out@v9.9.9'"),
+    ("test-proof passes gates: all", lambda d: Y(d)[SP]["runs"]["steps"][0]["with"].update(gates="all"), "with: gates is 'all'"),
+    ("test-integrity passes test-proof's gates", lambda d: Y(d)[ST]["runs"]["steps"][0]["with"].update(gates="test-proof"), "with: gates is 'test-proof'"),
+    ("test-proof declares an input it does not pass", lambda d: declare(d, SP, root_too=True, pass_as=None), "input zz is not passed through"),
+    ("test-integrity passes an input as a literal", lambda d: declare(d, ST, root_too=True, pass_as="literal"), "input zz is not passed through"),
+    ("test-proof passes another input's value", lambda d: declare(d, SP, root_too=True, pass_as="${{ inputs.base }}"), "input zz is not passed through"),
+    ("test-proof declares an input the root has not", lambda d: declare(d, SP), "is not an input of the root action.yml"),
+    ("test-integrity passes an input it did not declare", lambda d: Y(d)[ST]["runs"]["steps"][0]["with"].update(qq="${{ inputs.qq }}"), "the step passes qq"),
 ]
 if mode == "check":
     print("\n".join(flaws(d0)))
@@ -196,7 +449,7 @@ PY
 # judge WHAT FLAWS: the first flaw is the one line, all of them go to stderr.
 judge() { [ -z "$2" ] || nogo "$1: $(printf '%s\n' "$2" | head -n 1)" "$2"; }
 judge wrapper "$(wrapper_flaws "$root")"
-judge doctor "$(doctor_flaws "$root")"
+judge doctor "$(doctor_all_flaws "$root")"
 judge yaml "$(python3 -I "$w/chk.py" "$root" check)"
 
 # --- the checks must be able to fail ----------------------------------------------
@@ -232,11 +485,30 @@ try wrapper_flaws "with no engine" 'sed -i "s/^  die .no container engine found.
 try wrapper_flaws "version does not work" 'sed -i "s/= version \]/= nonesuch ]/" lights-out'
 try wrapper_flaws "allowlists differ" 'sed -i "s/INCIDENT=\*|//" lights-out'
 try wrapper_flaws "allowlists differ" 'printf "case x in FOO=*) ;; esac\n" >> package/entrypoint.sh'
+# The eight subcommands (ADR 0057 §5): every mention of a new one outside the comments misspelt.
+for s in test-proof test-integrity; do
+  try wrapper_flaws "naming the eight" "sed -i \"/^[[:space:]]*#/!s/$s/${s}x/g\" lights-out"
+  try wrapper_flaws "'$s' with no engine" "sed -i \"/^[[:space:]]*#/!s/$s/${s}x/g\" lights-out"
+done
+try wrapper_flaws "'test-proof NOPE=1' is not refused" 'sed -i "s/^    BASE=\*|/    *|BASE=*|/" lights-out'
+try wrapper_flaws "'test-integrity BASEX=1' is not refused" 'sed -i "s/^    BASE=\*|/    *|BASE=*|/" lights-out'
+try wrapper_flaws "test-proof refuses BASE= HEAD=" 'sed -i "s/^    BASE=\*|//" lights-out'
+try wrapper_flaws "test-integrity refuses BASE= HEAD=" 'sed -i "s/^    BASE=\*|//" lights-out'
 try doctor_flaws "want exit 1" 'sed -i "/^\. ci\/lib.sh/a echo second" core/doctor.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\necho NO-GO: doctor — key\nexit 1\n" > core/doctor.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\necho GO: doctor\nexit 0\n" > core/doctor.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\nprintf \"\\033[31mNO-GO: doctor — engine\\033[0m\\n\"\nexit 1\n" > core/doctor.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\necho NO-GO: doctor — engine\nexit 0\n" > core/doctor.sh'
+# --level (ADR 0057 §8), on the stand-in doctor: it passes, and each defect is found.
+got=$(doctor_level_flaws "$w/ok")
+[ -z "$got" ] || nogo "ci/package.sh refuses a doctor that does what ADR 0057 §8 says (its own stand-in)" "$got"
+dmut() { try doctor_level_flaws "$1" "cp \"\$w/doctor.ok\" core/doctor.sh && sed -i \"s/^mut=NONE/mut=$2/\" core/doctor.sh"; }
+for m in ansi nogo-exit0 two-lines wrong-words no-delivery-item no-toolchain-item l2-is-go; do dmut "doctor --level l2 with no engine" "$m"; done
+dmut "doctor --level l0 with no engine" toolchain-at-l0
+dmut "doctor --level l0 with no engine" ignores-engine
+dmut "with a fake engine that answers: want exit 1" accepts-l9
+dmut "with a fake engine that answers: want exit 1" ignores-unknown
+dmut "doctor --level l0 with a fake engine" other-go-line
 st=$(python3 -I "$w/chk.py" "$root" selftest) || nogo "the YAML self-test crashed; see stderr"
 [ -z "$st" ] || nogo "ci/package.sh $st"
 
