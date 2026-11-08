@@ -1,8 +1,9 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# ci-contract: meta-gate. Runs every other gate with stdout captured and
-# stderr discarded, and fails unless each one honours the output contract in
+# ci-contract: meta-gate. Runs every other gate, and the light tier's
+# entry point (docs/adr/0061), with stdout captured and stderr discarded,
+# and fails unless each one honours the output contract in
 # ci/lib.sh: exactly one stdout line, "GO: <name>" (optionally followed by
 # " — <detail>", docs/adr/0042 §3) with exit 0 or "NO-GO: <name> — <reason>"
 # with exit 1, no ANSI escape sequences. The gate's
@@ -40,23 +41,21 @@ done
 
 [ -z "$dupes" ] || nogo "duplicate gate basename(s) across ci/gates/verify:$dupes"
 
-for f in $files; do
-  gate=$(basename "$f" .sh)
-
-  # stdout only, exit code preserved without tripping set -e.
-  # Counted from a file, not from $(...), which strips trailing newlines and
-  # would let a blank line after the verdict pass (ticket 0010).
-  sh "$f" >"$stdout_file" 2>/dev/null && rc=0 || rc=$?
+# shape GATE RC: the stdout in $stdout_file is GATE's one contract line and
+# RC agrees with it; otherwise GATE and why join $bad.
+shape() {
+  gate=$1
+  rc=$2
   lines=$(awk 'END{print NR}' "$stdout_file")
   out=$(cat "$stdout_file")
   if [ "$lines" -ne 1 ]; then
     bad="$bad $gate(lines=$lines)"
     printf '%s: stdout has %s lines, want 1:\n%s\n' "$gate" "$lines" "$out" >&2
-    continue
+    return
   fi
 
   case "$out" in
-    *"$esc"*) bad="$bad $gate(ansi)"; printf '%s: ANSI escape in stdout\n' "$gate" >&2; continue ;;
+    *"$esc"*) bad="$bad $gate(ansi)"; printf '%s: ANSI escape in stdout\n' "$gate" >&2; return ;;
   esac
 
   case "$out" in
@@ -67,7 +66,32 @@ for f in $files; do
     *)
       bad="$bad $gate(format)"; printf '%s: malformed line: %s\n' "$gate" "$out" >&2 ;;
   esac
+}
+
+for f in $files; do
+  # stdout only, exit code preserved without tripping set -e.
+  # Counted from a file, not from $(...), which strips trailing newlines and
+  # would let a blank line after the verdict pass (ticket 0010).
+  sh "$f" >"$stdout_file" 2>/dev/null && rc=0 || rc=$?
+  shape "$(basename "$f" .sh)" "$rc"
 done
+
+# The light tier's entry point (docs/adr/0061 §5) is no ci/, gates/ or
+# verify/ file: run by name, cold, from this checkout (PYTHONSAFEPATH: the
+# checkout's core/, never a cwd's), in its three shapes: this checkout's
+# last commit judged, an argument it does not take, and `gates` without
+# --light, which is named `gates` and may only be a NO-GO.
+light() {
+  PYTHONSAFEPATH=1 PYTHONPATH=. python3 -m core "$@" >"$stdout_file" 2>/dev/null
+}
+light gates --light && rc=0 || rc=$?
+shape gates-light "$rc"
+light gates --light NOT_AN_ARGUMENT=1 && rc=0 || rc=$?
+shape gates-light "$rc"
+[ "$rc" -eq 1 ] || bad="$bad gates-light(an unknown argument passed)"
+light gates && rc=0 || rc=$?
+shape gates "$rc"
+[ "$rc" -eq 1 ] || bad="$bad gates(the light package printed GO: gates)"
 
 # nogo with $NOGO_DETAILS (docs/adr/0038 §5). A throwaway gate sources the
 # lib under test and rejects with a reason and two detail lines. Wanted:
