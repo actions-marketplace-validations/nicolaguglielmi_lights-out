@@ -407,7 +407,7 @@ lights-out/
     docs-drift.sh           # every path, ./go command and NAME= key a page cites exists (ADR 0054 §3)
     map.sh                  # the project map end to end: this repository, workloads/minimal, a stale map refused, a docs ticket (ADR 0054)
     gitea-compat.sh         # workflow uses only what Gitea Actions supports
-    codehost.sh             # every code host adapter: the eight verbs and ready.sh, credential.sh answers, the Makefile's git config index, the token never in argv (curl and git replaced by recorders; no network, no fake GitHub; ADR 0043 §5)
+    codehost.sh             # every code host adapter: the eight verbs and ready.sh, credential.sh answers, the Makefile's git config index, the token never in argv (curl and git replaced by recorders, `date` by a clock that moves a second per read; no network, no fake GitHub; ADR 0043 §5)
     profiles.sh             # profiles are plain KEY=value, same keys
     workloads.sh            # validate every workload's workload.env (replaces compose.sh)
     app-free.sh             # verify core/gates/verify/adapters never name the app (ADR 0030)

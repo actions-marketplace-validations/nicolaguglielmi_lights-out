@@ -24,7 +24,11 @@
 #       token empty or unset, or the repository unset, every verb refuses
 #       in one stderr line naming .env and makes no curl or git call. A
 #       token copied into another variable first is caught here, not by a
-#       grep;
+#       grep. The verbs also see a `date` whose clock moves one second
+#       between any two reads: a polling verb (await, ready) must call the
+#       API before it reads its deadline, or a second that turns between
+#       its two reads leaves it with no call at all (2026-11-07, main red
+#       at 373da51 on `ready` with READY_TIMEOUT=1);
 #   (5) no code host adapter runs `git config`, `git remote add` or
 #       `git remote set-url` (comment lines are not code).
 #
@@ -199,7 +203,19 @@ cat >> "$REC_DIR/$tool.stdin"
 exit 1
 REC
 cp "$rec_bin/curl" "$rec_bin/git"
-chmod +x "$rec_bin/curl" "$rec_bin/git"
+# The clock: `date +%s` moves one second at every read, from $CLOCK, so the
+# second that turns between two reads, a race on a real clock, happens on
+# every pair. Any other `date` is the real one.
+cat > "$rec_bin/date" <<'CLOCK'
+#!/bin/sh
+[ "$*" = +%s ] || exec "$REAL_DATE" "$@"
+n=$(cat "$CLOCK" 2>/dev/null || echo 1000000000)
+n=$((n + 1))
+printf '%s\n' "$n" > "$CLOCK"
+printf '%s\n' "$n"
+CLOCK
+real_date=$(command -v date)
+chmod +x "$rec_bin/curl" "$rec_bin/git" "$rec_bin/date"
 # The workload an attached bootstrap would read, and a harness's pr.json.
 git init -q -b main "$t/wl"
 git -C "$t/wl" -c commit.gpgsign=false commit -q --allow-empty -m wl
@@ -218,6 +234,7 @@ vrun() {
   tokenarg="GITHUB_TOKEN=$v_token"
   [ -z "$v_token_unset" ] || tokenarg=""
   env -i PATH="$rec_bin:$PATH" HOME="$t/home" LC_ALL=C REC_DIR="$vout/rec" \
+    CLOCK="$vout/clock" REAL_DATE="$real_date" \
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0='*' \
     GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1="!sh '$vroot/adapters/github/credential.sh'" \
     GITHUB_REPO="$v_repo" WORKLOAD="$t/wl" WORKLOAD_ATTACHED="$v_attached" \
@@ -468,6 +485,25 @@ expect "a refusal that does not name .env" "does not name .env" "$(recorder_flaw
 fresh
 printf '#!/bin/sh\nset -eu\nhere=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)\n. "$here/adapters/github/env.sh"\ntmp=$(mktemp)\ngithub_api GET "/repos/$GITHUB_REPO" "$tmp" >/dev/null\n' > "$gh/bootstrap.sh"
 expect "a bootstrap that serves a repository that is not attached" "not attached" "$(recorder_flaw "$bad" "bootstrap")"
+# A poller that reads its deadline before its first call (373da51's shape).
+for pv in ready await; do
+  fresh
+  cat > "$gh/$pv.sh" <<'DEFECT'
+#!/bin/sh
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+. "$here/adapters/github/env.sh"
+tmp=$(mktemp)
+start=$(date +%s)
+while [ $(( $(date +%s) - start )) -lt 1 ]; do
+  [ "$(github_api GET "/repos/$GITHUB_REPO" "$tmp")" = 200 ] && exit 0
+  sleep 1
+done
+printf 'timed out\n' >&2
+exit 1
+DEFECT
+  expect "a $pv.sh that reads its deadline before its first call" "$pv: no curl call" "$(recorder_flaw "$bad" "$pv")"
+done
 
 # (5) an adapter that edits git config or a remote.
 fresh
