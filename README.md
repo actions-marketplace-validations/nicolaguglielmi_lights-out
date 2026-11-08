@@ -44,11 +44,11 @@ Each step asks for one thing more than the one before, and gives back something 
 
 ### 1. Gates on your repository
 
-The `lights-out` wrapper runs init and the gates from the published image, `ghcr.io/nicolaguglielmi/lights-out:0.1.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The first run pulls the image, about 1.8 GB unpacked; `doctor`, `init` and `gates` took 65 s and 72 s on clean GitHub runners, first pull included.
+The `lights-out` wrapper runs init and the gates from the published image, `ghcr.io/nicolaguglielmi/lights-out:0.2.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The first run pulls the image, about 1.8 GB unpacked; `doctor`, `init` and `gates` took 65 s and 72 s on clean GitHub runners, first pull included.
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH
-curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.2.0/lights-out
 chmod +x ~/.local/bin/lights-out
 ```
 
@@ -61,7 +61,7 @@ git add .lights-out && git commit -m "add lights-out contract"
 lights-out gates                   # judges the last commit
 ```
 
-Tags are mutable and the image is unsigned: to pin it, set `LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d1a227d4b3ebfa47b0c21268276279ee80e5c7ffdc345e4cde49ae866e8cc840`. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
+Tags are mutable and the image is unsigned: to pin it, set `LIGHTS_OUT_IMAGE=ghcr.io/nicolaguglielmi/lights-out@sha256:d647d0555ce8dbfb622da35f068a8883af8fcd0366d07beb0a7eb53e22aa3631`. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
 
 On pull requests, [the Action](docs/use-on-your-repo.md#the-action) posts the gates' line as a check run, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run them before a coding agent commits.
 

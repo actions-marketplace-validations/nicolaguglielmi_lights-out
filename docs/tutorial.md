@@ -612,12 +612,12 @@ run here.
 
 The same gates run from one script, `lights-out`, and an image.
 
-The image is published: `ghcr.io/nicolaguglielmi/lights-out:0.1.0`.
+The image is published: `ghcr.io/nicolaguglielmi/lights-out:0.2.0`.
 Install the wrapper of the same version:
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH
-curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.1.0/lights-out
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.2.0/lights-out
 chmod +x ~/.local/bin/lights-out
 ```
 
@@ -679,11 +679,11 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out/action@v0.1.0
+  - uses: nicolaguglielmi/lights-out/action@v0.2.0
 ```
 
-**`@v0.1.0` does not work yet**: it needs the published image and the
-tag. The Action is proven in lights-out's own workflow only, with
+**`@v0.2.0` is published and not yet run on another repository.** The
+Action is proven in lights-out's own workflow only, with
 `uses: ./action` on a scratch repository, once with a good change and
 once with a broken test:
 
