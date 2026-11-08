@@ -4,7 +4,7 @@ Branch `claude/m34-lean-plane-a0d988`, on 30ca9dc (the adoption roadmap, on `fix
 
 ## Acceptance, on GitHub Actions
 
-On 8fd756c, every workflow the push triggers green: ci 42508676734, stranger 42508676759, self 42508676764, package 42508676787, podman 42508676737; `site` did not trigger on those paths and was green on e2599c8 (42506965553).
+On a0fc792, every workflow the push triggers green: ci 42510074390, stranger 42510074189, self 42510074229, package 42510074180, podman 42510074435; `site` did not trigger on those paths and was green on e2599c8 (42506965553). The lines below are from 8fd756c (ci 42508676734, stranger 42508676759), green the same way; a0fc792 gave 825 s and 719 s.
 
 ```
 engine-compat  GO: demo, milestone M9, 757s to rollback (budget 900s, plan §2)
@@ -31,7 +31,7 @@ The run before, e2599c8: 873 s and 852 s, with `demo-rework` red (stale expectat
 
 ## Contradictions with the plan, and open points
 
-- **The budget.** The plan proposed 600 s warm, to be measured. Measured: 757 to 873 s on this branch, 116 s apart on the same job. The budget stays 900 s (ADR 0060 §7). M34 removes a failure mode (the 300 s `image` wait) and three services, not seconds on Actions: a green run's image wait was about a second, and GitHub pulls the emulators fast. The time is in the demo's `ci` stage (43 %, every check run twice, once inside `contract`'s cold re-run) and the workbench build (15 %).
+- **The budget.** The plan proposed 600 s warm, to be measured. Measured: 719 to 873 s on this branch over three pushes, 116 s apart on the same job. The budget stays 900 s (ADR 0060 §7). M34 removes a failure mode (the 300 s `image` wait) and three services, not seconds on Actions: a green run's image wait was about a second, and GitHub pulls the emulators fast. The time is in the demo's `ci` stage (43 %, every check run twice, once inside `contract`'s cold re-run) and the workbench build (15 %).
 - **"Identical logbook"** holds except `launch.plane`, which reads the live Delivery status: `down` removes the rolled-back canary revision the demo leaves at weight 0. The CI step compares everything else and prints both plane values.
 - **The plan named the bus `inproc`**, which is the Orchestrator's directory; it is `spool`.
 - **State now outlives `./go down`**: a stranded ticket or a red `mainline/main` stays until `./go resume` or deleting `.crew/state.sqlite`. The demos delete their own documents first.
