@@ -3,17 +3,22 @@
 """console: the business client's view of the record (docs/adr/0047).
 
     GET  /                   console/index.html, five screens
-    GET  /v1/logbook.json    the logbook, as core/logbook.sh wrote it
+    GET  /v1/logbook.json    the logbook, as core/logbook.sh wrote it, with an ETag
     GET  /v1/console.json    this console and this request: mode, auth, identity
     POST /v1/go-for-launch   the first write: core/promote.sh, as ./go promote runs it
     POST /v1/answer          the second: ./go answer's recipe (docs/adr/0055 §2)
+    POST /v1/spec-check      writes nothing: a draft request through gates/spec.sh (docs/adr/0059 §4)
+    POST /v1/request         the third: the draft as TICKETS_DIR/<id>.md, then ./go request's recipe
 
 It reads one document, the logbook, and nothing behind it: the tower, the
-plane and the policy files reach it only through core/logbook.sh. Its two
-writes are go-for-launch through core/promote.sh, the same script and the
-same checks as `./go promote`, and the answer to a ticket's open question
-through `make answer`, the recipe `./go answer` runs; both record who
-pressed and `via: console`.
+plane, the policy files and the project map reach it only through
+core/logbook.sh. Its three writes are go-for-launch through
+core/promote.sh, the same script and the same checks as `./go promote`;
+the answer to a ticket's open question through `make answer`, the recipe
+`./go answer` runs; and a new ticket's request, which only a draft the
+spec gate passes reaches, through `make request`; each records who pressed
+and `via: console`. The spec check runs the gate on a draft in a temporary
+directory and deletes it.
 Every rule below is in docs/plans/console.md, "Decided at build".
 
 LIVE (default): core/logbook.sh runs in one loop every CONSOLE_POLL_S
@@ -48,6 +53,10 @@ COMMITTED_SNAPSHOT = ROOT / "console" / "snapshot" / "logbook.json"
 # beat whatever the number of tabs.
 POLL_S = float(os.environ.get("CONSOLE_POLL_S", "2"))
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
+# Provenance, decision: docs/adr/0059 §4, twice the answer's 8 KiB for a
+# request's several criteria; the check reads one file, no network.
+DRAFT_MAX = 16384
+CHECK_TIMEOUT_S = 10
 
 
 def refuse(line):
@@ -88,7 +97,7 @@ class Config:
 
 
 CFG = None
-state = {"bytes": None, "book": None, "read_at": None, "read_error": None}
+state = {"bytes": None, "book": None, "etag": None, "read_at": None, "read_error": None}
 press = threading.Lock()
 reading = threading.Lock()  # the loop and a press never run the reader at once
 
@@ -113,7 +122,7 @@ def _read_once(out):
             state["read_error"] = line or (err[-1] if err else f"core/logbook.sh exit {p.returncode}")
             return
         data = pathlib.Path(out).read_bytes()
-        state.update(bytes=data, book=json.loads(data), read_at=utc(), read_error=None)
+        state.update(bytes=data, book=json.loads(data), etag=etag(data), read_at=utc(), read_error=None)
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         state["read_error"] = f"console: reading the logbook failed: {exc}"
 
@@ -126,7 +135,11 @@ def refresh(out):
 
 def load_snapshot():
     data = pathlib.Path(CFG.snapshot).read_bytes()
-    state.update(bytes=data, book=json.loads(data), read_at=None, read_error=None)
+    state.update(bytes=data, book=json.loads(data), etag=etag(data), read_at=None, read_error=None)
+
+
+def etag(data):
+    return '"' + hashlib.sha256(data).hexdigest() + '"'
 
 
 def identity(headers):
@@ -150,10 +163,12 @@ def may_launch(who):
 class Handler(BaseHTTPRequestHandler):
     server_version = "lights-out-console"
 
-    def send(self, code, body, kind="application/json"):
+    def send(self, code, body, kind="application/json", tag=None):
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
         self.send_response(code)
+        if tag:
+            self.send_header("ETag", tag)
         self.send_header("Content-Type", kind)
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -173,7 +188,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/logbook.json":
             if state["bytes"] is None:
                 return self.send(503, {"error": state["read_error"] or "console: first read still running"})
-            return self.send(200, state["bytes"])
+            data, tag = state["bytes"], state["etag"]
+            if self.headers.get("If-None-Match") == tag:
+                return self.send(304, b"", tag=tag)
+            return self.send(200, data, tag=tag)
         if path == "/v1/console.json":
             can, reason = may_launch(who)
             return self.send(200, {
@@ -190,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = self.path.split("?")[0]
-        if route not in ("/v1/go-for-launch", "/v1/answer"):
+        if route not in ("/v1/go-for-launch", "/v1/answer", "/v1/spec-check", "/v1/request"):
             return self.send(404, {"error": "not found"})
         who, err = identity(self.headers)
         if err:
@@ -203,6 +221,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {"error": "Origin and Host must be this console's own"})
         if route == "/v1/answer":
             return self.reply(who)
+        if route in ("/v1/spec-check", "/v1/request"):
+            return self.draft(who, route == "/v1/request")
         can, reason = may_launch(who)
         if not can:
             return self.send(403, {"error": reason})
@@ -273,8 +293,79 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             press.release()
 
+    def draft(self, who, save):
+        """The editor (docs/adr/0059 §4): the check runs gates/spec.sh on the
+        draft in a temporary directory and writes nothing; the request runs
+        the check again, then writes TICKETS_DIR/<id>.md and `make request`."""
+        if CFG.auth == "public":
+            return self.send(403, {"error": "CONSOLE_AUTH=public: no draft is checked or requested here"})
+        if save and CFG.snapshot:
+            return self.send(403, {"error": "snapshot: no tower behind it, nothing can be requested"})
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+            assert 0 < length <= DRAFT_MAX
+            fields = json.loads(self.rfile.read(length))
+            assert isinstance(fields, dict) and isinstance(fields.get("title"), str)
+        except (ValueError, TypeError, AssertionError):
+            return self.send(400, {"error": f"the body must be a JSON object of at most {DRAFT_MAX} bytes: "
+                                   "{title, context, criteria: [{given, when, then}], perimeter, feature, priority}"})
+        tickets = os.environ.get("TICKETS_DIR") or "tickets"
+        if not save:
+            code, body = checked(fields, tickets)
+            return self.send(code, body)
+        if not press.acquire(blocking=False):
+            return self.send(409, {"error": "another press is running"})
+        try:
+            code, body = checked(fields, tickets)
+            if code != 200:
+                return self.send(code, body)
+            if not body["line"].startswith("GO: spec"):
+                return self.send(409, {"error": "the spec gate refuses this draft; nothing written",
+                                       "line": body["line"]})
+            with tempfile.TemporaryDirectory(prefix="lights-out-request-") as tmp:
+                pathlib.Path(tmp, "fields.json").write_text(json.dumps(fields), encoding="utf-8")
+                p = subprocess.run(["python3", "core/spec.py", "draft", os.path.join(tmp, "fields.json"), tickets],
+                                   cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                   timeout=CHECK_TIMEOUT_S)
+            if p.returncode != 0:
+                return self.send(409, {"error": (p.stderr.strip().splitlines() or ["the draft was not written"])[-1]})
+            ticket = p.stdout.strip()
+            env = {k: v for k, v in os.environ.items() if not k.startswith("REQUEST")}
+            env.update(REQUEST_BY=who, REQUEST_VIA="console")
+            p = subprocess.run(["make", "--no-print-directory", "request", f"TICKET={ticket}"], cwd=ROOT, env=env,
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
+            sys.stderr.write(p.stderr)
+            line = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else f"make request exit {p.returncode}"
+            read_once(self.server.logbook_file)
+            return self.send(200, {"ticket": ticket, "line": line, "exit": p.returncode})
+        finally:
+            press.release()
+
     def log_message(self, *args):
         pass
+
+
+def checked(fields, tickets):
+    """(status, body): the draft under the next free id, in a temporary
+    directory, and the one line gates/spec.sh prints for it."""
+    with tempfile.TemporaryDirectory(prefix="lights-out-draft-") as tmp:
+        pathlib.Path(tmp, "fields.json").write_text(json.dumps(fields), encoding="utf-8")
+        out = os.path.join(tmp, "draft")
+        os.mkdir(out)
+        try:
+            p = subprocess.run(["python3", "core/spec.py", "draft", os.path.join(tmp, "fields.json"), tickets, out],
+                               cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               timeout=CHECK_TIMEOUT_S)
+            if p.returncode != 0:
+                return 400, {"error": (p.stderr.strip().splitlines() or ["the draft was refused"])[-1]}
+            ticket = p.stdout.strip()
+            spec = os.path.join(out, f"{ticket}.md")
+            g = subprocess.run(["sh", "gates/spec.sh", spec], cwd=ROOT, stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, timeout=CHECK_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            return 504, {"error": f"the spec check took more than {CHECK_TIMEOUT_S} s"}
+        line = g.stdout.strip().splitlines()[-1] if g.stdout.strip() else f"gates/spec.sh exit {g.returncode}"
+        return 200, {"ticket": ticket, "markdown": pathlib.Path(spec).read_text(encoding="utf-8"), "line": line}
 
 
 def main():

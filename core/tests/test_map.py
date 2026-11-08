@@ -396,7 +396,7 @@ class Build(MapCase):
         repo, out = self.built({"a.txt": "a\n"}, "--exclude", "docs/PLAN.md docs/plans/*")
         values = meta(out)
         self.assertEqual(set(values), {"schema", "sha", "tickets", "exclude"})
-        self.assertEqual(str(values["schema"]), "1")
+        self.assertEqual(str(values["schema"]), "2")  # docs/adr/0059 §3
         self.assertEqual(values["sha"], repo.head())
         self.assertEqual(values["tickets"], "tickets")
         self.assertEqual(values["exclude"], "docs/PLAN.md docs/plans/*")
@@ -1433,7 +1433,7 @@ class Slice(MapCase):
         shutil.copy(self.out, copy)
         con = sqlite3.connect(str(copy))
         try:
-            con.execute("UPDATE meta SET value = '2' WHERE key = 'schema'")
+            con.execute("UPDATE meta SET value = '1' WHERE key = 'schema'")  # M28's, before ADR 0059
             con.commit()
         finally:
             con.close()

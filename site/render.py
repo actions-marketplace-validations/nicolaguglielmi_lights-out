@@ -186,7 +186,7 @@ async def check(page, sc, i, words):
 
 async def inventory(browser, base):
     """Every scenario on the board: id, name, blurb and what each step says."""
-    ctx = await browser.new_context(viewport={"width": W, "height": H})
+    ctx = await browser.new_context(viewport={"width": W, "height": H}, color_scheme="dark")
     page = await open_board(ctx, base)
     scs = await page.evaluate("""() => [...document.querySelectorAll('#scenarios button')].map(b =>
       ({id: b.dataset.id, name: b.firstChild.textContent.trim(), blurb: b.title}))""")
@@ -208,7 +208,7 @@ async def inventory(browser, base):
 async def take(browser, base, body):
     """Record one take; returns the raw video, the seconds to trim from its start, and what body returned."""
     raw = tempfile.mkdtemp()
-    ctx = await browser.new_context(viewport={"width": W, "height": H}, record_video_dir=raw,
+    ctx = await browser.new_context(viewport={"width": W, "height": H}, color_scheme="dark", record_video_dir=raw,
                                     record_video_size={"width": W, "height": H})
     t0 = time.monotonic()
     page = await open_board(ctx, base)

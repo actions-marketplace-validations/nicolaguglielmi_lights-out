@@ -15,6 +15,11 @@ entry points (docs/adr/0052 §3).
         ones, on stdout (§4)
     python3 core/spec.py gated <doc.json> <gate line>
         the spec step's result: `opened` on GO, `questions` on NO-GO (§4)
+    python3 core/spec.py draft <fields.json> <tickets dir> [<out dir>]
+        a new ticket's request from the console's editor (docs/adr/0059
+        §4): writes <out dir, default tickets dir>/<id>.md, the id the
+        next free one in <tickets dir>, with an exclusive create, and
+        prints the id
 
 A step result is the JSON object core/tower.py merges into the document;
 a refusal is one stderr line and exit 1, which fails the step (ADR 0034).
@@ -245,6 +250,67 @@ def gated(doc, line):
     return {"state": "questions", "questions": questions, "spec": {"verdict": "NO-GO", "line": line, "at": at}}
 
 
+_TICKET_FILE = re.compile(r"^(\d{4})\.md$")
+
+
+def next_id(tickets_dir):
+    """The next four-digit id after the highest in TICKETS_DIR (docs/adr/0059 §4)."""
+    try:
+        names = os.listdir(tickets_dir)
+    except FileNotFoundError:
+        names = []
+    ids = [int(m.group(1)) for m in map(_TICKET_FILE.match, names) if m]
+    return f"{max(ids, default=0) + 1:04d}"
+
+
+def draft(fields):
+    """A request's Markdown from the editor's fields, without its id line's id."""
+    if not isinstance(fields, dict):
+        raise Refused("the draft is not a JSON object")
+    title = fields.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise Refused("a draft needs a title")
+    text = {}
+    for key in ("context", "feature", "priority"):
+        value = fields.get(key) or ""
+        if not isinstance(value, str):
+            raise Refused(f"{key} is not a string")
+        text[key] = value.strip()
+    criteria = fields.get("criteria") or []
+    if not isinstance(criteria, list) or not all(isinstance(c, dict) for c in criteria):
+        raise Refused("criteria is not a list of {given, when, then}")
+    perimeter = fields.get("perimeter") or []
+    if not isinstance(perimeter, list) or not all(isinstance(p, str) for p in perimeter):
+        raise Refused("perimeter is not a list of paths")
+    head = ["- Status: open"]
+    head += [f"- Feature: {text['feature']}"] if text["feature"] else []
+    head += [f"- Priority: {text['priority']}"] if text["priority"] else []
+    body = [""] + head + ["", "## Problem", "", text["context"] or "(no context given)", "", CRITERIA, ""]
+    for c in criteria:
+        lines = []
+        for word in ("given", "when", "then"):
+            value = c.get(word) or ""
+            if not isinstance(value, str):
+                raise Refused(f"a criterion's {word} is not a string")
+            lines.append(f"{word.capitalize()} {' '.join(value.split())}".rstrip())
+        body += lines + [""]
+    body += [PERIMETER, ""] + [f"- `{p.strip()}`" for p in perimeter if p.strip()]
+    return title.strip(), "\n".join(body).rstrip("\n") + "\n"
+
+
+def write_draft(fields, tickets_dir, out_dir):
+    """Write the draft under the next free id; return the id."""
+    title, rest = draft(fields)
+    tid = next_id(tickets_dir)
+    path = os.path.join(out_dir, f"{tid}.md")
+    try:
+        with open(path, "x", encoding="utf-8") as fh:
+            fh.write(f"# {tid} — {title}\n{rest}")
+    except FileExistsError:
+        raise Refused(f"{path} exists: another request took {tid}") from None
+    return tid
+
+
 def main(argv, env=None):
     env = os.environ if env is None else env
     cmd, args = (argv[0], argv[1:]) if argv else ("", [])
@@ -264,9 +330,16 @@ def main(argv, env=None):
             sys.stdout.write(compose(read(args[0]), load(args[1], {})))
         elif cmd == "gated" and len(args) == 2:
             print(json.dumps(gated(load(args[0], {}), args[1]), ensure_ascii=False))
+        elif cmd == "draft" and len(args) in (2, 3):
+            try:
+                fields = json.loads(read(args[0]))
+            except ValueError:
+                raise Refused("the draft is not JSON") from None
+            print(write_draft(fields, args[1], args[2] if len(args) == 3 else args[1]))
         else:
             print("usage: spec.py check <spec.md> | answers <doc> | clarify <request> <doc> <run dir> <rc>"
-                  " | compose <request> <doc> | gated <doc> <line>", file=sys.stderr)
+                  " | compose <request> <doc> | gated <doc> <line> | draft <fields> <tickets> [<out>]",
+                  file=sys.stderr)
             return 2
     except (Refused, OSError) as exc:
         print(f"spec: {exc}", file=sys.stderr)
