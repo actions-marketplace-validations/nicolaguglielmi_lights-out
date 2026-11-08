@@ -10,13 +10,34 @@
 # output contract: GO, or NO-GO naming the items that fail. Uses only what
 # the host prerequisites guarantee (an engine, git, a POSIX shell); a port
 # probe uses nc, lsof or ss when the host has one and says when it has none.
+#
+# --level <l0|l1|l2|l3> (docs/adr/0057 §8): what that level still lacks,
+# read from profiles/<level>.env. The items above with PROFILE=<level>,
+# then every adapter the profile names that has no adapters/<name>/
+# (designed, not built), and for the cloud levels the cloud toolchain
+# (docs/adr/0028). The last line counts what is missing.
 set -eu
 name=doctor
 . ci/lib.sh
 
+level=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --level) [ $# -ge 2 ] || nogo "--level needs one of l0 l1 l2 l3"; level=$2; shift 2 ;;
+    --level=*) level=${1#--level=}; shift ;;
+    *) nogo "'$1' is not an argument of doctor; --level <l0|l1|l2|l3>" ;;
+  esac
+done
+if [ -n "$level" ]; then
+  case "$level" in l0|l1|l2|l3) ;; *) nogo "--level $level is not one of l0 l1 l2 l3" ;; esac
+  [ -f "profiles/$level.env" ] || nogo "--level $level has no profiles/$level.env"
+  PROFILE=$level
+fi
+
 bad=""
+nmiss=0
 item() { printf 'doctor: %-9s %s\n' "$1" "$2" >&2; }
-fail() { item "$1" "FAIL, $2"; bad="$bad $1"; }
+fail() { item "$1" "FAIL, $2"; bad="$bad $1"; nmiss=$((nmiss + 1)); }
 
 # The engine, picked the way ./go picks it.
 engine=""
@@ -138,5 +159,32 @@ else
   fi
 fi
 
-[ -z "$bad" ] || nogo "${bad# }"
-go
+[ -n "$level" ] || { [ -z "$bad" ] || nogo "${bad# }"; go; }
+
+# --level: the adapters the profile names, each a directory under adapters/
+# or designed and not built; .env overrides the profile, as in the Makefile.
+for port in CODE_HOST TRACKER EVENT_BUS STATE_STORE ORCHESTRATOR DELIVERY METRICS FLAGS REGISTRY AGENT_HARNESS; do
+  a=$(pval "$port")
+  if [ -z "$a" ]; then
+    fail "$port" "profiles/$level.env names no adapter"
+  elif [ -d "adapters/$a" ]; then
+    item "$port" "ok, $a (adapters/$a)"
+  else
+    fail "$port=$a" "designed, not built: there is no adapters/$a/"
+  fi
+done
+# The cloud levels (docs/adr/0028, amended by 0057 §1): gcloud and terraform
+# live in a cloud flavour of the workbench, written the day L2 is. An
+# adapter's credentials are the adapter's to declare, never named here
+# (ci/vendor-free.sh, docs/adr/0045 §4): a missing adapter is the item.
+case "$level" in
+  l2|l3)
+    if [ -f workbench/cloud/Containerfile ]; then
+      item toolchain "ok, workbench/cloud/Containerfile (gcloud, terraform)"
+    else
+      fail toolchain "no workbench/cloud/Containerfile: gcloud and terraform are not in the workbench (docs/adr/0028, 0057 §1)"
+    fi ;;
+esac
+
+[ "$nmiss" -eq 0 ] || nogo "$level lacks $nmiss:$(printf '%s' "$bad" | sed 's/ /, /g; s/^, / /')"
+go_with "$level has what its profile names"
