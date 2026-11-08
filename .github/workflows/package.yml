@@ -200,11 +200,13 @@ jobs:
           set -eu
           v=$(sed -n 's/^ARG COSIGN_VERSION=//p' workbench/Containerfile)
           sha=$(sed -n 's/^ARG COSIGN_SHA256_AMD64=//p' workbench/Containerfile)
-          sh workbench/fetch.sh "https://github.com/sigstore/cosign/releases/download/v$v/cosign-linux-amd64" "$sha" "$RUNNER_TEMP/cosign"
-          chmod +x "$RUNNER_TEMP/cosign"
+          mkdir -p "$RUNNER_TEMP/bin"
+          sh workbench/fetch.sh "https://github.com/sigstore/cosign/releases/download/v$v/cosign-linux-amd64" "$sha" "$RUNNER_TEMP/bin/cosign"
+          chmod +x "$RUNNER_TEMP/bin/cosign"
+          PATH="$RUNNER_TEMP/bin:$PATH"
           for f in gates full; do
             name=$(jq -r '."image.name"' "$RUNNER_TEMP/$f.json" | cut -d, -f1 | sed 's/:[^:/]*$//')
             digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/$f.json")
-            "$RUNNER_TEMP/cosign" sign --yes "$name@$digest"
+            cosign sign --yes "$name@$digest"
             printf '%s@%s signed\n' "$name" "$digest" | tee -a "$GITHUB_STEP_SUMMARY"
           done
