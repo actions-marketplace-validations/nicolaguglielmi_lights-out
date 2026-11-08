@@ -175,9 +175,10 @@ a measurement, and is not adopted (§7).
    | c387961, M33, before | 834 s (run 42435760042) | 828 s (42435759957) |
    | e2599c8, this branch | 873 s (42506965618) | 852 s (42506965640) |
    | 8fd756c, this branch | 757 s (42508676734) | 801 s (42508676759) |
+   | a0fc792, this branch | 825 s (42510074390) | 719 s (42510074189) |
 
-   Two runs of this branch differ by 116 s on the same job, more than
-   anything this ADR changes. Where the stranger's time goes, e2599c8
+   Runs of this branch differ by 116 s on the same job and by 154 s
+   between jobs, more than anything this ADR changes. Where the stranger's time goes, e2599c8
    against c387961: the workbench build 127 s against 112; the demo's `ci`
    stage 363 s against 336 (`store-bus` 11 s, run again inside
    `contract`'s cold re-run of every check, 176 s against 162; 8fd756c
@@ -196,7 +197,7 @@ a measurement, and is not adopted (§7).
    `DEMO_BUDGET_SECONDS` stays 900 (plan §2, an owner's decision), with 27 s
    of margin on the slowest run measured. The roadmap's 600 s warm is not
    supported: Actions runs are cold, and the measured runs less the
-   workbench build give 630 to 760 s (derived, not measured). Where the
+   workbench build give about 600 to 760 s (derived, not measured). Where the
    time is: the `ci` stage, about 43 % of the run, every check run twice;
    the workbench build, about 15 %; the PR gates in `e2e`, about 15 %.
 
