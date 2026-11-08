@@ -1,4 +1,64 @@
 {
+  "adrs": {
+    "items": [
+      {
+        "adrs": [
+          "0002",
+          "0003"
+        ],
+        "files": [
+          "app/backend/meetups/views.py",
+          "docs/venues.md"
+        ],
+        "number": "0001",
+        "path": "docs/adr/0001-venues-are-checked.md",
+        "status": "accepted",
+        "text": "# ADR 0001 — Venues are checked at the edge\n\n- Status: accepted\n- Date: 2026-11-01\n\nAn unknown venue answers 404, not 500. The check is in\n`app/backend/meetups/views.py` and the page `docs/venues.md` says so;\n`app/backend/ghost.py` was removed. It sits beside ADR 0002, ADR 0999 is\nreserved and held nowhere, and ticket 0007 asked for the cache.\n",
+        "tickets": [
+          "0001",
+          "0007"
+        ],
+        "title": "ADR 0001 — Venues are checked at the edge"
+      },
+      {
+        "adrs": [
+          "0001"
+        ],
+        "files": [
+          "app/backend/router.py",
+          "app/backend/waitlist/queue.py"
+        ],
+        "number": "0002",
+        "path": "docs/adr/0002-waitlist-order.md",
+        "status": "proposed — supersedes nothing",
+        "text": "# ADR 0002 — The waitlist is first in, first out\n\n- Status:   proposed — supersedes nothing  \n- Status: accepted\n\nThe queue is `app/backend/waitlist/queue.py`, routed by\n`app/backend/router.py`. Ticket 0002 builds it and tickets 0004 and 0008\ntouch the router. It follows ADR 0001.\n",
+        "tickets": [
+          "0002",
+          "0004",
+          "0008"
+        ],
+        "title": "ADR 0002 — The waitlist is first in, first out"
+      },
+      {
+        "adrs": [
+          "0001"
+        ],
+        "files": [
+          "README.md"
+        ],
+        "number": "0003",
+        "path": "docs/adr/0003-keep-the-readme-short.md",
+        "status": "",
+        "text": "# ADR 0003 — Keep the README short\n\nThe [README](../../README.md) names the demo command and nothing more.\nThis is ADR 0003 and it records no status. It builds on ADR 0001 and was\nasked for by ticket 0006, which never ran.\n",
+        "tickets": [
+          "0003",
+          "0006"
+        ],
+        "title": "ADR 0003 — Keep the README short"
+      }
+    ],
+    "map_sha": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4"
+  },
   "docs_to_realign": [
     {
       "docs_ticket": "0009",
@@ -296,10 +356,10 @@
       "version": "0.5.0-d"
     }
   ],
-  "schema": "lights-out/logbook/1.1",
+  "schema": "lights-out/logbook/1.2",
   "source": {
     "code_host": "gitea",
-    "commit": "bc8b42b2ce93f7048f60e5a1aade7f58b05e6d3b",
+    "commit": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4",
     "level": "l0",
     "workload": "app"
   },
@@ -359,6 +419,9 @@
   ],
   "tickets": [
     {
+      "adrs": [
+        "0001"
+      ],
       "attempt": 1,
       "ci": {
         "decision": "auto-merge",
@@ -524,6 +587,9 @@
       "wait": null
     },
     {
+      "adrs": [
+        "0002"
+      ],
       "attempt": 2,
       "ci": null,
       "feature": null,
@@ -648,6 +714,9 @@
       "wait": null
     },
     {
+      "adrs": [
+        "0003"
+      ],
       "attempt": null,
       "ci": {
         "decision": null,
@@ -741,6 +810,7 @@
       "wait": null
     },
     {
+      "adrs": [],
       "attempt": 1,
       "ci": null,
       "feature": null,
@@ -861,6 +931,7 @@
       "wait": null
     },
     {
+      "adrs": [],
       "attempt": null,
       "ci": null,
       "feature": null,
@@ -943,6 +1014,7 @@
       }
     },
     {
+      "adrs": [],
       "attempt": 4,
       "ci": null,
       "feature": null,
@@ -1049,6 +1121,9 @@
       "wait": null
     },
     {
+      "adrs": [
+        "0002"
+      ],
       "attempt": 1,
       "ci": {
         "decision": "review",
@@ -1139,6 +1214,7 @@
       "wait": null
     },
     {
+      "adrs": [],
       "attempt": null,
       "ci": null,
       "feature": "waiting-list",
