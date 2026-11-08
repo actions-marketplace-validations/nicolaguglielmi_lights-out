@@ -50,14 +50,14 @@ Quattro profili (`profiles/l0.env` … `profiles/l3.env`), in due gruppi:
 | Modelli | risposte registrate (fixture) | Gemini API, `gemini-3.8-flash` | Gemini Enterprise Agent Platform (ex Vertex AI), `gemini-3.8-flash` | idem + thinking level per ruolo |
 | Harness worker | replay | Gemini CLI headless in container | Gemini CLI su Cloud Run Job | + adapter Antigravity SDK |
 | Git e PR | Gitea in compose | Gitea; GitHub per un repo attaccato (adapter a M21) | GitHub reale | GitHub reale |
-| CI | Gitea Actions (act runner) | Gitea Actions | GitHub Actions o Cloud Build | idem |
+| CI | `./go ci` e i gate della torre sulla PR, nessun runner (ADR 0060) | idem | GitHub Actions o Cloud Build | idem |
 | Registry e firma | Zot locale, firma con chiave locale, verifica della firma nel launchpad prima dello staging | idem | Artifact Registry, firma con chiave KMS, verifica con la stessa cosign, Binary Authorization come seconda serratura | idem |
 | Canary | Envoy weighted cluster | Envoy | Cloud Deploy → Cloud Run | + opzione GKE |
 | Database dell'app | Postgres in compose | idem | Cloud SQL — **non scala a zero, unico costo fisso**: si ferma o si cancella fra un test e l'altro | idem |
 | Metriche | Prometheus | Prometheus | Managed Prometheus + Cloud Monitoring | idem |
 | Grafici della console | Grafana | Grafana | Cloud Monitoring | idem |
 | Flag | flagd (file) | flagd | flagd su Cloud Run (file su GCS) o Unleash | idem |
-| Eventi e stato | Pub/Sub emulator + Firestore emulator | idem | Pub/Sub + Firestore (adapter a M10) | + adapter Cloud Workflows |
+| Eventi e stato | `spool` + `sqlite`, file sotto `.crew/` (ADR 0060) | idem | Pub/Sub + Firestore (adapter a M10) | + adapter Cloud Workflows |
 | Agenti ADK | stub | ADK locale (`adk web`) | ADK su Cloud Run | Agent Engine + BigQuery analytics |
 | Console | in compose, legge git e state store | idem | su Cloud Run, legge GitHub e Firestore | idem |
 | Tempo al primo rollback | < 15 min | < 20 min | ~45 min (terraform apply) | ~90 min |
@@ -75,6 +75,8 @@ Due scelte che tengono in piedi la tabella:
 - **PromQL ovunque.** L'app espone metriche OTel in formato Prometheus. La query che decide se il canary passa è un file solo, `verify/slo.promql`, e gira identica su Prometheus locale e su Managed Prometheus. È la riga più importante di tutto il progetto: senza, L0 e L2 divergono subito.
 - **Gitea Actions usa la sintassi di GitHub Actions.** Gli stessi workflow YAML girano in locale e su GitHub. Se qualcosa non è supportato dal runner locale, va isolato in uno step separato e saltato con una condizione, non duplicato.
 
+*Emendamento 2026-11-08 (ADR 0060):* il runner di Gitea Actions esce dal piano L0; il suo ultimo job, `image`, lo fa ora il passo di rilascio della torre, come per un repository attaccato. La promessa diventa "la stessa CI ovunque": i workflow girano su GitHub Actions, e il job `ci` esegue `./go ci`, lo stesso comando di un portatile. Pub/Sub e Firestore escono da L0 e L1 come default: al loro posto `spool` e `sqlite`, due file sotto `.crew/`; gli emulatori restano, opt-in.
+
 ---
 
 ## 4. Porte e adapter
@@ -86,8 +88,8 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
 | `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
-| `EventBus` | `pubsub-emulator`, `pubsub` | stesso codice, cambia l'endpoint |
-| `StateStore` | `firestore-emulator`, `firestore` | stato del workflow, idempotenza |
+| `EventBus` | `spool`, `pubsub-emulator`, `pubsub` | `spool` (default a L0 e L1, ADR 0060): una coda in un file SQLite sotto `.crew/`; gli emulatori opt-in; `pubsub` stesso codice dell'emulatore, cambia l'endpoint |
+| `StateStore` | `sqlite`, `firestore-emulator`, `firestore` | stato del workflow, idempotenza; `sqlite` (default a L0 e L1, ADR 0060): un file sotto `.crew/` che sopravvive a `./go down` |
 | `Orchestrator` | `inproc`, `cloud-workflows` | macchina a stati del ciclo di vita del ticket |
 | `Delivery` | `envoy-canary`, `cloud-deploy`, `argo-rollouts` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
 | `Metrics` | `promql`, `prometheus`, `managed-prometheus` | stessa query PromQL; `promql` interroga `METRICS_URL`; `prometheus` ne è il caso del piano a `http://$PLANE_HOST:9090`, non `prometheus:9090`, che il workbench non risolve |

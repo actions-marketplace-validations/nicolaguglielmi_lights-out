@@ -1,6 +1,7 @@
 # ADR 0039 — The `ci` job runs only on GitHub; the L0 Gitea runner's one job is `image`
 
 - Status: accepted (amends ADR 0002 [one workflow file for both hosts still holds; on Gitea it now runs only `image`] and ADR 0025 §4 [the image job is the runner's only job, not its first])
+- Superseded 2026-11-08 by ADR 0060 §5-§6: the runner is gone, so it has no job at all. The `image` build is the release step's own work (`core/steps/release.sh`, for every workload), Gitea Actions are off, and `ci/gitea-compat.sh` is retired. §1's guard stays on every job, inert. The measurements below remain the record of why the runner's queue was a cost.
 - Date: 2026-11-03
 - Milestone: follow-up to M15 (the golden rule could not be verified on 2026-11-03)
 

@@ -103,6 +103,13 @@ API. Nothing in ADR 0022's assumption broke; the flags did.
    with Actions enabled for the one repo and no external webhook; the
    README's L0 trusted-network line gains "and the Gitea runner controls
    your container engine".
+
+   *Amended 2026-11-08 (ADR 0060 §5):* the job and the runner are gone.
+   `core/steps/release.sh` builds the merge itself, for every workload, in
+   a throwaway worktree (ADR 0043 §4's path), with `make publish`, which
+   signs it as this point described; the launchpad's check (§6) is
+   unchanged. No compose service holds the engine socket any more, and the
+   README's trusted-network line drops the runner.
 5. **The tower waits for the status, not for the image.** One `CodeHost`
    verb, `adapters/$CODE_HOST/await.sh <sha> <context>`, polls the commit
    status until it leaves `pending` and prints its state; `core/steps/
@@ -112,6 +119,13 @@ API. Nothing in ADR 0022's assumption broke; the flags did.
    of plan §2's 900 s is the most a build may take before the run is worth
    failing; re-measured at M8 close and lowered to 3× the measured build if
    that is smaller.
+
+   *Amended 2026-11-08 (ADR 0060 §5):* no step waits for `image` any
+   more, and `IMAGE_TIMEOUT` is gone: the build is the release step's own
+   work, so a failed build is that step's failure, with its log on stderr.
+   `await.sh` stays a `CodeHost` verb, proven by its conformance suite, with
+   no caller in `core/`; Gitea's drops the Actions-job lookup the amendment
+   below added, since that job no longer exists.
 
    *Amended 2026-11-04 (found on GitHub Actions):* three `./go demo` runs
    (41422559300, 41424697447, 41846872298) ended in e2e with `image on
