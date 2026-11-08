@@ -36,13 +36,19 @@ try:
 except ImportError:  # run as a script: core/ is sys.path[0]
     from tower import sh
 
-SCHEMA = "1"
+# 2 (docs/adr/0059 §3): each ADR's status and text, and `mentions` edges.
+SCHEMA = "2"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 ADR = re.compile(r"(^|/)adrs?/\d{4}-[^/]*\.md$")
 TICKET_ID = re.compile(r"^(\d+)\.md$")
 TEST = re.compile(r"(^|/)(test_[^/]*\.py|[^/]*_test\.py|[^/]*\.(test|spec)\.[cm]?js)$")
 JS = re.compile(r"\.[cm]?js$")
 HISTORY = re.compile(r"\bticket[ /](\d{4})\b", re.IGNORECASE)
+# What an ADR's or a ticket's prose names (docs/adr/0059 §3): never a
+# citation, so never drift.
+MENTION_ADR = re.compile(r"\bADR (\d{4})\b")
+MENTION_TICKET = re.compile(r"\b[Tt]ickets? (\d{4})\b")
+STATUS = re.compile(r"^- Status:(.*)$", re.MULTILINE)
 # Citations (§3): a link target, a backticked path, a ./go or make target,
 # a backticked KEY= assignment.
 LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -375,6 +381,7 @@ def build(repo, rev, out, tickets="tickets", targets=None, exclude=()):
                            PRIMARY KEY (src, dst, kind));
         CREATE TABLE cite (src INTEGER NOT NULL, kind TEXT NOT NULL, target TEXT NOT NULL,
                            line INTEGER NOT NULL, ok INTEGER NOT NULL);
+        CREATE TABLE doc (node INTEGER PRIMARY KEY, status TEXT NOT NULL, text TEXT NOT NULL);
     """)
     ids = {}
 
@@ -425,6 +432,19 @@ def build(repo, rev, out, tickets="tickets", targets=None, exclude=()):
                 if kind != "path":
                     edge(src, node(kind, target), "cites")
     tickets_by_id = {name: i for (kind, name), i in ids.items() if kind == "ticket"}
+    adrs_by_number = {posixpath.basename(name)[:4]: i for (kind, name), i in ids.items() if kind == "adr"}
+    for path in tree.paths:
+        if kinds[path] not in ("adr", "ticket"):
+            continue
+        src, text = path_ids[path], tree.text(path) or ""
+        if kinds[path] == "adr":
+            status = STATUS.search(text)
+            db.execute("INSERT INTO doc VALUES (?, ?, ?)", (src, status.group(1).strip() if status else "", text))
+        named = [adrs_by_number.get(n) for n in MENTION_ADR.findall(text)]
+        named += [tickets_by_id.get(n) for n in MENTION_TICKET.findall(text)]
+        for dst in named:
+            if dst is not None and dst != src:
+                edge(src, dst, "mentions")
     for commit in _history(repo, sha):
         for ticket in sorted(set(HISTORY.findall(commit[0]))):
             for path in commit[1]:

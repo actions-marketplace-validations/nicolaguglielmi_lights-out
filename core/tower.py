@@ -28,7 +28,8 @@ exits 1: no retries, no timeouts of the tower's own (docs/adr/0034 §1).
 (docs/adr/0038 §9). All output is on stderr, one `[tower]` line each.
 
 Before `opened` (docs/adr/0055 §1, §2): `request` starts a ticket at
-`requested`; `questions` waits for a person, and `answer` writes the
+`requested`, with who requested and through what (REQUEST_BY, default
+`unauthenticated`; REQUEST_VIA, default `cli`; docs/adr/0059 §4); `questions` waits for a person, and `answer` writes the
 person's ANSWER (ANSWER_BY, default `unauthenticated`; ANSWER_VIA, default
 `cli`) on the last question, which must be unanswered, then requests the
 `answer` step. A step result that carries `task` is also appended, with
@@ -230,14 +231,15 @@ class Tower:
             raise Refused(f"[tower] {self.ticket}: could not publish assign")
         self.tell("opened, assign requested")
 
-    def request(self):
+    def request(self, env):
+        by, via = env.get("REQUEST_BY") or "unauthenticated", env.get("REQUEST_VIA") or "cli"
         doc = {"id": self.ticket, "state": "requested",
-               "history": [{"step": "request", "state": "requested", "at": now()}]}
+               "history": [{"step": "request", "state": "requested", "at": now(), "by": by, "via": via}]}
         if not self.store_put(doc):
             raise Refused(f"[tower] {self.ticket}: could not write the document")
         if not self.publish("clarify"):
             raise Refused(f"[tower] {self.ticket}: could not publish clarify")
-        self.tell("requested, clarify requested")
+        self.tell(f"requested by {by} via {via}, clarify requested")
 
     def answer(self, env):
         said = (env.get("ANSWER") or "").strip()
@@ -371,7 +373,7 @@ def main(argv, env=None):
         if cmd == "open":
             tower.open()
         elif cmd == "request":
-            tower.request()
+            tower.request(env)
         elif cmd == "answer":
             tower.answer(env)
         elif cmd == "step":

@@ -1,32 +1,50 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- The console (docs/adr/0047, 0055): seven screens over one document,
-     the logbook, read from /v1/logbook.json. Every value on these screens
-     is a field of the logbook (docs/plans/console.md names each one); the
-     page computes no verdict of its own. Two inputs: go-for-launch, a POST
-     to /v1/go-for-launch, which runs core/promote.sh; and the answer to a
-     ticket's open question, a POST to /v1/answer, which runs ./go answer's
-     recipe (docs/adr/0055 §2). No build, no asset
-     from the network. Built by the session on 2026-11-04, not from a Stitch
-     design (console/README.md). -->
+<!-- The console (docs/adr/0047, 0055, 0059): ten screens over one
+     document, the logbook, read from /v1/logbook.json. Every value on these
+     screens is a field of the logbook (docs/plans/console.md names each
+     one); the page computes no verdict of its own: the spec check's line is
+     gates/spec.sh's, through /v1/spec-check, which writes nothing. Three
+     inputs: go-for-launch, a POST to /v1/go-for-launch, which runs
+     core/promote.sh; the answer to a ticket's open question, a POST to
+     /v1/answer, which runs ./go answer's recipe (docs/adr/0055 §2); and a
+     new ticket's request, a POST to /v1/request, which runs ./go request's
+     recipe (docs/adr/0059 §4). The kanban moves no card: every interaction
+     changes the view, never a column (docs/adr/0059 §1). The theme is the
+     colour tokens and nothing else (§2). No build, no asset from the
+     network. Built by hand, not from a Stitch design (console/README.md). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lights-out console</title>
 <style>
+/* The theme (docs/adr/0059 §2) is these tokens and nothing else: light by
+   default, dark when the system asks and no choice says light, or when the
+   choice says dark. */
 :root {
+  color-scheme: light;
   --bg: #f6f7f9; --panel: #ffffff; --ink: #17202a; --muted: #5b6673; --line: #dde2e8;
   --go: #13795b; --go-bg: #e3f4ec; --nogo: #b42318; --nogo-bg: #fde8e6;
   --wait: #8a5a00; --wait-bg: #fdf3dc; --none: #5b6673; --none-bg: #eef0f3; --accent: #1d4ed8;
+  --focus: #1d4ed8; --moved: #fff3b0; --shadow: rgba(23, 32, 42, .18);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0f1419; --panel: #171e26; --ink: #e6ebf0; --muted: #9aa6b2; --line: #2a3440;
     --go: #4cc38a; --go-bg: #12301f; --nogo: #ff7b72; --nogo-bg: #3a1513;
     --wait: #e3b341; --wait-bg: #33280e; --none: #9aa6b2; --none-bg: #222b35; --accent: #79a8ff;
+    --focus: #79a8ff; --moved: #4a3f0e; --shadow: rgba(0, 0, 0, .5);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1419; --panel: #171e26; --ink: #e6ebf0; --muted: #9aa6b2; --line: #2a3440;
+  --go: #4cc38a; --go-bg: #12301f; --nogo: #ff7b72; --nogo-bg: #3a1513;
+  --wait: #e3b341; --wait-bg: #33280e; --none: #9aa6b2; --none-bg: #222b35; --accent: #79a8ff;
+  --focus: #79a8ff; --moved: #4a3f0e; --shadow: rgba(0, 0, 0, .5);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -76,11 +94,42 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 .count { font-size: 24px; font-weight: 700; }
 .board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
 .col { flex: 0 0 190px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
-.col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
-.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0 0 8px; color: var(--ink); text-decoration: none; font-size: 13px; }
+.col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+.col.collapsed { flex: 0 0 auto; }
+.col.collapsed h3 { margin: 0; writing-mode: vertical-rl; }
+.col-toggle { padding: 0 6px; font-size: 12px; line-height: 18px; border-radius: 4px; font-weight: 700; }
+.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0 0 8px; color: var(--ink); text-decoration: none; font-size: 13px; cursor: pointer; }
+.card:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+.card.selected { border-color: var(--focus); }
+.card.moved { background: var(--moved); animation: arrive .6s ease-out; }
+@keyframes arrive { from { transform: translateX(-24px); opacity: .3; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .card.moved { animation: none; } }
 .lane { margin: 0 0 14px; }
 .lane h2 { margin-top: 6px; }
+.controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+input[type=search], input[type=text] { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+#kanban-q, #adr-q { min-width: 260px; }
+aside#drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px var(--shadow); padding: 16px; overflow-y: auto; z-index: 10; }
+aside#drawer h2 { margin-top: 0; }
+.theme { margin-left: auto; }
+.editor label { display: block; font-weight: 600; font-size: 13px; margin: 10px 0 4px; }
+.editor input[type=text], .editor textarea { width: 100%; }
+.criterion { display: grid; grid-template-columns: max-content 1fr; gap: 4px 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 0 0 8px; }
+.criterion .muted { font-size: 13px; }
+.adr { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.adr:last-child { border-bottom: 0; }
+.links { font-size: 13px; color: var(--muted); }
+.links code { margin-right: 6px; }
 </style>
+<script>
+// The theme before the first paint (docs/adr/0059 §2): the browser's choice,
+// or the system's when there is none or storage is refused.
+(function () {
+  let t = "system";
+  try { t = localStorage.getItem("lights-out.theme") || "system"; } catch (e) { /* storage refused */ }
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+})();
+</script>
 </head>
 <body>
 <header>
@@ -88,11 +137,17 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
     <span class="brand">lights-out console</span>
     <span class="meta" id="who">reading…</span>
     <span class="meta" id="fresh"></span>
+    <label class="meta theme">Theme <select id="theme" aria-label="Theme">
+      <option value="system">system</option><option value="light">light</option><option value="dark">dark</option>
+    </select></label>
   </div>
   <nav id="nav">
     <a href="#overview" data-s="overview">Overview</a>
     <a href="#kanban" data-s="kanban">Kanban</a>
     <a href="#tickets" data-s="tickets">This week's tickets</a>
+    <a href="#specs" data-s="specs">Specs</a>
+    <a href="#request" data-s="request">New request</a>
+    <a href="#adrs" data-s="adrs">ADRs</a>
     <a href="#incidents" data-s="incidents">Incidents and post mortems</a>
     <a href="#launch" data-s="launch">Go-for-launch</a>
     <a href="#thresholds" data-s="thresholds">Thresholds</a>
@@ -102,7 +157,7 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 <script>
 "use strict";
 let book = null, con = null, lastLine = null, busy = false, windowDays = null, answerLine = null;
-let kFeature = "", kPriority = "", kGroup = "", kEmpty = "";
+let etag = null;
 
 // h(tag, attrs, ...children): every text goes through a text node, never HTML.
 function h(tag, attrs, ...kids) {
@@ -174,49 +229,202 @@ function screenOverview() {
   return out;
 }
 
-// --- kanban (docs/adr/0055 §7) -----------------------------------------
+// --- the view in the link (docs/adr/0059 §1) ----------------------------
+// `#<screen>[/<arg>][?k=v&...]`: the query is the screen's view, keys in a
+// fixed order, defaults left out, values percent-encoded.
+function route() {
+  const raw = location.hash.slice(1);
+  const at = raw.indexOf("?");
+  const path = decodeURIComponent(at < 0 ? raw : raw.slice(0, at)) || "overview";
+  const query = {};
+  for (const pair of (at < 0 ? "" : raw.slice(at + 1)).split("&")) {
+    if (!pair) continue;
+    const eq = pair.indexOf("=");
+    const k = eq < 0 ? pair : pair.slice(0, eq);
+    try { query[decodeURIComponent(k)] = eq < 0 ? "" : decodeURIComponent(pair.slice(eq + 1)); } catch (e) { /* a malformed pair is dropped */ }
+  }
+  const slash = path.indexOf("/");
+  return {screen: slash < 0 ? path : path.slice(0, slash), arg: slash < 0 ? "" : path.slice(slash + 1), query};
+}
+const VIEW_KEYS = ["q", "feature", "priority", "group", "empty", "collapsed", "card"];
+function kanbanView() {
+  const q = route().query;
+  const v = {};
+  for (const k of VIEW_KEYS) v[k] = q[k] || "";
+  v.collapsed = new Set(v.collapsed ? v.collapsed.split(",").filter(Boolean) : []);
+  return v;
+}
+function viewHash(screen, v, keys) {
+  const parts = [];
+  for (const k of keys) {
+    const val = v[k] instanceof Set ? [...v[k]].join(",") : (v[k] || "");
+    if (val) parts.push(k + "=" + encodeURIComponent(val));
+  }
+  return "#" + screen + (parts.length ? "?" + parts.join("&") : "");
+}
+// Every kanban interaction lands here: it changes the view and the link,
+// never a column.
+function setView(patch) {
+  const v = Object.assign(kanbanView(), patch);
+  history.replaceState(null, "", viewHash("kanban", v, VIEW_KEYS));
+  drawBoard();
+}
+
+// --- kanban (docs/adr/0055 §7, docs/adr/0059 §1) -------------------------
 // The columns and the order inside them are the logbook's (`kanban`): the
-// page filters and groups, and never moves a card. No drag-and-drop, no
-// button on a card: a card moves when the tower moves its ticket.
-function card(t) {
-  return h("a", {cls: "card", href: "#ticket/" + encodeURIComponent(t.id)},
+// page filters, groups, searches, collapses and opens a drawer, and never
+// moves a card. No drag-and-drop, no button that moves one: a card moves
+// when the tower moves its ticket, and then it shows where it came from.
+// Provenance, decision: docs/adr/0059 §1, two beats of the console's 2 s poll.
+const MOVED_MS = 4000;
+let moved = {};  // id -> {from, until}: cards the last logbook moved
+function noteMoves(before, after) {
+  if (!before || !Array.isArray(before.kanban) || !Array.isArray(after.kanban)) return;
+  const col = (b) => Object.fromEntries(b.kanban.flatMap((c) => c.tickets.map((id) => [id, c.state])));
+  const was = col(before), now = col(after), until = Date.now() + MOVED_MS;
+  for (const [id, st] of Object.entries(now)) if (was[id] && was[id] !== st) moved[id] = {from: was[id], until};
+  setTimeout(drawBoard, MOVED_MS + 50);
+}
+// A path matches a perimeter glob as core/perimeter.sh matches it (`*`
+// crosses `/`), or the glob contains the text typed.
+function globMatches(glob, text) {
+  if (glob.toLowerCase().includes(text.toLowerCase())) return true;
+  const re = "^" + glob.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$";
+  try { return new RegExp(re).test(text); } catch (e) { return false; }
+}
+function searched(t, q) {
+  if (!q) return true;
+  const low = q.toLowerCase();
+  if (t.id.includes(q) || String(t.title).toLowerCase().includes(low)) return true;
+  return Array.isArray(t.perimeter) && t.perimeter.some((g) => globMatches(g, q));
+}
+function card(t, v) {
+  const m = moved[t.id] && moved[t.id].until > Date.now() ? moved[t.id] : null;
+  const open = () => setView({card: t.id});
+  return h("div", {cls: "card" + (m ? " moved" : "") + (v.card === t.id ? " selected" : ""), "data-id": t.id,
+    "data-from": m ? m.from : null, tabindex: "0", role: "button", "aria-label": named(t), onclick: open},
     h("div", {}, h("b", {}, named(t))),
     h("div", {cls: "muted"}, h("span", {cls: "chip " + (t.priority ? "pending" : "none")}, t.priority || "unprioritised"), " ",
       t.feature || "no feature"),
     t.wait ? h("div", {cls: "muted"}, waitLine(t.wait)) : null,
-    t.outcome && t.outcome.verdict !== "pending" ? h("div", {}, chip(t.outcome.verdict)) : null);
+    t.outcome && t.outcome.verdict !== "pending" ? h("div", {}, chip(t.outcome.verdict)) : null,
+    m ? h("div", {cls: "muted"}, "moved here from " + m.from) : null);
+}
+function adrName(n) {
+  const items = book.adrs && Array.isArray(book.adrs.items) ? book.adrs.items : [];
+  const a = items.find((x) => x.number === n);
+  return a ? a.title : "ADR " + n;
+}
+function adrLinks(nums) {
+  return nums && nums.length ? h("ul", {}, nums.map((n) => h("li", {}, h("a", {href: "#adr/" + n}, adrName(n)))))
+    : h("p", {cls: "muted"}, unread(book.adrs) ? "No project map: " + book.adrs.error : "No ADR cites a file of its perimeter.");
+}
+function drawer(t) {
+  const rows = t.timeline || [];
+  const last = rows[rows.length - 1];
+  const close = () => { setView({card: ""}); focusCard(t.id); };
+  return h("aside", {id: "drawer", "data-id": t.id, "aria-label": "Ticket " + t.id},
+    h("div", {cls: "buttons", style: "margin: 0 0 8px; justify-content: flex-end"}, h("button", {onclick: close}, "Close (Esc)")),
+    h("h2", {}, named(t)),
+    dl([["State", t.state], ["Outcome", h("span", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge))],
+      ["Line", h("span", {cls: "mono"}, shown(t.outcome.line))],
+      ["Last row", last ? h("span", {}, last.phase + " · ", last.verdict ? chip(VERDICTS[last.verdict] || last.verdict) : "—", " ",
+        h("span", {cls: "mono"}, shown(last.line)), " ", h("span", {cls: "muted"}, shown(last.at))) : null],
+      ["Perimeter", unread(t.perimeter) ? err(t.perimeter) : h("span", {cls: "mono"}, (t.perimeter || []).join("  ·  ") || "—")],
+      ["Waits", t.wait ? waitLine(t.wait) : "no"]]),
+    h("h2", {}, "ADRs that govern its perimeter"), adrLinks(t.adrs),
+    h("p", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, "The whole timeline →")));
 }
 function screenKanban() {
   const out = [h("h1", {}, "Kanban"),
-    h("p", {cls: "lede"}, "One column per tower state. A card moves only when the tower moves its ticket; feature and priority change by editing the ticket.")];
+    h("p", {cls: "lede"}, "One column per tower state. A card moves only when the tower moves its ticket; feature and priority change by editing the ticket. ",
+      h("span", {cls: "muted"}, "Arrows move between cards, Enter opens one, Esc closes it, / searches; the link keeps the view."))];
   if (unread(book.kanban) || unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(unread(book.kanban) ? book.kanban : book.tickets)));
   if (!Array.isArray(book.kanban)) return out.concat(h("div", {cls: "panel"}, h("p", {cls: "muted"}, "This logbook has no kanban (written before 1.1).")));
-  const byId = Object.fromEntries(ticketsList().map((t) => [t.id, t]));
+  const v = kanbanView();
   const features = [...new Set(ticketsList().map((t) => t.feature || ""))].sort();
-  const sel = (value, opts, set) => h("select", {onchange: (e) => { set(e.target.value); render(); }},
-    opts.map(([v, txt]) => h("option", {value: v, selected: v === value}, txt)));
-  out.push(h("p", {cls: "muted"}, "Feature ",
-    sel(kFeature, [["", "all"]].concat(features.map((f) => [f || "-", f || "no feature"])), (v) => { kFeature = v; }),
-    " Priority ", sel(kPriority, [["", "all"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["-", "unprioritised"]], (v) => { kPriority = v; }),
-    " Group by ", sel(kGroup, [["", "nothing"], ["feature", "feature"], ["priority", "priority"]], (v) => { kGroup = v; }),
-    " Empty columns ", sel(kEmpty, [["", "shown"], ["hide", "hidden"]], (v) => { kEmpty = v; })));
-  const keep = (t) => (!kFeature || (t.feature || "-") === kFeature) && (!kPriority || (t.priority || "-") === kPriority);
-  const lanes = kGroup ? [...new Set(ticketsList().filter(keep).map((t) => t[kGroup] || ""))]
+  const sel = (name, value, opts) => h("select", {name, onchange: (e) => setView({[name]: e.target.value})},
+    opts.map(([val, txt]) => h("option", {value: val, selected: val === value}, txt)));
+  out.push(h("div", {cls: "controls"},
+    h("input", {type: "search", id: "kanban-q", value: v.q, placeholder: "Search id, title or a perimeter path", "aria-label": "Search",
+      oninput: (e) => setView({q: e.target.value})}),
+    h("span", {}, "Feature ", sel("feature", v.feature, [["", "all"]].concat(features.map((f) => [f || "-", f || "no feature"])))),
+    h("span", {}, "Priority ", sel("priority", v.priority, [["", "all"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["-", "unprioritised"]])),
+    h("span", {}, "Group by ", sel("group", v.group, [["", "nothing"], ["feature", "feature"], ["priority", "priority"]])),
+    h("span", {}, "Empty columns ", sel("empty", v.empty, [["", "shown"], ["hide", "hidden"]]))),
+    h("div", {id: "board-area"}));
+  return out;
+}
+// The board and the drawer, redrawn in place: the controls keep their focus.
+function drawBoard() {
+  const area = document.getElementById("board-area");
+  if (!area || !book || !Array.isArray(book.kanban)) return;
+  const v = kanbanView();
+  const byId = Object.fromEntries(ticketsList().map((t) => [t.id, t]));
+  const keep = (t) => (!v.feature || (t.feature || "-") === v.feature) && (!v.priority || (t.priority || "-") === v.priority) && searched(t, v.q);
+  const group = v.group === "feature" || v.group === "priority" ? v.group : "";
+  const lanes = group ? [...new Set(ticketsList().filter(keep).map((t) => t[group] || ""))]
     .sort((a, b) => (a || "~").localeCompare(b || "~")) : [null];
+  const focused = document.activeElement && document.activeElement.classList.contains("card") ? document.activeElement.dataset.id : null;
+  const kids = [];
   for (const lane of lanes) {
-    const inLane = (t) => keep(t) && (lane === null || (t[kGroup] || "") === lane);
+    const inLane = (t) => keep(t) && (lane === null || (t[group] || "") === lane);
     // Hiding the empty columns is a view, like the filters: the order of
     // the columns left is still the tower's.
     const cols = book.kanban.map((col) => [col.state, col.tickets.filter((id) => byId[id] && inLane(byId[id]))])
-      .filter(([, ids]) => !kEmpty || ids.length);
-    const board = h("div", {cls: "board"}, cols.map(([state, ids]) => h("div", {cls: "col"},
-      h("h3", {}, state + " · " + ids.length), ids.map((id) => card(byId[id])))));
-    out.push(h("div", {cls: "lane"},
-      lane === null ? null : h("h2", {}, lane || (kGroup === "priority" ? "unprioritised" : "no feature")),
+      .filter(([, ids]) => !v.empty || ids.length);
+    const board = h("div", {cls: "board"}, cols.map(([state, ids]) => {
+      const shut = v.collapsed.has(state);
+      const toggle = () => { const c = new Set(kanbanView().collapsed); if (c.has(state)) c.delete(state); else c.add(state); setView({collapsed: c}); };
+      return h("div", {cls: "col" + (shut ? " collapsed" : ""), "data-state": state},
+        h("h3", {}, h("button", {cls: "col-toggle", onclick: toggle, "aria-expanded": shut ? "false" : "true",
+          title: (shut ? "Expand " : "Collapse ") + state}, shut ? "+" : "−"), state + " · " + ids.length),
+        shut ? null : ids.map((id) => card(byId[id], v)));
+    }));
+    kids.push(h("div", {cls: "lane", "data-lane": lane === null ? "" : lane},
+      lane === null ? null : h("h2", {}, lane || (group === "priority" ? "unprioritised" : "no feature")),
       h("div", {cls: "panel"}, board)));
   }
-  return out;
+  const t = v.card ? byId[v.card] : null;
+  if (t) kids.push(drawer(t));
+  area.replaceChildren(...kids);
+  if (focused) focusCard(focused);
 }
+function focusCard(id) {
+  const el = document.querySelector('.card[data-id="' + CSS.escape(id) + '"]');
+  if (el) el.focus();
+}
+// Arrows between cards: left and right across the lane's columns that hold
+// cards, up and down inside one.
+function moveFocus(el, key) {
+  const col = el.closest(".col"), lane = el.closest(".lane");
+  if (!col || !lane) return;
+  const cols = [...lane.querySelectorAll(".col")].filter((c) => c.querySelector(".card"));
+  const cards = [...col.querySelectorAll(".card")];
+  const i = cards.indexOf(el), c = cols.indexOf(col);
+  let next = null;
+  if (key === "ArrowUp") next = cards[Math.max(0, i - 1)];
+  else if (key === "ArrowDown") next = cards[Math.min(cards.length - 1, i + 1)];
+  else {
+    const to = cols[key === "ArrowLeft" ? c - 1 : c + 1];
+    if (to) { const there = [...to.querySelectorAll(".card")]; next = there[Math.min(i, there.length - 1)]; }
+  }
+  if (next) next.focus();
+}
+document.addEventListener("keydown", (e) => {
+  if (route().screen !== "kanban") return;
+  const el = e.target;
+  const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
+  if (e.key === "Escape" && kanbanView().card) {
+    const id = kanbanView().card;
+    e.preventDefault(); setView({card: ""}); focusCard(id);
+  } else if (e.key === "/" && !typing) {
+    e.preventDefault(); const q = document.getElementById("kanban-q"); if (q) q.focus();
+  } else if (el && el.classList && el.classList.contains("card")) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setView({card: el.dataset.id}); focusCard(el.dataset.id); }
+    else if (e.key.startsWith("Arrow")) { e.preventDefault(); moveFocus(el, e.key); }
+  }
+});
 
 // --- screen 1 ----------------------------------------------------------
 function screenTickets() {
@@ -285,7 +493,7 @@ async function pressReply(t, index, box) {
     const body = await r.json().catch(() => ({}));
     answerLine = body.line || ("refused (" + r.status + "): " + (body.error || r.statusText));
   } catch (e) { answerLine = "the console did not answer: " + e; }
-  busy = false; await load();
+  busy = false; await load(); render();
 }
 function answerPanel(t) {
   const qs = t.questions || [];
@@ -315,6 +523,7 @@ function screenTicket(id) {
       : h("p", {cls: "muted"}, "This logbook has no timeline (written before 1.1).")),
     t.spec && (t.spec.criteria || []).length ? h("div", {cls: "panel"}, h("h2", {}, "The spec's criteria (" + shown(t.spec.by) + ")"),
       h("ol", {}, t.spec.criteria.map((c) => h("li", {}, c)))) : null,
+    t.adrs !== undefined ? h("div", {cls: "panel"}, h("h2", {}, "ADRs that govern its perimeter"), adrLinks(t.adrs)) : null,
     h("h2", {}, "History"),
     h("div", {cls: "panel"}, h("table", {}, h("tr", {}, ["Step", "State", "Attempt", "At", "Error"].map((c) => h("th", {}, c))),
       t.history.map((e) => h("tr", {}, h("td", {}, e.step), h("td", {}, e.state), h("td", {}, shown(e.attempt)), h("td", {cls: "mono"}, shown(e.at)), h("td", {cls: "mono"}, shown(e.error))))))];
@@ -365,7 +574,7 @@ async function pressAnswer(answer) {
     const body = await r.json().catch(() => ({}));
     lastLine = body.line || ("refused (" + r.status + "): " + (body.error || r.statusText));
   } catch (e) { lastLine = "the console did not answer: " + e; }
-  busy = false; await load();
+  busy = false; await load(); render();
 }
 function screenLaunch() {
   const L = book.launch, rec = L.record;
@@ -415,18 +624,246 @@ function screenThresholds() {
   return out;
 }
 
+// --- the specs (docs/adr/0059 §4) ----------------------------------------
+function openQuestion(t) {
+  const qs = t.questions || [];
+  const q = qs[qs.length - 1];
+  return t.state === "questions" && q && !q.answer ? q : null;
+}
+function screenSpecs() {
+  const out = [h("h1", {}, "Specs"),
+    h("p", {cls: "lede"}, "Every ticket's spec: the criteria confirmed and by whom, the spec gate's last verdict, and the question still open. ",
+      h("a", {href: "#request"}, "Write a new request →"))];
+  if (unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(book.tickets)));
+  const order = Array.isArray(book.kanban) ? book.kanban.flatMap((c) => c.tickets) : ticketsList().map((t) => t.id);
+  const byId = Object.fromEntries(ticketsList().map((t) => [t.id, t]));
+  const all = order.map((id) => byId[id]).filter(Boolean);
+  if (!all.length) return out.concat(h("div", {cls: "panel"}, h("p", {cls: "muted"}, "No ticket in the tower yet.")));
+  for (const t of all) {
+    const spec = t.spec || {};
+    const q = openQuestion(t);
+    out.push(h("div", {cls: "panel spec", "data-id": t.id},
+      h("h2", {style: "margin-top: 0"}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t)), " ", h("span", {cls: "chip none"}, t.state)),
+      (spec.criteria || []).length ? h("div", {}, h("div", {cls: "muted"}, "Criteria, confirmed by " + shown(spec.by)),
+        h("ol", {}, spec.criteria.map((c) => h("li", {}, c)))) : h("p", {cls: "muted"}, "No criteria confirmed yet."),
+      h("p", {}, "Spec gate: ", spec.verdict ? chip(spec.verdict) : h("span", {cls: "chip none"}, "not run"), " ",
+        h("span", {cls: "mono"}, shown(spec.line)), spec.at ? h("span", {cls: "muted"}, " at " + spec.at) : null),
+      q ? h("p", {}, h("b", {}, q.from === "spec" ? "Open, from the spec gate: " : "Open, from the product role: "), q.question,
+        " ", h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, "answer it →")) : null));
+  }
+  return out;
+}
+
+// --- the request editor (docs/adr/0059 §4) --------------------------------
+// The fields live here, not in the DOM, so a redraw keeps them. The check
+// is /v1/spec-check: gates/spec.sh itself on the draft, which writes
+// nothing; its line is shown as the gate printed it.
+const draftFields = {title: "", context: "", criteria: [{given: "", when: "", then: ""}], perimeter: "", feature: "", priority: ""};
+let checkTimer = null, checkSeq = 0, lastCheck = null, saveLine = null;
+// Provenance, decision: docs/adr/0059 §4, one check per pause, not per key.
+const CHECK_DELAY_MS = 300;
+function draftBody() {
+  return {title: draftFields.title, context: draftFields.context,
+    criteria: draftFields.criteria.filter((c) => c.given.trim() || c.when.trim() || c.then.trim()),
+    perimeter: draftFields.perimeter.split("\n").map((l) => l.trim()).filter(Boolean),
+    feature: draftFields.feature.trim(), priority: draftFields.priority};
+}
+function scheduleCheck() {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(runCheck, CHECK_DELAY_MS);
+}
+async function runCheck() {
+  const seq = ++checkSeq;
+  let result;
+  if (!draftFields.title.trim()) result = {error: "a draft needs a title before the spec gate can read it"};
+  else {
+    try {
+      const r = await fetch("/v1/spec-check", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(draftBody())});
+      const body = await r.json().catch(() => ({}));
+      result = r.ok ? body : {error: "refused (" + r.status + "): " + (body.error || r.statusText)};
+    } catch (e) { result = {error: "the console did not answer: " + e}; }
+  }
+  if (seq !== checkSeq) return;  // a later keystroke's check is on its way
+  lastCheck = result;
+  showCheck();
+}
+function showCheck() {
+  const line = document.getElementById("spec-line"), chipEl = document.getElementById("spec-chip"),
+    pre = document.getElementById("spec-preview"), save = document.getElementById("save");
+  if (!line) return;
+  const r = lastCheck;
+  line.textContent = r ? (r.line || r.error) : "—";
+  const go = !!(r && r.line && r.line.startsWith("GO: spec"));
+  chipEl.replaceChildren(r && r.line ? chip(go ? "GO" : "NO-GO") : h("span", {cls: "chip none"}, "no line"));
+  pre.textContent = r && r.markdown ? r.markdown : "";
+  if (save) save.disabled = !canSave() || !go || busy;
+}
+function canSave() { return con && con.mode !== "snapshot" && con.auth !== "public"; }
+async function pressRequest() {
+  busy = true; showCheck();
+  try {
+    const r = await fetch("/v1/request", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(draftBody())});
+    const body = await r.json().catch(() => ({}));
+    saveLine = r.ok ? {ticket: body.ticket, line: body.line} : {line: "refused (" + r.status + "): " + (body.error || r.statusText) + (body.line ? "\n" + body.line : "")};
+  } catch (e) { saveLine = {line: "the console did not answer: " + e}; }
+  busy = false;
+  await load();
+  render();
+}
+function field(label, el) { return [h("label", {}, label), el]; }
+function screenRequest() {
+  const level = (book.source || {}).level || "";
+  const set = (k) => (e) => { draftFields[k] = e.target.value; scheduleCheck(); };
+  const rows = draftFields.criteria.map((c, i) => h("div", {cls: "criterion"},
+    h("span", {cls: "muted"}, "Given"), h("input", {type: "text", name: "given", value: c.given, placeholder: "the state before",
+      oninput: (e) => { c.given = e.target.value; scheduleCheck(); }}),
+    h("span", {cls: "muted"}, "When"), h("input", {type: "text", name: "when", value: c.when, placeholder: "the action",
+      oninput: (e) => { c.when = e.target.value; scheduleCheck(); }}),
+    h("span", {cls: "muted"}, "Then"), h("input", {type: "text", name: "then", value: c.then, placeholder: "what is observed: a status, a value, a line",
+      oninput: (e) => { c.then = e.target.value; scheduleCheck(); }}),
+    h("span", {}), h("div", {}, draftFields.criteria.length > 1 ? h("button", {onclick: () => { draftFields.criteria.splice(i, 1); render(); scheduleCheck(); }}, "Remove this criterion") : null)));
+  const prio = h("select", {name: "priority", onchange: set("priority")},
+    [["", "unprioritised"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"]].map(([v, t]) => h("option", {value: v, selected: v === draftFields.priority}, t)));
+  const out = [h("h1", {}, "New request"),
+    h("p", {cls: "lede"}, "A ticket's request, checked as you type by the spec gate itself (gates/spec.sh, through the console, writing nothing). Saving writes the ticket file and runs ./go request."),
+    level === "l0"
+      ? h("div", {cls: "banner warn", id: "l0-note"}, "Level l0: the product role replays recordings, and a new request has none. It will not be consulted on this draft; the spec gate alone judges it (ADR 0055 §3). With a key (l1) saving consults it, and its questions come back on the ticket's page.")
+      : h("div", {cls: "banner"}, "Saving requests the ticket: the product role reads it and asks or confirms, and its questions come back on the ticket's page with an answer box."),
+    h("div", {cls: "panel editor"},
+      field("Title", h("input", {type: "text", name: "title", value: draftFields.title, oninput: set("title")})),
+      field("Context: the problem, in a few sentences", h("textarea", {name: "context", oninput: set("context")}, draftFields.context)),
+      h("label", {}, "Acceptance criteria: each a Given, a When and a Then with an observable outcome"), rows,
+      h("button", {id: "add-criterion", onclick: () => { draftFields.criteria.push({given: "", when: "", then: ""}); render(); }}, "Add a criterion"),
+      field("Perimeter: one path or glob per line, the files the change may touch", h("textarea", {name: "perimeter", oninput: set("perimeter")}, draftFields.perimeter)),
+      field("Feature (optional): lowercase letters and digits joined by hyphens", h("input", {type: "text", name: "feature", value: draftFields.feature, oninput: set("feature")})),
+      field("Priority (optional)", prio)),
+    h("h2", {}, "The spec gate on this draft"),
+    h("div", {cls: "panel"}, h("p", {}, h("span", {id: "spec-chip"}), " ", h("span", {cls: "mono", id: "spec-line"}, "—")),
+      h("pre", {id: "spec-preview"})),
+    h("div", {cls: "panel"},
+      canSave() ? h("p", {}, "Saving writes the file above as it is shown, under the next free id, uncommitted; commit it with the change or before. Only a draft the gate passes is saved.")
+        : h("p", {cls: "muted"}, con.mode === "snapshot" ? "Snapshot: no tower behind it, nothing can be requested. The check still runs." : "This console cannot request."),
+      h("div", {cls: "buttons"}, h("button", {cls: "go", id: "save", disabled: true, onclick: pressRequest}, "Request it — ./go request")),
+      busy ? h("p", {cls: "muted"}, "./go request is running: the product role, then the spec gate…") : null,
+      saveLine ? h("pre", {}, saveLine.line) : null,
+      saveLine && saveLine.ticket ? h("p", {}, "tickets/" + saveLine.ticket + ".md is written, not committed. ",
+        h("a", {href: "#ticket/" + encodeURIComponent(saveLine.ticket)}, "Ticket " + saveLine.ticket + "'s timeline →")) : null)];
+  return out;
+}
+
+// --- ADR search (docs/adr/0059 §3) ----------------------------------------
+// The ADRs are the logbook's, read from the project map: the page searches
+// and links them, it computes no relation of its own.
+function adrItems() { return book.adrs && Array.isArray(book.adrs.items) ? book.adrs.items : []; }
+function adrSearch(q) {
+  const text = q.trim();
+  if (!text) return adrItems();
+  const num = text.match(/^(?:adr\s*)?0*(\d{1,4})$/i);
+  const want = num ? num[1].padStart(4, "0") : null;
+  const words = text.toLowerCase().split(/\s+/);
+  const hits = [];
+  for (const a of adrItems()) {
+    const hay = (a.number + " " + a.title + " " + a.status + " " + a.text).toLowerCase();
+    const byNumber = a.number === want;
+    const byFile = a.files.some((f) => f === text || f.endsWith("/" + text) || (text.includes("/") && f.startsWith(text.replace(/\/$/, "") + "/")));
+    const byTitle = words.every((w) => a.title.toLowerCase().includes(w));
+    if (byNumber || byFile || words.every((w) => hay.includes(w)))
+      hits.push([byNumber ? 0 : byFile ? 1 : byTitle ? 2 : 3, a]);
+  }
+  return hits.sort((x, y) => x[0] - y[0] || x[1].number.localeCompare(y[1].number)).map(([, a]) => a);
+}
+function snippet(a, q) {
+  const w = q.trim().toLowerCase().split(/\s+/)[0];
+  const at = w ? a.text.toLowerCase().indexOf(w) : -1;
+  if (at < 0) return null;
+  const from = Math.max(0, at - 80);
+  return (from ? "…" : "") + a.text.slice(from, at + 120).replace(/\s+/g, " ") + "…";
+}
+function adrRow(a, q) {
+  const tickets = Object.fromEntries(ticketsList().map((t) => [t.id, t]));
+  return h("div", {cls: "adr", "data-number": a.number},
+    h("div", {}, h("a", {href: "#adr/" + a.number}, h("b", {}, a.title))),
+    h("div", {cls: "muted"}, "Status: " + (a.status || "none").slice(0, 160)),
+    q ? h("div", {cls: "links"}, snippet(a, q)) : null,
+    h("div", {cls: "links"}, "Files: ", a.files.length ? a.files.slice(0, 12).map((f) => h("code", {}, f)) : "none",
+      a.files.length > 12 ? " and " + (a.files.length - 12) + " more" : ""),
+    h("div", {cls: "links"}, "Tickets: ", a.tickets.length ? a.tickets.map((id) => [tickets[id] ? h("a", {href: "#ticket/" + id}, id) : id, " "]) : "none",
+      " · ADRs: ", a.adrs.length ? a.adrs.map((n) => [h("a", {href: "#adr/" + n}, n), " "]) : "none"));
+}
+function drawAdrs() {
+  const area = document.getElementById("adr-results");
+  if (!area) return;
+  const q = route().query.q || "";
+  const found = adrSearch(q);
+  area.replaceChildren(h("p", {cls: "muted"}, found.length + " of " + adrItems().length + " ADRs"), ...found.map((a) => adrRow(a, q)));
+}
+function screenAdrs() {
+  const out = [h("h1", {}, "ADRs"),
+    h("p", {cls: "lede"}, "The project's decisions, from the project map (./go map): search by number, a word of the title, the status, the text, or a file one cites.")];
+  if (unread(book.adrs)) return out.concat(h("div", {cls: "panel"}, err(book.adrs)));
+  if (!book.adrs) return out.concat(h("div", {cls: "panel"}, h("p", {cls: "muted"}, "This logbook has no adrs (written before 1.2).")));
+  const q = route().query.q || "";
+  out.push(h("div", {cls: "controls"},
+    h("input", {type: "search", id: "adr-q", value: q, placeholder: "0055, kanban, proposed, core/spec.py", "aria-label": "Search the ADRs",
+      oninput: (e) => { history.replaceState(null, "", viewHash("adrs", {q: e.target.value}, ["q"])); drawAdrs(); }}),
+    h("span", {}, "map built at ", h("span", {cls: "mono"}, shown(book.adrs.map_sha).slice(0, 12)))),
+    h("div", {cls: "panel", id: "adr-results"}));
+  return out;
+}
+function screenAdr(n) {
+  const a = adrItems().find((x) => x.number === n);
+  if (!a) return [h("h1", {}, "ADR " + n), h("div", {cls: "panel"}, unread(book.adrs) ? err(book.adrs) : "This ADR is not in the project map.")];
+  return [h("h1", {}, a.title), h("p", {cls: "lede"}, h("a", {href: "#adrs"}, "← every ADR"), " · ", h("code", {}, a.path)),
+    h("div", {cls: "panel"}, adrRow(a, "")), h("div", {cls: "panel"}, h("pre", {}, a.text))];
+}
+
 // --- frame -------------------------------------------------------------
-function render() {
-  const main = document.getElementById("main");
-  if (!book || !con) return;
+// The theme switch (docs/adr/0059 §2): tokens on <html data-theme>, kept in
+// the browser when it lets us; no screen reads it.
+const themeSelect = document.getElementById("theme");
+function storedTheme() {
+  try { return localStorage.getItem("lights-out.theme") || "system"; } catch (e) { return document.documentElement.dataset.theme || "system"; }
+}
+themeSelect.value = ["light", "dark"].includes(storedTheme()) ? storedTheme() : "system";
+themeSelect.addEventListener("change", () => {
+  const t = themeSelect.value;
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem("lights-out.theme", t); } catch (e) { /* storage refused: this page keeps it until it closes */ }
+});
+
+function header() {
   const src = book.source || {};
   document.getElementById("who").textContent = [src.workload || "?", "level " + (src.level || "?"),
     con.mode === "snapshot" ? "snapshot of " + (src.commit || "?").slice(0, 12) + ", no plane behind it" : "live",
     con.identity ? "as " + con.identity : null].filter(Boolean).join(" · ");
   document.getElementById("fresh").textContent = con.mode === "live" ? "read at " + (con.read_at || "—") : "";
-  const hash = decodeURIComponent(location.hash.slice(1)) || "overview";
-  const [screen, arg] = hash.split("/");
-  for (const a of document.querySelectorAll("nav a")) a.classList.toggle("on", a.dataset.s === screen || (screen === "ticket" && a.dataset.s === "tickets"));
+}
+// Which element had the focus, and where its caret was, so a redraw can
+// give them back.
+function focusMark() {
+  const el = document.activeElement;
+  if (!el || el === document.body) return null;
+  const all = el.name ? [...document.querySelectorAll('[name="' + CSS.escape(el.name) + '"]')] : [];
+  return {id: el.id, name: el.name, index: all.indexOf(el), card: el.classList.contains("card") ? el.dataset.id : null,
+    start: el.selectionStart, end: el.selectionEnd};
+}
+function refocus(m) {
+  if (!m) return;
+  let el = m.card ? document.querySelector('.card[data-id="' + CSS.escape(m.card) + '"]')
+    : m.id ? document.getElementById(m.id)
+    : m.name ? document.querySelectorAll('[name="' + CSS.escape(m.name) + '"]')[m.index] : null;
+  if (!el) return;
+  el.focus();
+  try { if (m.start !== null && m.start !== undefined) el.setSelectionRange(m.start, m.end); } catch (e) { /* not a text field */ }
+}
+function render() {
+  const main = document.getElementById("main");
+  if (!book || !con) return;
+  header();
+  const {screen, arg} = route();
+  for (const a of document.querySelectorAll("nav a")) a.classList.toggle("on", a.dataset.s === screen ||
+    (screen === "ticket" && a.dataset.s === "tickets") || (screen === "adr" && a.dataset.s === "adrs"));
   let body;
   if (screen === "ticket") body = screenTicket(arg);
   else if (screen === "incidents") body = screenIncidents();
@@ -434,26 +871,51 @@ function render() {
   else if (screen === "thresholds") body = screenThresholds();
   else if (screen === "overview") body = screenOverview();
   else if (screen === "kanban") body = screenKanban();
+  else if (screen === "specs") body = screenSpecs();
+  else if (screen === "request") body = screenRequest();
+  else if (screen === "adrs") body = screenAdrs();
+  else if (screen === "adr") body = screenAdr(arg);
   else body = screenTickets();
   const banners = [];
   if (con.read_error) banners.push(h("div", {cls: "banner err"}, "Stale: the last read failed (" + con.read_error + "); showing the last good logbook."));
+  const mark = focusMark();
   main.classList.toggle("wide", screen === "kanban");
   main.replaceChildren(...banners, ...body.filter(Boolean));
+  if (screen === "kanban") drawBoard();
+  if (screen === "adrs") drawAdrs();
+  if (screen === "request") { showCheck(); if (!lastCheck && draftFields.title) scheduleCheck(); }
+  refocus(mark);
 }
+// The logbook is fetched with its ETag: an unchanged one costs no body and
+// no redraw (docs/adr/0059 §1). The editor is redrawn only by its own
+// inputs, so a refresh never takes a keystroke.
 async function load() {
+  let changed = false;
   try {
-    const [c, b] = await Promise.all([fetch("/v1/console.json").then((r) => r.json()), fetch("/v1/logbook.json").then((r) => r.ok ? r.json() : null)]);
-    con = c; if (b) book = b;
+    const [c, r] = await Promise.all([fetch("/v1/console.json").then((x) => x.json()),
+      fetch("/v1/logbook.json", {headers: etag ? {"If-None-Match": etag} : {}})]);
+    con = c;
+    if (r.status === 200) {
+      const b = await r.json();
+      etag = r.headers.get("ETag");
+      if (book) noteMoves(book, b);
+      book = b; changed = true;
+    }
   } catch (e) { /* keep what is shown; the header says when it was read */ }
   if (!book) {
     document.getElementById("main").textContent = "No logbook yet" + (con && con.read_error ? ": " + con.read_error : "; the first read is still running.");
-    return;
+    return false;
   }
-  if (!busy) render();
+  return changed;
 }
-window.addEventListener("hashchange", render);
-load();
-setInterval(() => { if (con && con.mode === "live") load(); }, 2000);
+async function tick() {
+  const changed = await load();
+  if (!book || busy) return;
+  if (changed && route().screen !== "request") render(); else header();
+}
+window.addEventListener("hashchange", () => { render(); });
+load().then(() => render());
+setInterval(() => { if (con && con.mode === "live") tick(); }, 2000);
 </script>
 </body>
 </html>

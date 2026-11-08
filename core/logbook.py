@@ -2,10 +2,11 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.1` (core/logbook/1.1.schema.json) from the
+Assembles `lights-out/logbook/1.2` (core/logbook/1.2.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
-the plane's status (through the DELIVERY port's status verb). Every rule
+the plane's status (through the DELIVERY port's status verb) and the
+project map's ADRs (MAP_FILE, docs/adr/0059 §3). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -20,11 +21,13 @@ written.
 """
 
 import argparse
+import fnmatch
 import glob
 import hashlib
 import json
 import os
 import re
+import sqlite3
 import subprocess  # nosec B404 - git and the adapter verbs the profile names (docs/adr/0052 §3)
 import sys
 
@@ -32,12 +35,14 @@ try:
     from core.policy import PolicyError, effective
     from core.spec import fields
     from core.assign import HOLDING, overlaps
+    from core.map import SCHEMA as MAP_SCHEMA
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
     from assign import HOLDING, overlaps
+    from map import SCHEMA as MAP_SCHEMA
 
-SCHEMA = "lights-out/logbook/1.1"
+SCHEMA = "lights-out/logbook/1.2"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -98,6 +103,61 @@ def source():
         "workload": env("WORKLOAD"),
         "code_host": env("CODE_HOST"),
     }
+
+
+# --- the project map's ADRs (docs/adr/0059 §3) -----------------------------
+
+
+def adrs():
+    """{map_sha, items} from MAP_FILE, read-only; unread when there is none."""
+    path = env("MAP_FILE", ".crew/map.sqlite")
+    if not os.path.isfile(path):
+        return unread(f"no project map at {path}: ./go map builds it")
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
+            if meta.get("schema") != MAP_SCHEMA:
+                return unread(f"{path} has map schema {meta.get('schema')}, the logbook reads {MAP_SCHEMA}: "
+                              "./go map rebuilds it")
+            nodes = {i: (kind, name) for i, kind, name in db.execute("SELECT id, kind, name FROM node")}
+            rows = db.execute("SELECT n.id, n.name, n.title, d.status, d.text FROM node n JOIN doc d ON d.node = n.id "
+                              "WHERE n.kind = 'adr' ORDER BY n.name").fetchall()
+            files, links = {}, {}
+            for src, target in db.execute("SELECT src, target FROM cite WHERE kind = 'path' AND ok = 1"):
+                files.setdefault(src, set()).add(target)
+            for src, dst in db.execute("SELECT src, dst FROM edge WHERE kind = 'mentions'"):
+                links.setdefault(src, set()).add(dst)
+                links.setdefault(dst, set()).add(src)
+        finally:
+            db.close()
+    except sqlite3.Error as exc:
+        return unread(f"{path} is not a project map: {exc}")
+
+    def number(name):
+        return os.path.basename(name)[:4]
+
+    items = []
+    for i, name, title, status, text in rows:
+        near = [nodes[j] for j in links.get(i, ()) if j in nodes]
+        items.append({"number": number(name), "path": name, "title": title, "status": status, "text": text,
+                      "files": sorted(files.get(i, ())),
+                      "adrs": sorted({number(n) for k, n in near if k == "adr"}),
+                      "tickets": sorted({n for k, n in near if k == "ticket"})})
+    return {"map_sha": meta.get("sha"), "items": items}
+
+
+def governing(book_adrs, tickets):
+    """Each ticket's `adrs`, the ADRs citing a file its perimeter matches;
+    each ADR's `tickets` gains the tickets it governs."""
+    items = book_adrs.get("items") if isinstance(book_adrs, dict) else None
+    for t in tickets if isinstance(tickets, list) else []:
+        globs = t["perimeter"] if isinstance(t.get("perimeter"), list) else []
+        t["adrs"] = sorted(a["number"] for a in items or []
+                           if any(fnmatch.fnmatchcase(f, g) for f in a["files"] for g in globs))
+        for a in items or []:
+            if a["number"] in t["adrs"]:
+                a["tickets"] = sorted(set(a["tickets"]) | {t["id"]})
 
 
 # --- releases -------------------------------------------------------------
@@ -378,7 +438,8 @@ def timeline(doc, tid, rels, globs):
             rows.append(row(step, at, h["error"], "tower history", "failed", attempt=h.get("attempt")))
             continue
         if step == "request":
-            rows.append(row("request", at, "requested", "tower history"))
+            who = {"by": h["by"], "via": h.get("via")} if h.get("by") else {}
+            rows.append(row("request", at, "requested", "tower history", **who))
         elif step == "open":
             rows.append(row("open", at, "opened directly: no request, no spec gate", "tower history"))
         elif step in ("clarify", "answer"):
@@ -634,6 +695,8 @@ def main(argv):
     holds = perimeters_held(held)
     for t in held if isinstance(held, list) else []:
         t["wait"] = waiting(t, holds)
+    decisions = adrs()
+    governing(decisions, held)
     book = {
         "schema": SCHEMA,
         "source": source(),
@@ -645,6 +708,7 @@ def main(argv):
         "launch": launch(record),
         "perimeters_held": holds,
         "docs_to_realign": docs_to_realign(held),
+        "adrs": decisions,
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"
