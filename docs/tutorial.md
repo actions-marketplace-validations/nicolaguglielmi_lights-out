@@ -37,7 +37,8 @@ cd lights-out
 `./go doctor` prints one line per item (engine, podman socket, git,
 workbench image, the plane's ports, the key your profile needs) and ends
 with `GO: doctor` or `NO-GO: doctor — <items>`. The ports 3000, 5050,
-8016, 8085, 8086, 9090, 9901 and 8080 (or `APP_PORT`) must be free.
+8016, 9090, 9901 and 8080 (or `APP_PORT`) must be free, 8085 and 8086
+too when a profile names the emulators (ADR 0060).
 
 On docker, put `CONTAINER_ENGINE=docker` before every `./go`. That is what
 the CI runs below did.

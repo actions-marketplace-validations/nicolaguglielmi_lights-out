@@ -108,7 +108,14 @@ if [ -z "$probe" ]; then
   item ports "not checked: no nc, lsof or ss on this host"
 else
   taken=""
-  for p in 3000 5050 8016 8085 8086 9090 9901 "$app_port"; do
+  # The emulators' ports only when the profile, or .env, names an emulator
+  # adapter: at L0 and L1 the store and the bus are files (docs/adr/0060 §3).
+  emu_ports=""
+  case "$(envval EVENT_BUS)$(envval STATE_STORE)$(grep -E '^(EVENT_BUS|STATE_STORE)=' "profiles/${PROFILE:-l0}.env" 2>/dev/null)" in
+    *-emulator*) emu_ports="8085 8086" ;;
+  esac
+  # shellcheck disable=SC2086 # emu_ports is two ports or nothing
+  for p in 3000 5050 8016 $emu_ports 9090 9901 "$app_port"; do
     case "$probe" in
       nc) nc -z 127.0.0.1 "$p" >/dev/null 2>&1 || continue ;;
       lsof) lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 || continue ;;
@@ -120,7 +127,7 @@ else
   if [ -n "$taken" ]; then
     fail ports "in use by something other than the lights-out plane:$taken (APP_PORT in .env moves the app's)"
   else
-    item ports "ok, 3000 5050 8016 8085 8086 9090 9901 $app_port free or held by the lights-out plane ($probe)"
+    item ports "ok, 3000 5050 8016${emu_ports:+ $emu_ports} 9090 9901 $app_port free or held by the lights-out plane ($probe)"
   fi
 fi
 
