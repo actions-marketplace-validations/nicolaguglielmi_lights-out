@@ -135,6 +135,45 @@ the image, the issues and the announcement (plan §14, §15).
 - [x] **Update the README's "Not published yet" paragraph** once the image
   and the package are public. Done 2026-11-05 with `v0.1.0`.
 
+### The Python package on PyPI (M35)
+
+The light tier, `lights-out gates --light`, is a Python package built from
+the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
+
+- [ ] **Publish soon after the merge.** The name `lights-out` was free on
+  PyPI on 2026-11-08 (`https://pypi.org/pypi/lights-out/json` answered 404),
+  not reserved: until the first upload, `uvx lights-out` in a hook recipe
+  runs whatever package holds the name.
+- [ ] **Set the version** in `pyproject.toml` (`0.3.0.dev0` today) to the
+  release. A release that also ships the image sets the wrapper's
+  `version=` in `lights-out` to the same: `package.yml` checks the tag
+  against the wrapper only.
+- [ ] **Build from a clean clone of the merge on `main`** and look inside:
+  ```sh
+  uv build
+  python3 -m zipfile -l dist/lights_out-*.whl
+  ```
+  The wheel holds `lights_out/*.py`, `lights_out/perimeter.sh` and
+  `lights_out/platform_policy/merge.env`, and no `tests/`.
+- [ ] **Try the wheel** in a repository with a committed `.lights-out/`:
+  ```sh
+  uvx --from ./dist/lights_out-0.3.0-py3-none-any.whl lights-out gates --light
+  ```
+- [ ] **Upload**, from a PyPI account with two-factor authentication and a
+  token scoped to the project, the token in the environment, never in a
+  file (TestPyPI first, if you want a dry run:
+  `--publish-url https://test.pypi.org/legacy/`). `uv publish` asks for the
+  token, or reads it from uv's own token variable:
+  ```sh
+  uv publish
+  ```
+  No workflow publishes it: trusted publishing from GitHub Actions would be
+  a new workflow, a repository change.
+- [ ] **After the upload**, on a clean machine: `uvx lights-out gates
+  --light` in a repository with a contract. Then drop "Not on PyPI yet"
+  from `docs/use-on-your-repo.md` (the hook recipes and the status table),
+  `docs/reference.md` and the README.
+
 ### The README's front page
 
 - [ ] **Record the rollback** (plan §15, phase 0; assessment Horizon 1

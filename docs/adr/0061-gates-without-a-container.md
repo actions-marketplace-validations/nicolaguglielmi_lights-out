@@ -182,7 +182,36 @@ that logic in standard-library Python under `core/`. Verified on 2026-11-08:
   (`0.3.0.dev0`); the wrapper's `version=` stays the one source for the
   image and the Action (ADR 0045 §7). A release that ships both sets both to
   the tag (`docs/launch/checklist.md`); nothing here unifies them.
-- Measured time on this repository: filled in after the run.
+- Measured time on this repository, 2026-11-08, macOS host, CPython 3.14,
+  a bare clone at 94cfc37 (its last commit judged, `risk high, review`, 2
+  of 10 gates): `python3 -m core gates --light` 0.14 s wall; `uvx --from
+  git+file://<clone> lights-out gates --light` 2.4 s on the first run (the
+  build included) and 0.23 s cached. The clone's `git status` stayed empty.
+
+## Verified
+
+The `--light` hook recipes, 2026-11-08, once per CLI: each pinned image
+built on the workbench (`localhost/lights-out-workbench:222597916`), run
+with its own headless command, not the adapter's entrypoint; the recipe's
+settings file in the place the guide names (Claude Code: the project's
+`.claude/settings.json`; Codex: `$CODEX_HOME/hooks.json`; Gemini CLI:
+`~/.gemini/settings.json`); the wheel from `uv build` installed with `uv
+tool install --offline`; `stub.py` on a private podman network as the
+model, whose script is one `git commit -m change` shell call and a final
+message. A scratch repository with a `.lights-out/` contract, two runs per
+CLI:
+
+| CLI | staged assertion removal | clean staged change |
+|---|---|---|
+| claude-code 2.1.311 | blocked: `PreToolUse:Bash hook error: … NO-GO: gates-light — test-weakening: …` (`is_error`), no commit | commit landed |
+| codex 0.166.0 | blocked: `Command blocked by PreToolUse hook: … NO-GO: gates-light — …`, no commit | commit landed |
+| gemini-cli 0.61.0-preview.0 | blocked: `Tool execution blocked: … NO-GO: gates-light — …`, no commit | commit landed |
+
+Not covered: Codex's trust step (`--dangerously-bypass-hook-trust`, as the
+adapter runs it) and its project file; Gemini CLI's project file in an
+untrusted folder (`--skip-trust`); a vendor's real wire; what a CLI does on
+a hook timeout; the full (image) variant. The run's script is not
+committed: it is a one-off, and this table is its record.
 
 ## Golden-rule check
 

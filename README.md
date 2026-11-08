@@ -65,6 +65,8 @@ Tags are mutable and the image is unsigned: to pin it, set `LIGHTS_OUT_IMAGE=ghc
 
 On pull requests, [the Action](docs/use-on-your-repo.md#the-action) posts the gates' line as a check run, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run them before a coding agent commits.
 
+Without an engine, `lights-out gates --light` runs the gates that need only git and Python in under a second, from a standard-library Python package (not on PyPI yet), and its line names the four that need the image ([ADR 0061](docs/adr/0061-gates-without-a-container.md), [the light hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents)).
+
 ### 2. The whole loop on your laptop
 
 **Install a container engine (once)**

@@ -11,3 +11,6 @@ dist/
 # Claude Code, per contributor: worktrees and local settings
 .claude/worktrees/
 .claude/settings.local.json
+# What building the package (pyproject.toml, docs/adr/0061) leaves in the tree
+/build/
+/lights_out.egg-info/
