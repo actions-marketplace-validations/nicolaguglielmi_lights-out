@@ -48,8 +48,11 @@
 #   ./go codehost-conformance  ten cases on the CODE_HOST set: Gitea with the plane up, or CODE_HOST=github on an attached repository (ADR 0043)
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go doctor         engine, versions, ports, the key: one line each, then GO or NO-GO (host-side)
-#   ./go package        build the lights-out image, localhost/lights-out:dev, for the lights-out wrapper (host-side)
-#   ./go demo-package   prove the wrapper: init and gates from the image on workloads/minimal as its own repository
+#   ./go doctor --level <l0|l1|l2|l3>   what that level still lacks, one line per item (host-side, ADR 0057)
+#   ./go production-readiness  GO only with a conformant delivery, your metrics, no secrets in .env and a human gate (ADR 0057)
+#   ./go package        build the full lights-out image, localhost/lights-out:dev (host-side)
+#   ./go package-gates  build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (host-side)
+#   ./go demo-package   prove the wrapper: init, gates, test-proof and test-integrity from the gates image on workloads/minimal
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
 #
@@ -116,7 +119,7 @@ esac
 # doctor diagnoses the engine itself, so it runs before ./go requires one
 # (docs/adr/0045 §4).
 if [ "$cmd" = doctor ]; then
-  exec sh "$here/core/doctor.sh"
+  exec sh "$here/core/doctor.sh" "$@"
 fi
 
 # 1. Pick the engine: CONTAINER_ENGINE, then podman, then docker.
@@ -209,6 +212,9 @@ fi
 if [ "$cmd" = package ]; then
   exec sh "$here/package/build.sh" "$engine" "${LIGHTS_OUT_IMAGE:-localhost/lights-out:dev}"
 fi
+if [ "$cmd" = package-gates ]; then
+  PACKAGE_FLAVOUR=gates exec sh "$here/package/build.sh" "$engine" "${LIGHTS_OUT_IMAGE:-localhost/lights-out-gates:dev}"
+fi
 if [ "$cmd" = demo-package ]; then
   CONTAINER_ENGINE="$engine" exec sh "$here/package/demo.sh"
 fi
@@ -298,12 +304,22 @@ fi
 if [ "$cmd" = console ]; then
   publish=${CONSOLE_PUBLISH:-127.0.0.1}
   port_flags="-p $publish:${CONSOLE_PORT:-8098}:8098 -e CONSOLE_PORT=${CONSOLE_PORT:-8098} -e CONSOLE_BIND=0.0.0.0 -e CONSOLE_PUBLISH=$publish"
-  # -e NAME, no value: the engine copies it from this environment, so a
-  # value with spaces is never split. An unset one is not passed.
+fi
+# -e NAME, no value: the engine copies it from this environment, so a
+# value with spaces is never split. An unset one is not passed. The
+# console's settings go to the console and to production-readiness, which
+# judges them (docs/adr/0057 §10); the secret keys .env.example declares
+# go to every command, so production can keep them out of .env (§10(c)).
+# A value in .env still wins inside make.
+if [ "$cmd" = console ] || [ "$cmd" = production-readiness ]; then
   for v in CONSOLE_AUTH CONSOLE_IDENTITY_HEADER CONSOLE_LAUNCHERS CONSOLE_SNAPSHOT CONSOLE_HOSTS CONSOLE_POLL_S; do
     if env | grep -q "^$v="; then port_flags="$port_flags -e $v"; fi
   done
 fi
+# shellcheck disable=SC2013 # variable names, one word each
+for v in $(awk '/^[A-Za-z0-9_]*(_KEY|_TOKEN|_SECRET|_PASSWORD)=/ || /^METRICS_AUTH_HEADER=/ { sub(/=.*/, ""); print }' "$here/.env.example" | sort -u); do
+  if env | grep -q "^$v="; then port_flags="$port_flags -e $v"; fi
+done
 
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
 run() {
