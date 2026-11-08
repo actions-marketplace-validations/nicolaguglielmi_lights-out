@@ -123,9 +123,10 @@ a measurement, and is not adopted (§7).
      runs `./go up EVENT_BUS=pubsub-emulator STATE_STORE=firestore-emulator`,
      which starts and probes the two emulators on the plane already up,
      and runs both suites there: the suites are shown port-generic, the
-     opt-in adapters stay honest. Found writing this ADR: the
-     firestore-emulator's `put.sh` stored a JSON array as an object keyed by
-     index; its encoder now refuses anything but an object.
+     opt-in adapters stay honest. Found writing the suite: the
+     firestore-emulator's `put.sh` refused a JSON array only by accident
+     (jq fails on a number as an object key); its encoder now refuses
+     anything but an object by name.
      `ci/vendor-free.sh` does not change.
 
 5. **The Gitea Actions runner leaves.** `core/steps/release.sh` takes
