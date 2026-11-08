@@ -242,9 +242,9 @@ Test and verify commands:
 
 ## PR gates
 
-Six gates run in order on a git range (the merge-base of `BASE` and `HEAD`, or the last commit when no range is given; a root commit's base is the empty tree, ADR 0042 §5), with both verdicts proven by committed fixture patches. Run with `./go demo-gates` on the six fixtures, or `./go gates BASE=<ref> HEAD=<ref>` on your own range.
+Eight gates run in order on a git range (the merge-base of `BASE` and `HEAD`, or the last commit when no range is given; a root commit's base is the empty tree, ADR 0042 §5); the first NO-GO stops the rest. Both verdicts are proven by committed fixture patches. Run with `./go demo-gates` on the nine fixtures, or `./go gates BASE=<ref> HEAD=<ref>` on your own range.
 
-**Order:** risk (rules-based classification from path and size), secrets (gitleaks history and working tree), deps (osv-scanner on both lockfiles, a time bomb by design), SAST (bandit on the active workload's `WORKLOAD_MUTATION_SCOPE`), test (pytest, one failing assertion proves it works), mutation (cosmic-ray on changed lines, scored against a measured baseline).
+**Order** (`GATES` in the `Makefile`, the board's GATES station in the same order): risk (rules-based classification from path and size), secrets (gitleaks history and working tree), test-weakening (`gates/test-weakening.sh`: the diff of `WORKLOAD_TEST_PATHS` loses no test file, assertion or test definition and gains no skip, xfail, todo or only marker that the ticket's `## Removes tests` does not declare; no toolchain), deps (osv-scanner on both lockfiles, a time bomb by design), SAST (bandit on the active workload's `WORKLOAD_MUTATION_SCOPE`), test (pytest, one failing assertion proves it works), mutation (cosmic-ray on changed lines, scored against a measured baseline), test-proof (`gates/test-proof.sh`: the changed tests, taken onto the base without the change, must fail there; ADR 0053).
 
 **Risk levels:** `low` → `auto-merge`; `medium` or `high` → review. The risk classifier reads five signals: auth, payments, migrations, platform (gates/ci/verify/policy/core and the toolchain), and diff size. Policy lives in `policy/merge.env`, readable by sh and Python.
 

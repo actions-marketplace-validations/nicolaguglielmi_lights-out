@@ -217,28 +217,37 @@ in under 15 minutes, with no account and no key.
 
 ### The gates saying no
 
-The demo shows the gates saying GO. `./go demo-gates` judges six committed
-fixture patches, and shows the test, mutation, SAST and deps gates saying
-NO-GO, and risk sending a change to review:
+The demo shows the gates saying GO. `./go demo-gates` judges nine committed
+fixture patches, and shows the test-weakening, test, mutation, SAST, test-proof
+and deps gates saying NO-GO, and risk sending a change to review:
 
-<!-- source: GitHub Actions run 41866972654 (commit ee2f679), job gates (126703546044), step "./go demo-gates"; only the [demo-gates] lines and the last line -->
+<!-- source: GitHub Actions run 42421450841 (commit 2a0427c), job gates (128550543246), step "./go demo-gates"; only the [demo-gates] lines and the last line -->
 ```
+[demo-gates] assertion-removed: NO-GO: gates — test-weakening: NO-GO: test-weakening — 1 test file finding that no ## Removes tests in the ticket declares: app/backend/tests/test_meetups.py: loses 1 assertion; details on stderr
 [demo-gates] failing-test: NO-GO: gates — test: NO-GO: test — in compose:backend-test: the test command failed (exit 1), see stderr
 [demo-gates] fake-test: NO-GO: gates — mutation: NO-GO: mutation — in compose:backend-test: 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr
 [demo-gates] honest-fix: GO: gates — risk low, auto-merge, in compose:backend-test
 [demo-gates] migration: GO: gates — risk high, review, in compose:backend-test
 [demo-gates] sast-finding: NO-GO: gates — sast: NO-GO: sast — in compose:backend-test: 1 SAST finding(s) in the workload's scope
+[demo-gates] test-edited: GO: gates — risk low, auto-merge, in compose:backend-test
+[demo-gates] test-passes-on-base: NO-GO: gates — test-proof: NO-GO: test-proof — in compose:backend-test: the changed tests pass on the base 2a0427c too, so they do not prove the change
 [demo-gates] vulnerable-dep: NO-GO: gates — deps: NO-GO: deps — this diff introduces 4 advisory finding(s); list on stderr
 GO: demo-gates
 ```
-*GitHub Actions run 41866972654, job gates: the `[demo-gates]` lines and
+*GitHub Actions run 42421450841, job gates: the `[demo-gates]` lines and
 the last line.*
 
 `fake-test` is the same fix as `honest-fix` with a test that does not
 really test it. The tests pass, so the test gate says GO. Mutation testing
 catches it: it changes the fixed lines and checks whether a test fails.
-`migration` passes every gate but is risk `high`, so it goes to review
-instead of merging on its own.
+`assertion-removed` drops one assertion from an existing test; the suite
+still passes, and test-weakening catches it in the diff before any
+toolchain runs. `test-passes-on-base` adds a test that passes without the
+change too; test-proof runs it on the base and says it proves nothing.
+`test-edited` corrects a contract value and the assertions pinning it, so
+nothing is lost and every gate says GO (ADR 0053). `migration` passes
+every gate but is risk `high`, so it goes to review instead of merging on
+its own.
 
 ### `./go board`
 
@@ -247,17 +256,18 @@ instead of merging on its own.
 ```
 
 The board is one page on `http://127.0.0.1:8099` (`BOARD_PORT` moves it).
-It has two parts (ADR 0035). EXPLAINER has eight scripted walks (ship it,
-bad canary, fake test, risky diff, freeze then resume, human says no, out
-of bounds, kill switch). They are labelled as scripted, and their versions
-and numbers are examples. LIVE appears while the plane is up: the tower's
+It has two parts (ADR 0035). EXPLAINER has ten scripted walks (ship it,
+bad canary, fake test, weakened test, NO-GO then rework, risky diff, freeze
+then resume, human says no, out of bounds, kill switch). They are labelled
+as scripted, and their versions and numbers are examples. The GATES
+station lights the eight gates in the Makefile's order. LIVE appears while the plane is up: the tower's
 documents, the release-freeze and kill-switch flags, the traffic split and
 the release record. It refreshes every 2 seconds and only reads. It never
 deploys, shifts or rolls back.
 
 The board is a page, not a command with an output, so no output is shown
 here. `./go ci` checks it (`ci/board.sh`): the page's state table must
-equal the tower's.
+equal the tower's, and its gates must be the Makefile's `GATES`, in order.
 
 ### `./go audit`: the chain, rebuilt
 
