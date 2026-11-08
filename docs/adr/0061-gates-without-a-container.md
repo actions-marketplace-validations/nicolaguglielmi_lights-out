@@ -108,7 +108,10 @@ that logic in standard-library Python under `core/`. Verified on 2026-11-08:
    the repository or its `.git`, unlike the image, which commits the staged
    change in its own clone (ADR 0045 §3). `WORKLOAD=<dir>`, default the
    repository's top; its contract is `<dir>/.lights-out/`, or
-   `<dir>/workload.env` for the bundled app (ADR 0030). `TICKET=<file>`.
+   `<dir>/workload.env` for the bundled app (ADR 0030): with no make to
+   compute `WORKLOAD_CONTRACT`, `core/light.py` spells `.lights-out` as
+   attach and init do, and `ci/app-free.sh` lists it beside them (ADR 0037
+   §7). `TICKET=<file>`.
    `TEST_ON_HOST=1`. `GATES_OUT=<dir>` writes `verdict.env` in `make gates`'
    shape (`GATES`, `FAILED`, `RISK_LEVEL`, `RISK_DECISION`) plus
    `RAN=<gates>`; without it nothing is written anywhere.
