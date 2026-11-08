@@ -166,12 +166,14 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
   repository, tag `v0.3.0`, and publish the release to the Marketplace the
   same way. The copies can lag a version without any check failing:
   `ci/package.sh` checks the sources here, never the copies.
-- [ ] **Measure the first pull.** Dispatch the workflow of the private
-  repository `nicolaguglielmi/lights-out-probe` with the published gates
-  image, read the time of `init` plus `gates` with the first pull
-  included, and write it in the README's step 1 (the `<measured>` there).
-  Write the two image sizes there too, from the `publish` and `package`
-  jobs' summaries.
+- [ ] **Measure the first pull.** In the public probe repository
+  `nicolaguglielmi/lights-out-probe` (made public on 2026-11-08 because the
+  account's Actions billing refused a private run), set the workflow's and
+  the two shims' `uses:` to `@v0.3.0`, drop the step that builds the image
+  and the `image:` inputs, and push a change on a pull request. The three
+  times then include the first pull: write them in the README's step 1,
+  replacing the 19 s, 2 s and 17 s measured with the image built in the
+  job. Delete the probe afterwards if you do not want it public.
 
 ### The README's front page
 
