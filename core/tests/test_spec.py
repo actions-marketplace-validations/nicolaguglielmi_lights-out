@@ -284,15 +284,15 @@ class Draft(unittest.TestCase):
     with nothing written. The Markdown it writes is judged by the gate."""
 
     FIELDS = {
-        "title": "A waiting list when a meetup is full",
-        "context": "A full meetup refuses every further signup.",
+        "title": "A waiting list when a room is full",
+        "context": "A full room refuses every further signup.",
         "criteria": [
-            {"given": "a meetup at capacity", "when": "a new member signs up",
+            {"given": "a room at capacity", "when": "a new member signs up",
              "then": "they join the waiting list and see their position"},
             {"given": "a waiting list with one member", "when": "an attendee cancels",
              "then": "the first member on the list becomes an attendee"},
         ],
-        "perimeter": ["app/backend/waitlist/*", "docs/waitlist.md"],
+        "perimeter": ["src/queue/*", "docs/queue.md"],
         "feature": "waiting-list",
         "priority": "P1",
     }
@@ -416,7 +416,7 @@ class Draft(unittest.TestCase):
     def test_the_markdown_of_a_full_request(self):
         _, text = self.drafted(self.fields())
         self.assertEqual(text, (
-            "# 0001 — A waiting list when a meetup is full\n"
+            "# 0001 — A waiting list when a room is full\n"
             "\n"
             "- Status: open\n"
             "- Feature: waiting-list\n"
@@ -424,11 +424,11 @@ class Draft(unittest.TestCase):
             "\n"
             "## Problem\n"
             "\n"
-            "A full meetup refuses every further signup.\n"
+            "A full room refuses every further signup.\n"
             "\n"
             "## Acceptance criteria\n"
             "\n"
-            "Given a meetup at capacity\n"
+            "Given a room at capacity\n"
             "When a new member signs up\n"
             "Then they join the waiting list and see their position\n"
             "\n"
@@ -438,8 +438,8 @@ class Draft(unittest.TestCase):
             "\n"
             "## Perimeter\n"
             "\n"
-            "- `app/backend/waitlist/*`\n"
-            "- `docs/waitlist.md`\n"))
+            "- `src/queue/*`\n"
+            "- `docs/queue.md`\n"))
 
     def test_the_text_ends_in_exactly_one_newline(self):
         _, text = self.drafted(self.fields())
@@ -461,7 +461,7 @@ class Draft(unittest.TestCase):
         lines = text.splitlines()
         self.assertEqual([line for line in lines if line.startswith(("- Feature:", "- Priority:"))], [])
         self.assertIn("(no context given)", lines)
-        self.assertNotIn("A full meetup", text)
+        self.assertNotIn("A full room", text)
 
     def test_no_criterion_and_no_perimeter_leave_empty_sections(self):
         _, text = self.drafted(self.fields(criteria=[], perimeter=[]))
@@ -527,10 +527,10 @@ class Draft(unittest.TestCase):
         self.assertIn("has no criterion", self.judged(criteria=[]))
 
     def test_a_then_with_no_outcome_fails(self):
-        self.assertIsNotNone(self.judged(criteria=[{"given": "a meetup", "when": "someone signs up", "then": ""}]))
+        self.assertIsNotNone(self.judged(criteria=[{"given": "a room", "when": "someone signs up", "then": ""}]))
 
     def test_a_vague_outcome_fails_and_is_named(self):
-        why = self.judged(criteria=[{"given": "a meetup", "when": "someone signs up", "then": "it works"}])
+        why = self.judged(criteria=[{"given": "a room", "when": "someone signs up", "then": "it works"}])
         self.assertIn("names no observable outcome", why)
 
     def test_no_perimeter_path_fails(self):
@@ -580,7 +580,7 @@ class Draft(unittest.TestCase):
             self.refused(self.fields(criteria=criteria))
 
     def test_a_perimeter_that_is_not_a_list_of_strings_is_refused(self):
-        for perimeter in ("app/*", {"a": "b"}, ["app/*", 3], [None], [["app/*"]]):
+        for perimeter in ("src/*", {"a": "b"}, ["src/*", 3], [None], [["src/*"]]):
             self.refused(self.fields(perimeter=perimeter))
 
     def test_fields_that_are_not_an_object_are_refused(self):
