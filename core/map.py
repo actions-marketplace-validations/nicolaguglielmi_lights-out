@@ -32,7 +32,7 @@ import sys
 import tempfile
 
 try:
-    from core.tower import sh
+    from .tower import sh
 except ImportError:  # run as a script: core/ is sys.path[0]
     from tower import sh
 

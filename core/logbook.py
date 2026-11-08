@@ -32,10 +32,10 @@ import subprocess  # nosec B404 - git and the adapter verbs the profile names (d
 import sys
 
 try:
-    from core.policy import PolicyError, effective
-    from core.spec import fields
-    from core.assign import HOLDING, overlaps
-    from core.map import SCHEMA as MAP_SCHEMA
+    from .policy import PolicyError, effective
+    from .spec import fields
+    from .assign import HOLDING, overlaps
+    from .map import SCHEMA as MAP_SCHEMA
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
