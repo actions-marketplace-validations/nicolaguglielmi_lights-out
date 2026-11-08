@@ -1298,7 +1298,7 @@ codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST se
 .PHONY: statestore-conformance eventbus-conformance
 statestore-conformance: ## Eight-case StateStore conformance suite on the STATE_STORE set: sqlite at L0, no plane (docs/adr/0060 §4)
 	@CONFORMANCE=1 sh gates/statestore-conformance.sh
-eventbus-conformance: ## The EventBus conformance suite on the EVENT_BUS set, an idle bus: spool at L0, no plane (docs/adr/0060 §4)
+eventbus-conformance: ## Six-case EventBus conformance suite on the EVENT_BUS set, an idle bus: spool at L0, no plane; the redelivery case needs CONFORMANCE_ACK_DEADLINE (docs/adr/0060 §4)
 	@CONFORMANCE=1 sh gates/eventbus-conformance.sh
 
 .PHONY: delivery-conformance
