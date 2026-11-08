@@ -779,6 +779,22 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - `gates/codehost-conformance.sh` è GO su GitLab;
   - `./go demo` resta invariato.
 
+### M33 — La console come banco di lavoro: kanban interattiva, tema, ADR, spec (ADR 0059)
+
+*Aggiunto 2026-11-08, decisione dell'owner.* La console di M29 si legge, ma non si usa per lavorare: la kanban è una fotografia, il tema segue solo il sistema, le decisioni del progetto stanno fuori, e una spec si scrive in un editor qualunque e si scopre al gate se manca qualcosa. Quattro pezzi, dentro i vincoli di ADR 0047 e ADR 0055.
+
+- **Kanban interattiva, senza drag-and-drop.** La regola di ADR 0055 §7 resta: una carta si muove solo quando la torre muove il suo ticket. Interattiva vuol dire: un pannello laterale col dettaglio della carta (stato, verdetto, ultima riga, perimetro, attesa) senza lasciare la board; ricerca per id, titolo e file del perimetro; tastiera (frecce fra le carte, Invio apre, Esc chiude); filtri, raggruppamento e colonne vuote nel link, così una vista si condivide; colonne comprimibili; in modalità live una carta che cambia colonna si vede muovere ed è evidenziata per qualche secondo.
+- **Tema chiaro e scuro.** Un interruttore nella testata, con tre valori (sistema, chiaro, scuro), ricordato nel browser; il default resta quello del sistema. Lo stesso per la board.
+- **Ricerca delle ADR.** Una schermata che cerca nelle ADR per numero, titolo, stato e testo, e mostra per ognuna i file, i ticket e le altre ADR collegati. La fonte è la mappa di M28 (`.crew/map.sqlite`), non una seconda lettura del repository: l'ADR dice se la console la legge con una seconda rotta di sola lettura o se il logbook la porta in una versione 1.2, e perché. Dal dettaglio di un ticket, le ADR che governano i file del suo perimetro.
+- **Le spec nella console, e la compilazione assistita.** Una schermata delle spec: per ogni ticket i criteri confermati, lo stato (`requested`, `questions`, `spec-ready`), l'ultimo verdetto del gate `spec` e la domanda aperta. Un editor per la richiesta di un ticket nuovo (titolo, contesto, criteri Given/When/Then, perimetro, feature, priorità) con un controllo dal vivo che usa le stesse regole del gate `spec`, una riga GO/NO-GO con il motivo, senza scrivere niente. Dove c'è una chiave, il ruolo `product` può fare le sue domande sulla bozza; a L0 l'editor lo dice e non finge. Salvare è una terza scrittura: l'ADR decide se la console scrive `tickets/<id>.md` e lancia la ricetta di `./go request`, con chi ha premuto e `via: console` come le altre due, oppure se consegna il file da committare a mano. Questo riapre l'editor delle spec scartato nella nota di "Dopo" (ADR 0029 §3): la regola di quell'ADR lo ammette, perché serve a un cliente con una sola istanza.
+- **Fatto quando:**
+  - `ci/logbook.sh` (o il suo successore) prova che nessuna interazione della kanban sposta una carta, che i filtri nel link ricostruiscono la stessa vista e che il tema non cambia nessun dato;
+  - la ricerca trova un'ADR per numero, per parola del titolo e per un file che cita, su questo repository;
+  - il controllo dal vivo dell'editor dà lo stesso verdetto di `gates/spec.sh` sulle stesse bozze, GO e NO-GO, provato in CI;
+  - la scrittura di una spec, se l'ADR la ammette, rispetta le regole di `CONSOLE_AUTH` ed è rifiutata in snapshot;
+  - README, `console/README.md`, `docs/reference.md` e le immagini del sito mostrano le quattro cose;
+  - `./go demo` resta invariato.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14.
