@@ -60,8 +60,10 @@ class NoGo(Exception):
 
 def run(argv, cwd=None, data=None, env=None):
     """ARGV, an argument list: the one process call (docs/adr/0061 §3)."""
+    # stdin is DATA or nothing: never the caller's (a hook's stdin is an open pipe).
+    feed = {"input": data} if data is not None else {"stdin": subprocess.DEVNULL}
     try:
-        return subprocess.run(argv, cwd=cwd, input=data, env=env, capture_output=True, check=False)  # nosec B603 - an argv list: git, sh and the contract TEST_CMD (ADR 0061 §3)
+        return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, check=False, **feed)  # nosec B603 - an argv list: git, sh and the contract TEST_CMD (ADR 0061 §3)
     except OSError as exc:
         raise Refused(f"{argv[0]} could not run: {exc.strerror}") from None
 
