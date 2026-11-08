@@ -32,7 +32,7 @@ import sys
 from datetime import datetime, timezone
 
 try:
-    from core.tower import task
+    from .tower import task
 except ImportError:  # run as a script: core/ is sys.path[0]
     from tower import task
 

@@ -22,7 +22,8 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
 | The Action `action/` | Proven in lights-out's own workflow only: `uses: ./action` on a scratch repository posts a GO and a NO-GO check run. Not yet on another repository |
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
-| The hook recipes (section 5) | **Not run** in this repository. The shapes come from ADR 0045 "Verified while writing"; some parts are unverified, and the recipes say which |
+| The hook recipes (section 5) | The `--light` recipes **verified** once per CLI on 2026-11-08 (Claude Code 2.1.311, Codex 0.166.0, Gemini CLI 0.61.0-preview.0) against the scripted model, not a vendor; each recipe says what was not covered. The full variant was not run against the CLIs |
+| The light tier, `lights-out gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. Not on PyPI yet |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
 Known limits today, before you start:
@@ -520,14 +521,59 @@ steps:
 A hook runs the gates on the staged changes before an agent commits. These
 are recipes to copy, not files lights-out writes into your repository. Each
 runs one `sh -c`: exit 0 unless the hook's stdin contains `git commit`, else
-`lights-out gates STAGED=1 >&2 || exit 2`. Exit 2 is the deny all three CLIs
-read (ADR 0041). With no engine, the hook also exits 2. The timeout is 300 s,
-set explicitly in each CLI's own unit. Install the wrapper first (section 1).
+the gates, and exit 2 on a NO-GO. Exit 2 is the deny all three CLIs read
+(ADR 0041). There are two variants.
 
-**Claude Code**, `.claude/settings.json` (also `.claude/settings.local.json`
-or `~/.claude/settings.json`). `PreToolUse`, matcher `Bash`; the command is in
-`tool_input.command` on stdin; `timeout` is in seconds. Verified against the
-Claude Code hooks page.
+- **`--light`, seconds, no engine** (ADR 0061). `lights-out gates --light
+  STAGED=1` runs the gates that need only git and Python: risk and
+  test-weakening, perimeter and spec with `TICKET=<file>`, test and
+  test-proof with `TEST_ON_HOST=1`. Its line names the gates that did not
+  run, and it never says `GO: gates`: secrets, deps, sast and mutation need
+  the image. It runs no code of your repository unless you add
+  `TEST_ON_HOST=1`, and writes nothing into it. Timeout 30 s: three times
+  the 10 s the light tier is held to (ADR 0061 §8). With `TEST_ON_HOST=1`
+  your suite runs once on the head and, when tests changed, once on the
+  base: raise the timeout by that.
+- **The full gates, from the image**: `lights-out gates STAGED=1` with the
+  wrapper (section 1), timeout 300 s. Without an engine, the hook exits 2.
+
+Install the light tier once. It is a Python package, standard library only,
+Python 3.11 or later:
+
+```bash
+uv tool install lights-out
+```
+
+`pipx install lights-out` works too, and `uvx lights-out gates --light
+STAGED=1` in the hook needs no install at all. **Not on PyPI yet**: until
+the owner publishes it, install it from the repository:
+
+```bash
+uv tool install git+https://github.com/nicolaguglielmi/lights-out
+```
+
+The package's command and the image wrapper are both called `lights-out`.
+If both are on your `PATH`, the first one wins, and the wrapper refuses
+`--light`: every commit gets a NO-GO. Use `uvx lights-out` in the hook, or
+keep one of the two.
+
+**Verified on 2026-11-08, once per CLI.** Each recipe below ran against the
+pinned CLI in its own image (`adapters/<cli>/`, built on the workbench), with
+the settings file where the recipe says, the wheel installed with `uv tool
+install`, and the scripted model of `./go harness-conformance`
+(`gates/harness-conformance/stub.py`) in place of the vendor. Two runs each,
+on a scratch repository with a `.lights-out/` contract. A staged change that
+removes an assertion: the hook exited 2, the CLI blocked `git commit`, the
+model received the `NO-GO: gates-light — test-weakening: …` line as the
+tool's error, and no commit landed. A clean staged change: the commit
+landed. What this does not cover is said under each CLI. The full variant
+was not run against the CLIs.
+
+**Claude Code** (verified, 2.1.311), `.claude/settings.json` in the
+repository (also `.claude/settings.local.json` or `~/.claude/settings.json`).
+`PreToolUse`, matcher `Bash`; the command is in `tool_input.command` on
+stdin; `timeout` is in seconds. Verified with the project file and `claude
+-p`: the model got `PreToolUse:Bash hook error: […] NO-GO: gates-light — …`.
 
 ```json
 {
@@ -538,8 +584,8 @@ Claude Code hooks page.
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates STAGED=1 >&2 || exit 2; fi'",
-            "timeout": 300
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates --light STAGED=1 >&2 || exit 2; fi'",
+            "timeout": 30
           }
         ]
       }
@@ -548,14 +594,14 @@ Claude Code hooks page.
 }
 ```
 
-**Codex**, `.codex/hooks.json` in the repository or `~/.codex/hooks.json`.
-`PreToolUse`, matcher `*`; `timeout` is in seconds. The shell tool's matcher
-name is **not verified** (a third-party source says `Bash`), so the recipe
-matches every tool and relies on the `git commit` test. Project hooks run
-only when the project's `.codex/` layer is trusted, reviewed with `/hooks`.
-That exit 2 denies from a project hook is **not verified** from the docs;
-ADR 0041 (M19) verified it with `--dangerously-bypass-hook-trust`. The Codex
-page was read through search excerpts, not the page itself.
+**Codex** (verified, 0.166.0), `~/.codex/hooks.json` or `.codex/hooks.json`
+in the repository. `PreToolUse`, matcher `*`; `timeout` is in seconds. The
+matcher stays `*`: the recipe relies on the `git commit` test. Verified with
+the user-level file under `CODEX_HOME` and `codex exec
+--dangerously-bypass-hook-trust --enable hooks`: the model got `Command
+blocked by PreToolUse hook: … NO-GO: gates-light — …`. **Not verified:** the
+project file `.codex/hooks.json`, and the trust step. Codex runs a hook only
+once you trust it with `/hooks`; the run bypassed that.
 
 ```json
 {
@@ -566,8 +612,8 @@ page was read through search excerpts, not the page itself.
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates STAGED=1 >&2 || exit 2; fi'",
-            "timeout": 300
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates --light STAGED=1 >&2 || exit 2; fi'",
+            "timeout": 30
           }
         ]
       }
@@ -576,11 +622,13 @@ page was read through search excerpts, not the page itself.
 }
 ```
 
-**Gemini CLI**, `.gemini/settings.json`. `BeforeTool`, matcher a regex on the
-tool name, here `run_shell_command`. `timeout` is in **milliseconds** and the
-default is 60000, so it must be set: 300000. Whether project settings in an
-untrusted folder load hooks is **not verified**. The page was read through
-search excerpts.
+**Gemini CLI** (verified, 0.61.0-preview.0), `~/.gemini/settings.json` or
+`.gemini/settings.json` in the repository. `BeforeTool`, matcher a regex on
+the tool name, here `run_shell_command`. `timeout` is in **milliseconds**
+and the default is 60000: 30000 here. Verified with the user-level file,
+`gemini -p --skip-trust --approval-mode yolo`: the model got `Tool execution
+blocked: … NO-GO: gates-light — …`. **Not verified:** the project file in
+a folder Gemini CLI does not trust.
 
 ```json
 {
@@ -591,8 +639,8 @@ search excerpts.
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates STAGED=1 >&2 || exit 2; fi'",
-            "timeout": 300000
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates --light STAGED=1 >&2 || exit 2; fi'",
+            "timeout": 30000
           }
         ]
       }
@@ -601,9 +649,9 @@ search excerpts.
 }
 ```
 
-The config shapes for Codex and Gemini CLI are the ADR's field names, and
-were not run against the real CLIs for this guide. Check them against the
-vendor's current page before you rely on them.
+For the full variant, replace the command's `lights-out gates --light
+STAGED=1` with `lights-out gates STAGED=1` (the wrapper) and the timeout
+with 300 (Gemini CLI: 300000).
 
 Limits:
 
@@ -611,9 +659,13 @@ Limits:
   commits are not seen.
 - `git commit -a` stages inside the commit, so the hook judges only what was
   staged before. `--amend` judges the staged diff only.
-- Every run is cold: the dependencies are reinstalled each time.
+- The light tier judges the staged diff on the contract HEAD has committed;
+  a `.lights-out/` that is only staged does not judge it.
+- The full variant's every run is cold: the dependencies are reinstalled
+  each time.
 - What a CLI does when a hook times out was not verified.
-- The Action is the real gate. The hook is a convenience.
+- The Action is the real gate. The hook is a convenience, and the light tier
+  is not the judge.
 
 ## When something does not fit
 

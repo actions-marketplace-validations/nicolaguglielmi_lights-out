@@ -21,7 +21,7 @@ import subprocess  # nosec B404 - only for PIPE; tower.py's sh() runs the verbs
 import sys
 
 try:
-    from core.tower import dig, sh, text
+    from .tower import dig, sh, text
 except ImportError:  # run as a script: core/ is sys.path[0]
     from tower import dig, sh, text
 
