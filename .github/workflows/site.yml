@@ -3,7 +3,9 @@
 # board, the console, the logbooks it is shown over, the cover or this file,
 # on any branch: it builds _site/ (the landing, the board itself, the cover),
 # records the board's scenarios with Playwright, takes stills of the
-# console's screens and encodes them with ffmpeg, all inside the Playwright image,
+# console's screens (the ADR search over this repository's own project map,
+# so git comes first: a checkout without it has no history to map) and
+# encodes them with ffmpeg, all inside the Playwright image,
 # then uploads the Pages artifact and, for review, the screenshots. `deploy`
 # publishes it, on main only. The videos and stills are build outputs: never in git.
 # GitHub-only, every job: the L0 Gitea runner reads this directory too
@@ -17,7 +19,11 @@ on:
       - board/index.html
       - console/index.html
       - console/serve.py
-      - fixtures/logbook/golden-1.1.json
+      - fixtures/logbook/golden-1.2.json
+      - core/map.py
+      - core/logbook.py
+      - core/spec.py
+      - gates/spec.sh
       - docs/assets/**
       - .github/workflows/site.yml
   workflow_dispatch:
@@ -40,13 +46,17 @@ jobs:
       # mcr.microsoft.com 2026-11-05; the digest is the multi-arch index's.
       image: mcr.microsoft.com/playwright/python:v1.64.1-noble@sha256:330d401ae23c905896a0c26c66c36fc971b621519e7b11b435a8328d7bf6e031
     steps:
+      - name: git, for a checkout the project map can read
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git ca-certificates >/dev/null
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The image bakes in the browsers, not the package that drives them:
       # the same version, so it finds them under /ms-playwright.
       - name: ffmpeg from the image's Ubuntu archive, playwright from PyPI
         run: |
           pip install --no-cache-dir --quiet playwright==1.64.1
-          apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg >/dev/null
           ffmpeg -version | head -1
       - name: the site, without its media

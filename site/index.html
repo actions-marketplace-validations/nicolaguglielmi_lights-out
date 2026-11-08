@@ -516,12 +516,12 @@ Then the response is not 500 …
     <div class="sec-head reveal">
       <div class="eyebrow">The console</div>
       <h2 id="console-h">From the request to the release, on one page.</h2>
-      <p class="lead">A request comes in, the product role asks what is missing, a person answers, the spec gate checks the criteria, and only then does an agent start. The console shows every ticket on that path, from one versioned document, the logbook. It has two writes, the answer to an open question and go-for-launch, and both are recorded with who pressed.</p>
+      <p class="lead">A request comes in, the product role asks what is missing, a person answers, the spec gate checks the criteria, and only then does an agent start. The console shows every ticket on that path, from one versioned document, the logbook, and is a place to work: a request is written there and checked by the spec gate as it is typed, and the project's decisions are searched there. It has three writes, a new request, the answer to an open question and go-for-launch, each recorded with who pressed. Light or dark, as you choose.</p>
     </div>
     <div class="shots">
       <figure class="shot wide reveal">
-        <img src="media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature" loading="lazy">
-        <figcaption><b>Kanban</b>One column per tower state, a card per ticket with its priority and feature. A card moves only when the tower moves its ticket: there is no drag-and-drop. Empty columns hidden.</figcaption>
+        <img src="media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature, and a drawer with the selected ticket's state, verdict, last row, perimeter and governing ADRs" loading="lazy">
+        <figcaption><b>Kanban</b>One column per tower state. Search, filters, collapsed columns and the open card live in the link, the arrows move between cards, and a drawer shows a card without leaving the board. A card moves only when the tower moves its ticket: there is no drag-and-drop.</figcaption>
       </figure>
       <figure class="shot reveal">
         <img src="media/console-ticket.jpg" alt="Ticket 0009's timeline: the request, the product role's question, the answer, the confirmed criteria, and the spec gate's NO-GO for a missing perimeter" loading="lazy">
@@ -531,8 +531,16 @@ Then the response is not 500 …
         <img src="media/console-overview.jpg" alt="The overview: tickets by state, the perimeters open tickets hold, the tickets waiting at assign, the docs a merge left to realign" loading="lazy">
         <figcaption><b>Overview</b>Tickets by state, the files open tickets hold, who waits at assign and on whom, and the docs a merge left to realign.</figcaption>
       </figure>
+      <figure class="shot reveal">
+        <img src="media/console-request.jpg" alt="The request editor: a title, the context, a Given/When/Then criterion, the perimeter and the feature, with the spec gate's GO line under them and the ticket file it would write" loading="lazy">
+        <figcaption><b>A new request</b>Title, context, Given/When/Then criteria and the perimeter, checked as you type by the spec gate itself: its one line, and the file it would write. At L0 it says the product role is not consulted.</figcaption>
+      </figure>
+      <figure class="shot reveal">
+        <img src="media/console-adrs.jpg" alt="The ADR search in the dark theme: this repository's ADRs matching kanban, each with its status, the files it cites, its tickets and the ADRs it is linked to" loading="lazy">
+        <figcaption><b>The project's decisions</b>This repository's own ADRs, from its project map: by number, title, status, text or a file one cites, each with its files, tickets and linked ADRs. In the dark theme.</figcaption>
+      </figure>
     </div>
-    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.1.json</code>), which holds tickets in more states than one demo leaves; its model is a stub.</p>
+    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.2.json</code>), which holds tickets in more states than one demo leaves; its model is a stub. The ADR search reads a logbook built in CI from this repository's own project map.</p>
     <div class="board-link reveal">
       <p><b>Open it on your own run.</b> After <code>./go demo</code>, <code>./go console</code> serves it on localhost:8098 over the live record.</p>
       <a class="btn" href="https://github.com/nicolaguglielmi/lights-out/tree/main/console">console/ ↗</a>
