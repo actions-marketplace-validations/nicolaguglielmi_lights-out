@@ -112,7 +112,13 @@ git -C "$attached" cat-file -e HEAD:.lights-out/workload.env 2>/dev/null \
 if [ -n "$staged" ] && [ "$staged" != 0 ]; then
   [ -z "$base$head" ] || nogo "STAGED=1 judges the staged changes on HEAD; it takes no BASE or HEAD"
   patch=/tmp/lights-out/staged.patch
-  git -C /repo diff --cached --binary > "$patch"
+  # The wrapper writes the patch with the host's git (a mounted .git/index
+  # can be stale right after `git add`); without one, read it here.
+  if [ -f /out/staged.patch ]; then
+    cp /out/staged.patch "$patch"
+  else
+    git -C /repo diff --cached --binary > "$patch"
+  fi
   [ -s "$patch" ] || nogo "STAGED=1, and nothing is staged"
   git -C "$attached" apply --index "$patch" >&2 || nogo "the staged changes do not apply on HEAD"
   git -C "$attached" -c user.name=lights-out -c user.email=lights-out@localhost.invalid -c commit.gpgsign=false \

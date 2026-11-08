@@ -138,6 +138,18 @@ out=${LIGHTS_OUT_OUT:-${XDG_STATE_HOME:-$HOME/.local/state}/lights-out/$(basenam
 mkdir -p "$out" || die "cannot create $out (LIGHTS_OUT_OUT)"
 out=$(CDPATH='' cd -- "$out" && pwd -P)
 
+# STAGED=1: the staged changes as this host's git sees them, handed to the
+# image as a file. Read through the engine's mount, .git/index can be a
+# stale copy right after `git add` (podman machine's file sharing,
+# observed 2026-11-08), and the patch would be another change.
+rm -f "$out/staged.patch"
+for a do
+  case "$a" in
+    STAGED=0|STAGED=) ;;
+    STAGED=*) git diff --cached --binary > "$out/staged.patch" || die "git diff --cached failed in $here" ;;
+  esac
+done
+
 # SELinux: never :z, which would relabel your repository (docs/adr/0045 §2).
 engine_flags="--security-opt label=disable"
 if [ "$engine" = docker ]; then
