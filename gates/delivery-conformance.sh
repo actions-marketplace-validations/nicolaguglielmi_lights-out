@@ -356,4 +356,15 @@ printf '[delivery-conformance] case5 unsigned-image: GO\n' >&2
 
 printf '[delivery-conformance] case6 reports-state: every status.sh read above parsed and agreed: GO\n' >&2
 
+# The record production-readiness reads (docs/adr/0057 §9): this adapter,
+# as its files are now, passed on this machine. Not committed.
+record_dir=${CONFORMANCE_DIR:-.crew/conformance}
+mkdir -p "$record_dir"
+{
+  printf 'ADAPTER=%s\n' "$DELIVERY"
+  printf 'HASH=%s\n' "$(adapter_hash "adapters/$DELIVERY")"
+  printf 'AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "$record_dir/delivery-$DELIVERY.env"
+printf '[delivery-conformance] recorded in %s/delivery-%s.env\n' "$record_dir" "$DELIVERY" >&2
+
 go
