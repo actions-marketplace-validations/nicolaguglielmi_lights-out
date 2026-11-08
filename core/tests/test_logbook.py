@@ -73,6 +73,19 @@ class Before(unittest.TestCase):
         row = logbook.timeline(doc, "0001", [], [])[1]
         self.assertEqual((row["phase"], row["line"]), ("product", "not consulted: no recording"))
 
+    def test_the_request_row_carries_who_requested_and_through_what(self):
+        """docs/adr/0059 §4: the tower records `by` and `via` on the request."""
+        doc = {"history": [H("request", "requested", "t0", by="ada@example.org", via="console"),
+                           H("clarify", "questions", "t1")]}
+        row = logbook.timeline(doc, "0010", [], [])[0]
+        self.assertEqual((row["phase"], row["at"], row["by"], row["via"]),
+                         ("request", "t0", "ada@example.org", "console"))
+
+    def test_the_request_row_of_the_cli_says_so_too(self):
+        doc = {"history": [H("request", "requested", "t0", by="unauthenticated", via="cli")]}
+        row = logbook.timeline(doc, "0010", [], [])[0]
+        self.assertEqual((row["by"], row["via"]), ("unauthenticated", "cli"))
+
     def test_a_ticket_opened_directly_says_so(self):
         rows = logbook.timeline({"history": [H("open", "opened", "t0")]}, "0001", [], [])
         self.assertEqual(phases(rows), ["open"])

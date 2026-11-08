@@ -593,6 +593,44 @@ class Request(TowerCase):
         self.assertRegex(doc["history"][0]["at"], STAMP)
         self.assertEqual(self.published(), [{"ticket": "0001", "step": "clarify"}])
 
+    def request(self, **env):
+        return self.run_tower("request", "0001", env=dict(ENV, **env))
+
+    def test_the_cli_requests_unauthenticated(self):
+        """docs/adr/0059 §4: who requested and through what, as `answer` does."""
+        self.assertEqual(self.request()[0], 0)
+        first = self.doc()["history"][0]
+        self.assertEqual((first["step"], first["state"]), ("request", "requested"))
+        self.assertRegex(first["at"], STAMP)
+        self.assertEqual((first["by"], first["via"]), ("unauthenticated", "cli"))
+
+    def test_the_environment_says_who_requested_and_through_what(self):
+        code, _ = self.request(REQUEST_BY="ada@example.org", REQUEST_VIA="console")
+        self.assertEqual(code, 0)
+        history = self.doc()["history"]
+        self.assertEqual(len(history), 1)
+        self.assertEqual({k: history[0][k] for k in ("step", "state", "by", "via")},
+                         {"step": "request", "state": "requested", "by": "ada@example.org", "via": "console"})
+        self.assertRegex(history[0]["at"], STAMP)
+
+    def test_each_of_the_two_defaults_stands_alone(self):
+        self.request(REQUEST_BY="bob")
+        first = self.doc()["history"][0]
+        self.assertEqual((first["by"], first["via"]), ("bob", "cli"))
+        self.request(REQUEST_VIA="console")
+        first = self.doc()["history"][0]
+        self.assertEqual((first["by"], first["via"]), ("unauthenticated", "console"))
+
+    def test_the_answers_variables_are_not_the_requests(self):
+        self.request(ANSWER_BY="mallory", ANSWER_VIA="console")
+        first = self.doc()["history"][0]
+        self.assertEqual((first["by"], first["via"]), ("unauthenticated", "cli"))
+
+    def test_who_requested_does_not_change_what_is_requested(self):
+        self.request(REQUEST_BY="ada", REQUEST_VIA="console")
+        self.assertEqual(self.published(), [{"ticket": "0001", "step": "clarify"}])
+        self.assertEqual(self.doc()["state"], "requested")
+
     def test_an_unpublished_clarify_is_a_failure(self):
         self.fail("publish")
         code, err = self.run_tower("request", "0001")

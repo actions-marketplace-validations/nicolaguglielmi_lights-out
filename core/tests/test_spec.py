@@ -1,18 +1,25 @@
-"""Tests for core/spec.py, written from docs/adr/0055 §2-§4, never from the
-implementation: the spec gate's rules and order, what the product role's
-run turns into, the composed spec and the spec step's two outcomes."""
+"""Tests for core/spec.py, written from docs/adr/0055 §2-§4 and docs/adr/0059
+§4, never from the implementation: the spec gate's rules and order, what the
+product role's run turns into, the composed spec and the spec step's two
+outcomes, and the draft the console's editor writes from a request's fields
+(`draft`: fields in, the ticket's Markdown out, judged by the gate's own
+rules)."""
 
 import contextlib
 import io
 import json
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from core import spec
 
+ROOT = Path(__file__).resolve().parents[2]
+DROP = object()  # a field left out of the request, as opposed to one that is empty
 STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 GOOD = """# 0099 — a request
 
@@ -268,6 +275,355 @@ class Gated(unittest.TestCase):
         for line in ("", "GO: other", "maybe"):
             with self.assertRaises(spec.Refused):
                 spec.gated({}, line)
+
+
+class Draft(unittest.TestCase):
+    """docs/adr/0059 §4: `draft <fields.json> <tickets dir> [<out dir>]` writes
+    `<out dir, default tickets dir>/<id>.md` under the next free id, with an
+    exclusive create, prints the id, and refuses bad fields in one stderr line
+    with nothing written. The Markdown it writes is judged by the gate."""
+
+    FIELDS = {
+        "title": "A waiting list when a meetup is full",
+        "context": "A full meetup refuses every further signup.",
+        "criteria": [
+            {"given": "a meetup at capacity", "when": "a new member signs up",
+             "then": "they join the waiting list and see their position"},
+            {"given": "a waiting list with one member", "when": "an attendee cancels",
+             "then": "the first member on the list becomes an attendee"},
+        ],
+        "perimeter": ["app/backend/waitlist/*", "docs/waitlist.md"],
+        "feature": "waiting-list",
+        "priority": "P1",
+    }
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        self.tickets = self.dir / "tickets"
+        self.tickets.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def fields(self, **change):
+        fields = json.loads(json.dumps(self.FIELDS))
+        for key, value in change.items():
+            if value is DROP:
+                fields.pop(key, None)
+            else:
+                fields[key] = value
+        return fields
+
+    def write_fields(self, fields):
+        path = self.dir / "fields.json"
+        path.write_text(fields if isinstance(fields, str) else json.dumps(fields), encoding="utf-8")
+        return path
+
+    def call(self, fields, out=None):
+        """(exit code, stdout, stderr) of `draft`, the fields as a file."""
+        argv = ["draft", str(self.write_fields(fields)), str(self.tickets)] + ([str(out)] if out else [])
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = spec.main(argv, {})
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def cli(self, *argv):
+        """The command line itself: python3 core/spec.py ..."""
+        return subprocess.run([sys.executable, str(ROOT / "core" / "spec.py"), *argv],
+                              capture_output=True, text=True, cwd=ROOT, check=False)
+
+    def drafted(self, fields, out=None):
+        """The id and the Markdown of a draft that must succeed."""
+        code, stdout, stderr = self.call(fields, out=out)
+        self.assertEqual((code, stderr), (0, ""), stderr)
+        ticket = stdout.strip()
+        self.assertRegex(ticket, r"^\d{4}$")
+        return ticket, (Path(out or self.tickets) / f"{ticket}.md").read_text(encoding="utf-8")
+
+    def listing(self, where=None):
+        return sorted(p.name for p in Path(where or self.tickets).iterdir())
+
+    # --- the id -----------------------------------------------------------
+
+    def test_the_first_ticket_is_0001(self):
+        ticket, _ = self.drafted(self.fields())
+        self.assertEqual(ticket, "0001")
+        self.assertEqual(self.listing(), ["0001.md"])
+
+    def test_the_id_is_printed_alone_on_stdout(self):
+        code, stdout, _ = self.call(self.fields())
+        self.assertEqual((code, stdout.splitlines()), (0, ["0001"]))
+
+    def test_the_id_is_the_next_after_the_highest_four_digit_name(self):
+        for name in ("0001.md", "0002.md", "0007.md"):
+            (self.tickets / name).write_text("# t\n")
+        self.assertEqual(self.drafted(self.fields())[0], "0008")
+
+    def test_a_gap_is_not_filled(self):
+        for name in ("0003.md", "0004.md"):
+            (self.tickets / name).write_text("# t\n")
+        self.assertEqual(self.drafted(self.fields())[0], "0005")
+
+    def test_the_id_is_zero_padded_to_four_digits(self):
+        (self.tickets / "0009.md").write_text("# t\n")
+        self.assertEqual(self.drafted(self.fields())[0], "0010")
+        (self.tickets / "0099.md").write_text("# t\n")
+        self.assertEqual(self.drafted(self.fields())[0], "0100")
+
+    def test_only_names_of_four_digits_and_md_count(self):
+        (self.tickets / "0003.md").write_text("# t\n")
+        for name in ("README.md", "notes.txt", "0099.txt", "12.md", "abcd.md", "0050.md.bak"):
+            (self.tickets / name).write_text("x\n")
+        self.assertEqual(self.drafted(self.fields())[0], "0004")
+
+    def test_two_drafts_in_a_row_get_two_ids(self):
+        self.assertEqual(self.drafted(self.fields())[0], "0001")
+        self.assertEqual(self.drafted(self.fields(title="Another"))[0], "0002")
+        self.assertEqual(self.listing(), ["0001.md", "0002.md"])
+
+    # --- where it writes --------------------------------------------------
+
+    def test_the_file_goes_to_the_tickets_dir_by_default(self):
+        ticket, text = self.drafted(self.fields())
+        self.assertTrue(text.startswith(f"# {ticket} — {self.FIELDS['title']}\n"))
+
+    def test_an_out_dir_takes_the_file_and_the_tickets_dir_only_names_the_id(self):
+        out = self.dir / "out"
+        out.mkdir()
+        (out / "0050.md").write_text("# not a ticket of the tickets dir\n")
+        (self.tickets / "0004.md").write_text("# t\n")
+        ticket, text = self.drafted(self.fields(), out=out)
+        self.assertEqual(ticket, "0005")
+        self.assertEqual(self.listing(out), ["0005.md", "0050.md"])
+        self.assertEqual(self.listing(), ["0004.md"])
+        self.assertIn("0005", text.splitlines()[0])
+
+    def test_an_existing_file_is_never_overwritten(self):
+        out = self.dir / "out"
+        out.mkdir()
+        (out / "0001.md").write_text("keep me\n")
+        code, stdout, stderr = self.call(self.fields(), out=out)
+        self.assertEqual((code, stdout), (1, ""))
+        self.assertTrue(stderr.startswith("spec: "), stderr)
+        self.assertEqual(len(stderr.splitlines()), 1, stderr)
+        self.assertEqual((out / "0001.md").read_text(), "keep me\n")
+        self.assertEqual(self.listing(out), ["0001.md"])
+        self.assertEqual(self.listing(), [])
+
+    # --- what it writes ---------------------------------------------------
+
+    def test_the_markdown_of_a_full_request(self):
+        _, text = self.drafted(self.fields())
+        self.assertEqual(text, (
+            "# 0001 — A waiting list when a meetup is full\n"
+            "\n"
+            "- Status: open\n"
+            "- Feature: waiting-list\n"
+            "- Priority: P1\n"
+            "\n"
+            "## Problem\n"
+            "\n"
+            "A full meetup refuses every further signup.\n"
+            "\n"
+            "## Acceptance criteria\n"
+            "\n"
+            "Given a meetup at capacity\n"
+            "When a new member signs up\n"
+            "Then they join the waiting list and see their position\n"
+            "\n"
+            "Given a waiting list with one member\n"
+            "When an attendee cancels\n"
+            "Then the first member on the list becomes an attendee\n"
+            "\n"
+            "## Perimeter\n"
+            "\n"
+            "- `app/backend/waitlist/*`\n"
+            "- `docs/waitlist.md`\n"))
+
+    def test_the_text_ends_in_exactly_one_newline(self):
+        _, text = self.drafted(self.fields())
+        self.assertTrue(text.endswith("`\n"))
+        self.assertFalse(text.endswith("\n\n"))
+
+    def test_only_the_title_is_required(self):
+        _, text = self.drafted({"title": "Just a title"})
+        lines = text.splitlines()
+        self.assertEqual(lines[0], "# 0001 — Just a title")
+        self.assertIn("- Status: open", lines)
+        self.assertEqual([line for line in lines if line.startswith(("- Feature:", "- Priority:"))], [])
+        at = lines.index("## Problem")
+        self.assertEqual(lines[at + 1:at + 3], ["", "(no context given)"])
+        self.assertTrue(text.endswith("\n") and not text.endswith("\n\n"))
+
+    def test_empty_context_feature_and_priority_leave_their_lines_out(self):
+        _, text = self.drafted(self.fields(context="", feature="", priority=""))
+        lines = text.splitlines()
+        self.assertEqual([line for line in lines if line.startswith(("- Feature:", "- Priority:"))], [])
+        self.assertIn("(no context given)", lines)
+        self.assertNotIn("A full meetup", text)
+
+    def test_no_criterion_and_no_perimeter_leave_empty_sections(self):
+        _, text = self.drafted(self.fields(criteria=[], perimeter=[]))
+        lines = text.splitlines()
+        self.assertEqual([line for line in lines if line.startswith("## ")],
+                         ["## Problem", "## Acceptance criteria", "## Perimeter"])
+        between = lines[lines.index("## Acceptance criteria") + 1:lines.index("## Perimeter")]
+        self.assertEqual([line for line in between if line.strip()], [])
+        self.assertEqual([line for line in lines[lines.index("## Perimeter") + 1:] if line.strip()], [])
+
+    def test_the_context_is_kept_line_for_line_under_the_problem(self):
+        _, text = self.drafted(self.fields(context="First line.\nSecond line, with a comma."))
+        lines = text.splitlines()
+        problem = lines[lines.index("## Problem"):lines.index("## Acceptance criteria")]
+        self.assertIn("First line.", problem)
+        self.assertIn("Second line, with a comma.", problem)
+        self.assertLess(problem.index("First line."), problem.index("Second line, with a comma."))
+
+    def test_each_criterion_is_three_lines_and_a_blank_line_apart(self):
+        _, text = self.drafted(self.fields())
+        lines = text.splitlines()
+        block = lines[lines.index("## Acceptance criteria") + 2:lines.index("## Perimeter") - 1]
+        self.assertEqual([line.split(" ", 1)[0] for line in block],
+                         ["Given", "When", "Then", "", "Given", "When", "Then"])
+
+    def test_every_path_is_a_backticked_list_item_in_order(self):
+        _, text = self.drafted(self.fields(perimeter=["b/*.py", "a/x.py", "README.md"]))
+        lines = text.splitlines()
+        self.assertEqual(lines[lines.index("## Perimeter") + 2:], ["- `b/*.py`", "- `a/x.py`", "- `README.md`"])
+
+    def test_feature_and_priority_are_written_verbatim_for_the_gate_to_judge(self):
+        code, _, err = self.call(self.fields(feature="Not A Slug", priority="urgent"))
+        self.assertEqual((code, err), (0, ""))
+        text = (self.tickets / "0001.md").read_text()
+        self.assertIn("- Feature: Not A Slug\n", text)
+        self.assertIn("- Priority: urgent\n", text)
+
+    def test_text_that_is_not_ascii_is_kept(self):
+        _, text = self.drafted(self.fields(title="Più posti", context="Café — à la carte"))
+        self.assertIn("Più posti", text.splitlines()[0])
+        self.assertIn("Café — à la carte", text)
+
+    # --- the gate judges the draft ----------------------------------------
+
+    def judged(self, **change):
+        """The gate's reason for the draft of these fields, or None."""
+        _, text = self.drafted(self.fields(**change))
+        return spec.check(text)
+
+    def test_a_draft_of_good_fields_passes_the_gate(self):
+        self.assertIsNone(self.judged())
+
+    def test_a_title_only_draft_does_not_pass_the_gate(self):
+        _, text = self.drafted({"title": "Just a title"})
+        self.assertIsNotNone(spec.check(text))
+
+    def test_the_gate_passes_it_through_its_command_line_too(self):
+        ticket, _ = self.drafted(self.fields())
+        proc = self.cli("check", str(self.tickets / f"{ticket}.md"))
+        self.assertEqual((proc.returncode, proc.stdout), (0, ""), proc.stderr)
+
+    def test_no_criterion_fails(self):
+        self.assertIn("has no criterion", self.judged(criteria=[]))
+
+    def test_a_then_with_no_outcome_fails(self):
+        self.assertIsNotNone(self.judged(criteria=[{"given": "a meetup", "when": "someone signs up", "then": ""}]))
+
+    def test_a_vague_outcome_fails_and_is_named(self):
+        why = self.judged(criteria=[{"given": "a meetup", "when": "someone signs up", "then": "it works"}])
+        self.assertIn("names no observable outcome", why)
+
+    def test_no_perimeter_path_fails(self):
+        self.assertIn("declares no path", self.judged(perimeter=[]))
+
+    def test_a_bad_feature_fails_and_is_named(self):
+        for bad in ("Waiting List", "waiting--list", "-x", "waiting_list"):
+            why = self.judged(feature=bad)
+            self.assertIsNotNone(why, bad)
+            self.assertIn("Feature", why)
+
+    def test_a_bad_priority_fails_and_is_named(self):
+        for bad in ("urgent", "P4", "p1", "high"):
+            why = self.judged(priority=bad)
+            self.assertIsNotNone(why, bad)
+            self.assertIn("Priority", why)
+
+    def test_every_good_feature_and_priority_passes(self):
+        for priority in ("P0", "P1", "P2", "P3"):
+            self.assertIsNone(self.judged(priority=priority), priority)
+        for feature in ("venues", "waiting-list", "v2", "a1-b2-c3"):
+            self.assertIsNone(self.judged(feature=feature), feature)
+
+    # --- bad fields --------------------------------------------------------
+
+    def refused(self, fields):
+        code, stdout, stderr = self.call(fields)
+        self.assertEqual((code, stdout), (1, ""), stderr)
+        self.assertTrue(stderr.startswith("spec: "), stderr)
+        self.assertEqual(len(stderr.strip().splitlines()), 1, stderr)
+        self.assertEqual(self.listing(), [], "a refused draft wrote something")
+
+    def test_no_title_is_refused(self):
+        self.refused(self.fields(title=DROP))
+
+    def test_an_empty_or_blank_title_is_refused(self):
+        for title in ("", "   ", "\t\n"):
+            self.refused(self.fields(title=title))
+
+    def test_a_title_that_is_not_a_string_is_refused(self):
+        for title in (5, None, ["a"], {"a": "b"}):
+            self.refused(self.fields(title=title))
+
+    def test_criteria_that_are_not_a_list_of_objects_are_refused(self):
+        for criteria in ("Given a, when b, then c", {"given": "a", "when": "b", "then": "c"},
+                         ["Given a, when b, then c"], [1], [None], [["a", "b", "c"]]):
+            self.refused(self.fields(criteria=criteria))
+
+    def test_a_perimeter_that_is_not_a_list_of_strings_is_refused(self):
+        for perimeter in ("app/*", {"a": "b"}, ["app/*", 3], [None], [["app/*"]]):
+            self.refused(self.fields(perimeter=perimeter))
+
+    def test_fields_that_are_not_an_object_are_refused(self):
+        for fields in ([], "title", None, ["title"]):
+            self.refused(json.dumps(fields))
+
+    def test_a_missing_fields_file_is_refused(self):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = spec.main(["draft", str(self.dir / "absent.json"), str(self.tickets)], {})
+        self.assertEqual((code, stdout.getvalue()), (1, ""))
+        self.assertTrue(stderr.getvalue().startswith("spec: "), stderr.getvalue())
+        self.assertEqual(self.listing(), [])
+
+    def test_a_file_that_is_not_json_writes_nothing_and_fails(self):
+        fields = self.write_fields("{not json")
+        proc = self.cli("draft", str(fields), str(self.tickets))
+        self.assertEqual((proc.returncode, proc.stdout), (1, ""))
+        self.assertEqual(self.listing(), [])
+
+    def test_the_usage_is_exit_two(self):
+        for argv in (["draft"], ["draft", str(self.dir / "fields.json")]):
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(spec.main(argv, {}), 2)
+        self.assertEqual(self.listing(), [])
+
+    # --- the command line the console runs ---------------------------------
+
+    def test_the_command_line_is_python3_core_spec_py_draft(self):
+        fields = self.write_fields(self.FIELDS)
+        out = self.dir / "cli-out"
+        out.mkdir()
+        (self.tickets / "0012.md").write_text("# t\n")
+        done = self.cli("draft", str(fields), str(self.tickets), str(out))
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "0013\n", ""))
+        self.assertEqual(self.listing(out), ["0013.md"])
+        self.assertEqual(self.listing(), ["0012.md"])
+        fields = self.write_fields({"context": "no title"})
+        refused = self.cli("draft", str(fields), str(self.tickets), str(out))
+        self.assertEqual((refused.returncode, refused.stdout), (1, ""))
+        self.assertTrue(refused.stderr.startswith("spec: "), refused.stderr)
+        self.assertEqual(self.listing(out), ["0013.md"])
 
 
 class Main(unittest.TestCase):
