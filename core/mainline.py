@@ -30,8 +30,8 @@ import tempfile
 from datetime import datetime, timezone
 
 try:
-    from core.assign import perimeter
-    from core.tower import compact, dig, sh, text
+    from .assign import perimeter
+    from .tower import compact, dig, sh, text
 except ImportError:  # run as a script: core/ is sys.path[0]
     from assign import perimeter
     from tower import compact, dig, sh, text

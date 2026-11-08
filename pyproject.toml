@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The lights-out Python package (docs/adr/0061): the light tier of the gates,
+# `lights-out gates --light`, standard library only. The import package
+# `lights_out` is the directory core/ (package-dir: no file moves), its tests
+# not shipped; the platform policy rides along as lights_out.platform_policy.
+# workbench/pyproject.toml is the workbench's own pin and stays apart.
+# Publishing to PyPI is the owner's act (docs/launch/checklist.md).
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lights-out"
+version = "0.3.0.dev0"
+description = "The gates of lights-out that need only git and Python: one line, GO or NO-GO, no container."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/nicolaguglielmi/lights-out"
+
+[project.scripts]
+lights-out = "lights_out.__main__:main"
+
+[tool.setuptools]
+package-dir = {"lights_out" = "core", "lights_out.platform_policy" = "policy"}
+packages = ["lights_out", "lights_out.platform_policy"]
+
+[tool.setuptools.package-data]
+"lights_out" = ["perimeter.sh"]
+"lights_out.platform_policy" = ["merge.env"]

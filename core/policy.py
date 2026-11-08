@@ -19,7 +19,7 @@ import re
 import sys
 
 try:
-    from core.risk import parse_policy
+    from .risk import parse_policy
 except ImportError:  # run as a script: core/ is sys.path[0]
     from risk import parse_policy
 
