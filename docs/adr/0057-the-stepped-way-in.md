@@ -67,9 +67,15 @@ the front door. Facts, verified 2026-11-08:
    lights-out:<v>` (the workbench stage plus `package/Containerfile.tail`,
    as today) and `ghcr.io/nicolaguglielmi/lights-out-gates:<v>` (the gates
    stage plus the same tail). In the gates image `triage` and `postmortem`
-   are one NO-GO naming the full image. Size: `<measured: unpacked MB,
-   amd64, package.yml run id>`. The roadmap's "under 400 MB" is a
-   proposal, not a threshold: the measure is recorded, no gate judges it.
+   are one NO-GO naming the full image. Size: 508 MB unpacked on amd64
+   (508,497,696 bytes, `docker image inspect`, package.yml run 42519069964
+   on 0a0d073); 529 MB on arm64 under podman. The roadmap's "under 400 MB"
+   is a proposal, not a threshold: the measure is recorded, no gate judges
+   it. What the gates run is what it holds: the apt layer (git with perl,
+   python3, make, jq, curl) 166 MB, node 118 MB, osv-scanner 52 MB, uv
+   41 MB, gitleaks 20 MB (arm64, measured 2026-11-08); node's C headers
+   (65 MB) are left out of both stages, since no image has a compiler for
+   a native addon.
 4. **Keyless signing** through GitHub's OIDC (owner decision, 2026-11-08),
    on the `publish` job only (a `v*` tag or `workflow_dispatch`, the
    owner's acts): `cosign sign --yes <image>@<digest>` for both images, on

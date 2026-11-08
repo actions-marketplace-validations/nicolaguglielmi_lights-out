@@ -93,8 +93,12 @@ without the cloud image. §1's cloud image and §2's `WORKBENCH_FLAVOUR` are
 written the day L2 is, not before: an image no command uses has nothing to
 prove it builds. The base becomes two stages of one file (ADR 0057 §2).
 
-**Measure.** The saving: `<measured: MB, the full image before and after,
-package.yml run id>`.
+**Measure.** The full image, unpacked on amd64: 1.77 GB before (ADR
+0045's measure), 1,246 MB after (1,246,550,245 bytes, `docker image
+inspect`, package.yml run 42519069964 on 0a0d073), 524 MB less; 65 MB of
+that is node's C headers, dropped in the same milestone (ADR 0057 §2). The
+workbench under podman on arm64: 1.81 GB before, 1.30 GB after (local,
+2026-11-08).
 
 **Consequences.** Until L2 is written, `PROFILE=l2` has no gcloud or
 terraform anywhere; `./go doctor --level l2` says so (ADR 0057 §8). This
