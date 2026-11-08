@@ -173,7 +173,8 @@ export RELEASES_LOG
 # CI (LIGHTS_OUT_CI, the host's CI variable) and on every run that found the
 # workbench already built; a local first run (LIGHTS_OUT_FIRST_RUN=1: ./go
 # built the workbench) over budget reports its time and passes
-# (docs/adr/0013, amendment 2026-11-04).
+# (docs/adr/0013, amendment 2026-11-04). Measured again for docs/adr/0060
+# §7, 757 to 873 s on Actions: no lower budget is supported.
 DEMO_BUDGET_SECONDS ?= 900
 
 # The PR gates (docs/adr/0015 §2), cheap and stable ones first, the ones
