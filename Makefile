@@ -284,13 +284,14 @@ board: ## The flight readiness board on localhost:8099: the pipeline explained, 
 logbook: ## Write the logbook, the record a client's console reads: [LOGBOOK_FILE=.crew/logbook.json] (docs/adr/0047 §2)
 	@sh core/logbook.sh
 
-# The console (docs/adr/0047, 0055): the client's six screens over the
-# logbook and two writes, go-for-launch through core/promote.sh and the
-# answer to a ticket's open question through `make answer`. ./go publishes
+# The console (docs/adr/0047, 0055, 0059): the client's ten screens over the
+# logbook and three writes, go-for-launch through core/promote.sh, the
+# answer to a ticket's open question through `make answer` and a new
+# request through `make request`; a spec check writes nothing. ./go publishes
 # it on the host's loopback, CONSOLE_PORT to move it; CONSOLE_SNAPSHOT=<file>
 # serves a logbook file with no plane behind it.
 .PHONY: console
-console: ## The console on localhost:8098: overview, tickets, each ticket's timeline from request to release, post mortems, go-for-launch, thresholds (docs/adr/0047, 0055)
+console: ## The console on localhost:8098: ten screens (kanban, specs, new request, ADR search, each ticket's timeline, go-for-launch, thresholds...), three writes (docs/adr/0047, 0055, 0059)
 	@python3 console/serve.py
 
 # M11's acceptance (docs/adr/0047 §4): demo-launch's sequence, but the
@@ -800,10 +801,11 @@ resume: ## Request again the step a ticket failed, keeping its history: TICKET=<
 # the spec gate judges the spec, and the orchestrator runs until the queue
 # is empty: at `questions` a person answers with `answer`, which records
 # who answered and runs the product role again; past the gate the ticket
-# goes on from `opened` as e2e does. ANSWER, ANSWER_BY and ANSWER_VIA reach
-# core/tower.sh from make's command line.
+# goes on from `opened` as e2e does. ANSWER, ANSWER_BY and ANSWER_VIA, and
+# REQUEST_BY and REQUEST_VIA (who requested and through what, docs/adr/0059
+# §4), reach core/tower.sh from make's command line.
 .PHONY: request
-request: ## Start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> (docs/adr/0055)
+request: ## Start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> [REQUEST_BY=<who>] [REQUEST_VIA=<how>] (docs/adr/0055, 0059 §4)
 	@sh core/tower.sh request "$(TICKET)" || { printf 'NO-GO: request — ticket %s was not requested; see the [tower] line above\n' "$(TICKET)"; exit 1; }
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: request — a step failed; see the [tower] lines above\n'; exit 1; }
 	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
