@@ -266,7 +266,8 @@ pre{margin:0;font-size:11.5px;line-height:1.5;color:var(--ink2);white-space:pre-
 "use strict";
 const MACHINE = JSON.parse(document.getElementById("tower-machine").textContent);
 const STATES = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed", "needs-human", "merged", "main-green", "held", "rolled-back"];
-const GATES = ["risk", "secrets", "deps", "sast", "test", "mutation"];
+// The order of GATES in the Makefile; the first NO-GO stops the rest.
+const GATES = ["risk", "secrets", "test-weakening", "deps", "sast", "test", "mutation", "test-proof"];
 
 // ---- the stations -------------------------------------------------------
 const R1 = 56, R2 = 310, H = 78;
@@ -286,9 +287,9 @@ const NODES = [
    what:"The branch is pushed to the code host (Gitea inside the plane at L0, never this repository) and the PR opened. The tower records the PR number, base and head SHA and moves to pr-opened, which requests ci.",
    files:["core/steps/assign.sh","adapters/gitea/open-pr.sh"], lines:[]},
   {id:"gates", x:690, y:R1, w:320, t:"GATES", s:"", s2:"", step:"ci", gates:true,
-   what:"CI checks out the PR's code but restores its judges from the base: Makefile, profiles/, gates/, ci/, core/, policy/ and the workload's contract. Then six gates run in order; the first NO-GO stops the run and posts a failure status on the PR. Mutation testing on the changed lines tells an honest test from one that passes and catches nothing. The deps gate fails only on advisories the diff introduces.",
-   files:["Makefile gates","gates/risk.sh, ci/secrets.sh, gates/deps.sh, gates/sast.sh, gates/test.sh, gates/mutation.sh","core/steps/ci.sh","docs/adr/0015, 0016, 0032, 0033"],
-   lines:["GO: gates — risk low, auto-merge","NO-GO: gates — mutation: NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"]},
+   what:"CI checks out the PR's code but restores its judges from the base: Makefile, profiles/, gates/, ci/, core/, policy/ and the workload's contract. Then eight gates run in order; the first NO-GO stops the run and posts a failure status on the PR. Three of them judge the tests themselves: test-weakening refuses a PR that deletes a test or loses assertions the ticket did not declare, mutation testing on the changed lines tells an honest test from one that passes and catches nothing, and test-proof runs the PR's tests on the base, where they must fail. The deps gate fails only on advisories the diff introduces.",
+   files:["Makefile gates","gates/risk.sh, ci/secrets.sh, gates/test-weakening.sh, gates/deps.sh, gates/sast.sh, gates/test.sh, gates/mutation.sh, gates/test-proof.sh","core/steps/ci.sh","docs/adr/0015, 0016, 0032, 0033, 0042, 0053"],
+   lines:["GO: gates — risk low, auto-merge, in compose:backend-test","NO-GO: gates — mutation: NO-GO: mutation — in compose:backend-test: 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr","NO-GO: test-weakening — 1 test file finding that no ## Removes tests in the ticket declares: app/backend/tests/test_meetups.py: loses 1 assertion; details on stderr","NO-GO: test-proof — in compose:backend-test: the changed tests pass on the base 3f9c2a1 too, so they do not prove the change"]},
   {id:"risk", x:1030, y:R1, w:160, t:"RISK ROUTE", s:"low → auto-merge", s2:"medium/high → review", step:"ci",
    what:"The classifier reads the diff. Migrations, auth, payments and the platform itself (gates, ci, core, roles, prompts, fixtures, workflows) are high; more than 200 changed lines is medium. Low is the only level that merges on its own; anything else goes to review.",
    files:["core/risk.py","policy/merge.env","docs/adr/0016"], lines:["GO: risk"]},
@@ -407,10 +408,11 @@ function draw() {
     gn.appendChild(el("text", {x:n.x+12, y:n.y+22, class:"t"}, n.t));
     gn.appendChild(el("text", {x:n.x+n.w-10, y:n.y+20, class:"st", "text-anchor":"end"}, ""));
     if (n.gates) {
+      // Two rows of four, read left to right, top row first.
       GATES.forEach((gname, i) => {
-        const cx = n.x + 28 + i * 53;
-        gn.appendChild(el("circle", {cx, cy:n.y+44, r:5, class:"light", id:"g-" + gname}));
-        gn.appendChild(el("text", {x:cx, y:n.y+64, class:"lbl", "text-anchor":"middle"}, gname));
+        const cx = n.x + 40 + (i % 4) * 80, cy = n.y + 32 + Math.floor(i / 4) * 25;
+        gn.appendChild(el("circle", {cx, cy, r:5, class:"light", id:"g-" + gname}));
+        gn.appendChild(el("text", {x:cx, y:cy+15, class:"lbl", "text-anchor":"middle"}, gname));
       });
     } else {
       gn.appendChild(el("text", {x:n.x+12, y:n.y+41, class:"s"}, n.s));
@@ -475,10 +477,13 @@ const P = {
     say:"The branch goes to the code host (a Gitea inside the plane at L0) and the PR opens. The tower records base and head SHA, moves to `pr-opened` and requests `ci`.", ref:"core/steps/assign.sh"},
   judges: {focus:["gates"], br:"ci", g:{risk:"run"}, lock:{judges:"on"},
     say:"CI checks out the PR's code, then puts back its judges from the base: Makefile, gates/, ci/, core/, policy/ and the workload's contract. A PR cannot edit the gates that judge it.", ref:"core/steps/ci.sh · docs/adr/0033"},
-  gates5: {focus:["gates"], g:{risk:"go",secrets:"go",deps:"go",sast:"go",test:"go",mutation:"run"}, out:["GO: risk","GO: secrets","GO: deps","GO: sast","GO: test"],
-    say:"Each gate prints exactly one line on stdout, GO or NO-GO with the reason; the tools' noise goes to stderr. The first NO-GO stops the run.", ref:"Makefile gates · ci/contract.sh"},
-  mutation: {focus:["gates"], g:{mutation:"go"}, n:{gates:"go"}, out:["GO: mutation","GO: gates — risk low, auto-merge"],
+  gates6: {focus:["gates"], g:{risk:"go",secrets:"go","test-weakening":"go",deps:"go",sast:"go",test:"go",mutation:"run"},
+    out:["GO: risk","GO: secrets","GO: test-weakening — 1 test file changed, none weakened","GO: deps","GO: sast — in compose:backend-test","GO: test — in compose:backend-test"],
+    say:"Each gate prints exactly one line on stdout, GO or NO-GO with the reason; the tools' noise goes to stderr. The first NO-GO stops the run. test-weakening found no test deleted and no assertion lost.", ref:"Makefile gates · ci/contract.sh · gates/test-weakening.sh"},
+  mutation: {focus:["gates"], g:{mutation:"go","test-proof":"run"}, out:["GO: mutation — in compose:backend-test"],
     say:"Mutation testing flips the changed lines and reruns the tests. A test that still passes on a mutant tests nothing. The score must reach the workload's measured baseline minus 0.10.", ref:"gates/mutation.sh · docs/adr/0015 §3"},
+  proof: {focus:["gates"], g:{"test-proof":"go"}, n:{gates:"go"}, out:["GO: test-proof — in compose:backend-test, the changed tests fail on the base 3f9c2a1","GO: gates — risk low, auto-merge, in compose:backend-test"],
+    say:"test-proof takes the PR's changed tests onto the base, without the change, and runs them there. They fail: they test the change. Tests that pass on the base too would prove nothing.", ref:"gates/test-proof.sh · docs/adr/0053 §2"},
   riskLow: {focus:["risk"], n:{risk:"go", review:"skip"}, tower:["ci","ci-passed"],
     say:"Risk low: no migration, auth, payments or platform path, under 200 lines. Low is the only level that merges without a second reader. State `ci-passed`, `merge` requested.", ref:"core/risk.py · policy/merge.env · docs/adr/0016"},
   merge: {focus:["merge"], br:"merge", n:{merge:"go"}, lock:{pinned:"on"}, tower:["merge","merged"],
@@ -506,7 +511,7 @@ const P = {
   operate: {focus:["operate"], br:"triage", n:{operate:"go"},
     say:"From here ops-triage watches. An alert becomes an incident with ranked hypotheses and a proposal, and the proposal becomes a new ticket: the loop closes.", ref:"core/triage.sh · ./go demo-triage"},
 };
-const BUILD_LOW = [P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5, P.mutation, P.riskLow, P.merge, P.build];
+const BUILD_LOW = [P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates6, P.mutation, P.proof, P.riskLow, P.merge, P.build];
 const RELEASE = [P.freeze, P.sign, P.staging, P.shift5, P.go5, P.go25, P.held];
 
 const SCENARIOS = [
@@ -521,14 +526,22 @@ const SCENARIOS = [
       say:"Launchpad rolls back on its own: weight to 0, canary stopped, record `rolled-back`, ticket `rolled-back`. No human was involved. This is where `./go demo` ends.", ref:"core/launchpad.sh fail_stage · adapters/envoy-canary/rollback.sh"},
      {...P.operate, say:"ops-triage turns the alert into an incident: ranked hypotheses, a proposal, a new ticket."}]},
   {id:"fake", name:"Fake test", blurb:"tests pass, mutation catches it",
-   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates6,
      {focus:["gates"], g:{mutation:"nogo"}, n:{gates:"nogo", risk:"skip", review:"skip", merge:"skip", build:"skip"}, tower:["ci","ci-failed"],
-      out:["NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"],
+      out:["NO-GO: mutation — in compose:backend-test: 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — in compose:backend-test: 1/10 mutants on changed lines killed (0.100 < 0.666); survivors on stderr"],
       say:"The worker's test passes and coverage would call it done. But 9 of 10 mutants survive: the test asserts nothing about the change. NO-GO, a failure status on the PR, state `ci-failed`. Nothing merges: the verdict goes back to the worker (the next scenario).", ref:"gates/mutation.sh · ./go demo-gates proves every gate both GO and NO-GO"}]},
+  {id:"weakened", name:"Weakened test", blurb:"an assertion dropped, the suite still green",
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges,
+     {focus:["gates"], g:{risk:"go", secrets:"go", "test-weakening":"run"}, out:["GO: risk","GO: secrets"],
+      say:"test-weakening reads only the diff of the workload's test files (`WORKLOAD_TEST_PATHS`) and counts, file by file, the assertions and test definitions removed against those added, and any skip, xfail, todo or only marker gained. No toolchain runs.", ref:"gates/test-weakening.sh · core/testdiff.py · docs/adr/0053 §3"},
+     {focus:["gates"], g:{"test-weakening":"nogo"}, n:{gates:"nogo", risk:"skip", review:"skip", merge:"skip", build:"skip"}, tower:["ci","ci-failed"],
+      out:["NO-GO: test-weakening — 1 test file finding that no ## Removes tests in the ticket declares: app/backend/tests/test_meetups.py: loses 1 assertion; details on stderr",
+           "NO-GO: gates — test-weakening: NO-GO: test-weakening — 1 test file finding that no ## Removes tests in the ticket declares: app/backend/tests/test_meetups.py: loses 1 assertion; details on stderr"],
+      say:"The suite still passes, because the PR also drops one assertion: `test_meetups.py` no longer checks `venue_lon`. The ticket has no `## Removes tests` declaring it, and the gate reads the ticket from the Tracker, never from the PR. NO-GO, state `ci-failed`, and the verdict goes back to the worker.", ref:"gates/test-weakening.sh · fixture assertion-removed · ./go demo-gates"}]},
   {id:"rework", name:"NO-GO, rework, GO", blurb:"the verdict goes back to the worker",
-   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates6,
      {focus:["gates"], g:{mutation:"nogo"}, n:{gates:"nogo"}, tower:["ci","ci-failed"],
-      out:["NO-GO: mutation — 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr"],
+      out:["NO-GO: mutation — in compose:backend-test: 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr", "NO-GO: gates — mutation: NO-GO: mutation — in compose:backend-test: 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr"],
       say:"Attempt 1: the worker's test passes, but it posts a venue that never reaches the new 404 branch, so 4 of 8 mutants survive. NO-GO, state `ci-failed`. Nothing merges, and the ticket is not over: `ci-failed` requests `rework`.", ref:"gates/mutation.sh · core/tower.sh"},
      {focus:["crew"], br:"assign", n:{crew:"idle", perimeter:"idle", pr:"idle"}, lock:{perimeter:"idle", judges:"idle"},
       set:{rework:[{attempt:1, judge:"gates", line:"NO-GO: gates — mutation: …", details:["meetups/geocoder_client.py:26 core/ReplaceComparisonOperator_Eq_Gt", "…"]}]},
@@ -538,15 +551,16 @@ const SCENARIOS = [
       say:"The perimeter is checked again, on the whole PR from its fork point to the new head, before anything is pushed.", ref:"core/crew.sh · core/perimeter.sh"},
      {focus:["pr"], n:{pr:"go"}, tower:["rework","pr-opened"], attempt:2,
       say:"Same branch, same PR, a new head. The tower is back at `pr-opened`, attempt 2, and requests `ci`.", ref:"core/steps/rework.sh · adapters/gitea/open-pr.sh"},
-     {focus:["gates"], br:"ci", n:{gates:"idle"}, g:{risk:"run", secrets:"", deps:"", sast:"", test:"", mutation:""}, lock:{judges:"on"},
+     {focus:["gates"], br:"ci", n:{gates:"idle"}, g:{risk:"run", secrets:"", "test-weakening":"", deps:"", sast:"", test:"", mutation:"", "test-proof":""}, lock:{judges:"on"},
       say:"Attempt 2 meets the same judges: the base's gates, policy and perimeter, the same risk routing. Nothing about the loop lives in the PR, so nothing in the PR can loosen it.", ref:"core/steps/ci.sh · docs/adr/0033"},
-     P.gates5,
+     P.gates6,
      {...P.mutation, say:"The test now posts the venue the contract answers 404 for. The mutants die: GO."},
-     P.riskLow, P.merge, P.build,
+     P.proof, P.riskLow, P.merge, P.build,
      {focus:[], say:"From here the release is the same as any other, and after merge nothing loops: a failing canary still rolls back on its own. Had attempt 4 failed too, the ticket would have stopped at `needs-human`.", ref:"./go demo-rework"}]},
   {id:"review", name:"Risky diff", blurb:"auth touched: a second reader",
-   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates5,
-     {...P.mutation, out:["GO: mutation","GO: gates — risk high, review"]},
+   steps:[P.open, P.assign, P.perimeter, P.pr, P.judges, P.gates6,
+     P.mutation,
+     {...P.proof, out:["GO: test-proof — in compose:backend-test, the changed tests fail on the base 3f9c2a1","GO: gates — risk high, review, in compose:backend-test"]},
      {focus:["risk"], n:{risk:"held"}, tower:["ci","review"],
       say:"The diff touches `app/backend/meetups/auth.py`: risk high. Every gate GO is not enough; the tower requests `review` instead of `merge`.", ref:"core/risk.py · policy/merge.env RISK_HIGH_AUTH"},
      {focus:["review"], br:"ci",
@@ -990,12 +1004,12 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(
 // ---- tour ---------------------------------------------------------------
 const TOUR = [
   {sel:".mode", title:"Two modes", text:"EXPLAINER plays scripted walks through the real code paths, with example versions and numbers. LIVE reads your plane through the same port verbs the tower uses; a source that does not answer says so, nothing is filled in.",
-   enter:() => { setMode("explain"); pick("rollback"); idx = 13; show(); }},
-  {sel:"#scenarios", title:"Pick a scenario", text:"Each one is a path the code really takes: a clean release, a canary that rolls itself back, a fake test, a NO-GO the worker fixes, a risky diff, a freeze, a human who says no, a change out of bounds, a kill switch. \"Bad canary rolls back\" is what ./go demo does."},
+   enter:() => { setMode("explain"); pick("rollback"); idx = 14; show(); }},
+  {sel:"#scenarios", title:"Pick a scenario", text:"Each one is a path the code really takes: a clean release, a canary that rolls itself back, a fake test, a weakened test, a NO-GO the worker fixes, a risky diff, a freeze, a human who says no, a change out of bounds, a kill switch. \"Bad canary rolls back\" is what ./go demo does."},
   {sel:".diagram", title:"The launch sequence", text:"Top row: the tower takes a ticket to a merged, signed image. Bottom row: launchpad releases it in stages, and numbers decide each one. Amber is the only human gate. The red dashed path is the rollback.",
    enter:() => { closeDrawer(); }},
   {sel:"#explain-controls", title:"Step through it", text:"← and → step, space plays. Watch the arrow: the pulse carries the artefact handed over, because every handoff is a file, never a conversation. Here verify has just said NO-GO at 5%, and the rollback takes over.",
-   enter:() => { idx = 14; show(); setTimeout(() => step(1), 350); }},
+   enter:() => { idx = 15; show(); setTimeout(() => step(1), 350); }},
   {sel:"#say", title:"What happens, and where", text:"Each step says what the code does and which file does it."},
   {sel:"#drawer", title:"Any station", text:"Click a station for what it does, which files do it and the exact lines it can print. In LIVE it also shows what the plane says about it now. Click it again, or Esc, to close.",
    enter:() => { if (drawerNode !== "c5") openDrawer("c5"); }},
