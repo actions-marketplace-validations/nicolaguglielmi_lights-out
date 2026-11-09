@@ -1,0 +1,92 @@
+# TEMPORARY, not for main: reproduces the podman canary findings of the
+# stranger job (the 422 from a duplicate target_info, the hold) with the
+# plane instrumented. Removed before the branch is handed over.
+name: repro-canary
+
+on:
+  push:
+    branches: [claude/sharp-khayyam-dcb1de]
+    paths: [.github/workflows/repro-canary.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OUT: /home/runner/out
+    steps:
+      - name: podman, socket, clone
+        run: |
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q podman >/dev/null
+          podman --version
+          systemctl --user enable --now podman.socket
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c "http.extraheader=AUTHORIZATION: basic $auth" clone -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" lights-out
+          git -C lights-out checkout -q "$GITHUB_SHA"
+          mkdir -p "$OUT"
+      - name: start the monitors
+        run: |
+          cat > "$OUT/../mon.sh" <<'EOF'
+          #!/bin/bash
+          # Every container start: its inspect (image, compose labels) and a
+          # log follower. Every 3 s: target_info, status codes per instance,
+          # flagd's own evaluation of waitlist for the canary version.
+          out=$1
+          sock=$XDG_RUNTIME_DIR/podman/podman.sock
+          podman events --format json > "$out/events.jsonl" 2>&1 &
+          (
+            seen=" "
+            while :; do
+              for id in $(podman ps -q --no-trunc 2>/dev/null); do
+                case "$seen" in *" $id "*) continue ;; esac
+                seen="$seen$id "
+                name=$(podman inspect -f '{{.Name}}' "$id" 2>/dev/null)
+                { date -u +%T; podman inspect -f '{{.Name}} id={{.Id}} image={{.Image}} imagename={{.ImageName}} hash={{index .Config.Labels "com.docker.compose.config-hash"}} imglabel={{index .Config.Labels "com.docker.compose.image"}} started={{.State.StartedAt}}' "$id"; } >> "$out/starts.log" 2>&1
+                case "$name" in *backend*|*flagd*|*postgres*|*prometheus*|*envoy*) podman logs -f -t "$id" > "$out/log-$name-${id:0:12}.log" 2>&1 & ;; esac
+              done
+              sleep 1
+            done
+          ) &
+          while :; do
+            t=$(date -u +%T)
+            ti=$(curl -s -m 2 -G localhost:9090/api/v1/query --data-urlencode 'query=target_info' | jq -c '[.data.result[]? | .metric | {i: .instance, v: .service_version, s: .service_instance_id[0:8]}]' 2>/dev/null)
+            codes=$(curl -s -m 2 -G localhost:9090/api/v1/query --data-urlencode 'query=sum by (instance, http_response_status_code) (increase(http_server_request_duration_seconds_count[30s]))' | jq -c '[.data.result[]? | {i: .metric.instance, c: .metric.http_response_status_code, n: (.value[1] | tonumber | floor)}]' 2>/dev/null)
+            flag=$(curl -s -m 2 -X POST -H 'Content-Type: application/json' -d '{"context":{"version":"0.2.0-waitlist"}}' localhost:8016/ofrep/v1/evaluate/flags/waitlist 2>&1 | tr -d '\n' | cut -c1-200)
+            q=$(curl -s -m 2 -G localhost:9090/api/v1/query --data-urlencode 'query=count by (job, instance) (target_info) > 1' | jq -c '[.data.result[]? | .metric.instance]' 2>/dev/null)
+            echo "$t ti=$ti dup=$q codes=$codes flagd=$flag" >> "$out/sample.log"
+            sleep 3
+          done
+          EOF
+          chmod +x "$OUT/../mon.sh"
+          nohup "$OUT/../mon.sh" "$OUT" >/dev/null 2>&1 &
+      - name: ./go demo, then e2e twice
+        working-directory: lights-out
+        run: |
+          for step in demo e2e e2e; do
+            echo "=== $step $(date -u +%T)" | tee -a "$OUT/runs.log"
+            ./go "$step" 2>&1 | perl -pe 'BEGIN { $| = 1 } use POSIX; $_ = strftime("%H:%M:%S ", gmtime) . $_' > "$OUT/$step-$(date +%s).log"
+            grep -h "launchpad —\|slo: \|NO-GO: e2e\|GO: demo\|GO: e2e\|Recreate\|backend-canary-1 Started\|launchpad\] staging" "$OUT"/$step-*.log | tail -40 | tee -a "$OUT/runs.log"
+          done
+      - if: always()
+        name: compat API view of the containers
+        run: |
+          sock=$XDG_RUNTIME_DIR/podman/podman.sock
+          curl -s --unix-socket "$sock" 'http://d/v1.41/containers/json?all=1' | jq -c '.[] | {n: .Names[0], Image, ImageID, img: .Labels["com.docker.compose.image"], hash: .Labels["com.docker.compose.config-hash"]}' | tee "$OUT/compat.log"
+          for i in $(curl -s --unix-socket "$sock" 'http://d/v1.41/containers/json?all=1' | jq -r '.[].Image' | sort -u); do
+            printf '%s -> ' "$i"; curl -s --unix-socket "$sock" "http://d/v1.41/images/$(printf %s "$i" | jq -sRr @uri)/json" | jq -c '{Id, RepoDigests}'
+          done | tee -a "$OUT/compat.log"
+          pkill -f mon.sh || true; pkill -f 'podman logs' || true; pkill -f 'podman events' || true
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repro-${{ matrix.n }}
+          path: /home/runner/out
