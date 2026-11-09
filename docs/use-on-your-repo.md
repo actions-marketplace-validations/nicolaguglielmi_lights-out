@@ -23,7 +23,7 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The Action `action.yml` at the root, and the two standalone Actions in `actions/` | Proven in lights-out's own workflow (`uses: ./` on a scratch repository posts a GO and a NO-GO check run, and the two standalone Actions' gates run the same way) and on one repository that is not lights-out, [a probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1), with the image built in the job before 0.3.0 is published |
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | The `--light` recipes **verified** once per CLI on 2026-11-08 (Claude Code 2.1.311, Codex 0.166.0, Gemini CLI 0.61.0-preview.0) against the scripted model, not a vendor; each recipe says what was not covered. The full variant was not run against the CLIs |
-| The light tier, `lights-out gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. Not on PyPI yet |
+| The light tier, `lights-out-gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. Not on PyPI yet |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
 Known limits today, before you start:
@@ -548,7 +548,7 @@ runs one `sh -c`: exit 0 unless the hook's stdin contains `git commit`, else
 the gates, and exit 2 on a NO-GO. Exit 2 is the deny all three CLIs read
 (ADR 0041). There are two variants.
 
-- **`--light`, seconds, no engine** (ADR 0061). `lights-out gates --light
+- **`--light`, seconds, no engine** (ADR 0061). `lights-out-gates --light
   STAGED=1` runs the gates that need only git and Python: risk and
   test-weakening, perimeter and spec with `TICKET=<file>`, test and
   test-proof with `TEST_ON_HOST=1`. Its line names the gates that did not
@@ -565,21 +565,19 @@ Install the light tier once. It is a Python package, standard library only,
 Python 3.11 or later:
 
 ```bash
-uv tool install lights-out
+uv tool install lights-out-gates
 ```
 
-`pipx install lights-out` works too, and `uvx lights-out gates --light
-STAGED=1` in the hook needs no install at all. **Not on PyPI yet**: until
-the owner publishes it, install it from the repository:
+`pipx install lights-out-gates` works too, and `uvx lights-out-gates --light
+STAGED=1` in the hook needs no install at all. PyPI refused the name
+`lights-out`, too close to an existing project, so the package and its
+command are `lights-out-gates`, the name of the gates image (ADR 0061,
+amendment 2026-11-09); the image wrapper keeps `lights-out`. **Not on PyPI
+yet**: until the owner publishes it, install it from the repository:
 
 ```bash
 uv tool install git+https://github.com/nicolaguglielmi/lights-out
 ```
-
-The package's command and the image wrapper are both called `lights-out`.
-If both are on your `PATH`, the first one wins, and the wrapper refuses
-`--light`: every commit gets a NO-GO. Use `uvx lights-out` in the hook, or
-keep one of the two.
 
 **Verified on 2026-11-08, once per CLI.** Each recipe below ran against the
 pinned CLI in its own image (`adapters/<cli>/`, built on the workbench), with
@@ -608,7 +606,7 @@ stdin; `timeout` is in seconds. Verified with the project file and `claude
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates --light STAGED=1 >&2 || exit 2; fi'",
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out-gates --light STAGED=1 >&2 || exit 2; fi'",
             "timeout": 30
           }
         ]
@@ -636,7 +634,7 @@ once you trust it with `/hooks`; the run bypassed that.
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates --light STAGED=1 >&2 || exit 2; fi'",
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out-gates --light STAGED=1 >&2 || exit 2; fi'",
             "timeout": 30
           }
         ]
@@ -663,7 +661,7 @@ a folder Gemini CLI does not trust.
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'if grep -q \"git commit\"; then lights-out gates --light STAGED=1 >&2 || exit 2; fi'",
+            "command": "sh -c 'if grep -q \"git commit\"; then lights-out-gates --light STAGED=1 >&2 || exit 2; fi'",
             "timeout": 30000
           }
         ]
@@ -673,7 +671,7 @@ a folder Gemini CLI does not trust.
 }
 ```
 
-For the full variant, replace the command's `lights-out gates --light
+For the full variant, replace the command's `lights-out-gates --light
 STAGED=1` with `lights-out gates STAGED=1` (the wrapper) and the timeout
 with 300 (Gemini CLI: 300000).
 

@@ -3,7 +3,7 @@
     python3 -m core gates --light [BASE=<ref> HEAD=<ref> | STAGED=1] [WORKLOAD=<dir>]
                                   [TICKET=<file>] [TEST_ON_HOST=1] [GATES_OUT=<dir>]
 
-(`lights-out gates --light ...` once the package is installed.) Of the ten
+(`lights-out-gates --light ...` once the package `lights-out-gates` is installed.) Of the ten
 gates of the full judgement it runs at most six, in this order: risk,
 perimeter, test-weakening, test, test-proof, spec; secrets, deps, sast and
 mutation need the image and never run here. By default no code of the
@@ -286,7 +286,7 @@ def parse(argv):
     for arg in argv:
         key, eq, value = arg.partition("=")
         if not eq or key not in KEYS:
-            raise Refused(f"'{arg}' is not an argument lights-out gates --light takes; one of "
+            raise Refused(f"'{arg}' is not an argument lights-out-gates --light takes; one of "
                           + " ".join(f"{k}=" for k in KEYS))
         args[key] = value
     return args
@@ -309,7 +309,7 @@ def judge(argv):
         on = {k: args.get(k, "") not in ("", "0") for k in ("STAGED", "TEST_ON_HOST")}
         rc, top = git_try(os.getcwd(), "rev-parse", "--show-toplevel")
         if rc != 0:
-            raise Refused("lights-out gates --light runs inside a git repository")
+            raise Refused("lights-out-gates --light runs inside a git repository")
         top = top.strip()
         ticket = os.path.abspath(args["TICKET"]) if args.get("TICKET") else None
         if ticket and not os.path.isfile(ticket):

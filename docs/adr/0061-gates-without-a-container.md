@@ -228,3 +228,32 @@ gate wrappers it runs are untouched. `./go ci` gains a unit file and
   (`docs/PLAN.md:821`) resolves from PyPI; before the first publish it is
   measured as `uvx --from <clone> lights-out gates --light` and as `python3
   -m core gates --light` in a bare clone.
+
+## Amendment 2026-11-09: `lights-out-gates` on PyPI
+
+The first upload, on 2026-11-09, was refused: "400 The name 'lights-out'
+is too similar to an existing project". PyPI compares names without their
+separators, and `lightsout` (a tool that turns radio playlists into
+Spotify ones, 1.2.0) holds that spelling. §1's name is not available, so
+§1 and §3 change; nothing else does.
+
+1. **The distribution is `lights-out-gates`**, the name of the gates image
+   (ADR 0057), free on 2026-11-09. The import package stays `lights_out`,
+   `core/` mapped onto it; the version stays the wrapper's.
+2. **Its one console script is `lights-out-gates`**, with the `gates`
+   subcommand implied: `lights-out-gates --light [KEY=VALUE ...]` prints
+   the same line, with the same exit code, as `lights-out gates --light`
+   did, and `uvx lights-out-gates --light` is the ten-second try.
+   `lights-out-gates version` and `lights-out-gates help` stay. Without
+   `--light` it is one NO-GO line naming the image or a clone, as before.
+   The package ships no `lights-out` script any more: the collision of
+   §Consequences, two programs called `lights-out`, is gone.
+3. **From a clone nothing changes**: `python3 -m core gates --light`.
+4. The PLAN's acceptance command for M35, `uvx lights-out gates --light`,
+   reads `uvx lights-out-gates --light` from here on.
+
+Rejected: another spelling of the same words (`lights_out`, `lights.out`):
+PyPI folds them into `lightsout`, the name it refused; another suffix
+(`-cli`, `-ai`), because the image is `lights-out-gates` and one name for
+both is one name to remember; a name that does not say lights-out, because
+the hook recipes and the site send people to it.

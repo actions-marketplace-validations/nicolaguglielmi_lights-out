@@ -260,6 +260,47 @@ class Importable(unittest.TestCase):
         self.assertTrue(callable(importlib.import_module("core.__main__").main))
 
 
+class TheGatesScript(LightCase):
+    """ADR 0061, amendment 2026-11-09 §2: `lights-out-gates` is `gates` implied."""
+
+    def script(self, r, *args):
+        boot = ("import sys; sys.path.insert(0, %r); from core.__main__ import gates_main; "
+                "sys.exit(gates_main())" % str(Path(__file__).resolve().parents[2]))
+        p = subprocess.run([sys.executable, "-c", boot, *args], cwd=r.path, stdin=subprocess.DEVNULL,
+                           env=clean_env(), capture_output=True, text=True, encoding="utf-8", timeout=120)
+        return p
+
+    def changed(self):
+        r = self.repo()
+        r.write(r.calc, CALC_PLUS)
+        r.commit()
+        return r
+
+    def test_light_prints_the_line_gates_light_prints(self):
+        r = self.changed()
+        want, got = self.light(r), self.script(r, "--light")
+        self.assertEqual((got.returncode, got.stdout), (want.returncode, want.stdout))
+
+    def test_arguments_pass_through(self):
+        r = self.changed()
+        ticket = self.outside("ticket.md")
+        ticket.write_text(ticket_text(), encoding="utf-8")
+        want, got = self.light(r, f"TICKET={ticket}"), self.script(r, "--light", f"TICKET={ticket}")
+        self.assertEqual((got.returncode, got.stdout), (want.returncode, want.stdout))
+
+    def test_without_light_it_is_one_no_go_line(self):
+        p = self.script(self.changed())
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertEqual(p.stdout.count("\n"), 1, p.stdout)
+        self.assertTrue(p.stdout.startswith(f"NO-GO: gates {DASH} "), p.stdout)
+        self.assertNotIn("GO: gates\n", p.stdout)
+
+    def test_version_names_the_distribution(self):
+        p = self.script(self.changed(), "version")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.startswith("lights-out-gates "), p.stdout)
+
+
 class Fixtures(unittest.TestCase):
     """The tickets below are what they claim to be, by the spec gate's own rules."""
 
@@ -357,7 +398,7 @@ class Refusals(LightCase):
         p = self.cli(["gates"], r.path)
         self.assertEqual(p.returncode, 1)
         self.assertEqual(self.line(p), (
-            f"NO-GO: gates {DASH} this package runs the light tier only: lights-out gates --light; "
+            f"NO-GO: gates {DASH} this package runs the light tier only: lights-out-gates --light; "
             "the eight gates run from the image (the lights-out wrapper) or a clone (./go gates)"))
 
     def test_an_unknown_argument_is_named(self):
