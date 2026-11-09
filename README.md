@@ -90,7 +90,7 @@ steps:
 
 `gates: test-proof` or `gates: test-integrity` runs one part. Those two are also standalone Actions, `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`; each also has a repository of its own for its Marketplace page, `nicolaguglielmi/test-proof@v0.3.0` and `nicolaguglielmi/test-integrity@v0.3.0`. [The guide](docs/use-on-your-repo.md#the-action) has the details, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run the gates before a coding agent commits.
 
-Without an engine, `lights-out-gates --light` runs the gates that need only git and Python in under a second, from a standard-library Python package, `lights-out-gates` (not on PyPI yet), and its line names the four that need the image ([ADR 0061](docs/adr/0061-gates-without-a-container.md), [the light hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents)).
+Without an engine, `lights-out-gates --light` runs the gates that need only git and Python in under a second, from a standard-library Python package on PyPI, `uvx lights-out-gates --light`, and its line names the four that need the image ([ADR 0061](docs/adr/0061-gates-without-a-container.md), [the light hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents)).
 
 ### 2. The whole loop on your laptop
 
