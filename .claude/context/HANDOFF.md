@@ -71,6 +71,8 @@ ticket's timeline down to the rollback, and the overview.
 - The proof that counts, GitHub Actions on cefa120 (the code is 27fc8cb; cefa120 adds this file),
   all six green: ci 42592602646 (its `console-ui` job GO, every other job green), stranger
   42592602663, self 42592602739, site 42592602793, package 42592602725, podman 42592602629.
+  Green again on 23363c3 (ci 42595919905, stranger 42595920196, self 42595920001, package
+  42595920186, podman 42595920010; `site` does not run for a change under `.claude/`).
 
 ```
 engine-compat  GO: demo, milestone M9, 733s to rollback (budget 900s, plan §2)
@@ -90,9 +92,21 @@ console-ui     GO: console-ui
   in the logbook, a committed snapshot of a real demo: ADR 0063, alternatives.
 - An eighth column with cards scrolls sideways at 1440 px (ADR 0063, consequences).
 
+## Next sprint (the owner's request, 2026-11-09, nothing built)
+
+`docs/PLAN.md`, "M17, seconda fetta": a kanban with a "wow" effect, Trello-style in look, density
+and motion, and the most usable it can be. What stays fixed: no drag-and-drop that moves a card
+(ADR 0055 §7, 0059 §1; a drag that *requests* a step would need its own ADR), the logbook as the
+only source, no build or dependency. The ideas to weigh (richer compact cards with role badges and
+colour labels, banded colours and sticky headers, a card that flies between columns when the tower
+moves it, a Trello-like card back, chip filters and "only my turn", accessibility) wait for an ADR,
+which also weighs whether the Stitch design loop (ADR 0023 §6, ADR 0047 open decision 6) comes
+first. Usability is measured by redoing this audit, `console-ux/audit.md` in the shared notes, and
+comparing the two.
+
 ## For whoever lands it
 
-- Small, local edits where the coordinator expects conflicts: `docs/PLAN.md` gains one section,
-  "M17, prima fetta", before "Dopo"; no `CI_CHECKS` change; this file is rewritten whole.
+- Small, local edits where the coordinator expects conflicts: `docs/PLAN.md` gains two sections,
+  "M17, prima fetta" and "M17, seconda fetta", before "Dopo"; no `CI_CHECKS` change; this file is rewritten whole.
 - The parallel session on `claude/festive-cray-5c155e` owns ADR 0062 and `ci/contract.sh`; this
   branch touches neither.
