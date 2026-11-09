@@ -216,13 +216,23 @@ help: ## List the targets
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
 CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light contract
 
+# Each check runs once (docs/adr/0062): under `ci`, and only there, every
+# ci-<name> leaves its stdout and exit code in this run's own directory,
+# and `contract`, the last check, judges those records instead of running
+# the checks again. The id is drawn once per make invocation, so no run
+# reads another's records; a GO removes the directory, a NO-GO leaves it
+# for study. `./go ci-<name>` alone has no CI_RECORDS: nothing is recorded,
+# and ci-contract alone runs every check cold, as it always did.
+ci: export CI_RECORDS := .crew/ci/$(shell od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+
 .PHONY: ci
 ci: $(addprefix ci-,$(CI_CHECKS)) ## Repo self-checks (ADR 0002), same on laptop and CI
+	@case "$$CI_RECORDS" in .crew/ci/?*) rm -f "$$CI_RECORDS"/*.out "$$CI_RECORDS"/*.rc; rmdir "$$CI_RECORDS" 2>/dev/null || : ;; esac
 	@printf 'GO: ci\n'
 
 .PHONY: ci-%
 ci-%:
-	@sh ci/$*.sh
+	@. ci/lib.sh; record_check ci/$*.sh $*
 
 .PHONY: demo
 demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
