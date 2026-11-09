@@ -306,13 +306,13 @@ At L0 the canary revision reuses the same image as stable, with the `waitlist` f
 
 ## Release controller
 
-`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable.
+`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable. A stage whose Metrics query fails (curl error, HTTP error, an answer that is not JSON or not `success`) cannot be judged: `verify/slo.sh` prints `NO-GO: slo — cannot judge: <query>: <cause>` and the launchpad `NO-GO: launchpad — <pct>%: cannot judge: … → rolled back`. It rolls back too, but it is never read as a verdict on the canary ([ADR 0066](adr/0066-a-canary-that-cannot-be-judged.md)). `verify/slo.promql` collapses `target_info` by `(job, instance, service_version)` before the join, so a stale series left by a restarted target does not break it.
 
-The controller itself generates no load; the Makefile starts the active workload's `load.sh` (`$(WORKLOAD_CONTRACT)/load.sh`, default `app/load.sh`) beside it, stopping when the controller exits.
+The controller itself generates no load; the Makefile starts the active workload's `load.sh` (`$(WORKLOAD_CONTRACT)/load.sh`, default `app/load.sh`) beside it, stopping when the controller exits. A `load.sh` that cannot set up its traffic says so on stderr and exits non-zero; the release then rolls back on `no traffic from canary` (ADR 0066 §4). The canary deploy starts `backend-canary` alone (`--no-deps`), leaving the plane's other services as `./go up` started them.
 
 At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERSION`). Three proof commands demonstrate the flow:
 
-- `./go demo-rollback` releases the failing version (waitlist on), expects NO-GO at 5%, and asserts the rollback (weights.canary=0, traffic on stable). This is now `./go demo`'s last stage.
+- `./go demo-rollback` releases the failing version (waitlist on), expects the kill switch's `error_rate` NO-GO at 5% and refuses any other reason (`cannot judge`, `no traffic`), and asserts the rollback (weights.canary=0, traffic on stable). `./go e2e` checks the same verdict on its release record (ADR 0066 §5). This is now `./go demo`'s last stage.
 - `./go demo-hold` releases the same failing version with the kill switch thrown first (waitlist off), expects GO all the way, and asserts the canary is held at 25% (not silently rolled back), then rolls back itself for clean state.
 - `./go demo-launch` proves go-for-launch: a held canary, the brief, `GO_FOR_LAUNCH=GO` to promote to 100%, then the un-promote. A reader can step through the stages or let it run end-to-end (~150 s warm).
 

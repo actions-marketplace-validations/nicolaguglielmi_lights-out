@@ -7,14 +7,16 @@
 # version (docs/adr/0013 §4). <image> is a bare repo@digest (docs/adr/0025
 # §1); localhost:5050 is the one registry host both engines treat as
 # insecure without configuration. No `--build`: the image already exists
-# in Zot, pushed by adapters/$REGISTRY/publish.sh. Not a gate: no GO/NO-GO,
-# one stderr line and exit 1 on timeout.
+# in Zot, pushed by adapters/$REGISTRY/publish.sh. `--no-deps`: the plane
+# is `./go up`'s; on podman 4.9.3 compose would otherwise recreate the
+# canary's dependencies under the running stable (docs/adr/0066 §1).
+# Not a gate: no GO/NO-GO, one stderr line and exit 1 on timeout.
 set -eu
 version=${1:?usage: deploy.sh <version> <image>}
 image=${2:?usage: deploy.sh <version> <image>}
 : "${READY_TIMEOUT:=60}"
 
-CANARY_VERSION="$version" CANARY_IMAGE="localhost:5050/$image" docker-compose --profile canary up -d backend-canary >&2
+CANARY_VERSION="$version" CANARY_IMAGE="localhost:5050/$image" docker-compose --profile canary up -d --no-deps backend-canary >&2
 
 i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
