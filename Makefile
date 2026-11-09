@@ -174,7 +174,8 @@ export RELEASES_LOG
 # workbench already built; a local first run (LIGHTS_OUT_FIRST_RUN=1: ./go
 # built the workbench) over budget reports its time and passes
 # (docs/adr/0013, amendment 2026-11-04). Measured again for docs/adr/0060
-# §7, 719 to 873 s on Actions: no lower budget is supported.
+# §7, 719 to 873 s on Actions, and for docs/adr/0062 §6 once `ci` runs each
+# check once, 632 and 678 s: the ceiling is plan §2's and stays.
 DEMO_BUDGET_SECONDS ?= 900
 
 # The PR gates (docs/adr/0015 §2), cheap and stable ones first, the ones

@@ -17,7 +17,9 @@ Measures on 8e968aa:
 - Actions, stranger (podman), from the demo log: run 42530031109, demo
   820 s, the 40 checks before `contract` 203 s, `contract` 186 s; run
   42533480868, demo 732 s, checks 145 s, `contract` 142 s. engine-compat
-  (docker): 828 s (42530031181), 815 s (42533480920), no per-stage split.
+  (docker), from the job log's timestamps: 42530031181, demo 828 s, checks
+  229 s, `contract` 229 s; 42533480920, demo 815 s, checks 224 s,
+  `contract` 225 s.
 - Local, workbench on podman machine, macOS host, `./go ci-contract` timed
   per gate: 179.3 s, of which 179.0 s re-running the 40 checks `ci` had
   just run. The rest is 0.3 s: `ci/engine-compat.sh`, the 14 `gates/*.sh`,
@@ -121,9 +123,9 @@ So the cost is the second run, not the judging.
 6. **Expected gain** (derived, not measured): `contract`'s re-run less the
    second that stays cold, 141 to 185 s on the two stranger runs above,
    about 19 to 23 % of them, which would take about 591 and 635 s: margin
-   to 900 s from 168 and 80 s to about 309 and 265 s. engine-compat has no
-   split; ADR 0060 §7's 162 and 176 s for the same re-run point to the same
-   order. What remains: the 40 checks once, 145 to 203 s on Actions
+   to 900 s from 168 and 80 s to about 309 and 265 s. On engine-compat the
+   same re-run is 225 and 229 s; ADR 0060 §7's 162 and 176 s are of the
+   same order. What remains: the 40 checks once, 145 to 203 s on Actions
    (largest locally: shell 42 s, evals 33 s, logbook 19 s, core-tests
    13 s); the workbench build, about 15 %, and the PR gates in `e2e`,
    about 15 % (ADR 0060 §7).
@@ -132,10 +134,19 @@ So the cost is the second run, not the judging.
    `./go ci` from a clean clone 183 s, the 40 checks 181 s, `contract`
    1 s, `ci/engine-compat.sh` the one check it ran cold. On Actions:
 
-   | commit | engine-compat (docker) | stranger (podman) | stranger's `contract` |
+   | commit | engine-compat (docker) | stranger (podman) | `contract`, engine-compat and stranger |
    |---|---|---|---|
-   | 8e968aa, before | 828 s (42530031181), 815 s (42533480920) | 820 s (42530031109), 732 s (42533480868) | 186 s, 142 s |
-   | this branch | not yet run | not yet run | not yet run |
+   | 8e968aa, before | 828 s (42530031181), 815 s (42533480920) | 820 s (42530031109), 732 s (42533480868) | 229 and 225 s; 186 and 142 s |
+   | 877e7a2, this branch | 632 s (42588292173) | 678 s (42588292176, second attempt) | 0.9 s; 1 s |
+
+   The gain is the re-run and nothing else: engine-compat 183 to 196 s
+   less, the stranger 54 to 142 s less on a runner whose 40 checks took
+   211 s against 145 and 203 s before. Margin to 900 s: 268 s and 222 s.
+   The stranger's first attempt on 877e7a2 ended `NO-GO: e2e — ticket 0001
+   ended at held` at 813 s, with `ci` GO at 374 s and `contract` in 2 s:
+   in `e2e`, on podman, the launchpad judged the canary GO at 5 % and 25 %
+   with `error_rate canary=no data`. That stage is not this ADR's; the
+   handoff says what was found.
 
 7. **Done when:** from a clean clone `./go ci` GO with each check run
    once, shown by `contract`'s time in the stranger job's demo log, written
