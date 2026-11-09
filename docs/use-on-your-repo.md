@@ -269,7 +269,10 @@ lights-out gates
   your repository. Keep the `/.` in the `cp` command: a plain `cp -R` into
   an existing `.lights-out/` nests the draft inside it.
 - `gates` judges the last commit, or `BASE=<ref> HEAD=<ref>`. `STAGED=1`
-  judges what is staged as one commit.
+  judges what is staged as one commit. In 0.3.0, name the head by branch or
+  id, or leave it out: `test-proof` reads a name relative to HEAD
+  (`HEAD=HEAD`, `HEAD=HEAD~1`) from the base's worktree and answers NO-GO.
+  Fixed after the tag, in the next version.
 - `triage ALERT=<file>` and `postmortem INCIDENT=<file>` also work. At L0
   they replay only lights-out's own recordings, so on your alerts and
   incidents use `PROFILE=l1` and the key in your environment.
