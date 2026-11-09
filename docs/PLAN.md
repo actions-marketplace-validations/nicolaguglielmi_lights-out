@@ -844,6 +844,22 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - `./go demo` invariato; i sei workflow verdi sul branch.
 - **Fuori, con il motivo nell'ADR:** la riga del primo NO-GO dei gate di un ticket rilavorato (la tiene solo l'ultimo `ci`, è un cambio del lettore e una minor del logbook), i nomi delle colonne (sono gli stati della torre, ADR 0055 §7), un pannello laterale affiancato invece che sovrapposto, la casella di risposta dentro il pannello, uno snapshot di un demo vero per il sito.
 
+### M17, seconda fetta (prossimo sprint) — La kanban che si fa guardare: stile Trello, massima usabilità
+
+*Aggiunto 2026-11-09, richiesta dell'owner: da fare nel prossimo sprint, niente implementato ora.* La prima fetta (ADR 0063) ha reso la kanban leggibile: tutta la board in uno schermo, di chi è il turno su ogni carta. La seconda la rende la schermata che fa dire "wow" a chi la vede per la prima volta nella galleria del lancio, con l'aspetto e la scorrevolezza di Trello e la massima usabilità, senza perdere niente di quello che la rende onesta.
+
+- **Cosa resta fermo.** Nessun drag-and-drop che sposta una carta: una carta si muove solo quando la torre muove il suo ticket (ADR 0055 §7, ADR 0059 §1). "Stile Trello" vuol dire l'aspetto, la densità, il movimento e la rapidità, non il trascinamento; se l'owner vuole il trascinamento come gesto che *chiede* un passo alla torre, è una decisione esplicita che rovescia l'alternativa scartata da ADR 0059, con la sua ADR. La console legge solo il logbook, nessuna build, nessuna dipendenza, nessun asset dalla rete (ADR 0047): CSS e JS scritti a mano, icone SVG inline, i due temi.
+- **Idee da pesare nello sprint, non decise:**
+  - carte più ricche e più compatte: etichette colorate per feature e priorità, il badge di chi ha la palla (un'icona per il ruolo product, il gate spec, il dev-worker, i gate, il reviewer, il canary, tu), i tentativi di rework come piccola barra, da quanto tempo il ticket è in quello stato (dall'`at` della storia);
+  - colonne e fasce con il loro colore, intestazioni che restano visibili scorrendo, scorrimento orizzontale fluido con aggancio alle fasce quando la board supera lo schermo, una densità compatta o comoda a scelta;
+  - il movimento come effetto wow senza trascinamento: quando la torre sposta una carta, la carta vola dalla colonna vecchia alla nuova (con `prefers-reduced-motion` resta il segno di ADR 0059 e nient'altro);
+  - il dettaglio della carta come il retro di una carta Trello: una finestra sopra la board con la timeline compatta e l'unica azione in evidenza (la casella di risposta dentro la carta è un'alternativa che ADR 0063 ha scartato: va ripesata nell'ADR);
+  - filtri a chip invece delle select, un filtro "solo il mio turno", la ricerca che evidenzia le carte trovate, sul telefono lo scorrimento tra le fasce;
+  - accessibilità: contrasto AA nei due temi, fuoco sempre visibile, gli spostamenti annunciati a chi usa un lettore di schermo.
+- **Il design prima del codice.** Valutare se è il momento del design loop con Stitch (ADR 0023 §6, ADR 0047 decisione aperta 6): il disegno in `design/`, poi la pagina. Un'ADR (la prima libera) sceglie fra le idee sopra, con le alternative scartate e la provenienza di ogni numero.
+- **Come si misura l'usabilità.** Rifare l'audit di ADR 0063 (le sei domande per ogni stato, desktop e telefono, chiaro e scuro, solo tastiera) e confrontarlo con quello del 2026-11-09; in più una prova con persone che non conoscono il progetto, se l'owner la organizza. Ogni soglia entra nell'ADR solo con la sua provenienza.
+- **Fatto quando (bozza, i criteri veri si scrivono nello sprint prima del codice):** le prove di `ci/console-ui.py` restano verdi (nessuna carta spostata dalla pagina, nessun ascoltatore di drag, lo stesso testo nei tre temi, la board che sta in 1440 px); le nuove interazioni hanno la loro prova; le immagini del sito sono ridisegnate; `./go demo` invariato; i sei workflow verdi.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
