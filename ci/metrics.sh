@@ -25,6 +25,18 @@
 #     /api/v1/query. A trailing slash is not tested.
 #   - A remote slower than the ADR's 3 s is a failure within 5 s, observed
 #     with one deliberately slow answer (the only case that waits).
+#   - docs/adr/0066 §3: a query that fails is `NO-GO: slo — cannot judge:
+#     <query>: <cause>`; the cases glob on the words the ADR spells out
+#     (`<metrics-query path> exited 22: `, `answer is not JSON`, `status
+#     error: execution: <error>`) and leave the rest of the cause open. The
+#     metrics-query path is the default for METRICS=promql,
+#     adapters/promql/query.sh. A canned body is served for the failing
+#     query only; the other queries answer from the vectors.
+#   - docs/adr/0066 §2: verify/metric-shape.sh is run from a scratch root
+#     holding copies of ci/lib.sh, verify/metric-shape.sh and verify/slo.promql,
+#     against this same server (mode "fixed" answers every path with the
+#     body): a /metrics scrape with no job/instance labels, as Prometheus
+#     stamps them at scrape time.
 #   - verify/slo.sh runs against a throwaway contract (an empty workload.env,
 #     no policy.env), so the thresholds are policy/merge.env's defaults and
 #     no workload's override can move the cases. The good canary equals the
@@ -123,7 +135,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 body = f.read()
         elif mode == "slo":
             qname = queries.get(record["query"].get("query", [""])[0])
-            if qname is None:
+            failing = control.get("fail", {}).get(qname)
+            if failing is not None:
+                status, body = failing["status"], failing["body"].encode()
+            elif qname is None:
                 status = 400
                 body = json.dumps({"status": "error", "errorType": "bad_data", "error": "unknown query"}).encode()
             else:
@@ -347,16 +362,19 @@ tail -n 3 "$srv_log" | jq -e -s 'all(.[]; .path == "/api/v1/query")' >/dev/null 
 vectors "[[\"$canary\",5],[\"$stable\",5]]" "[[\"$canary\",1],[\"$stable\",0]]" "[[\"$canary\",0.1],[\"$stable\",0.1]]"
 run_slo METRICS_URL="$url"
 want_slo g-error-rate 1 "NO-GO: slo — error_rate canary($canary)=1.000 stable($stable)=0.000*"
+case "$out" in *"cannot judge"*) fail_case g-error-rate-wording "a verdict line says cannot judge: $out" ;; esac
 
 # A slow canary.
 vectors "[[\"$canary\",5],[\"$stable\",5]]" "[[\"$canary\",0],[\"$stable\",0]]" "[[\"$canary\",9],[\"$stable\",0.1]]"
 run_slo METRICS_URL="$url"
 want_slo g-latency 1 "NO-GO: slo — latency_p95 canary($canary)=9.000 stable($stable)=0.100*"
+case "$out" in *"cannot judge"*) fail_case g-latency-wording "a verdict line says cannot judge: $out" ;; esac
 
 # A canary that took no traffic: no data is a NO-GO, never a GO.
 vectors "[[\"$stable\",5]]" "[[\"$canary\",0],[\"$stable\",0]]" "[[\"$canary\",0.1],[\"$stable\",0.1]]"
 run_slo METRICS_URL="$url"
 want_slo g-no-traffic 1 "NO-GO: slo — no traffic from canary($canary)*"
+case "$out" in *"cannot judge"*) fail_case g-no-traffic-wording "a verdict line says cannot judge: $out" ;; esac
 
 # An empty METRICS_URL with METRICS=promql: the adapter's refusal is the
 # reason, and no request is made.
@@ -364,6 +382,99 @@ n0=$(req_count)
 run_slo METRICS_URL=
 want_slo g-empty-url 1 'NO-GO: slo — *METRICS_URL*'
 [ "$(req_count)" -eq "$n0" ] || fail_case g-empty-url-network "the server saw a request"
+
+# (h) docs/adr/0066 §3: a Metrics query that fails is `cannot judge`, never
+# a verdict. All three queries run before any comparison; the first of the
+# three that failed is named, traffic if all did. Exit 1, one stdout line.
+ok_t="[\"$canary\",5],[\"$stable\",5]"
+ok_e="[\"$canary\",0],[\"$stable\",0]"
+ok_l="[\"$canary\",0.1],[\"$stable\",0.1]"
+prom_err='{"status":"error","errorType":"execution","error":"found duplicate series for the match group on the right hand-side of the operation"}'
+f422=$(jq -cn --arg b "$prom_err" '{status: 422, body: $b}')
+f_err=$(jq -cn --arg b "$prom_err" '{status: 200, body: $b}')
+f_html='{"status":200,"body":"<html>not prometheus</html>"}'
+cj() {  # FAILS_JSON: vectors that are fine, but the named queries fail
+  set_ctl "{\"mode\":\"slo\",\"vectors\":{\"traffic\":[$ok_t],\"error_rate\":[$ok_e],\"latency_p95\":[$ok_l]},\"fail\":$1}"
+}
+
+# (h1) HTTP 422 with a Prometheus error body: curl -f exits 22.
+cj "{\"traffic\":$f422}"
+run_slo METRICS_URL="$url"
+want_slo h-422 1 "NO-GO: slo — cannot judge: traffic: adapters/promql/query.sh exited 22: *"
+
+# (h2) HTTP 200 with a body that is not JSON.
+cj "{\"traffic\":$f_html}"
+run_slo METRICS_URL="$url"
+want_slo h-not-json 1 "NO-GO: slo — cannot judge: traffic: answer is not JSON*"
+
+# (h3) HTTP 200, {"status":"error",...}.
+cj "{\"traffic\":$f_err}"
+run_slo METRICS_URL="$url"
+want_slo h-status-error 1 "NO-GO: slo — cannot judge: traffic: status error: execution: found duplicate series*"
+
+# (h4) the first of the three that fails is named (the ADR leaves open
+# whether the later ones are still asked, so the request count is not judged).
+cj "{\"error_rate\":$f422,\"latency_p95\":$f422}"
+run_slo METRICS_URL="$url"
+want_slo h-first-error-rate 1 "NO-GO: slo — cannot judge: error_rate: adapters/promql/query.sh exited 22: *"
+cj "{\"latency_p95\":$f_html}"
+run_slo METRICS_URL="$url"
+want_slo h-latency 1 "NO-GO: slo — cannot judge: latency_p95: answer is not JSON*"
+cj "{\"traffic\":$f422,\"error_rate\":$f422,\"latency_p95\":$f422}"
+run_slo METRICS_URL="$url"
+want_slo h-all-three 1 "NO-GO: slo — cannot judge: traffic: *"
+
+# (h5) a failed query is not a verdict: an error_rate that would be a NO-GO
+# verdict beside a latency query that cannot be answered is `cannot judge`,
+# naming the query that failed.
+set_ctl "{\"mode\":\"slo\",\"vectors\":{\"traffic\":[$ok_t],\"error_rate\":[[\"$canary\",1],[\"$stable\",0]],\"latency_p95\":[$ok_l]},\"fail\":{\"latency_p95\":$f_err}}"
+run_slo METRICS_URL="$url"
+want_slo h-not-a-verdict 1 "NO-GO: slo — cannot judge: latency_p95: status error: execution: *"
+
+# (i) docs/adr/0066 §2: each of the three queries joins target_info through
+# max by (job, instance, service_version) (target_info), never the bare series.
+join='group_left (service_version) max by (job, instance, service_version) (target_info)'
+sed -n '/^[^#]/p' verify/slo.promql > "$work/queries.txt"
+[ "$(awk 'END{print NR}' "$work/queries.txt")" -eq 3 ] || fail_case i-premise "verify/slo.promql does not hold three query lines"
+while IFS= read -r line; do
+  case "$line" in *"$join"*) : ;; *) fail_case i-join "a query does not contain: $join -- $line" ;; esac
+  stripped=$(printf '%s' "$line" | sed 's/max by (job, instance, service_version) (target_info)//g')
+  case "$stripped" in *target_info*) fail_case i-bare "a query still uses a bare target_info: $line" ;; esac
+done < "$work/queries.txt"
+
+# (j) verify/metric-shape.sh accepts that query text against a scrape with no
+# job/instance labels, and still rejects a by (...) label the scrape lacks.
+cat > "$work/scrape.txt" <<'EOS'
+# HELP http_server_request_duration_seconds Duration of HTTP server requests.
+# TYPE http_server_request_duration_seconds histogram
+http_server_request_duration_seconds_count{http_request_method="GET",http_response_status_code="200",http_route="/healthz"} 3
+http_server_request_duration_seconds_count{http_request_method="POST",http_response_status_code="500",http_route="/api/x"} 1
+http_server_request_duration_seconds_bucket{http_request_method="GET",http_response_status_code="200",http_route="/healthz",le="0.005"} 1
+http_server_request_duration_seconds_bucket{http_request_method="GET",http_response_status_code="200",http_route="/healthz",le="10"} 3
+http_server_request_duration_seconds_bucket{http_request_method="GET",http_response_status_code="200",http_route="/healthz",le="+Inf"} 3
+# TYPE target_info gauge
+target_info{service_name="app",service_version="0.1.0"} 1
+EOS
+set_ctl "{\"mode\":\"fixed\",\"body_file\":\"$work/scrape.txt\"}"
+mkdir -p "$work/shape/ci" "$work/shape/verify"
+cp ci/lib.sh "$work/shape/ci/lib.sh"
+cp verify/metric-shape.sh "$work/shape/verify/metric-shape.sh"
+# The ADR's query text, whatever verify/slo.promql holds today: (i) above is
+# what judges the file; this judges metric-shape's reading of the text.
+sed 's/group_left (service_version) target_info/group_left (service_version) max by (job, instance, service_version) (target_info)/g' \
+  verify/slo.promql > "$work/shape/verify/slo.promql"
+run_shape() {
+  ( cd "$work/shape" && env -i PATH="$PATH" HOME="$work" NO_COLOR=1 APP_URL="$url" WORKLOAD_SAMPLE_PATH=/healthz \
+      sh verify/metric-shape.sh >"$stdout_f" 2>"$stderr_f" </dev/null ) && rc=0 || rc=$?
+  out=$(cat "$stdout_f")
+  nlines=$(awk 'END{print NR}' "$stdout_f")
+}
+run_shape
+want_slo j-accepts 0 'GO: metric-shape*'
+sed 's/sum by (service_version/sum by (zzz_no_such_label, service_version/' "$work/shape/verify/slo.promql" > "$work/shape/q2"
+mv "$work/shape/q2" "$work/shape/verify/slo.promql"
+run_shape
+want_slo j-rejects-unknown-by-label 1 'NO-GO: metric-shape — *zzz_no_such_label*'
 
 settled=1
 [ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0044 §8 or §9"

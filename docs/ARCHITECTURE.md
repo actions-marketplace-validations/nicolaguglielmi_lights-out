@@ -129,9 +129,9 @@ At L0 and L1 the tower's documents and its step events are files, not services: 
 
 Vendor config lives in `adapters/<name>/`, copied into images at build; one bind mount (the active workload's `flags/`) into flagd. Readiness: `adapters/<name>/ready.sh`, run by `make up` for the adapters the profile selects.
 
-The canary revision is the same image as stable, with the workload's kill-switch flag (for the app, `waitlist`) targeted at its canary version (for the app, `0.2.0-waitlist`); the Workload port generalizes this (ADR 0030). The controller `core/launchpad.sh` shifts traffic through Envoy's admin API and evaluates `verify/slo.sh` at each stage. Automatic rollback on verify NO-GO.
+The canary revision is the same image as stable, with the workload's kill-switch flag (for the app, `waitlist`) targeted at its canary version (for the app, `0.2.0-waitlist`); the Workload port generalizes this (ADR 0030). The controller `core/launchpad.sh` shifts traffic through Envoy's admin API and evaluates `verify/slo.sh` at each stage. Automatic rollback on a verify NO-GO, and on a stage that cannot be judged because a Metrics query failed: that one prints `cannot judge`, never a verdict ([ADR 0066](adr/0066-a-canary-that-cannot-be-judged.md)).
 
-See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](adr/0013-launchpad-canary-verify-rollback-at-l0.md), [ADR 0014](adr/0014-prove-the-go-branch-with-demo-hold.md).
+See [ADR 0012](adr/0012-l0-plane-layout-runner-envoy-readiness.md), [ADR 0013](adr/0013-launchpad-canary-verify-rollback-at-l0.md), [ADR 0014](adr/0014-prove-the-go-branch-with-demo-hold.md), [ADR 0066](adr/0066-a-canary-that-cannot-be-judged.md).
 
 ## Status
 

@@ -80,7 +80,7 @@ try:
 
     for qname, qtext in queries.items():
         # target_info never sits next to "{" or "[" in these queries (it is
-        # joined bare, via `group_left (...) target_info`), so metric_re
+        # joined via `group_left (...) max by (...) (target_info)`), so metric_re
         # cannot see it; the bare word itself is the reference (docs/adr/0013
         # §2). on (...) and group_left (...) arguments (job, instance,
         # service_version) are never extracted as labels: label_re needs a
@@ -93,8 +93,12 @@ try:
         references_target_info = bool(target_info_re.search(qtext))
 
         q_labels = set(label_re.findall(qtext))
+        # job and instance are target labels Prometheus stamps at scrape,
+        # never in /metrics: `max by (job, instance, service_version)
+        # (target_info)` names them for the same reason on (...) does
+        # (docs/adr/0066 §2).
         for group in by_re.findall(qtext):
-            q_labels |= {g.strip() for g in group.split(",") if g.strip()}
+            q_labels |= {g.strip() for g in group.split(",") if g.strip()} - {"job", "instance"}
 
         # service_version is stamped by the target_info join (docs/adr/0013
         # §2): the http_ families carry no version label, so this one label

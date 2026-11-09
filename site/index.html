@@ -479,7 +479,7 @@ Then the response is not 500 …
           <span class="n">04 · THE CANARY</span>
           <h3>A signed canary, judged by numbers.</h3>
           <p>One signed image per merge takes 5%, then 25% of real traffic. One PromQL file compares it with stable on errors and p95 latency.</p>
-          <p>A bad number rolls it back with nobody paged. No model decides whether a canary is healthy.</p>
+          <p>A bad number rolls it back with nobody paged. So does a query that cannot be answered, and the line says <code>cannot judge</code>, not a verdict. No model decides whether a canary is healthy.</p>
           <span class="src">verify/slo.promql · core/launchpad.sh</span>
         </li>
         <li class="step human" id="how-5" data-step="5">
