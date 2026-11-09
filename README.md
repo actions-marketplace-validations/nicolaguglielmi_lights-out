@@ -12,7 +12,7 @@ It runs complete on your laptop: no account, no API key, no cloud.
 |---|---|
 | **Eight gates on every PR** | risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, and test-proof: a test the change adds must fail on the base. Each prints one line, `GO` or `NO-GO` with the reason, and every threshold says where it comes from. A PR is judged by its base's policy, never its own: the principle GitHub applies to [`pull_request_target`](https://github.blog/changelog/2025-11-07-actions-pull_request_target-and-environment-branch-protections-changes/). GitHub takes the default branch, lights-out the PR's base commit, the same thing for a PR into the default branch. |
 | **A perimeter per ticket** | the diff must stay inside the files the ticket declares, checked before a PR exists. A ticket whose files another open ticket holds waits at assign. |
-| **The dev phase, visible** | a request becomes questions, answers and a spec, and the spec gate checks its criteria before an agent starts. The console shows every ticket on a kanban and on one timeline, from the request to the release. |
+| **The dev phase, visible** | a request becomes questions, answers and a spec, and the spec gate checks its criteria before an agent starts. The console shows every ticket on a kanban and on one timeline, from the request to the release, and says on each whose turn it is. |
 | **Main stays green, without a queue** | a PR merges without a second judgment when nothing moved under its perimeter. Main is judged again after merging; a red main is bisected and the culprit reverted, and its ticket goes back to rework. |
 | **A canary that rolls itself back** | one signed image per merge, 5% then 25% of real traffic, compared with stable on errors and p95 latency. A bad number rolls it back with nobody paged. |
 | **One human gate** | the step to 100% waits for a person's GO. Silence never promotes. It has the semantics of Argo Rollouts' [indefinite pause](https://argo-rollouts.readthedocs.io/en/stable/features/canary/) and Flagger's [confirm-promotion webhook](https://docs.flagger.app/usage/webhooks), as the single human gate of a chain from ticket to production. |
@@ -21,10 +21,10 @@ It runs complete on your laptop: no account, no API key, no cloud.
 
 What is proven and what is not yet is said plainly below, in [What is real and what is recorded](#what-is-real-and-what-is-recorded).
 
-<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-kanban.jpg" alt="The console's kanban: one column per tower state, a card per ticket with its priority and feature"></p>
-<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="A ticket's timeline in the console: the request, a question, the answer, the confirmed criteria and the spec gate" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: tickets by state, perimeters held, tickets waiting, docs to realign" width="49%"></p>
+<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-kanban.jpg" alt="The console's kanban: the tower's states under four bands, Spec, Build, Test and review, Release, a card per ticket with whose turn it is"></p>
+<p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="A ticket's timeline in the console: the request, a question, the answer, the confirmed criteria and the spec gate" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: what waits for a person first, then the tickets by band and state, perimeters held, docs to realign" width="49%"></p>
 
-The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, and the overview. It also has a specs screen, an editor for a new request that the spec gate checks as you type, a search over the project's ADRs from the project map, and a light and a dark theme. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.2.json`](fixtures/logbook/golden-1.2.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
+The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, and the overview. Every card, drawer and timeline says whose turn it is, a role's or yours, and when it is yours, the one thing to do: answer a question, go-for-launch, or decide after the last attempt; the overview lists those first. It also has a specs screen, an editor for a new request that the spec gate checks as you type, a search over the project's ADRs from the project map, and a light and a dark theme. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.2.json`](fixtures/logbook/golden-1.2.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
 
 ## Five ways in
 
@@ -134,7 +134,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ./go demo-rollback   # just the self-rollback, about a minute
 ./go board           # the pipeline explained, and live while the plane runs: localhost:8099
 ./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
-./go console         # the client's view: kanban, specs, a new-request editor, ADR search, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
+./go console         # the client's view: kanban (whose turn on every card), specs, a new-request editor, ADR search, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
 ./go request TICKET=<id>   # start a ticket before the code: the product role asks or confirms, then the spec gate
 ./go answer TICKET=<id> ANSWER="<text>"   # answer its open question, then the product role again
 ./go down            # stop everything
