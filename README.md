@@ -33,7 +33,7 @@ Each step asks for one thing more than the one before, and gives back something 
 | Step | You need | You get |
 |---|---|---|
 | [0. Look](#0-look) | a browser | the site, a video tour, the board |
-| [1. Gates on your repository](#1-gates-on-your-repository) | podman or docker, and git | the eight gates on your last commit, from the gates image (508 MB unpacked) or the GitHub Action, without cloning lights-out |
+| [1. Gates on your repository](#1-gates-on-your-repository) | a pull request on GitHub, or podman or docker and git | the eight gates on every pull request from the GitHub Action, or on your last commit from the gates image (508 MB unpacked), without cloning lights-out |
 | [2. The whole loop](#2-the-whole-loop-on-your-laptop) | the clone | `./go demo`: a ticket to a canary that rolls itself back, no key |
 | [3. Agents on your repository](#3-agents-on-your-repository) | a model key | `./go init`, then tickets worked by real agents at L1 |
 | [4. Toward production](#4-toward-production) | your code host, delivery and metrics | what exists today for L2 and L3, and what does not yet |
@@ -44,7 +44,26 @@ Each step asks for one thing more than the one before, and gives back something 
 
 ### 1. Gates on your repository
 
-The `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is 508 MB unpacked (amd64), with no cloud toolchain in it. On a pull request of a repository that is not lights-out ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)), each in a job of its own so that the first pull of the image is inside the time, the Action posted its check in 27 s, `test-proof` in 14 s and `test-integrity` in 25 s. `lights-out init` and `gates` took 48 s on a clean runner (`./go demo-package`). The full image, `ghcr.io/nicolaguglielmi/lights-out:0.3.0` (1,246 MB, 1.77 GB before gcloud and terraform left it), is for `triage` and `postmortem` only.
+Most people arrive from [the Action on the Marketplace](https://github.com/marketplace/actions/lights-out-gates). It posts the gates on every pull request as one check run, with one line per gate in its summary:
+
+```yaml
+permissions:
+  contents: read
+  checks: write
+steps:
+  - uses: actions/checkout@v7
+    with:
+      fetch-depth: 0
+  - uses: nicolaguglielmi/lights-out@v0.3.0
+```
+
+The gates read a contract committed in your repository, `.lights-out/`: the test command, the mutation scope and baseline, the runners. A range is judged by the contract at its base, so a pull request cannot loosen what judges it. On a repository with none, the first check is NO-GO, because nothing may judge without a contract at the base ([ADR 0064](docs/adr/0064-the-first-run-drafts-the-contract.md)). After 0.3.0 that check also carries the fix: the Action drafts the contract from the base with `lights-out init`, puts its three small files in the check's summary for review, and attaches the whole draft to the run as an artifact, with the two commands that commit it. One commit, and the next check is judged. The 0.3.0 check prints the NO-GO line only; until the next release, draft the contract with the wrapper below.
+
+`gates: test-proof` or `gates: test-integrity` runs one part. Those two are also standalone Actions, `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`; each also has a repository of its own for its Marketplace page, `nicolaguglielmi/test-proof@v0.3.0` and `nicolaguglielmi/test-integrity@v0.3.0`. [The guide](docs/use-on-your-repo.md#the-action) has the details, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run the gates before a coding agent commits.
+
+On a pull request of a repository that is not lights-out ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)), each in a job of its own so that the first pull of the image is inside the time, the Action posted its check in 27 s, `test-proof` in 14 s and `test-integrity` in 25 s.
+
+On your machine, the `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is 508 MB unpacked (amd64), with no cloud toolchain in it. `lights-out init` and `gates` took 48 s on a clean runner (`./go demo-package`). The full image, `ghcr.io/nicolaguglielmi/lights-out:0.3.0` (1,246 MB, 1.77 GB before gcloud and terraform left it), is for `triage` and `postmortem` only.
 
 Version 0.3.0 was published on 2026-11-09 by the tag `v0.3.0`. From a clone, `./go package-gates` builds the same image, and `LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev` points the wrapper at it.
 
@@ -73,22 +92,7 @@ cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Tags are mutable. To pin the image, set `LIGHTS_OUT_IMAGE` to its digest. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
-
-On pull requests, the Action ([on the Marketplace](https://github.com/marketplace/actions/lights-out-gates)) posts the gates as a check run, with one line per gate in its summary:
-
-```yaml
-permissions:
-  contents: read
-  checks: write
-steps:
-  - uses: actions/checkout@v7
-    with:
-      fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.0
-```
-
-`gates: test-proof` or `gates: test-integrity` runs one part. Those two are also standalone Actions, `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`; each also has a repository of its own for its Marketplace page, `nicolaguglielmi/test-proof@v0.3.0` and `nicolaguglielmi/test-integrity@v0.3.0`. [The guide](docs/use-on-your-repo.md#the-action) has the details, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run the gates before a coding agent commits.
+Tags are mutable. To pin the image, set `LIGHTS_OUT_IMAGE` to its digest (in the Action, the `image` input). `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
 
 Without an engine, `lights-out-gates --light` runs the gates that need only git and Python in under a second, from a standard-library Python package on PyPI, `uvx lights-out-gates --light`, and its line names the four that need the image ([ADR 0061](docs/adr/0061-gates-without-a-container.md), [the light hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents)).
 
