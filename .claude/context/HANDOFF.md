@@ -14,7 +14,7 @@ The probe (`nicolaguglielmi/lights-out-probe`, pull request 1) now uses `@v0.3.0
 
 The standalone Actions have their repositories, `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`, tagged `v0.3.0`, each with a draft release; the probe uses them (11 s and 23 s, GO, run 42591256328).
 
-Left to the owner (`docs/launch/checklist.md`): publish the three draft releases with the Marketplace box ticked, the upload to PyPI (a dry-run wheel at 0.3.0 was built and answered `GO: gates-light`).
+Done by the owner the same day: the three releases published to the Marketplace, and the package on PyPI as `lights-out-gates`. Before that, left to the owner: the three draft releases, the upload to PyPI (a dry-run wheel at 0.3.0 was built and answered `GO: gates-light`).
 
 Found, and fixed after the tag: `gates/test-proof.sh` passed `HEAD=` as given to `git restore --source` inside the base's worktree, where a HEAD-relative ref names another commit (`HEAD=HEAD` gave NO-GO; the default head, a branch or a sha gave GO). `require_range` in `ci/lib.sh` now sets `$head` to the commit's id; `core/tests/test_gate_range.py` has the seven cases from ADR 0015 §2 and 0053 §2, four of them red before the fix. The 0.3.0 image still has the defect, the guide says so, and the fix ships with the next version.
 

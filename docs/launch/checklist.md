@@ -167,12 +167,14 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
     --certificate-identity-regexp '^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```
-- [ ] **Publish the root Action's Marketplace release.** A draft release
+- [x] **Publish the root Action's Marketplace release.** Published
+  2026-11-09. A draft release
   `v0.3.0` with the notes exists since 2026-11-09: GitHub → Releases → the
   draft → Edit → tick "Publish this Action to the GitHub Marketplace",
   pick a primary category, accept the GitHub Marketplace Developer
   Agreement, publish. Two-factor authentication must be on for the account.
-- [ ] **For each standalone Action, a public repository of its own**:
+- [x] **For each standalone Action, a public repository of its own**
+  (both published to the Marketplace 2026-11-09):
   `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`. Both
   exist since 2026-11-09, with `action.yml`, the README and the license at
   the root, tagged `v0.3.0`, each with a draft release, and proven on the
