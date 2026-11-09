@@ -24,7 +24,7 @@ Found, and fixed after the tag: `gates/test-proof.sh` passed `HEAD=` as given to
 
 ## The site, and one proof per commit, 2026-11-09
 
-The landing page says 0.3.0, and `ci/docs-drift.sh` reads it (ADR 0054, amendment 2026-11-09): its release is the wrapper's `version=`, its links into `main` and its `./go` targets exist. ADR 0065: the `plan` job in `ci`, `stranger`, `self`, `podman` and `package` skips a commit on `main` that a branch already judged green, and skips the heavy jobs on a docs-only push; `ci/plan.sh` proves the classifier and that no job escapes `plan`. The proof that both work is on Actions: a docs-only push with only `ci` and `self` running, and the fast-forward of `main` with the five workflows skipped and naming the branch run.
+The landing page says 0.3.0, and `ci/docs-drift.sh` reads it (ADR 0054, amendment 2026-11-09): its release is the wrapper's `version=`, its links into `main` and its `./go` targets exist. ADR 0065: the `plan` job in `ci`, `stranger`, `self`, `podman` and `package` skips a commit on `main` that a branch already judged green, and skips the heavy jobs on a docs-only push; `ci/plan.sh` proves the classifier and that no job escapes `plan`. Proved on Actions the same day: 5c51fdd, the code, 13 minutes for the six workflows on the branch; `main` fast-forwarded to it in 31 s, every job but `plan` skipped (ci run 42610705844); 17b23e9, docs only, 262 s, only `plan`, `ci` and `self`'s gates ran (ci run 42610803695). `./go ci` from a clean clone under `.crew/`, never from this checkout: here the secrets scan reads the other sessions' worktrees under `.claude/worktrees` (1 GB, 36 findings that are not this tree's).
 
 ## Branches landed, one handoff each
 
