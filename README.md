@@ -199,6 +199,8 @@ Run `./go doctor` first. It prints one line per item: the engine and whether it 
 | `Cannot allocate memory`, or everything crawls | `podman machine stop`, `podman machine set --memory 6144`, `podman machine start` |
 | `GO: demo … a first run: over the 900s budget, reported, not judged` | Everything worked; the first download and the toolchain build were slow. Your first run reports its time instead of failing on it. Later runs and CI are judged against the 900 s ([ADR 0013](docs/adr/0013-launchpad-canary-verify-rollback-at-l0.md), amendment 2026-11-04). |
 | `NO-GO: demo — rollback reached, but … > 900s budget` | Everything worked, but a run after the first one took longer than 900 s. The engine is usually short of memory or CPU (see the row above), or other containers are running. `./go down`, then `./go demo` again. |
+| `NO-GO: launchpad — …: cannot judge: …` | Prometheus could not answer a query, so the canary was rolled back without a verdict on it ([ADR 0063](docs/adr/0063-a-canary-that-cannot-be-judged.md)). `./go down`, then `./go demo` again; if it repeats, open an issue with the line. |
+| Every `./go up` recreates every container (podman 4.9.3, the Ubuntu 24.04 package) | A bug of that podman's Docker-compatible API, not of your plane; the demo works with it ([ADR 0063](docs/adr/0063-a-canary-that-cannot-be-judged.md)). |
 | Anything else | `./go down`, then `./go demo` again. Still stuck? Open an issue with the last 30 lines. |
 
 ## What is real and what is recorded
