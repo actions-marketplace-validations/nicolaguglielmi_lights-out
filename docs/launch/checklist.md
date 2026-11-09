@@ -140,8 +140,9 @@ the image, the issues and the announcement (plan §14, §15).
 
 Nothing here has run yet. Publishing is your act (ADR 0057).
 
-- [ ] **Check `version=0.3.0`** in `lights-out` (the wrapper). The
-  `publish` job refuses a tag that is not `v` plus that version.
+- [x] **Check `version=0.3.0`** in `lights-out` (the wrapper). The
+  `publish` job refuses a tag that is not `v` plus that version. Checked
+  2026-11-09.
 - [ ] **Tag `v0.3.0` from the merge on `main`.** The `publish` job of
   `.github/workflows/package.yml` builds both images for amd64 and arm64,
   pushes them to ghcr.io and signs both keyless. It has never run, so look
@@ -184,8 +185,8 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   PyPI on 2026-11-08 (`https://pypi.org/pypi/lights-out/json` answered 404),
   not reserved: until the first upload, `uvx lights-out` in a hook recipe
   runs whatever package holds the name.
-- [ ] **Set the version** in `pyproject.toml` (`0.3.0.dev0` today) to the
-  release. A release that also ships the image sets the wrapper's
+- [x] **Set the version** in `pyproject.toml` to the release: `0.3.0`
+  since 2026-11-09, the wrapper's. A release that also ships the image sets the wrapper's
   `version=` in `lights-out` to the same: `package.yml` checks the tag
   against the wrapper only.
 - [ ] **Build from a clean clone of the merge on `main`** and look inside:
@@ -195,6 +196,9 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   ```
   The wheel holds `lights_out/*.py`, `lights_out/perimeter.sh` and
   `lights_out/platform_policy/merge.env`, and no `tests/`.
+  A dry run on 2026-11-09, from a clean clone at 0.3.0, held exactly
+  that, and the wheel answered `GO: gates-light` on this repository; the
+  wheel you upload is the one you build.
 - [ ] **Try the wheel** in a repository with a committed `.lights-out/`:
   ```sh
   uvx --from ./dist/lights_out-0.3.0-py3-none-any.whl lights-out gates --light
