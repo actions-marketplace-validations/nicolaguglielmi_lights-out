@@ -132,7 +132,8 @@ jobs:
         run: |
           set -eu
           draft="$RUNNER_TEMP/first-draft"
-          [ "$(ls -A "$draft")" = ".lights-out" ] || { echo "the artifact is not .lights-out/ and nothing else: $(ls -A "$draft" | tr '\n' ' ')"; exit 1; }
+          entries=$(cd "$draft" && find . -mindepth 1 -maxdepth 1 | LC_ALL=C sort | tr '\n' ' ')
+          [ "$entries" = "./.lights-out " ] || { echo "the artifact is not .lights-out/ and nothing else: $entries"; exit 1; }
           for f in workload.env policy.env worker.md; do
             [ -s "$draft/.lights-out/$f" ] || { echo "the artifact has no $f"; exit 1; }
           done
