@@ -1,0 +1,63 @@
+# TEMPORARY, not for main: why docker-compose recreates unchanged
+# containers on the runner's podman. Removed before hand-over.
+name: repro-compose
+
+on:
+  push:
+    branches: [claude/sharp-khayyam-dcb1de]
+    paths: [.github/workflows/repro-compose.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: podman, socket, compose 5.5.1
+        run: |
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q podman >/dev/null
+          podman --version
+          systemctl --user enable --now podman.socket
+          curl -fsSL -o dc https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64
+          echo "db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576  dc" | sha256sum -c
+          chmod +x dc
+      - name: up twice, then a profiled service
+        run: |
+          export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
+          cat > c.yaml <<'EOF'
+          name: lotest
+          services:
+            dep:
+              image: docker.io/library/busybox:1.37
+              command: ["sleep", "3600"]
+            vol:
+              image: docker.io/library/busybox:1.37
+              command: ["sleep", "3600"]
+              volumes: [data:/data]
+            app:
+              image: docker.io/library/busybox:1.37
+              command: ["sleep", "3600"]
+              depends_on:
+                dep:
+                  condition: service_started
+            canary:
+              image: docker.io/library/busybox:1.37
+              command: ["sleep", "3600"]
+              profiles: ["canary"]
+              depends_on:
+                dep:
+                  condition: service_started
+          volumes:
+            data:
+          EOF
+          ./dc -f c.yaml up -d 2>&1 | grep -v Pull
+          sock=$XDG_RUNTIME_DIR/podman/podman.sock
+          for c in lotest-dep-1 lotest-vol-1; do
+            echo "== $c"; curl -s --unix-socket "$sock" "http://d/v1.41/containers/$c/json" | jq -c '{Image, NetworkMode: .HostConfig.NetworkMode, Networks: .NetworkSettings.Networks, Mounts}'
+          done
+          echo "== networks"; curl -s --unix-socket "$sock" 'http://d/v1.41/networks' | jq -c '.[] | {Name, Id}'
+          echo "== up again, --verbose"; ./dc --verbose -f c.yaml up -d 2>&1 | grep -iv "pull" | head -60
+          echo "== canary, --verbose"; ./dc --verbose -f c.yaml --profile canary up -d canary 2>&1 | grep -iv "pull" | head -60
+          echo "== canary --no-deps"; ./dc -f c.yaml --profile canary up -d --no-deps canary 2>&1
