@@ -196,13 +196,15 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
 
 ### The Python package on PyPI (M35)
 
-The light tier, `lights-out gates --light`, is a Python package built from
+The light tier, `lights-out-gates --light`, is a Python package built from
 the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
 
-- [ ] **Publish soon after the merge.** The name `lights-out` was free on
-  PyPI on 2026-11-08 (`https://pypi.org/pypi/lights-out/json` answered 404),
-  not reserved: until the first upload, `uvx lights-out` in a hook recipe
-  runs whatever package holds the name.
+- [ ] **Publish soon after the merge.** PyPI refused `lights-out` on
+  2026-11-09 ("too similar to an existing project": `lightsout`), so the
+  distribution is `lights-out-gates` (ADR 0061, amendment 2026-11-09),
+  free that day (`https://pypi.org/pypi/lights-out-gates/json` answered
+  404), not reserved: until the first upload, `uvx lights-out-gates` in a
+  hook recipe runs whatever package holds the name.
 - [x] **Set the version** in `pyproject.toml` to the release: `0.3.0`
   since 2026-11-09, the wrapper's. A release that also ships the image sets the wrapper's
   `version=` in `lights-out` to the same: `package.yml` checks the tag
@@ -219,7 +221,7 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   wheel you upload is the one you build.
 - [ ] **Try the wheel** in a repository with a committed `.lights-out/`:
   ```sh
-  uvx --from ./dist/lights_out-0.3.0-py3-none-any.whl lights-out gates --light
+  uvx --from ./dist/lights_out_gates-0.3.0-py3-none-any.whl lights-out-gates --light
   ```
 - [ ] **Upload**, from a PyPI account with two-factor authentication and a
   token scoped to the project, the token in the environment, never in a
@@ -231,7 +233,7 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   ```
   No workflow publishes it: trusted publishing from GitHub Actions would be
   a new workflow, a repository change.
-- [ ] **After the upload**, on a clean machine: `uvx lights-out gates
+- [ ] **After the upload**, on a clean machine: `uvx lights-out-gates
   --light` in a repository with a contract. Then drop "Not on PyPI yet"
   from `docs/use-on-your-repo.md` (the hook recipes and the status table),
   `docs/reference.md` and the README.
@@ -315,7 +317,7 @@ there happens once, so it waits for the prerequisites.
 - [ ] **The gallery from the console** (M33): the kanban, a ticket's
   timeline down to the rollback, the overview; the demo's recording from
   the README. The first comment tells the one human gate, the 15-minute
-  demo with no account and no card, and gives `uvx lights-out gates
+  demo with no account and no card, and gives `uvx lights-out-gates
   --light` as the ten-second try.
 - [ ] **Stay in the comments all day** and answer within the hour: launch
   day costs a day of the owner's time.

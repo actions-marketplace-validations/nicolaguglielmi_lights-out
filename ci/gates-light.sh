@@ -106,10 +106,10 @@ project, setuptools = p.get("project", {}), p.get("tool", {}).get("setuptools", 
 mapping = setuptools.get("package-dir", {})
 shipped = [g for globs in setuptools.get("package-data", {}).values() for g in globs]
 for ok, why in [
-    (project.get("name") == "lights-out", "project name is not lights-out"),
+    (project.get("name") == "lights-out-gates", "project name is not lights-out-gates"),
     (project.get("dependencies") == [], "dependencies is not empty"),
-    (project.get("scripts", {}).get("lights-out") == "lights_out.__main__:main",
-     "script lights-out is not lights_out.__main__:main"),
+    (project.get("scripts", {}) == {"lights-out-gates": "lights_out.__main__:gates_main"},
+     "the scripts are not exactly lights-out-gates = lights_out.__main__:gates_main"),
     (mapping.get("lights_out") == "core", "package-dir does not map lights_out to core"),
     (mapping.get("lights_out.platform_policy") == "policy",
      "package-dir does not map lights_out.platform_policy to policy"),
@@ -180,10 +180,10 @@ printf 'from core.x import y\n' >>"$t/core-planted/risk.py"
 
 cat >"$t/good.toml" <<'TOML'
 [project]
-name = "lights-out"
+name = "lights-out-gates"
 dependencies = []
 [project.scripts]
-lights-out = "lights_out.__main__:main"
+lights-out-gates = "lights_out.__main__:gates_main"
 [tool.setuptools.package-dir]
 lights_out = "core"
 "lights_out.platform_policy" = "policy"
@@ -193,7 +193,8 @@ lights_out = ["perimeter.sh"]
 TOML
 [ -z "$(pyproject_flaw "$t/good.toml")" ] || nogo "the pyproject check flags a good pyproject: $(pyproject_flaw "$t/good.toml")"
 for broken in 's/^name = .*/name = "other"/' 's/^dependencies = .*/dependencies = ["requests"]/' \
-  's/^lights_out = "core"/lights_out = "src"/' 's/\["merge.env"\]/["other.env"]/'; do
+  's/^lights_out = "core"/lights_out = "src"/' 's/\["merge.env"\]/["other.env"]/' \
+  's/^lights-out-gates = .*/lights-out = "lights_out.__main__:main"/' 's/^name = .*/name = "lights-out"/'; do
   sed "$broken" "$t/good.toml" >"$t/bad.toml"
   [ -n "$(pyproject_flaw "$t/bad.toml")" ] || nogo "the pyproject check accepted a planted wrong pyproject ($broken)"
 done
