@@ -199,7 +199,8 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
 The light tier, `lights-out-gates --light`, is a Python package built from
 the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
 
-- [ ] **Publish soon after the merge.** PyPI refused `lights-out` on
+- [x] **Publish soon after the merge.** Published 2026-11-09 as
+  `lights-out-gates` 0.3.0, from e0b73f6. PyPI refused `lights-out` on
   2026-11-09 ("too similar to an existing project": `lightsout`), so the
   distribution is `lights-out-gates` (ADR 0061, amendment 2026-11-09),
   free that day (`https://pypi.org/pypi/lights-out-gates/json` answered
@@ -223,7 +224,7 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   ```sh
   uvx --from ./dist/lights_out_gates-0.3.0-py3-none-any.whl lights-out-gates --light
   ```
-- [ ] **Upload**, from a PyPI account with two-factor authentication and a
+- [x] **Upload** (done 2026-11-09), from a PyPI account with two-factor authentication and a
   token scoped to the project, the token in the environment, never in a
   file (TestPyPI first, if you want a dry run:
   `--publish-url https://test.pypi.org/legacy/`). `uv publish` asks for the
@@ -233,7 +234,8 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   ```
   No workflow publishes it: trusted publishing from GitHub Actions would be
   a new workflow, a repository change.
-- [ ] **After the upload**, on a clean machine: `uvx lights-out-gates
+- [x] **After the upload** (done 2026-11-09: `GO: gates-light` from PyPI
+  with an empty uv cache), on a clean machine: `uvx lights-out-gates
   --light` in a repository with a contract. Then drop "Not on PyPI yet"
   from `docs/use-on-your-repo.md` (the hook recipes and the status table),
   `docs/reference.md` and the README.
