@@ -162,17 +162,21 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
     --certificate-identity-regexp '^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```
-- [ ] **Draft the root Action's Marketplace release** from the banner of
-  `action.yml`: GitHub → Releases → Draft a new release → tick "Publish
-  this Action to the GitHub Marketplace", pick a primary category, accept
-  the GitHub Marketplace Developer Agreement. Two-factor authentication
-  must be on for the account.
+- [ ] **Publish the root Action's Marketplace release.** A draft release
+  `v0.3.0` with the notes exists since 2026-11-09: GitHub → Releases → the
+  draft → Edit → tick "Publish this Action to the GitHub Marketplace",
+  pick a primary category, accept the GitHub Marketplace Developer
+  Agreement, publish. Two-factor authentication must be on for the account.
 - [ ] **For each standalone Action, a public repository of its own**:
-  `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`. Copy
-  `actions/test-proof/` (or `actions/test-integrity/`) to the root of the
-  repository, tag `v0.3.0`, and publish the release to the Marketplace the
-  same way. The copies can lag a version without any check failing:
-  `ci/package.sh` checks the sources here, never the copies.
+  `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`. Both
+  exist since 2026-11-09, with `action.yml`, the README and the license at
+  the root, tagged `v0.3.0`, each with a draft release, and proven on the
+  probe's pull request (11 s and 23 s, both GO, run 42591256328). What is
+  left is yours: open each draft and publish it to the Marketplace the
+  same way. At the next version, copy `actions/test-proof/` (or
+  `actions/test-integrity/`) to the root again and tag. The copies can lag
+  a version without any check failing: `ci/package.sh` checks the sources
+  here, never the copies.
 - [x] **Measure the first pull.** Done 2026-11-09, each Action in a job of
   its own: 27 s, 14 s and 25 s, all GO (probe run 42589663783), written in
   the README's step 1, which now links the probe: keep it public, or

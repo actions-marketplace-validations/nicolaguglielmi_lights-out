@@ -12,7 +12,9 @@ Host checks on the merged tree, 2026-11-08: `docs-drift`, `gates-light`, `store-
 
 The probe (`nicolaguglielmi/lights-out-probe`, pull request 1) now uses `@v0.3.0` with one job per Action: 27 s, 14 s and 25 s to the check run, first pull included, all GO (run 42589663783). The wrapper from the tag printed `GO: gates` in 46 s on an arm64 Mac, first pull included.
 
-Left to the owner (`docs/launch/checklist.md`): publish the draft release with the Marketplace box ticked, the two repositories for the standalone Actions, the upload to PyPI (a dry-run wheel at 0.3.0 was built and answered `GO: gates-light`).
+The standalone Actions have their repositories, `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`, tagged `v0.3.0`, each with a draft release; the probe uses them (11 s and 23 s, GO, run 42591256328).
+
+Left to the owner (`docs/launch/checklist.md`): publish the three draft releases with the Marketplace box ticked, the upload to PyPI (a dry-run wheel at 0.3.0 was built and answered `GO: gates-light`).
 
 Found, not fixed: `gates/test-proof.sh` passes `HEAD=` as given to `git restore --source` inside the base's worktree, where a HEAD-relative ref names another commit. `HEAD=HEAD` gives NO-GO; the default head, a branch or a sha gives GO.
 

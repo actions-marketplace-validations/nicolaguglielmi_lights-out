@@ -518,8 +518,10 @@ steps:
 - **Two standalone Actions** run one of those each:
   `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and
   `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`. Their sources
-  are `actions/test-proof/` and `actions/test-integrity/`. Their Marketplace
-  pages will be repositories of their own.
+  are `actions/test-proof/` and `actions/test-integrity/`. Each also has a
+  repository of its own for its Marketplace page, with a copy at the same
+  version: `nicolaguglielmi/test-proof@v0.3.0` and
+  `nicolaguglielmi/test-integrity@v0.3.0`.
 - Linux runners only. The Action needs docker.
 - A fork PR's token cannot write checks. The post is skipped with a warning,
   and the job status still carries the verdict.
