@@ -8,8 +8,8 @@
 # §1); localhost:5050 is the one registry host both engines treat as
 # insecure without configuration. No `--build`: the image already exists
 # in Zot, pushed by adapters/$REGISTRY/publish.sh. `--no-deps`: the plane
-# is `./go up`'s; on podman 4.9.3 compose would otherwise recreate
-# postgres, flagd and geocoder under the running stable (docs/adr/0063 §1).
+# is `./go up`'s; on podman 4.9.3 compose would otherwise recreate the
+# canary's dependencies under the running stable (docs/adr/0063 §1).
 # Not a gate: no GO/NO-GO, one stderr line and exit 1 on timeout.
 set -eu
 version=${1:?usage: deploy.sh <version> <image>}
