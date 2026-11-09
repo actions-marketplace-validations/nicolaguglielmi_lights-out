@@ -6,7 +6,7 @@
 # /out is the one directory written on the host. There is no engine socket
 # in here, ever: a toolchain other than the workbench is refused up front.
 #
-#   init                     attach /repo, draft .lights-out/, copy it to /out/.lights-out
+#   init [HEAD=]             attach /repo, draft .lights-out/ from HEAD (or that commit), copy it to /out/.lights-out, its summary to /out/init
 #   gates [BASE= HEAD=]      attach /repo, judge the range (default the last commit)
 #   gates STAGED=1           ... with what /repo has staged as one more commit, judged alone
 #   test-proof [BASE= HEAD=]     the gates test and test-proof only: the tests a change adds fail on its base
@@ -88,12 +88,53 @@ mkdir -p /tmp/lights-out
 sh core/attach.sh /repo "$attached" || nogo "could not clone the repository (see above)"
 
 if [ "$sub" = init ]; then
+  # HEAD=<commit> drafts from that commit (docs/adr/0064 §3): the Action
+  # drafts from the base, the commit whose contract would judge.
+  rm -rf /out/init
+  for a do
+    case "$a" in
+      HEAD=*)
+        h=${a#HEAD=}
+        git -C "$attached" checkout -q --detach "$h^{commit}" 2>/dev/null \
+          || nogo "HEAD=$h is not a commit of the repository (a shallow checkout? fetch-depth: 0)" ;;
+    esac
+  done
+  from=$(git -C "$attached" rev-parse --short HEAD)
   out=$(make --no-print-directory init WORKLOAD="$attached" ATTACHED="$attached") && rc=0 || rc=$?
   if [ -d "$attached/.lights-out" ]; then
     rm -rf /out/.lights-out
     cp -R "$attached/.lights-out" /out/.lights-out
   fi
-  printf '%s\n' "$out" | sed "s|$attached/.lights-out|$host_out/.lights-out|g"
+  # init/summary.md, what the Action posts (docs/adr/0064 §3): the line and,
+  # on GO, the three small files and the runners by size. No path of this
+  # container or of the host: the clone is the repository, the draft .lights-out.
+  line=$(printf '%s\n' "$out" | tail -n 1 | sed -e "s|$attached/\.lights-out|.lights-out|g" -e "s|$attached|the repository|g")
+  mkdir -p /out/init
+  # shellcheck disable=SC2016 # the backticks are Markdown, not a command
+  {
+    printf '### lights-out init, drafted from %s\n\n`%s`\n' "$from" "$line"
+    if [ "$rc" = 0 ]; then
+      for f in workload.env policy.env worker.md; do
+        [ -f "/out/.lights-out/$f" ] || continue
+        # A fence one backtick longer than any run in the file: it cannot close early.
+        fence=$(awk '{ while (match($0, /`+/)) { if (RLENGTH > n) n = RLENGTH; $0 = substr($0, RSTART + RLENGTH) } }
+          END { n = (n < 3 ? 3 : n + 1); while (n--) printf "`" }' "/out/.lights-out/$f")
+        printf '\n`.lights-out/%s`:\n\n%s\n' "$f" "$fence"
+        cat "/out/.lights-out/$f"
+        printf '%s\n' "$fence"
+      done
+      if [ -d /out/.lights-out/runners ]; then
+        stack=${line#GO: init — }
+        printf '\n`.lights-out/runners/`, the %s stack'"'"'s runners as lights-out ships them:\n\n' "${stack%%,*}"
+        (cd /out/.lights-out && find runners -type f | LC_ALL=C sort | while read -r f; do
+          printf -- '- `.lights-out/%s`, %s bytes\n' "$f" "$(wc -c < "$f" | tr -d ' ')"
+        done)
+      fi
+    else
+      printf '\nno draft is offered.\n'
+    fi
+  } > /out/init/summary.md 2>/dev/null || :
+  printf '%s\n' "$out" | sed -e "s|$attached/.lights-out|$host_out/.lights-out|g" -e "s|$attached|the repository|g"
   [ "$rc" = 0 ] || exit 1
   exit 0
 fi
@@ -106,8 +147,20 @@ if [ -n "$head" ]; then
   git -C "$attached" checkout -q --detach "$head" 2>/dev/null \
     || nogo "HEAD=$head is not a commit of the repository (a shallow checkout? fetch-depth: 0)"
 fi
-git -C "$attached" cat-file -e HEAD:.lights-out/workload.env 2>/dev/null \
-  || nogo "the repository has no .lights-out/workload.env committed; lights-out init drafts one"
+# No contract at the head (docs/adr/0064 §2): a change that removes the one
+# its base has is refused as such, with no draft; with none at the base
+# either, or no base, it is the first run, and the Action drafts on that
+# line, matched exactly. STAGED=1 judges on HEAD: its base is HEAD itself.
+if ! git -C "$attached" cat-file -e HEAD:.lights-out/workload.env 2>/dev/null; then
+  if [ -z "$staged" ] || [ "$staged" = 0 ]; then
+    from=$base
+    [ -n "$from" ] || from=$(git -C "$attached" rev-parse -q --verify HEAD~1 2>/dev/null) || from=""
+    if [ -n "$from" ] && git -C "$attached" cat-file -e "$from:.lights-out/workload.env" 2>/dev/null; then
+      nogo "the change removes .lights-out/workload.env, which its base has; a change cannot remove the contract that judges it"
+    fi
+  fi
+  nogo "the repository has no .lights-out/workload.env committed; lights-out init drafts one"
+fi
 
 if [ -n "$staged" ] && [ "$staged" != 0 ]; then
   [ -z "$base$head" ] || nogo "STAGED=1 judges the staged changes on HEAD; it takes no BASE or HEAD"
