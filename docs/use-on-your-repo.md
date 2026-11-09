@@ -21,6 +21,7 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | A PR is judged by your base branch's policy and runners, and a change to `.lights-out/` never merges on its own | Proven: `ci/attach.sh` |
 | The wrapper, from the image: `lights-out init` and `lights-out gates` on a repository with no clone of lights-out | Proven on `workloads/minimal/` as a repository of its own, by `./go demo-package` in GitHub Actions (ADR 0045 §8). Not proven on any other repository |
 | The Action `action.yml` at the root, and the two standalone Actions in `actions/` | Proven in lights-out's own workflow (`uses: ./` on a scratch repository posts a GO and a NO-GO check run, and the two standalone Actions' gates run the same way) and on one repository that is not lights-out, [a probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1), with the image built in the job before 0.3.0 is published |
+| The Action's first check on a repository with no contract: NO-GO, a draft from the base in the summary and as an artifact, committed, then GO (ADR 0064) | Proven in lights-out's own `package` workflow, on a scratch repository made from `workloads/minimal/` without its `workload.env`. Ships after 0.3.0. Not proven on any other repository |
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | The `--light` recipes **verified** once per CLI on 2026-11-08 (Claude Code 2.1.311, Codex 0.166.0, Gemini CLI 0.61.0-preview.0) against the scripted model, not a vendor; each recipe says what was not covered. The full variant was not run against the CLIs |
 | The light tier, `lights-out-gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. On PyPI as `lights-out-gates` since 2026-11-09, and `uvx lights-out-gates --light` from PyPI answered GO on this repository that day |
@@ -69,6 +70,55 @@ Known limits today, before you start:
   because the session had no key.
 
 ## 1. Gates on your repository: `init`, then `gates`
+
+### From a pull request: the Action's first check
+
+Most people start with [the Action](#the-action), from its Marketplace
+page, on a repository that has no `.lights-out/` yet. The gates read that
+contract, and a range is judged by the contract at its base. With no
+contract there, nothing may judge, so the first check is NO-GO, under the
+gates' name:
+
+```
+NO-GO: gates — the repository has no .lights-out/workload.env committed; lights-out init drafts one
+```
+
+After 0.3.0 the same check carries the fix (ADR 0064). The Action runs
+`lights-out init` on the pull request's base, not on its head, so a pull
+request cannot shape the contract you commit. The check's summary shows
+the draft's `workload.env`, `policy.env` and `worker.md` with their
+provenance comments, and lists `runners/` by size. The whole draft is an
+artifact of the run, `lights-out-draft-<job id>`; its lockfiles do not
+fit a check's summary. Read the files, then, at the root of your
+repository:
+
+```sh
+gh run download <run id> -R <owner>/<repo> -n lights-out-draft-<job id>
+git add .lights-out && git commit -m "lights-out: the contract drafted from <base>"
+```
+
+The summary prints both commands with the run, repository and base filled
+in. Download the artifact from the run's page if you do not use `gh`:
+unzipped at the root it is `.lights-out/` and nothing else. Commit it on
+your default branch, and every later pull request is judged by it. Commit
+it in the pull request instead, and that pull request is judged by its own
+contract, since its base has none; a change to `.lights-out/` is always
+high risk.
+
+- The check stays red until the contract is committed: a `neutral` check
+  would pass a required check with nothing to judge. Until then, every run
+  pays one whole-scope mutation run of the base (17.8 s wall on
+  `workloads/minimal/`, measured 2026-11-09; minutes on a large suite).
+- When init cannot draft (no `pyproject.toml` or `package.json` at the
+  root, or a suite that fails on the base), the summary says why and no
+  artifact is uploaded.
+- A pull request that deletes `workload.env` from a base that has one gets
+  its own line, `NO-GO: gates — the change removes .lights-out/workload.env,
+  which its base has; a change cannot remove the contract that judges it`,
+  and no draft.
+- The 0.3.0 Action prints the NO-GO line only. Until the next release, draft
+  the contract with the wrapper ([below](#without-cloning-lights-out-the-wrapper))
+  or from a clone ([next](#start-from-an-example)).
 
 ### Start from an example
 
@@ -285,7 +335,12 @@ lights-out gates
 - A range is judged by the contract at its base (`workload.env`,
   `policy.env`, `runners/`), so a change cannot loosen what judges it.
   With no contract at the base, the head's own judges, and the wrapper says
-  so on stderr.
+  so on stderr. A change that removes the base's `workload.env` is NO-GO
+  with a line of its own (after 0.3.0).
+- `init HEAD=<commit>` drafts from that commit instead of `HEAD` (after
+  0.3.0); the Action uses it to draft from the base. Every `init` also
+  writes `init/summary.md` next to the draft: its line, the three small
+  files and the runners by size, with no path of your machine in it.
 - The plane (`./go demo`, canary, rollback) stays the clone path.
 
 ## 2. The plane half
@@ -514,6 +569,11 @@ steps:
   run ("not run: stopped at the first NO-GO"), and for a NO-GO the first 20
   lines of that gate's details, such as the surviving mutants or the file
   outside the perimeter. The same summary goes to the job's step summary.
+- **On a repository with no contract** the check is NO-GO, and after 0.3.0
+  it carries a draft from the base and the two commands that commit it:
+  [the first check](#from-a-pull-request-the-actions-first-check). It asks
+  for no permission beyond `contents: read` and `checks: write`; the draft
+  is uploaded with GitHub's upload-artifact Action, pinned by commit.
 - **The `gates` input** is `all` (the default, the eight gates),
   `test-proof` or `test-integrity`. `test-proof` runs the tests, then checks
   that the tests a change adds or changes fail on its base.
