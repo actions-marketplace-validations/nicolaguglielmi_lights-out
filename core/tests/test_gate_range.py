@@ -33,7 +33,7 @@ class GateRange(unittest.TestCase):
         # c0: the code and a test that passes.
         self.write("value.txt", "1\n")
         self.write("tests/value.sh", '[ "$(cat value.txt)" = 1 ]\n')
-        self.write(".lights-out/keep", "")
+        self.write("contract/keep", "")
         self.c0 = self.commit("the value and its test")
         # c1, the base: a change no test reads.
         self.write("README", "one\n")
@@ -66,7 +66,7 @@ class GateRange(unittest.TestCase):
         env = {k: v for k, v in os.environ.items()
                if k not in ("GATES_OUT", "TOOLCHAIN_ISOLATE", "WORKLOAD_ATTACHED", "NOGO_DETAILS", "TICKET")}
         env.update(BASE=base, HEAD=head, WORKLOAD=str(self.repo),
-                   WORKLOAD_CONTRACT=str(self.repo / ".lights-out"),
+                   WORKLOAD_CONTRACT=str(self.repo / "contract"),
                    WORKLOAD_TEST_PATHS="tests/*.sh", WORKLOAD_TEST_ROOT="",
                    TEST_CMD=TEST_CMD, TOOLCHAIN_IMAGE="workbench", NO_COLOR="1")
         p = subprocess.run(["sh", "gates/test-proof.sh"], cwd=ROOT, env=env,
