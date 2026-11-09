@@ -34,3 +34,5 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/m35-light-gates-3dbc9f`: Handoff: M35, gates without a container (ADR 0061), 2026-11-08, [handoffs/claude-m35-light-gates-3dbc9f.md](handoffs/claude-m35-light-gates-3dbc9f.md)
 - `claude/m31-front-door-9de845`: M31, the stepped way in (ADR 0057), 2026-11-08, [handoffs/claude-m31-front-door-9de845.md](handoffs/claude-m31-front-door-9de845.md)
 - `claude/festive-cray-5c155e`: Handoff: each `./go ci` check runs once (ADR 0062), 2026-11-09, [handoffs/claude-festive-cray-5c155e.md](handoffs/claude-festive-cray-5c155e.md)
+- `claude/sharp-khayyam-dcb1de`: the podman demo rolls back for the right reason, ADR 0066 (0063 on its branch), [handoffs/claude-sharp-khayyam-dcb1de.md](handoffs/claude-sharp-khayyam-dcb1de.md)
+- `claude/console-ux-flow-1c108a`: M17's first slice, the console says whose turn it is, ADR 0063, [handoffs/claude-console-ux-flow-1c108a.md](handoffs/claude-console-ux-flow-1c108a.md)
