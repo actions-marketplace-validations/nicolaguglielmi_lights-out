@@ -73,9 +73,11 @@ GO: ci
 ```
 *GitHub Actions run 41866972654, job engine-compat, last four lines of `ci`.*
 
-`GO: contract` is the meta-gate: it runs every gate with stdout captured
-and fails if one prints more than one line, a colour code, or an exit code
-that disagrees with its verdict.
+`GO: contract` is the meta-gate: it reads what every gate printed on
+stdout and fails if one prints more than one line, a colour code, or an
+exit code that disagrees with its verdict. Under `./go ci` each check
+runs once: its line and exit code are kept as it runs, and `contract`
+judges that record (ADR 0062).
 
 ### The plane comes up
 

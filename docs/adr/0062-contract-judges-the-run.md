@@ -22,6 +22,8 @@ Measures on 8e968aa:
   per gate: 179.3 s, of which 179.0 s re-running the 40 checks `ci` had
   just run. The rest is 0.3 s: `ci/engine-compat.sh`, the 14 `gates/*.sh`,
   the 2 `verify/*.sh`, the light entry point three times, the `nogo` probes.
+  `./go ci` whole, from a clean clone: 360 s, the 40 checks 186 s,
+  `contract` 174 s.
 
 So the cost is the second run, not the judging.
 
@@ -41,7 +43,9 @@ So the cost is the second run, not the judging.
    once per make invocation. Its prerequisites inherit it, so every
    `ci-<name>` of this run, `contract` included, sees one directory that
    no other run can have written. When every prerequisite has passed,
-   `ci`'s recipe removes it and prints `GO: ci`; after a NO-GO it stays
+   `ci`'s recipe removes it (its `.out` and `.rc` files and the directory,
+   and only under `.crew/ci/`: one named by hand elsewhere is left alone)
+   and prints `GO: ci`; after a NO-GO it stays
    under `.crew/ci/` for study and is never read again. `./go ci-contract`
    alone and `./go ci-<name>` alone have no `CI_RECORDS`: nothing is
    written or read, stdout reaches the terminal as today, and `contract`
@@ -96,17 +100,19 @@ So the cost is the second run, not the judging.
    | nogo-exit-0 | `NO-GO: nogo-exit-0 — planted` | `0` | — | rejected, `NO-GO,exit=0` |
    | wrong-name | `GO: someone-else` | `0` | — | rejected, `format` |
    | blank-after | `GO: blank-after`, an empty line | `0` | — | rejected, `lines=2` |
-   | no-rc | `GO: no-rc` | absent | two lines, exit 0 | rejected, run cold |
-   | bad-rc | `GO: bad-rc` | `zero` | two lines, exit 0 | rejected, run cold |
-   | never-run | absent | absent | two lines, exit 0 | rejected, run cold |
+   | no-rc | `GO: no-rc` | absent | two lines, exit 0 | rejected, run cold, `lines=2` |
+   | bad-rc | `GO: bad-rc` | `zero` | two lines, exit 0 | rejected, run cold, `lines=2` |
+   | never-run | absent | absent | two lines, exit 0 | rejected, run cold, `lines=2` |
    | good | `GO: good — planted` | `0` | — | accepted |
    | good-nogo | `NO-GO: good-nogo — planted` | `1` | — | accepted |
 
    One more case calls `record_check` on a planted gate that prints two
    lines and exits 1: it must print both lines and return 1, its `.out`
    hold both, its `.rc` be `1`, and the record be rejected; with
-   `CI_RECORDS` unset it prints the same and writes nothing. Black-box
-   form: with `CI_RECORDS=<dir>` holding `NAME.out` = `GO: NAME` and
+   `CI_RECORDS` unset or empty it prints the same and writes nothing. A
+   case rejected for another reason than the table's is `contract(record
+   <case> wrong-why)`, a flaw of the capture `contract(record_check:
+   <what>)`. Black-box form: with `CI_RECORDS=<dir>` holding `NAME.out` = `GO: NAME` and
    `NAME.rc` = `0` for every `ci/*.sh` but `lib.sh` and `contract.sh`,
    `contract` is GO in about a second; with `help.out` = `GO: help` and an
    empty line it prints `NO-GO: contract — gate(s) violate the output
@@ -122,11 +128,14 @@ So the cost is the second run, not the judging.
    13 s); the workbench build, about 15 %, and the PR gates in `e2e`,
    about 15 % (ADR 0060 §7).
 
-   After, filled by the session from this branch's Actions runs:
+   After, measured. Locally, same machine and day as the 360 s above:
+   `./go ci` from a clean clone 183 s, the 40 checks 181 s, `contract`
+   1 s, `ci/engine-compat.sh` the one check it ran cold. On Actions:
 
    | commit | engine-compat (docker) | stranger (podman) | stranger's `contract` |
    |---|---|---|---|
-   | TBD | TBD s (run TBD) | TBD s (run TBD) | TBD s |
+   | 8e968aa, before | 828 s (42530031181), 815 s (42533480920) | 820 s (42530031109), 732 s (42533480868) | 186 s, 142 s |
+   | this branch | not yet run | not yet run | not yet run |
 
 7. **Done when:** from a clean clone `./go ci` GO with each check run
    once, shown by `contract`'s time in the stranger job's demo log, written
