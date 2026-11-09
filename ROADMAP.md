@@ -33,6 +33,7 @@ wins when the two disagree. Decisions behind each step are in
 | M33 | The console as a workbench: the kanban gains a drawer, search, keys, a view in the link, collapsible columns and a highlight on a moved card, and still moves none; a light and dark theme; a specs screen and a request editor the spec gate checks as you type, saved through `./go request`; ADR search from the project map, schema 2, through logbook 1.2 (ADR 0059, *proposed*) |
 | M34 | The lean plane: a `sqlite` StateStore and a `spool` EventBus, files under `.crew/`, the defaults at L0 and L1; the emulators opt-in (compose profile `emulators`); the Gitea runner, its `image` job and the Gitea compatibility check gone, the release step builds every workload's merge; five plane services instead of eight; the tower's documents outlive `./go down`. Measured on Actions, 719 to 873 s, so the demo budget stays 900 s (ADR 0060, *proposed*) |
 | M35 | Gates without a container: `lights-out gates --light`, a standard-library Python package (the root `pyproject.toml`, `lights_out` is `core/`), runs the gates that need only git and Python, two by default, four with `TICKET=`, six with `TEST_ON_HOST=1`, in 0.14 s on this repository, and never prints `GO: gates`; the `--light` hook recipes verified once per CLI (ADR 0061, *proposed*). On PyPI once the owner publishes it |
+| M17, first slice | The console says whose turn it is: the kanban's columns under four bands (Spec, Build, Test and review, Release) fit one screen and stack on a phone; every card, drawer and timeline carries a now line, the tower's own table embedded and checked, "Your turn" with the one action for an open question, `needs-human` and a held canary; the timeline opens with a strip of the bands and groups its rows under them; the overview opens with what waits for you; the editor keeps the gate's line in view and cannot file a request twice (ADR 0063, *proposed*) |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
@@ -68,7 +69,8 @@ demo-loop`, the toolbelt, then the launch), is
   ticket between workers, from the six roles there are.
 - **M17 — the dashboard.** The board grows into the view of every
   ticket, attempt, worker and threshold you changed. The console (M29)
-  already shows the tickets, their timelines and the thresholds.
+  already shows the tickets, their timelines and the thresholds; its
+  first slice (ADR 0063) says on each ticket whose turn it is.
 
 ## When someone needs it
 
