@@ -75,9 +75,13 @@ owner asked why every landing takes so long. Measured that day:
 ## Consequences
 
 - A landing costs one round of the workflows, not two; a docs-only push
-  costs the `ci` and `self` jobs, a few minutes, instead of the demo. The
-  minutes are measured after the first such pushes and written here, not
-  promised.
+  costs the `ci` and `self` jobs, a few minutes, instead of the demo.
+  Measured on 2026-11-09: the commit that brought `plan` (5c51fdd) took 13
+  minutes for its six workflows on the integration branch, with nothing
+  else queued, against 22 and 26 for the two landings before it; the
+  fast-forward of `main` to it took 31 s, every job but `plan` skipped and
+  each run's summary naming the branch's run (ci run 42610705844). The
+  docs-only lane's time is the commit after it, in the handoff.
 - On `main`, a skipped run is green and says which run on which branch
   judged the commit: the proof is that run, with the same commit id.
 - A docs-only push that breaks the demo through a page the demo reads
