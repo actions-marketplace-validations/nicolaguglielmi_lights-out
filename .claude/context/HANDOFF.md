@@ -66,11 +66,20 @@ ticket's timeline down to the rollback, and the overview.
 
 - Host: `ci/console-ui.py` GO (Playwright 1.64.1, 56 s); `ci/docs-drift.sh` GO with the
   Makefile's `MAP_EXCLUDE`.
-- `./go ci` from a full clone of the branch head (`.crew/ci-clone`, the worktree cannot drive git
-  in the workbench): see the Actions section below for the run on 27fc8cb; locally GO, every check
-  of `CI_CHECKS` GO, `logbook` included.
-- The proof that counts: the six workflows on the pushed branch (ci with `console-ui`, stranger,
-  self, site, package, podman). Run ids and the demo lines are below.
+- `./go ci` from a full clone of 27fc8cb (`.crew/ci-clone`: the worktree cannot drive git in the
+  workbench): `GO: ci`, every check of `CI_CHECKS` GO, `logbook` with the new table check included.
+- The proof that counts, GitHub Actions on cefa120 (the code is 27fc8cb; cefa120 adds this file),
+  all six green: ci 42592602646 (its `console-ui` job GO, every other job green), stranger
+  42592602663, self 42592602739, site 42592602793, package 42592602725, podman 42592602629.
+
+```
+engine-compat  GO: demo, milestone M9, 733s to rollback (budget 900s, plan §2)
+stranger       GO: demo, milestone M9, 753s to rollback (./go demo: 753s, exit 0)
+console-ui     GO: console-ui
+```
+
+  The site run's `site-review` artifact holds the re-rendered stills, `console-rollback.jpg`
+  among them.
 
 ## Left out, and why
 
