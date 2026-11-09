@@ -77,6 +77,9 @@ judge stopped it and with what line.
 
 The rule lives in the reader, so the console does not interpret states, and
 a new tower state changes the reader and its golden file, not the screen.
+*Amended 2026-11-09 (ADR 0063): this holds for the verdict. The now line
+reads the state through the tower's table the page embeds, so a new state
+or step also changes `console/index.html`'s table, and `./go ci` says so.*
 
 **Filter**: the window (default 7 days, the viewer's choice; nothing is
 computed from it). **Empty**: "no ticket touched in this window". **Before
@@ -503,3 +506,42 @@ Rules for `adrs` (ADR 0059 §3):
   900 s.
 - At L0 the product role is not consulted on a new request (it has no
   recording for it), and the editor says so before saving.
+
+## The same 1.2, presented: whose turn it is (ADR 0063, 2026-11-09)
+
+No logbook field changes. The page reads each ticket's now line from the
+fields above, through the tower's table it embeds
+(`<script type="application/json" id="tower-machine">`: `next` equal to
+`core/tower.py`'s `NEXT`, `who` with one sentence for every step of its
+`PRECONDITION` and no other, and the four `bands` holding
+`core/logbook.py`'s `COLUMNS` in order; `ci/logbook.sh` proves all three).
+The line is the same on the card, in the drawer and at the head of the
+timeline. The first rule that applies wins:
+
+| When | The now line | Whose turn |
+|---|---|---|
+| the last history entry failed (`outcome.verdict` is `stranded`), and `wait.holders` names tickets | waits for those tickets to release its files, then `./go resume TICKET=<id>` | stopped |
+| the same, with no holder | "Your turn": the step that stopped, and `./go resume TICKET=<id>` as text to copy | you |
+| `state` is `questions` with an unanswered last question | "Your turn: answer the product role's (or the spec gate's) question", linking the timeline's answer box | you |
+| `state` is `needs-human` | "Your turn": the attempts used, who stopped the last one, a person decides; linking the timeline | you |
+| `state` is `held`, `outcome.judge` is `human` | done: at 100%, or rejected and rolled back, by whom | done |
+| `state` is `held`, `release.version` is `launch.record.version`, the record unanswered | "Your turn: go-for-launch", the record's `held_at`, linking the launch screen | you |
+| `state` is `held`, otherwise | held with no answer; the launch record now belongs to another version | done |
+| `state` is `rolled-back` | rolled back automatically, and `outcome.line` | done |
+| `state` is `ci-failed` | the dev-worker reworks it, attempt `attempt + 1` of `REWORK_MAX_ATTEMPTS` (the logbook's `thresholds`; left out when it cannot be read); at the cap, the rework step hands it to a person | the tower |
+| any other state in `next` | the sentence of the step `next[state]`, with the attempt for `ci` and `review` | the tower |
+| a state outside the table | the table requests no step from it | the tower |
+
+The sentences carry no number of their own; every number comes from the
+logbook. The overview's first panel, **Waiting for you**, lists exactly the
+tickets whose turn is "you". A timeline's rows keep the logbook's order; a
+heading row is drawn wherever the band of the row changes (a row's band is
+its phase's: request, product, question, answer, spec and open under Spec;
+wait, assign, attempt and rework under Build; gates, gate and review under
+Test and review; merge, canary, release and sign-off under Release; a
+phase the map does not name, the outcome among them, stays under the
+heading above it), so a rework reads Build, Test and review, Build again. The strip
+marks the bands before the ticket's state done (Spec skipped for a ticket
+opened directly, which passed no spec gate), its band now, or stopped for a
+ticket rolled back, rejected or at `needs-human`, done for one promoted to
+100%, and the rest ahead.

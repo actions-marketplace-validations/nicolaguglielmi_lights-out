@@ -2,24 +2,28 @@
 
 The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-reads-one-versioned-logbook-and-writes-only-go-for-launch.md), [ADR 0055](../docs/adr/0055-the-dev-phase-visible-from-request-to-release.md); every field, rule and route in [docs/plans/console.md](../docs/plans/console.md)). Ten screens:
 
-1. **Overview**: the tickets by state; the perimeters `perimeters/held` names and whether each still holds; the tickets waiting at `assign` and on whom (ADR 0053); the docs tickets merges filed (ADR 0054).
-2. **Kanban**: one column per tower state, a card per ticket in its state's column, ordered by priority then age, filtered and grouped by feature and priority (`- Feature:` and `- Priority:` in the ticket's header), with the empty columns shown or hidden; it takes the page's full width. See "The kanban" below.
+1. **Overview**: first, **Waiting for you**: every ticket whose turn is a person's, with the one thing to do; then the tickets by state under the four bands of the flow; the perimeters `perimeters/held` names and whether each still holds; the tickets waiting at `assign` and on whom (ADR 0053); the docs tickets merges filed (ADR 0054).
+2. **Kanban**: one column per tower state, under four bands of the flow (Spec, Build, Test and review, Release), a card per ticket in its state's column with its now line, ordered by priority then age, filtered and grouped by feature and priority (`- Feature:` and `- Priority:` in the ticket's header), with the empty columns shown or hidden; it takes the page's full width. See "The kanban" below.
 3. **This week's tickets**: each with GO/NO-GO, the judge that decided, and its line.
-4. **One ticket's timeline**, one row per phase and each from its record: the request (who requested and through what), the product role's questions and the answers (who, through what, when), the spec gate's verdict, assign with the perimeter, each worker attempt with turns, tokens and duration, each gate line, review, rework, merge, the canary stages with their `slo:` numbers, the human answer, 100% or rollback. A ticket waiting on a question shows an answer box.
+4. **One ticket's timeline**: at the top, its now line with the one action, and a strip of the four bands (done, now, or the one that stopped it); below, one row per phase, grouped under those bands, each from its record: the request (who requested and through what), the product role's questions and the answers (who, through what, when), the spec gate's verdict, assign with the perimeter, each worker attempt with turns, tokens and duration, each gate line, review, rework, merge, the canary stages with their `slo:` numbers, the human answer, 100% or rollback. A ticket waiting on a question shows an answer box.
 5. **Specs**: every ticket with its state, the confirmed criteria and who confirmed them, the last `spec` verdict with its line and time, and the open question with its answer box.
 6. **New request**: an editor for a ticket's title, context, criteria (Given, When, Then), perimeter, feature and priority. It shows the ticket's Markdown as it would be written and, 300 ms after the last keystroke, the line of the spec gate itself. See "The request editor" below.
 7. **ADRs and one ADR**: a search over the project map's ADRs (number, title, status, text, or a path an ADR cites). Each result shows its status, files, tickets and ADRs, each a link. A ticket's drawer lists the ADRs that govern its perimeter. The search needs a project map: `./go map` builds it at `MAP_FILE` (default `.crew/map.sqlite`). With none, the screen says so and names `./go map`.
 8. **Incidents and post mortems**, with their fix tickets and those tickets' states.
-9. **Go-for-launch**: the release record, what the plane runs now, the brief, and the button.
+9. **Go-for-launch**: the ticket the release carries, the release record, what the plane runs now, the brief, and the button.
 10. **Thresholds**: every number that can stop a change, where it is set, and its provenance ("undeclared" when it has none).
 
 A switch in the header sets the theme: `system` (the default, it follows `prefers-color-scheme`), `light` or `dark`. The choice is kept in the browser's `localStorage` under `lights-out.theme`. A browser that refuses storage gets the system theme, and the switch works until the page closes. The theme changes colours only.
 
 It reads **one document, the logbook** (`lights-out/logbook/1.2`, [schema](../core/logbook/1.2.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. It has **three writes**: go-for-launch, through the same `core/promote.sh` and the same checks as `./go promote`; the answer to a ticket's open question, through `make answer`, the recipe `./go answer` runs, accepted only for the question the logbook shows open; and a new request, through `make request`, the recipe `./go request` runs. Each records who pressed and `via: console`. One more route, `/v1/spec-check`, writes nothing. `ci/logbook.sh` checks all of it. `GET /v1/logbook.json` carries an `ETag` and answers `304` to a matching `If-None-Match`, so the 2 s poll of an unchanged logbook costs no body.
 
+## Whose turn it is
+
+Every card, the drawer and the head of a ticket's timeline carry one line, its **now** ([ADR 0063](../docs/adr/0063-the-console-says-whose-turn-it-is.md)): who has the ball and what it waits for. When it is a person's turn the line says "Your turn" and links the one thing to do: answer the open question (the answer box on the timeline), go-for-launch when the ticket's canary is held and the release record is unanswered (the launch screen), or decide after the last rework attempt (`needs-human`). A ticket a failed step stopped names `./go resume`. Every other state names who runs the step the tower requests next, from the tower's own table, which the page embeds (`<script id="tower-machine">`, as the board does) and `./go ci` proves equal to `core/tower.py`. The line is a reading of the record, never a verdict, and it moves no card.
+
 ## The kanban
 
-A card's column is the logbook's `kanban`. Nothing on the page moves a card: there is no drag-and-drop, and a card changes column only when the tower moves its ticket. What the page adds is a view:
+A card's column is the logbook's `kanban`. Nothing on the page moves a card: there is no drag-and-drop, and a card changes column only when the tower moves its ticket. The columns sit under four bands of the flow, in the logbook's order: **Spec** (`requested`, `questions`, `spec-ready`), **Build** (`opened`, `pr-opened`), **Test and review** (`review`, `ci-passed`, `ci-failed`, `needs-human`), **Release** (`merged`, `main-green`, `held`, `rolled-back`); any other state goes under **Other**. A column with no card in the view is drawn narrow, its state and count only, and the columns with cards share the width, so the whole board fits a 1440 px screen. Below 720 px the columns stack. What the page adds is a view:
 
 - **Drawer**: click a card, or press Enter on it. It shows the state, the outcome verdict and line, the last timeline row, the perimeter, the wait (ADR 0053), the ADRs that govern the perimeter and a link to the whole timeline.
 - **Search**: by ticket id, title, or a path in a perimeter. A path matches a card when one of its globs matches it or contains it.
@@ -31,6 +35,8 @@ A card's column is the logbook's `kanban`. Nothing on the page moves a card: the
 A refresh redraws only when the logbook changed, and keeps the focus, the drawer and the search box.
 
 ## The request editor
+
+The spec gate's line and the Request button sit in a bar held at the bottom of the window, so the verdict is in view while you type. After a save that wrote the ticket, the form is emptied, Request waits for the next edit, and the top of the editor links the new ticket's timeline: a second press cannot file the same text twice.
 
 `POST /v1/spec-check` takes the fields, has `core/spec.py draft` write the draft into a temporary directory, runs `gates/spec.sh` on it and answers `{ticket, markdown, line}`. The line is the gate's own: `GO: spec` or `NO-GO: spec — <why>`. Nothing is written in the repository or the tower. It is refused with `CONSOLE_AUTH=public`.
 

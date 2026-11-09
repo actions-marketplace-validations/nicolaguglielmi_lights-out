@@ -27,7 +27,24 @@ fixtures/logbook/golden-1.2.json, and drives it with Playwright:
   e. the board's theme switch changes its theme and nothing it says;
   f. the ADR search, over a logbook read from this repository's own map,
      finds an ADR by its number, by a word of its title and by a file it
-     cites.
+     cites;
+  g. the board fits (docs/adr/0063 §1): at 1440x900 the page and the board do
+     not scroll sideways, the empty columns are narrow and never collapsed,
+     every column sits in its band under a band name in the logbook's order;
+     at 390x844 the columns stack, the page does not scroll sideways and the
+     nav is one line;
+  h. the now line (§2): one on every card, in the drawer and on the timeline,
+     the same text, its turn and words by the DOM contract's rules; "Your turn"
+     exactly on 0009, 0007, 0004 and 0005 over the golden, plus the held
+     canary of a logbook derived from it; the launch screen names that ticket;
+  i. the overview's first panel, #your-turn, lists exactly those tickets;
+  j. the timeline (§3): its rows are the logbook's, in order, its four stages
+     are marked, a ticket opened directly skips Spec, and the back link opens
+     the kanban with that card's drawer;
+  k. the editor (§5): the gate's line and the Request button are in the
+     viewport while a criterion has the focus, at both sizes; a save answered
+     GO (intercepted: the server side is ci/logbook.sh's runtime check) clears
+     the draft, disables Request and links the new ticket.
 
 Every comparison is shown first to fail on a wrong input (self_checks, and
 the probes in a_board and a_posts): a gate that cannot fail is not a gate.
@@ -989,6 +1006,429 @@ def f_adrs(browser):
             ctx.close()
 
 
+# --- ADR 0063: whose turn it is ---------------------------------------------------------
+# Written from docs/adr/0063 and its DOM contract, not from console/index.html.
+
+def _load_tower():
+    """core/tower.py, for its NEXT table, as ci/board.sh imports it (loaded by path: core/ stays off sys.path)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lights_out_tower", ROOT / "core" / "tower.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+tower = _load_tower()
+
+# The ADR's bands (§1): a state no band names goes under "other".
+BAND_OF = {"requested": "spec", "questions": "spec", "spec-ready": "spec", "opened": "build", "pr-opened": "build",
+           "review": "test", "ci-passed": "test", "ci-failed": "test", "needs-human": "test",
+           "merged": "release", "main-green": "release", "held": "release", "rolled-back": "release"}
+STAGES = ["spec", "build", "test", "release"]
+# The ADR's numbers: a narrow column is 40 px, a card column at least 140 (§1,
+# decisions); a few px of slack for rounding; the stack's "a few px" is 4.
+NARROW_PX, WIDE_MIN_PX, SLACK_PX, STACK_PX = 40, 140, 0.5, 4
+# §7: "Your turn" appears exactly on these over the golden.
+YOUR_TURN_GOLDEN = ["0009", "0007", "0004", "0005"]
+DESKTOP, PHONE = {"width": 1440, "height": 900}, {"width": 390, "height": 844}
+
+
+def derive(golden, tmp):
+    """Two logbooks derived from the golden, written to TMP (as d_editor derives an L1 one):
+    held, where ticket 0002 is the held canary the launch record names, and holders, where
+    ticket 0005 waits for ticket 0003's files."""
+    held = json.loads(json.dumps(golden))
+    two = next(t for t in held["tickets"] if t["id"] == "0002")
+    two["release"]["version"] = held["launch"]["record"]["version"]
+    two["outcome"] = {"verdict": "GO", "judge": "verify", "line": "GO: launchpad — held at 25%"}
+    holders = json.loads(json.dumps(golden))
+    next(t for t in holders["tickets"] if t["id"] == "0005")["wait"]["holders"] = ["0003"]
+    paths = {}
+    for name, book in (("held", held), ("holders", holders)):
+        paths[name] = tmp / f"{name}.json"
+        paths[name].write_text(json.dumps(book), encoding="utf-8")
+    return {"held": held, "holders": holders}, paths
+
+
+def expected_now(t, launch, max_attempts, who=None):
+    """What the now line of ticket T must be, by the first rule that matches (the DOM contract):
+    {turn, contains, starts, href}. WHO is the page's own sentence per step, when it is known."""
+    out, wait, state, ident = t.get("outcome") or {}, t.get("wait"), t["state"], t["id"]
+    if out.get("verdict") == "stranded" or wait:
+        if (wait or {}).get("holders"):
+            return {"turn": "stopped", "contains": [], "starts": None, "href": None}
+        return {"turn": "you", "contains": [f"./go resume TICKET={ident}"], "starts": None, "href": None}
+    questions = t.get("questions") or []
+    if state == "questions" and questions and not questions[-1].get("answer"):
+        who_asked = "spec gate's" if questions[-1].get("from") == "spec" else "product role's"
+        return {"turn": "you", "contains": [who_asked], "starts": None, "href": f"#ticket/{ident}"}
+    if state == "needs-human":
+        return {"turn": "you", "contains": [], "starts": None, "href": f"#ticket/{ident}"}
+    if state == "held" and out.get("judge") == "human":
+        return {"turn": "done", "contains": [], "starts": None, "href": None}
+    record = (launch or {}).get("record") or {}
+    if state == "held" and (t.get("release") or {}).get("version") == record.get("version") \
+            and "promoted" not in record and "rejected" not in record:
+        return {"turn": "you", "contains": ["go-for-launch"], "starts": None, "href": "#launch"}
+    if state == "rolled-back":
+        return {"turn": "done", "contains": [], "starts": None, "href": None}
+    if state == "ci-failed":
+        attempt = t.get("attempt") or 1
+        return {"turn": "tower", "contains": ["dev-worker", f"attempt {attempt + 1} of {max_attempts}"], "starts": None, "href": None}
+    if state in tower.NEXT and who:
+        return {"turn": "tower", "contains": [], "starts": who[tower.NEXT[state]], "href": None}
+    return {"turn": "tower", "contains": [], "starts": None, "href": None}
+
+
+def max_attempts_of(book):
+    return int(next(x["value"] for x in book["thresholds"] if x["key"] == "REWORK_MAX_ATTEMPTS"))
+
+
+def turns_of(book):
+    return {t["id"]: expected_now(t, book["launch"], max_attempts_of(book)) for t in book["tickets"]}
+
+
+def now_problems(got, exp):
+    """Why a now line {turn, text, hrefs} is not EXP, or None. HREFS is checked when the caller passes it."""
+    text = got["text"]
+    if got["turn"] != exp["turn"]:
+        return f"data-turn is {got['turn']!r}, want {exp['turn']!r}: {text[:120]!r}"
+    if exp["turn"] == "you" and not text.startswith("Your turn"):
+        return f"a line for a person's turn does not start with 'Your turn': {text[:120]!r}"
+    if exp["turn"] != "you" and "Your turn" in text:
+        return f"a line that is not a person's turn says 'Your turn': {text[:120]!r}"
+    for needle in exp["contains"]:
+        if needle not in text:
+            return f"the line does not say {needle!r}: {text[:160]!r}"
+    if exp["starts"] and not text.startswith(exp["starts"]):
+        return f"the line does not start with {exp['starts']!r}: {text[:160]!r}"
+    if exp["href"] and got.get("hrefs") is not None and got["hrefs"] != [exp["href"]]:
+        return f"the line's action links {got['hrefs']}, want [{exp['href']!r}]"
+    return None
+
+
+def fit_problems(info, order):
+    """What is wrong with the desktop board INFO (the geometry the page measured)."""
+    bad = []
+    if info["doc"]["sw"] > info["doc"]["cw"]:
+        bad.append(f"the page scrolls sideways: scrollWidth {info['doc']['sw']} > clientWidth {info['doc']['cw']}")
+    if info["board"] is None:
+        bad.append("there is no .board")
+    elif info["board"]["sw"] > info["board"]["cw"]:
+        bad.append(f"the board scrolls sideways: scrollWidth {info['board']['sw']} > clientWidth {info['board']['cw']}")
+    states = [c["state"] for c in info["cols"]]
+    if states != order:
+        bad.append(f"the columns in DOM order are {states}, the logbook's kanban order is {order}")
+    if not any(c["empty"] for c in info["cols"]):
+        bad.append("no column is .empty: the golden has columns with no card")
+    for c in info["cols"]:
+        if c["band"] is None:
+            bad.append(f"the column {c['state']} sits in no .band[data-band]")
+        elif c["band"] != BAND_OF.get(c["state"], "other"):
+            bad.append(f"the column {c['state']} sits in band {c['band']!r}, the ADR's is {BAND_OF.get(c['state'], 'other')!r}")
+        if not c["name"]:
+            bad.append(f"the column {c['state']}'s band has no .band-name")
+        if (c["cards"] == 0) != c["empty"]:
+            bad.append(f"the column {c['state']} holds {c['cards']} cards and is {'' if c['empty'] else 'not '}.empty")
+        if c["empty"] and c["collapsed"]:
+            bad.append(f"the empty column {c['state']} is .collapsed: emptiness never collapses")
+        if c["empty"] and c["w"] > NARROW_PX + SLACK_PX:
+            bad.append(f"the empty column {c['state']} is {c['w']:.1f} px wide, at most {NARROW_PX}")
+        if not c["empty"] and c["w"] < WIDE_MIN_PX - SLACK_PX:
+            bad.append(f"the column {c['state']} holds cards and is {c['w']:.1f} px wide, at least {WIDE_MIN_PX}")
+    return bad
+
+
+def stack_problems(info):
+    """What is wrong with the phone board INFO: sideways page scroll, columns side by side, a nav of several lines."""
+    bad = []
+    if info["doc"]["sw"] > info["doc"]["cw"]:
+        bad.append(f"the page scrolls sideways: scrollWidth {info['doc']['sw']} > clientWidth {info['doc']['cw']}")
+    lefts = info["lefts"]
+    if not lefts or max(lefts) - min(lefts) > STACK_PX:
+        bad.append(f"the columns do not stack: their left edges are {sorted(set(round(x) for x in lefts))}")
+    tops = info["nav_tops"]
+    if len(tops) < 5:
+        bad.append(f"nav#nav holds {len(tops)} links")
+    elif max(tops) - min(tops) > 2:
+        bad.append(f"nav#nav is not one line: its links' tops are {sorted(set(round(x) for x in tops))}")
+    return bad
+
+
+def inside(rect, vw, vh):
+    """Whether a rect that was measured (top, left, bottom, right, h) is inside a VW x VH viewport and has a size."""
+    return bool(rect) and rect["h"] > 0 and rect["top"] >= 0 and rect["left"] >= 0 and rect["bottom"] <= vh and rect["right"] <= vw
+
+
+FIT_JS = """() => {
+  const board = document.querySelector('.board');
+  const de = document.documentElement;
+  return {doc: {sw: de.scrollWidth, cw: de.clientWidth},
+    board: board ? {sw: board.scrollWidth, cw: board.clientWidth} : null,
+    lefts: [...document.querySelectorAll('.col')].map((c) => c.getBoundingClientRect().left),
+    nav_tops: [...document.querySelectorAll('nav#nav a')].map((a) => a.getBoundingClientRect().top),
+    cols: [...document.querySelectorAll('.col[data-state]')].map((c) => {
+      const band = c.closest('.band[data-band]');
+      const name = band ? band.querySelector('.band-name') : null;
+      return {state: c.dataset.state, band: band ? band.dataset.band : null, name: name ? name.textContent.trim() : '',
+        empty: c.classList.contains('empty'), collapsed: c.classList.contains('collapsed'),
+        cards: c.querySelectorAll('.card').length, w: c.getBoundingClientRect().width};
+    })};
+}"""
+NOW_JS = """(sel) => [...document.querySelectorAll(sel)].map((n) => ({turn: n.dataset.turn || null,
+  text: n.textContent.replace(/\\s+/g, ' ').trim(), hrefs: [...n.querySelectorAll('a.act[href]')].map((a) => a.getAttribute('href'))}))"""
+CARDS_JS = """() => [...document.querySelectorAll('.card')].map((c) => ({id: c.dataset.id, nows: c.querySelectorAll('.now').length}))"""
+TIMELINE_JS = """() => ({
+  phases: [...document.querySelectorAll('tr[data-phase]')].map((r) => r.dataset.phase),
+  band_rows: [...document.querySelectorAll('tr.band-row[data-band]')].map((r) => r.dataset.band),
+  stages: [...document.querySelectorAll('ol#stages li')].map((l) => ({band: l.dataset.band, mark: l.dataset.mark, current: l.getAttribute('aria-current')})),
+  lists: document.querySelectorAll('ol#stages').length,
+  back: (document.querySelector('a#back-to-kanban') || {getAttribute: () => null}).getAttribute('href')})"""
+
+
+def one_now(tab, selector, what):
+    """The one now line SELECTOR finds, or a NO-GO that says how many it found."""
+    found = tab.page.evaluate(NOW_JS, selector)
+    need(len(found) == 1, f"{what}: {len(found)} .now lines under {selector}, want exactly one")
+    return found[0]
+
+
+def wait_for(tab, selector, what):
+    tab.wait("s => !!document.querySelector(s)", selector, f"{what}: {selector} never appeared")
+
+
+def draw_kanban(tab, what):
+    tab.page.goto("about:blank")
+    tab.load("#kanban")
+    wait_for(tab, ".col[data-state]", what)
+    wait_for(tab, ".card[data-id]", what)
+
+
+# --- g. the board fits ---------------------------------------------------------------------
+
+def g_fit(browser, bases, golden):
+    order = [c["state"] for c in golden["kanban"]]
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "g, 1440x900")
+    tab.page.wait_for_timeout(300)
+    info = tab.page.evaluate(FIT_JS)
+    bad = fit_problems(info, order)
+    need(not bad, f"g, 1440x900: {bad[0] if bad else ''}", *bad)
+    tab.audit("g, 1440x900")
+    ctx.close()
+    ctx = browser.new_context(viewport=PHONE)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "g, 390x844")
+    tab.page.wait_for_timeout(300)
+    info = tab.page.evaluate(FIT_JS)
+    bad = stack_problems(info)
+    need(not bad, f"g, 390x844: {bad[0] if bad else ''}", *bad)
+    tab.audit("g, 390x844")
+    ctx.close()
+
+
+# --- h. the now line -------------------------------------------------------------------------
+
+def check_now_of(tab, base, name, book, ids):
+    """Every card of BOOK holds one now line that is the rule's; for each of IDS the drawer's and the
+    timeline's lines are one and the same text. The action's link is the card's and the drawer's: the
+    timeline's head may point at its own screen another way."""
+    turns = turns_of(book)
+    draw_kanban(tab, f"h ({name})")
+    cards = tab.page.evaluate(CARDS_JS)
+    need(sorted(c["id"] for c in cards) == sorted(t["id"] for t in book["tickets"]),
+         f"h ({name}): the cards are {sorted(c['id'] for c in cards)}, the tickets are {sorted(t['id'] for t in book['tickets'])}")
+    for c in cards:
+        need(c["nows"] == 1, f"h ({name}): card {c['id']} holds {c['nows']} .now lines, want exactly one")
+    on_card = {}
+    for ident, exp in turns.items():
+        got = one_now(tab, f".card[data-id='{ident}'] .now", f"h ({name}), card {ident}")
+        problem = now_problems(got, exp)
+        need(problem is None, f"h ({name}), card {ident}: {problem}")
+        on_card[ident] = got["text"]
+    for ident in ids:
+        exp = turns[ident]
+        tab.page.goto("about:blank")
+        tab.load(f"#kanban?card={ident}")
+        tab.wait("id => { const d = document.querySelector('aside#drawer'); return !!d && d.dataset.id === id; }", ident,
+                 f"h ({name}): the drawer of {ident} never showed")
+        got = one_now(tab, "aside#drawer .now", f"h ({name}), drawer {ident}")
+        problem = now_problems(got, exp)
+        need(problem is None, f"h ({name}), drawer {ident}: {problem}")
+        need(got["text"] == on_card[ident], f"h ({name}), {ident}: the drawer says {got['text'][:100]!r}, the card says {on_card[ident][:100]!r}")
+        tab.page.goto("about:blank")
+        tab.load(f"#ticket/{ident}")
+        wait_for(tab, "#ticket-now", f"h ({name}), timeline {ident}")
+        got = one_now(tab, "#ticket-now .now", f"h ({name}), timeline {ident}")
+        problem = now_problems({**got, "hrefs": None}, exp)
+        need(problem is None, f"h ({name}), timeline {ident}: {problem}")
+        need(got["text"] == on_card[ident], f"h ({name}), {ident}: the timeline says {got['text'][:100]!r}, the card says {on_card[ident][:100]!r}")
+    tab.audit(f"h ({name})")
+    return turns
+
+
+def h_now(browser, bases, golden, books):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    turns = check_now_of(tab, bases["golden"], "golden", golden, [t["id"] for t in golden["tickets"]])
+    you = sorted(i for i, e in turns.items() if e["turn"] == "you")
+    need(you == sorted(YOUR_TURN_GOLDEN), f"h: the golden's rules give {you} as a person's turn, the ADR names {sorted(YOUR_TURN_GOLDEN)}")
+    # The launch screen of the golden: no ticket carries the record's version, and it names none.
+    tab.page.goto("about:blank")
+    tab.load("#launch")
+    wait_for(tab, "#launch-ticket", "h, the golden's launch screen")
+    need(tab.page.locator("#launch-ticket a[href^='#ticket/']").count() == 0,
+         "h: the golden's launch screen links a ticket, but no ticket carries the record's version")
+    ctx.close()
+    # The held canary the launch record names: a person's turn, for go-for-launch, and the launch screen names it.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["held"])
+    turns = check_now_of(tab, bases["held"], "held and pressable", books["held"], ["0002"])
+    need(turns["0002"]["turn"] == "you" and turns["0002"]["href"] == "#launch", f"h: the held canary's rule gave {turns['0002']}")
+    draw_kanban(tab, "h (held)")
+    need(tab.page.locator(".card[data-id='0002'] .now a.act[href='#launch']").count() == 1, "h (held): card 0002 has no .now a.act[href='#launch']")
+    tab.page.goto("about:blank")
+    tab.load("#launch")
+    wait_for(tab, "#launch-ticket", "h (held), the launch screen")
+    need(tab.page.locator("#launch-ticket a[href='#ticket/0002']").count() == 1,
+         "h (held): #launch-ticket does not link #ticket/0002, the ticket whose release is the record's")
+    tab.audit("h (held), the launch screen")
+    ctx.close()
+    # A ticket that waits for holders is stopped, and nobody's turn.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["holders"])
+    turns = check_now_of(tab, bases["holders"], "waiting for holders", books["holders"], ["0005"])
+    need(turns["0005"]["turn"] == "stopped", f"h: the rule for a ticket with holders gave {turns['0005']}")
+    ctx.close()
+
+
+# --- i. the overview opens with what waits for a person --------------------------------------
+
+def i_overview(browser, bases, golden, books):
+    for name, key, book in (("golden", "golden", golden), ("held and pressable", "held", books["held"]),
+                            ("waiting for holders", "holders", books["holders"])):
+        base = bases[key]
+        want = sorted(i for i, e in turns_of(book).items() if e["turn"] == "you")
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, base)
+        tab.load("#overview")
+        wait_for(tab, "#your-turn", f"i ({name})")
+        first = tab.page.evaluate("() => document.querySelector('main .panel') === document.getElementById('your-turn')")
+        need(first, f"i ({name}): #your-turn is not the first .panel in main")
+        tab.page.wait_for_timeout(300)
+        got = tab.page.evaluate("() => [...document.querySelectorAll('#your-turn li[data-id]')].map((l) => l.dataset.id)")
+        need(sorted(got) == want, f"i ({name}): #your-turn lists {sorted(got)}, the tickets whose turn is a person's are {want}")
+        tab.audit(f"i ({name})")
+        ctx.close()
+
+
+# --- j. the timeline ----------------------------------------------------------------------------
+
+def j_timeline(browser, bases, golden):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    turns = turns_of(golden)
+    for t in golden["tickets"]:
+        ident = t["id"]
+        tab.page.goto("about:blank")
+        tab.load(f"#ticket/{ident}")
+        wait_for(tab, "tr[data-phase]", f"j, {ident}")
+        info = tab.page.evaluate(TIMELINE_JS)
+        want = [row["phase"] for row in t["timeline"]]
+        need(info["phases"] == want, f"j, {ident}: the rows' phases are {info['phases']}, the logbook's timeline is {want}")
+        need(info["band_rows"] and all(b in STAGES + ["other"] for b in info["band_rows"]),
+             f"j, {ident}: the heading rows tr.band-row[data-band] are {info['band_rows']}")
+        stages = info["stages"]
+        need(info["lists"] == 1 and [s["band"] for s in stages] == STAGES,
+             f"j, {ident}: ol#stages has the bands {[s['band'] for s in stages]} in {info['lists']} list(s), want {STAGES}")
+        marks = [s["mark"] for s in stages]
+        need(all(m in ("done", "now", "stopped", "ahead", "skipped") for m in marks), f"j, {ident}: the stage marks are {marks}")
+        current = [s["band"] for s in stages if s["current"] == "step"]
+        active = [s["band"] for s in stages if s["mark"] in ("now", "stopped")]
+        need(current == active and len(active) <= 1,
+             f"j, {ident}: aria-current='step' is on {current}, the stages marked now or stopped are {active}: exactly the one, or neither")
+        # A state no band names sits under Other (ADR 0063 §1): the strip has no
+        # band to mark for it, so only a ticket in one of the four bands must have one.
+        if turns[ident]["turn"] != "done" and t["state"] in BAND_OF:
+            need(len(active) == 1, f"j, {ident}: the turn is {turns[ident]['turn']} and no stage is marked now or stopped: {marks}")
+        if t["state"] not in BAND_OF:
+            need(not active, f"j, {ident}: its state {t['state']} is in no band, but the strip marks {active}")
+        opened_directly = bool(t["history"]) and t["history"][0]["step"] == "open"
+        need((stages[0]["mark"] == "skipped") == opened_directly,
+             f"j, {ident}: {'opened directly' if opened_directly else 'requested'}, and spec is marked {stages[0]['mark']!r}")
+        if ident == "0001":
+            need(stages[3]["mark"] == "stopped", f"j, 0001: rolled back, and release is marked {stages[3]['mark']!r}, want 'stopped'")
+        need(info["back"] == f"#kanban?card={ident}", f"j, {ident}: a#back-to-kanban links {info['back']!r}, want '#kanban?card={ident}'")
+        tab.page.click("a#back-to-kanban")
+        tab.wait("id => { const d = document.querySelector('aside#drawer'); return !!d && d.dataset.id === id; }", ident,
+                 f"j, {ident}: the back link did not open the drawer of {ident}")
+        keys, view = read_hash(tab.page.evaluate("location.hash"))
+        need(view is not None and view.get("card") == ident, f"j, {ident}: after the back link the hash is {tab.page.evaluate('location.hash')!r}")
+        tab.audit(f"j, {ident}")
+    ctx.close()
+
+
+# --- k. the editor keeps its verdict in view and files once ------------------------------------
+
+RECTS_JS = """() => {
+  const r = (s) => { const e = document.querySelector(s); if (!e) return null;
+    const b = e.getBoundingClientRect(); return {top: b.top, left: b.left, bottom: b.bottom, right: b.right, h: b.height}; };
+  return {vw: document.documentElement.clientWidth, vh: innerHeight, line: r('#spec-line'), save: r('button#save'), bar: r('#savebar')};
+}"""
+SPEC_LINE_JS = "() => /^(GO|NO-GO): spec/.test((document.querySelector('#spec-line') || {textContent: ''}).textContent)"
+
+
+def k_editor(browser, bases):
+    for name, size in (("1440x900", DESKTOP), ("390x844", PHONE)):
+        ctx = browser.new_context(viewport=size)
+        tab = Tab(ctx, bases["golden"])
+        tab.load("#request")
+        wait_for(tab, "#spec-line", f"k ({name})")
+        fill_editor(tab.page, draft())
+        tab.wait(SPEC_LINE_JS, None, f"k ({name}): #spec-line never showed the gate's line")
+        tab.page.evaluate("window.scrollTo(0, 0)")
+        tab.page.locator(".criterion").first.locator("input[name=then]").focus()
+        tab.page.wait_for_timeout(300)
+        rects = tab.page.evaluate(RECTS_JS)
+        for what in ("line", "save"):
+            need(inside(rects[what], rects["vw"], rects["vh"]),
+                 f"k ({name}): {'#spec-line' if what == 'line' else 'button#save'} is at {rects[what]} with the focus in a criterion's Then, "
+                 f"outside the {rects['vw']}x{rects['vh']} viewport")
+        for part in ("#spec-chip", "#spec-line", "button#save"):
+            need(tab.page.locator(f"#savebar {part}").count() == 1, f"k ({name}): #savebar does not hold {part}")
+        tab.audit(f"k ({name})", allow=("/v1/spec-check",))
+        ctx.close()
+    # A save. The server side (what /v1/request writes, who it refuses) is ci/logbook.sh's runtime
+    # check; this proves the page: a 200 {ticket, line: "GO: request", exit: 0} is intercepted here
+    # with page.route, and the page must clear the draft, disable Request and link the new ticket.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    sent = []
+
+    def answer(route):
+        sent.append(route.request.post_data or "")
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({"ticket": "0099", "line": "GO: request", "exit": 0}))
+
+    tab.page.route("**/v1/request", answer)
+    tab.load("#request")
+    fill_editor(tab.page, draft())
+    tab.wait(SPEC_LINE_JS, None, "k, the save: #spec-line never showed the gate's line")
+    need(tab.page.locator("#saved a#new-ticket").count() == 0, "k, the save: #saved links a new ticket before anything was saved")
+    need(tab.page.input_value("input[name=title]") == GOOD["title"], "k, the save: the title is not in the form before the save")
+    need(tab.page.is_disabled("button#save"), "k, the save: button#save is enabled in snapshot mode")
+    tab.page.evaluate("() => { const b = document.querySelector('button#save'); b.disabled = false; b.click(); }")
+    tab.wait("() => !!document.querySelector('#saved a#new-ticket')", None, "k, the save: #saved never linked the new ticket")
+    need(tab.page.get_attribute("#saved a#new-ticket", "href") == "#ticket/0099",
+         f"k, the save: a#new-ticket links {tab.page.get_attribute('#saved a#new-ticket', 'href')!r}, want '#ticket/0099'")
+    need(len(sent) == 1 and GOOD["title"] in sent[0], f"k, the save: the page sent {len(sent)} request(s) to /v1/request, the first {sent[0][:120] if sent else ''!r}")
+    need(tab.page.input_value("input[name=title]") == "", f"k, the save: the title is {tab.page.input_value('input[name=title]')!r} after a GO, want it cleared")
+    need(tab.page.is_disabled("button#save"), "k, the save: button#save is enabled after a GO, want it disabled until the next edit")
+    tab.audit("k, the save", allow=("/v1/spec-check", "/v1/request"))
+    ctx.close()
+
+
 # --- the checks that the checks themselves can fail ------------------------------------
 
 def self_checks():
@@ -1011,6 +1451,57 @@ def self_checks():
     need(signature({"lanes": [""], "cols": [], "drawer": "1"}) != signature({"lanes": [""], "cols": [], "drawer": None}), "the signature ignores the drawer")
     need(text_diff("a\nb", "a\nc") and text_diff("a", "a") is None, "the text comparison is wrong")
     need(gate_line("# 1\n") .startswith("NO-GO: spec"), "gates/spec.sh does not refuse an empty spec")
+    # ADR 0063: the rules and the comparisons of g-k, each shown to fail.
+    book = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    turns = turns_of(book)
+    need(sorted(i for i, e in turns.items() if e["turn"] == "you") == sorted(YOUR_TURN_GOLDEN), f"the now rules give {turns} over the golden")
+    need(turns["0003"]["contains"] == ["dev-worker", "attempt 2 of 4"] and turns["0008"]["contains"] == ["dev-worker", "attempt 2 of 4"],
+         f"the rework line's words are {turns['0003']['contains']}")
+    need(turns["0009"]["contains"] == ["spec gate's"] and turns["0009"]["href"] == "#ticket/0009", f"the question's rule is {turns['0009']}")
+    need(turns["0001"]["turn"] == "done" and turns["0002"]["turn"] == "done", "a rolled-back and a human-judged held ticket are not done")
+    you = {"turn": "you", "text": "Your turn: the spec gate's question", "hrefs": ["#ticket/0009"]}
+    need(now_problems(you, turns["0009"]) is None, "a good line for a question is refused")
+    need(now_problems({**you, "turn": "tower"}, turns["0009"]), "a line with the wrong data-turn is accepted")
+    need(now_problems({**you, "text": "The spec gate's question"}, turns["0009"]), "a you line without 'Your turn' is accepted")
+    need(now_problems({**you, "turn": "tower", "text": "Your turn to wait"}, turns["0003"]), "a tower line that says 'Your turn' is accepted")
+    need(now_problems({**you, "text": "Your turn: the product role's question"}, turns["0009"]), "a question line that names the wrong asker is accepted")
+    need(now_problems({**you, "hrefs": []}, turns["0009"]), "a line without its action is accepted")
+    held = json.loads(json.dumps(book))
+    two = next(t for t in held["tickets"] if t["id"] == "0002")
+    two["release"]["version"] = held["launch"]["record"]["version"]
+    two["outcome"] = {"verdict": "GO", "judge": "verify", "line": "GO: launchpad — held at 25%"}
+    need(expected_now(two, held["launch"], 4)["turn"] == "you" and expected_now(two, held["launch"], 4)["href"] == "#launch",
+         "a held ticket of the record's version is not a person's turn")
+    held["launch"]["record"]["promoted"] = True
+    need(expected_now(two, held["launch"], 4)["turn"] != "you", "a held ticket whose record was answered is still a person's turn")
+    five = next(t for t in book["tickets"] if t["id"] == "0005")
+    need(expected_now({**five, "wait": {**five["wait"], "holders": ["0003"]}}, book["launch"], 4)["turn"] == "stopped", "a ticket with holders is not stopped")
+    order = [c["state"] for c in book["kanban"]]
+    cols = [{"state": s, "band": BAND_OF.get(s, "other"), "name": "x", "empty": s != "held", "collapsed": False,
+             "cards": 0 if s != "held" else 1, "w": 40 if s != "held" else 300} for s in order]
+    fit = {"doc": {"sw": 1400, "cw": 1400}, "board": {"sw": 1300, "cw": 1300}, "cols": cols}
+    need(fit_problems(fit, order) == [], f"a board that fits is refused: {fit_problems(fit, order)}")
+    for what, bad in (("a page that scrolls sideways", {**fit, "doc": {"sw": 1500, "cw": 1400}}),
+                      ("a board that scrolls sideways", {**fit, "board": {"sw": 1500, "cw": 1300}}),
+                      ("columns out of the logbook's order", {**fit, "cols": cols[::-1]}),
+                      ("an empty column that is wide", {**fit, "cols": [{**cols[0], "w": 41}] + cols[1:]}),
+                      ("an empty column that is collapsed", {**fit, "cols": [{**cols[0], "collapsed": True}] + cols[1:]}),
+                      ("a column with cards that is not marked", {**fit, "cols": [{**cols[0], "empty": False}] + cols[1:]}),
+                      ("a column outside every band", {**fit, "cols": [{**cols[0], "band": None}] + cols[1:]}),
+                      ("a column in the wrong band", {**fit, "cols": [{**cols[0], "band": "release"}] + cols[1:]}),
+                      ("a band with no name", {**fit, "cols": [{**cols[0], "name": ""}] + cols[1:]}),
+                      ("a column with cards that is narrow", {**fit, "cols": [{**c, "w": 100} if c["state"] == "held" else c for c in cols]})):
+        need(fit_problems(bad, order), f"fit: {what} is accepted")
+    phone = {"doc": {"sw": 390, "cw": 390}, "lefts": [10, 10, 11], "nav_tops": [5] * 6}
+    need(stack_problems(phone) == [], f"a phone board that stacks is refused: {stack_problems(phone)}")
+    for what, bad in (("a page that scrolls sideways", {**phone, "doc": {"sw": 900, "cw": 390}}),
+                      ("columns side by side", {**phone, "lefts": [10, 200, 400]}),
+                      ("a nav of two lines", {**phone, "nav_tops": [5, 5, 5, 40, 40, 40]}),
+                      ("a nav of no links", {**phone, "nav_tops": []})):
+        need(stack_problems(bad), f"stack: {what} is accepted")
+    box = {"top": 700, "left": 10, "bottom": 740, "right": 300, "h": 40}
+    need(inside(box, 1440, 900) and not inside({**box, "top": 880, "bottom": 920}, 1440, 900) and not inside({**box, "h": 0}, 1440, 900)
+         and not inside(None, 1440, 900) and not inside({**box, "right": 500}, 390, 844), "the viewport test does not tell inside from outside")
 
 
 def main():
@@ -1035,6 +1526,15 @@ def main():
                     d_editor(browser, c.base, golden)
                 e_board(browser)
                 f_adrs(browser)
+                with tempfile.TemporaryDirectory() as tmp:
+                    books, paths = derive(golden, pathlib.Path(tmp))
+                    with Console(GOLDEN) as plain, Console(paths["held"]) as held, Console(paths["holders"]) as waiting:
+                        bases = {"golden": plain.base, "held": held.base, "holders": waiting.base}
+                        g_fit(browser, bases, golden)
+                        h_now(browser, bases, golden, books)
+                        i_overview(browser, bases, golden, books)
+                        j_timeline(browser, bases, golden)
+                        k_editor(browser, bases)
             finally:
                 browser.close()
         line, code = f"GO: {NAME}", 0
