@@ -93,17 +93,23 @@ try:
             ["sh", metrics_query, queries[qname]],
             capture_output=True, text=True,
         )
+        # A query that cannot be answered is not a verdict on the canary:
+        # `cannot judge`, then the launchpad rolls back all the same
+        # (docs/adr/0063 §3; ADR 0013: a canary that cannot be judged does
+        # not go forward).
         if proc.returncode != 0:
-            fail(f"{qname}: {metrics_query} exited {proc.returncode}: {proc.stderr.strip()}")
-        payload = json.loads(proc.stdout)
-        # Prometheus answers a bad query (e.g. a many-to-many match from a
-        # stale target_info series still inside the lookback window after a
-        # container recreate) with {"status":"error",...}, not a missing
-        # "data" key: check status explicitly so that shape NO-GOs cleanly
-        # instead of being read as an empty (== "no data") result.
+            fail(f"cannot judge: {qname}: {metrics_query} exited {proc.returncode}: {proc.stderr.strip()}")
+        try:
+            payload = json.loads(proc.stdout)
+        except ValueError:
+            fail(f"cannot judge: {qname}: answer is not JSON")
+        if not isinstance(payload, dict):
+            fail(f"cannot judge: {qname}: answer is not JSON")
         if payload.get("status") != "success":
-            detail = payload.get("error") or f"prometheus query failed: {payload!r}"
-            fail(f"prometheus: {qname}: {detail}")
+            fail(
+                f"cannot judge: {qname}: status {payload.get('status')}: "
+                f"{payload.get('errorType')}: {payload.get('error')}"
+            )
         result: dict[str, float] = {}
         for item in payload.get("data", {}).get("result", []):
             version = item.get("metric", {}).get("service_version")
