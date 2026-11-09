@@ -75,7 +75,7 @@ cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0 \
 
 Tags are mutable. To pin the image, set `LIGHTS_OUT_IMAGE` to its digest. `lights-out init` prints where the draft is. `LIGHTS_OUT_OUT` moves it. Keep the `/.` in the `cp` command: without it, `cp -R` into an existing `.lights-out/` nests the draft one level deeper. The wrapper mounts your repository read-only and never gives the image your engine's socket. `lights-out gates` judges the last commit, a range (`BASE=` and `HEAD=`), or what is staged (`STAGED=1`). It works with `TOOLCHAIN_IMAGE=workbench` only; a `compose:` or image form is judged from a clone with `./go gates`.
 
-On pull requests, the Action posts the gates as a check run, with one line per gate in its summary:
+On pull requests, the Action ([on the Marketplace](https://github.com/marketplace/actions/lights-out-gates)) posts the gates as a check run, with one line per gate in its summary:
 
 ```yaml
 permissions:
