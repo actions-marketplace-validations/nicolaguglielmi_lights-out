@@ -252,8 +252,9 @@ crew_selfchecked=0
 # answers 201 {} to signup, {"token":"tok-1"} to login, {"id":"meetup-42"}
 # to a meetup, 201 to a registration; `exits within a few seconds` is 6 s.
 if [ $# -eq 0 ] && [ -f app/load.sh ]; then
-  command -v python3 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 \
-    || nogo "app/load.sh needs python3, curl and jq to be proved cold"
+  for tool in python3 curl jq; do
+    command -v "$tool" >/dev/null 2>&1 || nogo "app/load.sh needs python3, curl and jq to be proved cold"
+  done
   lw=$(mktemp -d)
   load_pid=""
   trap 'rm -rf "$err_log" "$policy_out" "$egress_files"; [ -z "$load_pid" ] || kill "$load_pid" 2>/dev/null || true; [ -z "${fake_pid:-}" ] || kill "$fake_pid" 2>/dev/null || true; rm -rf "$lw"' EXIT
