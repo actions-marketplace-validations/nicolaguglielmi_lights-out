@@ -390,6 +390,47 @@ def cmd_prov(mode, *paths):
         die("numeric keys without a '# Provenance, decision|external|measurement:' line directly above: " + ", ".join(bad))
 
 
+# The tower's table as the console embeds it (docs/adr/0063 §2, the board's
+# twin: ci/board.sh a): `next` is core/tower.py's NEXT, `who` names every step
+# of PRECONDITION and no other, each with a sentence that carries no number of
+# its own, and the four bands' states, concatenated, are the reader's COLUMNS.
+def cmd_machine(path):
+    page = open(path, encoding="utf-8").read()
+    m = re.search(r'<script type="application/json" id="tower-machine">(.*?)</script>', page, re.S)
+    if not m:
+        die(f"{path} embeds no tower-machine table (<script type=application/json id=tower-machine>)")
+    try:
+        machine = json.loads(m.group(1))
+    except ValueError as exc:
+        die(f"{path}: tower-machine is not JSON: {exc}")
+    if not isinstance(machine, dict):
+        die("tower-machine is not an object")
+    sys.path.insert(0, "core")
+    import tower
+    import logbook
+    if machine.get("next") != tower.NEXT:
+        die(f"next: console {machine.get('next')} vs core/tower.py {tower.NEXT}")
+    who = machine.get("who")
+    if not isinstance(who, dict):
+        die(f"who is {who!r}, want an object of one sentence per step")
+    if sorted(who) != sorted(tower.PRECONDITION):
+        die(f"who names {sorted(who)}, core/tower.py's steps are {sorted(tower.PRECONDITION)}")
+    for step, sentence in who.items():
+        if not isinstance(sentence, str) or not sentence.strip():
+            die(f"who[{step}] is {sentence!r}, want a non-empty sentence")
+        if re.search(r"[0-9]", sentence):
+            die(f"who[{step}] carries a digit: {sentence!r}; numbers come from the logbook")
+    bands = machine.get("bands")
+    if not isinstance(bands, list) or [b.get("band") if isinstance(b, dict) else None for b in bands] != ["spec", "build", "test", "release"]:
+        die(f"bands are {bands!r}, want spec, build, test, release in that order")
+    for b in bands:
+        if not isinstance(b.get("name"), str) or not b["name"].strip() or not isinstance(b.get("states"), list):
+            die(f"band {b.get('band')} has no name or no list of states")
+    states = [s for b in bands for s in b["states"]]
+    if states != list(logbook.COLUMNS):
+        die(f"the bands' states {states} are not core/logbook.py's COLUMNS {list(logbook.COLUMNS)}")
+
+
 if __name__ == "__main__":
     globals()["cmd_" + sys.argv[1]](*sys.argv[2:])
 PY
@@ -553,6 +594,43 @@ for v in external other put post-elsewhere get-go get-answer get-spec get-reques
   listener-drop listener-dragover listener-dragenter listener-dragleave listener-dragstart; do
   must_reject "index.html ($v)" index "$st/index-$v.html"
 done
+
+# The tower's table in the console (docs/adr/0063 §2): the good one is built
+# from the tower's own tables, and each rule is broken once on a copy.
+python3 - "$st" <<'PY' || nogo "could not build the good tower-machine"
+import json, sys
+sys.path.insert(0, "core")
+import tower, logbook
+cols = list(logbook.COLUMNS)
+machine = {"next": tower.NEXT, "who": {s: "The " + s + " step runs" for s in tower.PRECONDITION},
+           "bands": [{"band": b, "name": b.title(), "states": cols[i:j]} for b, (i, j) in
+                     zip(("spec", "build", "test", "release"), ((0, 3), (3, 5), (5, 9), (9, 13)))]}
+open(sys.argv[1] + "/machine-good.json", "w").write(json.dumps(machine))
+PY
+# wrap_machine JSON_FILE OUT: a page that embeds that JSON as the console does.
+wrap_machine() { { printf '<!doctype html><script type="application/json" id="tower-machine">'; cat "$1"; printf '</script>\n'; } > "$2"; }
+wrap_machine "$st/machine-good.json" "$st/machine-good.html"
+must_accept "the console's tower table" machine "$st/machine-good.html"
+# mach NAME JQ: the good table with one rule broken; the checker must refuse it.
+mach() { jq -c "$2" "$st/machine-good.json" > "$st/machine-$1.json"; wrap_machine "$st/machine-$1.json" "$st/machine-$1.html"; must_reject "the console's tower table ($1)" machine "$st/machine-$1.html"; }
+printf '<!doctype html><p>no table</p>\n' > "$st/machine-none.html"
+must_reject "the console's tower table (no table at all)" machine "$st/machine-none.html"
+printf '<script type="application/json" id="tower-machine">{not json</script>\n' > "$st/machine-badjson.html"
+must_reject "the console's tower table (not JSON)" machine "$st/machine-badjson.html"
+mach next-changed '.next["ci-failed"] = "merge"'
+mach next-dropped 'del(.next["main-green"])'
+mach next-added '.next["held"] = "release"'
+mach who-missing 'del(.who.rework)'
+mach who-extra '.who.deploy = "The deploy step runs"'
+mach who-empty '.who.merge = "  "'
+mach who-not-string '.who.merge = 3'
+mach who-digit '.who.ci = "The gates run at 5 percent"'
+mach bands-order '.bands |= [.[1], .[0], .[2], .[3]]'
+mach bands-three '.bands |= .[0:3]'
+mach bands-name '.bands[0].name = ""'
+mach states-swapped '.bands[2].states |= reverse'
+mach states-dropped '.bands[3].states |= .[0:3]'
+mach states-extra '.bands[0].states += ["assigned"]'
 
 # The checkers the stub root's logbook is judged by (docs/adr/0059 §3): a map
 # by hand, a logbook by hand, and each rule broken once.
@@ -1111,6 +1189,7 @@ fi
 chk names console >"$tmp/chk.out" || nogo "console/ names what it must not" "$(cat "$tmp/chk.out")"
 chk serve console/serve.py >"$tmp/chk.out" || nogo "console/serve.py is outside its perimeter" "$(cat "$tmp/chk.out")"
 chk index console/index.html >"$tmp/chk.out" || nogo "console/index.html is outside its perimeter" "$(cat "$tmp/chk.out")"
+chk machine console/index.html >"$tmp/chk.out" || nogo "console/index.html's tower table disagrees with core/tower.py or core/logbook.py" "$(cat "$tmp/chk.out")"
 
 # --- e. the console at runtime -----------------------------------------------
 free_port() {

@@ -92,11 +92,57 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 .placeholder { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .count { font-size: 24px; font-weight: 700; }
-.board { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
-.col { flex: 0 0 190px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+/* The board fits the flow (docs/adr/0063 §1): the columns, in the logbook's
+   order, under four bands; a column with no card in the view is narrow and
+   the columns with cards share the width. Provenance, decision: 40 px holds
+   a column's toggle and its state written sideways; 140 px holds a card's
+   id, a two-line title and its now line; together they fit the golden's
+   board in the site's 1440 px desktop capture (site/render.py). */
+.board { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; align-items: stretch; }
+.band { display: flex; flex-direction: column; flex: 0 0 auto; }
+.band.wide { flex: 1 1 0; }
+/* width 0, min-width 100%: a band's name never widens its columns. */
+.band-name { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 6px; padding-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 0; min-width: 100%; }
+.band-cols { display: flex; gap: 6px; flex: 1; }
+.col { flex: 1 1 140px; min-width: 140px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 .col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
-.col.collapsed { flex: 0 0 auto; }
-.col.collapsed h3 { margin: 0; writing-mode: vertical-rl; }
+.col.collapsed, .col.empty { flex: 0 0 40px; min-width: 40px; padding: 8px 4px; }
+.col.collapsed h3, .col.empty h3 { margin: 0; writing-mode: vertical-rl; }
+.col.collapsed .col-toggle { writing-mode: horizontal-tb; }
+.col.empty .col-toggle { display: none; }
+.now { display: block; margin: 4px 0 2px; font-size: 13px; color: var(--muted); }
+.now[data-turn="you"] { color: var(--wait); font-weight: 700; }
+.now[data-turn="stopped"] { color: var(--nogo); }
+.now a.act { font-weight: 700; margin-left: 4px; }
+.nowbox { border-left: 4px solid var(--line); padding: 6px 0 6px 12px; margin: 0 0 12px; }
+.nowbox[data-turn="you"] { border-color: var(--wait); }
+.nowbox[data-turn="stopped"] { border-color: var(--nogo); }
+.nowbox .now { font-size: 15px; margin: 0; }
+ol.stages { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0 0 12px; }
+ol.stages li { padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--none-bg); color: var(--none); }
+ol.stages li[data-mark="done"] { background: var(--go-bg); color: var(--go); }
+ol.stages li[data-mark="now"] { background: var(--wait-bg); color: var(--wait); outline: 2px solid var(--wait); }
+ol.stages li[data-mark="stopped"] { background: var(--nogo-bg); color: var(--nogo); }
+ol.stages li[data-mark="skipped"] { background: transparent; border: 1px dashed var(--line); }
+tr.band-row th { color: var(--ink); font-size: 13px; text-transform: none; letter-spacing: 0; background: var(--bg); }
+td.at { white-space: nowrap; }
+.savebar { position: sticky; bottom: 0; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; margin: 0 0 14px;
+  box-shadow: 0 -6px 18px var(--shadow); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.savebar .buttons { margin: 0 0 0 auto; }
+.savebar #spec-line { flex: 1 1 320px; }
+.yours li { margin: 0 0 6px; }
+@media (max-width: 720px) {
+  /* Provenance, decision (docs/adr/0063 §1): below 720 px two of the
+     golden's bands with cards no longer fit side by side, and one column
+     under another reads better than a sideways scroll. */
+  nav { flex-wrap: nowrap; overflow-x: auto; }
+  nav a { white-space: nowrap; }
+  .board, .band-cols { flex-direction: column; }
+  .band, .band.wide { flex: none; }
+  .col, .col.collapsed, .col.empty { flex: none; min-width: 0; width: auto; }
+  .col.collapsed h3, .col.empty h3 { writing-mode: horizontal-tb; }
+  #kanban-q, #adr-q { min-width: 0; width: 100%; }
+}
 .col-toggle { padding: 0 6px; font-size: 12px; line-height: 18px; border-radius: 4px; font-weight: 700; }
 .card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0 0 8px; color: var(--ink); text-decoration: none; font-size: 13px; cursor: pointer; }
 .card:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
@@ -154,6 +200,29 @@ aside#drawer h2 { margin-top: 0; }
   </nav>
 </header>
 <main id="main"><p class="muted">Reading the logbook…</p></main>
+<!-- The tower's transition table, as board/index.html embeds it (docs/adr/
+     0035), with who runs each step and the bands the columns sit under
+     (docs/adr/0063 §2). ./go ci proves next equal to core/tower.py's,
+     who naming every step of its PRECONDITION and no other, and the bands
+     holding core/logbook.py's COLUMNS in their order. The page reads no
+     other copy, and no sentence carries a number of its own. -->
+<script type="application/json" id="tower-machine">
+{"next": {"requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "mainline", "main-green": "release", "ci-failed": "rework"},
+ "who": {"clarify": "The product role reads the request: a question, or the criteria confirmed",
+         "answer": "The product role reads the answer: a question, or the criteria confirmed",
+         "spec": "The spec gate checks the criteria",
+         "assign": "The dev-worker takes it and opens a PR",
+         "ci": "The gates judge the PR",
+         "review": "The reviewer reads the diff",
+         "merge": "The merge step merges the PR",
+         "mainline": "Main's check runs after the merge",
+         "release": "The canary goes out, each stage verified before the next",
+         "rework": "The dev-worker reworks it with the verdict"},
+ "bands": [{"band": "spec", "name": "Spec", "states": ["requested", "questions", "spec-ready"]},
+           {"band": "build", "name": "Build", "states": ["opened", "pr-opened"]},
+           {"band": "test", "name": "Test and review", "states": ["review", "ci-passed", "ci-failed", "needs-human"]},
+           {"band": "release", "name": "Release", "states": ["merged", "main-green", "held", "rolled-back"]}]}
+</script>
 <script>
 "use strict";
 let book = null, con = null, lastLine = null, busy = false, windowDays = null, answerLine = null;
@@ -190,6 +259,67 @@ function dl(pairs) {
 function ticketsList() { return Array.isArray(book.tickets) ? book.tickets : []; }
 function releasesList() { return Array.isArray(book.releases) ? book.releases : []; }
 
+// --- whose turn it is (docs/adr/0063 §2) ----------------------------------
+// One sentence per ticket from its state and the logbook's own fields,
+// through the tower's table embedded above: who has the ball and what it
+// waits for. A person's turn says so, with the one thing to do. It is a
+// reading of the record, never a verdict: the columns stay the logbook's.
+const MACHINE = JSON.parse(document.getElementById("tower-machine").textContent);
+const BANDS = MACHINE.bands;
+const bandOf = (state) => (BANDS.find((b) => b.states.includes(state)) || {band: "other"}).band;
+const bandName = (band) => (BANDS.find((b) => b.band === band) || {name: "Other"}).name;
+function reworkMax() {
+  const t = Array.isArray(book.thresholds) ? book.thresholds.find((x) => x.key === "REWORK_MAX_ATTEMPTS") : null;
+  return t && /^[0-9]+$/.test(String(t.value)) ? Number(t.value) : null;
+}
+function openQuestion(t) {
+  const qs = t.questions || [];
+  const q = qs[qs.length - 1];
+  return t.state === "questions" && q && !q.answer ? q : null;
+}
+// {turn: you | tower | done | stopped, text, href, act}
+function now(t) {
+  const out = t.outcome || {};
+  const id = t.id, n = t.attempt;
+  const history = Array.isArray(t.history) ? t.history : [];
+  const last = history[history.length - 1] || {};
+  const resume = "./go resume TICKET=" + id;
+  // A failed step strands the ticket (ADR 0034): it waits for the tickets
+  // holding its files, or for a person to resume it.
+  if (out.verdict === "stranded" || t.wait) {
+    if (t.wait && t.wait.holders.length) return {turn: "stopped", text: "Waits for " + t.wait.holders.join(", ") + " to release its files, then " + resume};
+    return {turn: "you", text: "Your turn: " + (t.wait ? "assign was refused (the base, or a missing perimeter)" : shown(last.step) + " stopped (" + shown(out.line) + ")") + "; resume it with",
+      code: resume};
+  }
+  const q = openQuestion(t);
+  if (q) return {turn: "you", text: "Your turn: answer the " + (q.from === "spec" ? "spec gate's" : "product role's") + " question",
+    href: "#ticket/" + encodeURIComponent(id), act: "Answer it"};
+  if (t.state === "needs-human") return {turn: "you", text: "Your turn: " + shown(n) + " attempts used, the last stopped by the " + (out.judge === "review" ? "reviewer" : shown(out.judge)) + "; a person decides",
+    href: "#ticket/" + encodeURIComponent(id), act: "See the attempts"};
+  if (t.state === "held") {
+    if (out.judge === "human") return {turn: "done", text: out.verdict === "GO" ? "Done: at 100%, " + out.line : "Done: " + out.line + ", the canary rolled back"};
+    const L = book.launch || {}, rec = L.record && !unread(L.record) ? L.record : null;
+    const rel = t.release || {};
+    if (rec && rel.version && rec.version === rel.version && !rec.promoted && !rec.rejected)
+      return {turn: "you", text: "Your turn: go-for-launch, the canary holds at " + shown(rec.held_at) + "%", href: "#launch", act: "Go-for-launch"};
+    return {turn: "done", text: "Held with no answer; the launch record now belongs to another version"};
+  }
+  if (t.state === "rolled-back") return {turn: "done", text: "Rolled back automatically: " + shown(out.line)};
+  if (t.state === "questions") return {turn: "tower", text: MACHINE.who.answer};
+  const step = MACHINE.next[t.state];
+  if (!step) return {turn: "tower", text: "At " + t.state + ": the tower's table requests no step from it"};
+  const max = reworkMax();
+  if (step === "rework" && max !== null && Number(n) >= max) return {turn: "tower", text: "The rework step hands it to a person: attempt " + n + " was the last of " + max};
+  if (step === "rework") return {turn: "tower", text: MACHINE.who.rework + ", attempt " + (Number(n || 1) + 1) + (max !== null ? " of " + max : "")};
+  if ((step === "ci" || step === "review") && n) return {turn: "tower", text: MACHINE.who[step] + ", attempt " + n};
+  return {turn: "tower", text: MACHINE.who[step]};
+}
+function nowLine(t) {
+  const w = now(t);
+  return h("span", {cls: "now", "data-turn": w.turn}, w.text, w.code ? [" ", h("code", {}, w.code)] : null,
+    w.href ? h("a", {cls: "act", href: w.href, onclick: (e) => e.stopPropagation()}, w.act + " →") : null);
+}
+
 // --- overview (docs/adr/0055 §6) --------------------------------------
 const ORDER = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
   "needs-human", "merged", "main-green", "held", "rolled-back"];
@@ -199,14 +329,24 @@ function waitLine(w) {
 }
 function screenOverview() {
   const out = [h("h1", {}, "Overview"),
-    h("p", {cls: "lede"}, "Every ticket the tower holds, by state; the files open tickets hold; the docs a merge left to realign.")];
+    h("p", {cls: "lede"}, "What waits for a person first; then every ticket the tower holds, by where it is in the flow; the files open tickets hold; the docs a merge left to realign. ",
+      h("a", {href: "#kanban"}, "The kanban →"))];
   if (unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(book.tickets)));
   const all = ticketsList();
+  // Waiting for you (docs/adr/0063 §4): exactly the tickets whose now line is a person's turn.
+  const yours = all.filter((t) => now(t).turn === "you");
+  out.push(h("h2", {}, "Waiting for you"), h("div", {cls: "panel", id: "your-turn"}, yours.length
+    ? h("ul", {cls: "yours"}, yours.map((t) => h("li", {"data-id": t.id}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t)), h("br"), nowLine(t))))
+    : h("p", {cls: "muted"}, "Nothing waits for a person: the tower or a role has the ball on every ticket.")));
   const states = ORDER.concat([...new Set(all.map((t) => t.state))].filter((st) => !ORDER.includes(st)));
-  out.push(h("h2", {}, "Tickets by state"), h("div", {cls: "panel"}, h("div", {cls: "grid3"},
-    states.filter((st) => all.some((t) => t.state === st)).map((st) => h("div", {},
-      h("div", {cls: "muted"}, st), h("div", {cls: "count"}, all.filter((t) => t.state === st).length),
-      h("div", {}, all.filter((t) => t.state === st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t))))))))));
+  const inState = (st) => all.filter((t) => t.state === st);
+  const bands = BANDS.concat([{band: "other", name: "Other", states: states.filter((st) => bandOf(st) === "other")}]);
+  out.push(h("h2", {}, "Where the tickets are"), h("div", {cls: "panel"}, h("div", {cls: "grid3"},
+    bands.filter((b) => b.states.some((st) => inState(st).length)).map((b) => h("div", {cls: "band-sum", "data-band": b.band},
+      h("div", {}, h("b", {}, b.name), " ", h("span", {cls: "count"}, b.states.reduce((s, st) => s + inState(st).length, 0))),
+      b.states.filter((st) => inState(st).length).map((st) => h("div", {},
+        h("div", {cls: "muted"}, st + " · " + inState(st).length),
+        inState(st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t)))))))))));
   const held = book.perimeters_held;
   out.push(h("h2", {}, "Perimeters held (perimeters/held, ADR 0053)"), h("div", {cls: "panel"},
     unread(held) ? err(held) : !Array.isArray(held) ? h("p", {cls: "muted"}, "This logbook has no perimeters_held.")
@@ -304,9 +444,9 @@ function card(t, v) {
   return h("div", {cls: "card" + (m ? " moved" : "") + (v.card === t.id ? " selected" : ""), "data-id": t.id,
     "data-from": m ? m.from : null, tabindex: "0", role: "button", "aria-label": named(t), onclick: open},
     h("div", {}, h("b", {}, named(t))),
+    nowLine(t),
     h("div", {cls: "muted"}, h("span", {cls: "chip " + (t.priority ? "pending" : "none")}, t.priority || "unprioritised"), " ",
       t.feature || "no feature"),
-    t.wait ? h("div", {cls: "muted"}, waitLine(t.wait)) : null,
     t.outcome && t.outcome.verdict !== "pending" ? h("div", {}, chip(t.outcome.verdict)) : null,
     m ? h("div", {cls: "muted"}, "moved here from " + m.from) : null);
 }
@@ -326,9 +466,12 @@ function drawer(t) {
   return h("aside", {id: "drawer", "data-id": t.id, "aria-label": "Ticket " + t.id},
     h("div", {cls: "buttons", style: "margin: 0 0 8px; justify-content: flex-end"}, h("button", {onclick: close}, "Close (Esc)")),
     h("h2", {}, named(t)),
-    dl([["State", t.state], ["Outcome", h("span", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge))],
-      ["Line", h("span", {cls: "mono"}, shown(t.outcome.line))],
-      ["Last row", last ? h("span", {}, last.phase + " · ", last.verdict ? chip(VERDICTS[last.verdict] || last.verdict) : "—", " ",
+    h("div", {cls: "nowbox", "data-turn": now(t).turn}, nowLine(t)),
+    // No verdict yet: the now line says what is awaited, and no empty row stands in.
+    dl([["State", t.state + " · " + bandName(bandOf(t.state))],
+      t.outcome.verdict !== "pending" ? ["Outcome", h("span", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge))] : null,
+      t.outcome.verdict !== "pending" ? ["Line", h("span", {cls: "mono"}, shown(t.outcome.line))] : null,
+      ["Last row", last ? h("span", {}, last.phase + " · ", last.verdict ? chip(verdictOf(last)) : "—", " ",
         h("span", {cls: "mono"}, shown(last.line)), " ", h("span", {cls: "muted"}, shown(last.at))) : null],
       ["Perimeter", unread(t.perimeter) ? err(t.perimeter) : h("span", {cls: "mono"}, (t.perimeter || []).join("  ·  ") || "—")],
       ["Waits", t.wait ? waitLine(t.wait) : "no"]]),
@@ -373,13 +516,29 @@ function drawBoard() {
     // the columns left is still the tower's.
     const cols = book.kanban.map((col) => [col.state, col.tickets.filter((id) => byId[id] && inLane(byId[id]))])
       .filter(([, ids]) => !v.empty || ids.length);
-    const board = h("div", {cls: "board"}, cols.map(([state, ids]) => {
+    const column = ([state, ids]) => {
       const shut = v.collapsed.has(state);
       const toggle = () => { const c = new Set(kanbanView().collapsed); if (c.has(state)) c.delete(state); else c.add(state); setView({collapsed: c}); };
-      return h("div", {cls: "col" + (shut ? " collapsed" : ""), "data-state": state},
+      // A column with no card in this view is drawn narrow (docs/adr/0063
+      // §1): a drawing rule, not part of the view or the link.
+      return h("div", {cls: "col" + (shut ? " collapsed" : ids.length ? "" : " empty"), "data-state": state},
         h("h3", {}, h("button", {cls: "col-toggle", onclick: toggle, "aria-expanded": shut ? "false" : "true",
           title: (shut ? "Expand " : "Collapse ") + state}, shut ? "+" : "−"), state + " · " + ids.length),
         shut ? null : ids.map((id) => card(byId[id], v)));
+    };
+    // The columns stay in the logbook's order; consecutive columns of one
+    // band sit under its name.
+    const runs = [];
+    for (const c of cols) {
+      const b = bandOf(c[0]);
+      if (!runs.length || runs[runs.length - 1].band !== b) runs.push({band: b, cols: []});
+      runs[runs.length - 1].cols.push(c);
+    }
+    const board = h("div", {cls: "board"}, runs.map((r) => {
+      const wide = r.cols.some(([state, ids]) => ids.length && !v.collapsed.has(state));
+      return h("div", {cls: "band" + (wide ? " wide" : ""), "data-band": r.band,
+        style: wide ? "flex-grow: " + r.cols.filter(([state, ids]) => ids.length && !v.collapsed.has(state)).length : null},
+        h("div", {cls: "band-name"}, bandName(r.band)), h("div", {cls: "band-cols"}, r.cols.map(column)));
     }));
     kids.push(h("div", {cls: "lane", "data-lane": lane === null ? "" : lane},
       lane === null ? null : h("h2", {}, lane || (group === "priority" ? "unprioritised" : "no feature")),
@@ -508,25 +667,70 @@ function answerPanel(t) {
     busy ? h("p", {cls: "muted"}, "./go answer is running: the product role, then the spec gate…") : null,
     answerLine ? h("pre", {}, answerLine) : null);
 }
+// The band a timeline row belongs to (docs/adr/0063 §3): by its phase, or,
+// for a failed step's row, by the step. A phase the map does not name (the
+// outcome, a resume) stays under the heading above it: a heading is only a
+// label, and no row moves.
+const ROW_BAND = {request: "spec", product: "spec", question: "spec", answer: "spec", spec: "spec", open: "spec", clarify: "spec",
+  wait: "build", assign: "build", attempt: "build", rework: "build",
+  gates: "test", gate: "test", ci: "test", review: "test",
+  merge: "release", mainline: "release", canary: "release", release: "release", "sign-off": "release"};
+// The four bands as a strip: done, now, stopped (the band a NO-GO ending
+// stopped in), or ahead.
+function stageStrip(t) {
+  const here = BANDS.findIndex((b) => b.states.includes(t.state));
+  const out = t.outcome || {};
+  const ended = ["rolled-back", "needs-human"].includes(t.state) || (t.state === "held" && out.judge === "human" && out.verdict === "NO-GO");
+  const finished = t.state === "held" && out.judge === "human" && out.verdict === "GO";
+  const direct = (t.history || []).some((e) => e.step === "open");
+  return h("ol", {cls: "stages", id: "stages", "aria-label": "Where ticket " + t.id + " is"}, BANDS.map((b, i) => {
+    let mark = here < 0 ? "ahead" : i < here || (i === here && finished) ? "done" : i === here ? (ended ? "stopped" : "now") : "ahead";
+    // Opened directly: no request and no spec gate, so Spec was skipped, not passed.
+    if (b.band === "spec" && direct) mark = "skipped";
+    return h("li", {"data-band": b.band, "data-mark": mark, "aria-current": mark === "now" || mark === "stopped" ? "step" : null},
+      b.name + (mark === "done" ? " ✓" : mark === "stopped" ? " ✗" : mark === "skipped" ? " (skipped)" : ""));
+  }));
+}
+function verdictOf(r) {
+  // A gates row's verdict is the state it moved to: `review` means the gates said GO;
+  // a product row that moved to `questions` asked, it was not left pending.
+  if (r.phase === "gates" && r.verdict === "review") return "GO";
+  if (r.phase === "product" && r.verdict === "questions") return "asked";
+  return VERDICTS[r.verdict] || r.verdict;
+}
 function screenTicket(id) {
   const t = ticketsList().find((x) => x.id === id);
-  if (!t) return [h("h1", {}, "Ticket " + id), h("div", {cls: "panel"}, "This ticket is not in the logbook: the tower never opened it, or the store could not be read.")];
+  const back = h("p", {cls: "lede"}, h("a", {id: "back-to-kanban", href: "#kanban?card=" + encodeURIComponent(id)}, "← The kanban, with this card open"));
+  if (!t) return [back, h("h1", {}, "Ticket " + id), h("div", {cls: "panel"}, "This ticket is not in the logbook: the tower never opened it, or the store could not be read.")];
   const rows = t.timeline || [];
-  return [h("h1", {}, named(t)),
-    h("p", {cls: "lede"}, "Every phase from the request to the release, one row each, each from its record. Check it against the code host: ",
-      h("code", {}, "./go audit TICKET=" + t.id)),
-    h("div", {cls: "panel"}, h("p", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge), ": ", h("span", {cls: "mono"}, shown(t.outcome.line)))),
+  const body = [];
+  let band = null;
+  rows.forEach((r) => {
+    const b = ROW_BAND[r.phase] || band || "other";
+    if (b !== band) {
+      band = b;
+      body.push(h("tr", {cls: "band-row", "data-band": b}, h("th", {colspan: "5"}, bandName(b))));
+    }
+    body.push(h("tr", {"data-phase": r.phase}, h("td", {}, r.phase), h("td", {}, r.verdict ? chip(verdictOf(r)) : "—"),
+      h("td", {}, rowDetail(r)), h("td", {cls: "mono at"}, shown(r.at)), h("td", {cls: "muted"}, r.record)));
+  });
+  const w = now(t);
+  return [back, h("h1", {}, named(t)),
+    h("div", {cls: "panel", id: "ticket-now"},
+      h("div", {cls: "nowbox", "data-turn": w.turn}, nowLine(t)),
+      stageStrip(t),
+      h("p", {cls: "muted", style: "margin: 0"}, "Last verdict: ", chip(t.outcome.verdict), " ", shown(t.outcome.judge), ": ", h("span", {cls: "mono"}, shown(t.outcome.line)))),
     answerPanel(t),
-    h("div", {cls: "panel"}, rows.length ? h("table", {}, h("tr", {}, ["Phase", "Verdict", "What", "At", "Record"].map((c) => h("th", {}, c))),
-      rows.map((r) => h("tr", {}, h("td", {}, r.phase), h("td", {}, r.verdict ? chip(VERDICTS[r.verdict] || r.verdict) : "—"),
-        h("td", {}, rowDetail(r)), h("td", {cls: "mono"}, shown(r.at)), h("td", {cls: "muted"}, r.record))))
+    h("p", {cls: "lede"}, "Every phase from the request to the release, one row each, each from its record, under the band it belongs to. Check it against the code host: ",
+      h("code", {}, "./go audit TICKET=" + t.id)),
+    h("div", {cls: "panel"}, rows.length ? h("table", {}, h("tr", {}, ["Phase", "Verdict", "What", "At", "Record"].map((c) => h("th", {}, c))), body)
       : h("p", {cls: "muted"}, "This logbook has no timeline (written before 1.1).")),
     t.spec && (t.spec.criteria || []).length ? h("div", {cls: "panel"}, h("h2", {}, "The spec's criteria (" + shown(t.spec.by) + ")"),
       h("ol", {}, t.spec.criteria.map((c) => h("li", {}, c)))) : null,
     t.adrs !== undefined ? h("div", {cls: "panel"}, h("h2", {}, "ADRs that govern its perimeter"), adrLinks(t.adrs)) : null,
     h("h2", {}, "History"),
     h("div", {cls: "panel"}, h("table", {}, h("tr", {}, ["Step", "State", "Attempt", "At", "Error"].map((c) => h("th", {}, c))),
-      t.history.map((e) => h("tr", {}, h("td", {}, e.step), h("td", {}, e.state), h("td", {}, shown(e.attempt)), h("td", {cls: "mono"}, shown(e.at)), h("td", {cls: "mono"}, shown(e.error))))))];
+      t.history.map((e) => h("tr", {}, h("td", {}, e.step), h("td", {}, e.state), h("td", {}, shown(e.attempt)), h("td", {cls: "mono at"}, shown(e.at)), h("td", {cls: "mono"}, shown(e.error))))))];
 }
 
 // --- screen 3 ----------------------------------------------------------
@@ -580,6 +784,14 @@ function screenLaunch() {
   const L = book.launch, rec = L.record;
   const out = [h("h1", {}, "Go-for-launch"),
     h("p", {cls: "lede"}, "The one human decision before 100% of traffic. The same check and the same script as ./go promote.")];
+  if (rec && !unread(rec)) {
+    // The ticket this release carries (docs/adr/0063 §3): its release.version is the record's.
+    const carried = ticketsList().find((x) => x.release && x.release.version && x.release.version === rec.version);
+    out.push(h("div", {cls: "panel", id: "launch-ticket"}, carried
+      ? h("p", {style: "margin: 0"}, "This release carries ", h("a", {href: "#ticket/" + encodeURIComponent(carried.id)}, named(carried)),
+        h("br"), nowLine(carried))
+      : h("p", {cls: "muted", style: "margin: 0"}, "No ticket in the logbook carries " + shown(rec.version) + ": a release made without the tower (./go release).")));
+  }
   if (!rec || unread(rec)) out.push(h("div", {cls: "panel"}, rec ? err(rec) : h("p", {cls: "muted"}, "No release record yet.")));
   else {
     const answered = rec.promoted ? ["GO", rec.promoted] : rec.rejected ? ["NO-GO", rec.rejected] : null;
@@ -625,11 +837,6 @@ function screenThresholds() {
 }
 
 // --- the specs (docs/adr/0059 §4) ----------------------------------------
-function openQuestion(t) {
-  const qs = t.questions || [];
-  const q = qs[qs.length - 1];
-  return t.state === "questions" && q && !q.answer ? q : null;
-}
 function screenSpecs() {
   const out = [h("h1", {}, "Specs"),
     h("p", {cls: "lede"}, "Every ticket's spec: the criteria confirmed and by whom, the spec gate's last verdict, and the question still open. ",
@@ -707,6 +914,13 @@ async function pressRequest() {
     saveLine = r.ok ? {ticket: body.ticket, line: body.line} : {line: "refused (" + r.status + "): " + (body.error || r.statusText) + (body.line ? "\n" + body.line : "")};
   } catch (e) { saveLine = {line: "the console did not answer: " + e}; }
   busy = false;
+  // A ticket file was written (docs/adr/0063 §5): the draft is done, so it is
+  // cleared and Request waits for the next edit; a second press cannot file
+  // the same text twice.
+  if (saveLine.ticket) {
+    Object.assign(draftFields, {title: "", context: "", criteria: [{given: "", when: "", then: ""}], perimeter: "", feature: "", priority: ""});
+    lastCheck = null; clearTimeout(checkTimer); checkSeq++;
+  }
   await load();
   render();
 }
@@ -729,6 +943,11 @@ function screenRequest() {
     level === "l0"
       ? h("div", {cls: "banner warn", id: "l0-note"}, "Level l0: the product role replays recordings, and a new request has none. It will not be consulted on this draft; the spec gate alone judges it (ADR 0055 §3). With a key (l1) saving consults it, and its questions come back on the ticket's page.")
       : h("div", {cls: "banner"}, "Saving requests the ticket: the product role reads it and asks or confirms, and its questions come back on the ticket's page with an answer box."),
+    saveLine && saveLine.ticket ? h("div", {cls: "panel", id: "saved"}, h("p", {style: "margin: 0"},
+      chip(String(saveLine.line || "").startsWith("GO") ? "GO" : "NO-GO"), " ", h("span", {cls: "mono"}, shown(saveLine.line)), h("br"),
+      "tickets/" + saveLine.ticket + ".md is written, not committed. ",
+      h("a", {id: "new-ticket", href: "#ticket/" + encodeURIComponent(saveLine.ticket)}, "Ticket " + saveLine.ticket + "'s timeline →"),
+      " The form below is empty for the next request.")) : null,
     h("div", {cls: "panel editor"},
       field("Title", h("input", {type: "text", name: "title", value: draftFields.title, oninput: set("title")})),
       field("Context: the problem, in a few sentences", h("textarea", {name: "context", oninput: set("context")}, draftFields.context)),
@@ -737,17 +956,14 @@ function screenRequest() {
       field("Perimeter: one path or glob per line, the files the change may touch", h("textarea", {name: "perimeter", oninput: set("perimeter")}, draftFields.perimeter)),
       field("Feature (optional): lowercase letters and digits joined by hyphens", h("input", {type: "text", name: "feature", value: draftFields.feature, oninput: set("feature")})),
       field("Priority (optional)", prio)),
-    h("h2", {}, "The spec gate on this draft"),
-    h("div", {cls: "panel"}, h("p", {}, h("span", {id: "spec-chip"}), " ", h("span", {cls: "mono", id: "spec-line"}, "—")),
-      h("pre", {id: "spec-preview"})),
-    h("div", {cls: "panel"},
-      canSave() ? h("p", {}, "Saving writes the file above as it is shown, under the next free id, uncommitted; commit it with the change or before. Only a draft the gate passes is saved.")
+    h("div", {cls: "savebar", id: "savebar"}, h("span", {id: "spec-chip"}), h("span", {cls: "mono", id: "spec-line"}, "—"),
+      h("div", {cls: "buttons"}, h("button", {cls: "go", id: "save", disabled: true, onclick: pressRequest}, "Request it — ./go request"))),
+    h("h2", {}, "The ticket as it will be written"),
+    h("div", {cls: "panel"}, h("pre", {id: "spec-preview"}),
+      canSave() ? h("p", {}, "Saving writes this file as it is shown, under the next free id, uncommitted; commit it with the change or before. Only a draft the gate passes is saved.")
         : h("p", {cls: "muted"}, con.mode === "snapshot" ? "Snapshot: no tower behind it, nothing can be requested. The check still runs." : "This console cannot request."),
-      h("div", {cls: "buttons"}, h("button", {cls: "go", id: "save", disabled: true, onclick: pressRequest}, "Request it — ./go request")),
       busy ? h("p", {cls: "muted"}, "./go request is running: the product role, then the spec gate…") : null,
-      saveLine ? h("pre", {}, saveLine.line) : null,
-      saveLine && saveLine.ticket ? h("p", {}, "tickets/" + saveLine.ticket + ".md is written, not committed. ",
-        h("a", {href: "#ticket/" + encodeURIComponent(saveLine.ticket)}, "Ticket " + saveLine.ticket + "'s timeline →")) : null)];
+      saveLine && !saveLine.ticket ? h("pre", {}, saveLine.line) : null)];
   return out;
 }
 
@@ -863,7 +1079,7 @@ function render() {
   header();
   const {screen, arg} = route();
   for (const a of document.querySelectorAll("nav a")) a.classList.toggle("on", a.dataset.s === screen ||
-    (screen === "ticket" && a.dataset.s === "tickets") || (screen === "adr" && a.dataset.s === "adrs"));
+    (screen === "ticket" && a.dataset.s === "kanban") || (screen === "adr" && a.dataset.s === "adrs"));
   let body;
   if (screen === "ticket") body = screenTicket(arg);
   else if (screen === "incidents") body = screenIncidents();

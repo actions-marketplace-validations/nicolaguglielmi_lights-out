@@ -419,9 +419,13 @@ DRAFT = [("input[name=title]", "Show who requested a ticket on its card"),
          ("input[name=then]", "the card shows the identity on the request row and `via console`"),
          ("textarea[name=perimeter]", "console/index.html"),
          ("input[name=feature]", "console")]
+# The kanban is drawn whole, at the landing's desktop width: since ADR 0063
+# the board fits it, with every card's now line; the rollback still is a
+# ticket's timeline down to the automatic rollback.
 CONSOLE = [
-    ("console-kanban", GOLDEN, "kanban?empty=hide&card=0001", (1520, 640), "light", None),
+    ("console-kanban", GOLDEN, "kanban", (1440, 820), "light", None),
     ("console-ticket", GOLDEN, "ticket/0009", (1440, 1040), "light", None),
+    ("console-rollback", GOLDEN, "ticket/0001", (1440, 900), "dark", None),
     ("console-overview", GOLDEN, "overview", (1440, 1000), "light", None),
     ("console-request", GOLDEN, "request", (1440, 1200), "light", DRAFT),
     ("console-adrs", REPO, "adrs?q=kanban", (1440, 1000), "dark", None),
