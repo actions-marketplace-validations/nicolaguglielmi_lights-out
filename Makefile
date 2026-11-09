@@ -655,8 +655,8 @@ demo-rollback: ## Release the failing default and prove the canary rolls back on
 	fi; \
 	failed=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
 	case "$$failed" in \
-		"NO-GO: slo — "*) : ;; \
-		*) printf 'NO-GO: demo-rollback — the release stopped before verify judged the canary [%s]\n' "$$failed"; exit 1 ;; \
+		"NO-GO: slo — error_rate "*) : ;; \
+		*) printf 'NO-GO: demo-rollback — the canary was rolled back for [%s], want the kill switch'"'"'s error_rate verdict (docs/adr/0063 §5)\n' "$$failed"; exit 1 ;; \
 	esac; \
 	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
 	if [ "$$canary_w" != "0" ]; then \
@@ -777,7 +777,12 @@ e2e: ## Golden path at L0: request → spec → PR → CI → merge → canary �
 	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
 	if [ "$$state" != "rolled-back" ]; then \
 		printf 'NO-GO: e2e — ticket %s ended at %s, expected rolled-back\n' "$(TICKET)" "$$state"; exit 1; \
-	fi
+	fi; \
+	failed=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
+	case "$$failed" in \
+		"NO-GO: slo — error_rate "*) : ;; \
+		*) printf 'NO-GO: e2e — ticket %s rolled back for [%s], want the kill switch'"'"'s error_rate verdict (docs/adr/0063 §5)\n' "$(TICKET)" "$$failed"; exit 1 ;; \
+	esac
 	@$(MAKE) --no-print-directory audit TICKET="$(TICKET)" >&2 || { printf 'NO-GO: e2e — audit did not pass\n'; exit 1; }
 	@printf 'GO: e2e\n'
 
