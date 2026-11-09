@@ -15,11 +15,35 @@ permissions:
   contents: read
 
 jobs:
+  # docs/adr/0065: whether this push is judged here (a commit already green
+  # on a branch is not judged again on main) and how much of it (a
+  # docs-only push skips the heavy jobs). Every other job needs it.
+  plan:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      full: ${{ steps.plan.outputs.full }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/plan.sh
+          sparse-checkout-cone-mode: false
+      - id: plan
+        run: sh .github/plan.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+
   # README "Try it", Linux: install podman, enable its API socket, clone,
   # ./go doctor, ./go demo. No actions/checkout: a stranger clones.
   demo:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     env:
       TIMES: ${{ github.workspace }}/../stranger-times.txt
       GH_TOKEN: ${{ github.token }}
@@ -100,7 +124,8 @@ jobs:
   # on workloads/minimal copied into a fresh repository, with podman.
   package:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     env:
       TIMES: ${{ github.workspace }}/../stranger-times.txt
       GH_TOKEN: ${{ github.token }}

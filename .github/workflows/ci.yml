@@ -8,12 +8,36 @@ permissions:
   contents: read
 
 jobs:
+  # docs/adr/0065: whether this push is judged here (a commit already green
+  # on a branch is not judged again on main) and how much of it (a
+  # docs-only push skips the heavy jobs). Every other job needs it.
+  plan:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com'
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      full: ${{ steps.plan.outputs.full }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/plan.sh
+          sparse-checkout-cone-mode: false
+      - id: plan
+        run: sh .github/plan.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+
   # GitHub-only (docs/adr/0039): at L0 the CI leg is core/steps/ci.sh, and
   # ./go demo runs ./go ci itself. Since docs/adr/0060 §6 no runner reads
   # this file locally; the guards on every job are inert.
   ci:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,7 +51,8 @@ jobs:
   # measures it on every push.
   engine-compat:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -98,7 +123,8 @@ jobs:
   # against HEAD, not the pushed range itself.
   gates:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -116,7 +142,8 @@ jobs:
   # jobs above (docs/adr/0039). ci/console-ui.py prints the one gate line.
   console-ui:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     timeout-minutes: 15
     container:
       # Playwright 1.64.1 with Chromium and the Python package, the image
@@ -142,7 +169,8 @@ jobs:
   # here on every push instead. Needs the plane: same shape as engine-compat.
   launch:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -189,7 +217,8 @@ jobs:
   # Docker on the runner is rootful, which k3s in a container needs.
   argo:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -232,7 +261,8 @@ jobs:
   # the plane's Gitea, and main is GO again. Brings the plane up itself.
   mainline:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -254,7 +284,8 @@ jobs:
   # consequences).
   seam:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -269,7 +300,8 @@ jobs:
   # the committed contracts' run (compose and image forms), not the plane.
   init:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -286,7 +318,8 @@ jobs:
   # runner's one job is image (docs/adr/0039).
   harness-conformance:
     runs-on: ubuntu-latest
-    if: github.server_url == 'https://github.com'
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
