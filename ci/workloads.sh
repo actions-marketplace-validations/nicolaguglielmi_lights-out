@@ -240,6 +240,137 @@ for pair in wildcard:wildcard ip:"IP literal" port:"no port"; do
 done
 crew_selfchecked=0
 
+# (h) app/load.sh fails loudly (docs/adr/0063 §4, the Workload contract's
+# load.sh): against a fake app on 127.0.0.1 (APP_URL), cold. When a setup
+# call (signup, login, create meetup) answers 500, or the meetup answer
+# carries no id, load.sh exits non-zero within a few seconds, prints exactly
+# one stderr line, `app-load: setup failed at <METHOD> <path>: <cause>;
+# generating no load`, and never requests a path with `//`. When setup
+# succeeds it loops POST /api/meetups/<id>/registrations with the id the app
+# returned. Not run for an attached repository (one argument): that
+# contract's load.sh is its own. Assumptions beyond the ADR: the fake app
+# answers 201 {} to signup, {"token":"tok-1"} to login, {"id":"meetup-42"}
+# to a meetup, 201 to a registration; `exits within a few seconds` is 6 s.
+if [ $# -eq 0 ] && [ -f app/load.sh ]; then
+  command -v python3 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 \
+    || nogo "app/load.sh needs python3, curl and jq to be proved cold"
+  lw=$(mktemp -d)
+  load_pid=""
+  trap 'rm -rf "$err_log" "$policy_out" "$egress_files"; [ -z "$load_pid" ] || kill "$load_pid" 2>/dev/null || true; [ -z "${fake_pid:-}" ] || kill "$fake_pid" 2>/dev/null || true; rm -rf "$lw"' EXIT
+  cat > "$lw/fake.py" <<'PY'
+import http.server
+import json
+import os
+import sys
+
+log_path, port_path, fail_path = sys.argv[1:4]
+
+
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        if n:
+            self.rfile.read(n)
+        with open(log_path, "a") as f:
+            f.write("POST %s auth=%s\n" % (self.path, self.headers.get("Authorization", "")))
+        with open(fail_path) as f:
+            fail = f.read().strip()
+        route = {"/api/signup": "signup", "/api/login": "login", "/api/meetups": "meetup"}.get(self.path)
+        status, body = 201, {}
+        if route == fail:
+            status, body = 500, {"error": "boom"}
+        elif route == "login":
+            status, body = 200, {"token": "tok-1"}
+        elif route == "meetup":
+            status, body = 201, ({} if fail == "noid" else {"id": "meetup-42"})
+        data = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+with open(port_path + ".tmp", "w") as f:
+    f.write(str(s.server_address[1]))
+os.replace(port_path + ".tmp", port_path)
+s.serve_forever()
+PY
+  : > "$lw/log"
+  echo none > "$lw/fail"
+  (python3 "$lw/fake.py" "$lw/log" "$lw/port" "$lw/fail" >/dev/null 2>"$lw/fake.err" & echo $! > "$lw/pid")
+  fake_pid=$(cat "$lw/pid")
+  tries=0
+  while [ ! -s "$lw/port" ]; do
+    tries=$((tries + 1))
+    [ "$tries" -le 100 ] || nogo "the fake app for app/load.sh did not start" "$(cat "$lw/fake.err")"
+    sleep 0.1
+  done
+  load_url="http://127.0.0.1:$(cat "$lw/port")"
+
+  # run_load FAILING_STEP: sets load_rc, 124 when it was still running at 6 s.
+  run_load() {
+    echo "$1" > "$lw/fail"
+    : > "$lw/log"
+    env -i PATH="$PATH" HOME="$lw" APP_URL="$load_url" sh app/load.sh >"$lw/out" 2>"$lw/err" </dev/null &
+    load_pid=$!
+    t=0
+    while kill -0 "$load_pid" 2>/dev/null && [ "$t" -lt 60 ]; do
+      sleep 0.1
+      t=$((t + 1))
+    done
+    if kill -0 "$load_pid" 2>/dev/null; then
+      kill "$load_pid" 2>/dev/null || true
+      load_rc=124
+    else
+      wait "$load_pid" && load_rc=0 || load_rc=$?
+    fi
+    pkill -P "$load_pid" 2>/dev/null || true
+    load_pid=""
+  }
+
+  for step in "signup:POST /api/signup" "login:POST /api/login" "meetup:POST /api/meetups" "noid:POST /api/meetups"; do
+    failing=${step%%:*}
+    at=${step#*:}
+    run_load "$failing"
+    [ "$load_rc" -ne 0 ] && [ "$load_rc" -ne 124 ] \
+      || nogo "app/load.sh did not exit non-zero within 6 s when $failing fails (exit $load_rc); docs/adr/0063 §4" "$(cat "$lw/err")"
+    [ "$(awk 'END{print NR}' "$lw/err")" -eq 1 ] \
+      || nogo "app/load.sh printed $(awk 'END{print NR}' "$lw/err") stderr lines when $failing fails, want exactly one (docs/adr/0063 §4)" "$(cat "$lw/err")"
+    case "$(cat "$lw/err")" in
+      "app-load: setup failed at $at: "*"; generating no load") ;;
+      *) nogo "app/load.sh stderr when $failing fails is not 'app-load: setup failed at $at: ...; generating no load' (docs/adr/0063 §4)" "$(cat "$lw/err")" ;;
+    esac
+    [ ! -s "$lw/out" ] || nogo "app/load.sh wrote to stdout when $failing fails" "$(cat "$lw/out")"
+    ! grep -q '//' "$lw/log" || nogo "app/load.sh requested a path with // when $failing fails (docs/adr/0063 §4)" "$(cat "$lw/log")"
+    ! grep -q 'registrations' "$lw/log" || nogo "app/load.sh generated load after $failing failed (docs/adr/0063 §4)" "$(cat "$lw/log")"
+  done
+
+  # Setup succeeds: the loop uses the id the app returned.
+  echo none > "$lw/fail"
+  : > "$lw/log"
+  env -i PATH="$PATH" HOME="$lw" APP_URL="$load_url" sh app/load.sh >"$lw/out" 2>"$lw/err" </dev/null &
+  load_pid=$!
+  t=0
+  while [ "$(grep -c 'registrations' "$lw/log")" -lt 2 ] && [ "$t" -lt 60 ]; do
+    sleep 0.1
+    t=$((t + 1))
+  done
+  kill "$load_pid" 2>/dev/null || true
+  pkill -P "$load_pid" 2>/dev/null || true
+  { wait "$load_pid"; } 2>/dev/null || true
+  load_pid=""
+  [ "$(grep -c 'registrations' "$lw/log")" -ge 2 ] \
+    || nogo "app/load.sh did not loop registrations within 6 s after a good setup" "$(cat "$lw/err")" "$(cat "$lw/log")"
+  grep 'registrations' "$lw/log" | grep -qv '^POST /api/meetups/meetup-42/registrations auth=Bearer tok-1$' \
+    && nogo "app/load.sh requested a registration path other than /api/meetups/meetup-42/registrations with the login token" "$(cat "$lw/log")"
+  ! grep -q '//' "$lw/log" || nogo "app/load.sh requested a path with // after a good setup" "$(cat "$lw/log")"
+fi
+
 # "<workload dir>:<contract dir>" pairs; no path here holds a colon.
 pairs=""
 if [ $# -gt 0 ]; then
