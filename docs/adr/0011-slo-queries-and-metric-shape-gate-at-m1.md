@@ -73,6 +73,12 @@ checked for agreement with the app, not evaluated.
    inside `ci` with the app down is correct behaviour. Gate basenames must
    therefore be unique across the three directories.
 
+   *Amended 2026-11-09 (ADR 0062 §3):* the scan is unchanged; under
+   `./go ci` a `ci/` check the run has already executed is judged on the
+   record of that run, its stdout and exit code, and not run again. Every
+   `gates/` and `verify/` script, and any `ci/` check with no record, is
+   still run cold.
+
 ## Alternatives rejected
 
 - Gate fails with "arrives with M2": honest but proves nothing, and a

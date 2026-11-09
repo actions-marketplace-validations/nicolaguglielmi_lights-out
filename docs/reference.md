@@ -420,8 +420,8 @@ lights-out/
     l3.env                  # L3: + Agent Engine quota
 
   ci/                       # repo self-checks; each prints one line, GO or NO-GO
-    lib.sh                  # go / nogo helpers, the output contract
-    contract.sh             # meta-gate: every gate honours the contract
+    lib.sh                  # go / nogo helpers, the output contract; record_check keeps each check's stdout and exit code for the run (ADR 0062)
+    contract.sh             # meta-gate: every gate honours the contract; under ./go ci it judges the record of each check's one run, alone it runs every gate cold (ADR 0062)
     harness-shape.sh        # every CLI harness: pinned version and lockfile, thinking.env, conformance.env, guard.sh identical to gemini-cli's, fragments name every harness service (ADR 0041 §9)
     hooks.sh                # the guard's cases in each vendor's input shape (gemini, Claude, Codex)
     secrets.sh              # gitleaks, history and working tree

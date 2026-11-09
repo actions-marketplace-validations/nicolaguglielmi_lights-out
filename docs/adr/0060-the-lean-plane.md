@@ -201,6 +201,12 @@ a measurement, and is not adopted (§7).
    time is: the `ci` stage, about 43 % of the run, every check run twice;
    the workbench build, about 15 %; the PR gates in `e2e`, about 15 %.
 
+   *Amended 2026-11-09 (ADR 0062):* the second run is gone. Under
+   `./go ci` each check leaves its stdout and exit code in a record, and
+   `contract` judges the records instead of running the checks again. The
+   measures before and after, on Actions and locally, are in ADR 0062 §6.
+   The budget stays 900 s (plan §2, an owner's decision).
+
 8. **Done when:** `./go demo` GO from a clean clone, no key, under §7's
    budget; default-profile plane services in `compose.yaml` go from 8 to
    5 (envoy, prometheus, flagd, zot, gitea); in engine-compat, after

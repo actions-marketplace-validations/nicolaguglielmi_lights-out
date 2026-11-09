@@ -10,7 +10,9 @@
 #     gets its own no-colour flag where it has one
 #   - everything a tool prints goes to stderr; details for a NO-GO go to stderr
 #   - GO exits 0, NO-GO exits 1
-# ci/contract.sh verifies this on every gate.
+# ci/contract.sh verifies this on every gate: on the record `./go ci` left
+# of the gate's one run (record_check below, docs/adr/0062), or on a cold
+# run of the gate when there is none.
 NO_COLOR=1
 export NO_COLOR
 
@@ -41,6 +43,28 @@ nogo() {
     printf '%s\n' "$@" > "$NOGO_DETAILS" || :
   fi
   exit 1
+}
+
+# record_check SCRIPT NAME: run a check as `ci-NAME` does. When CI_RECORDS
+# names a directory, which only `./go ci` sets (docs/adr/0062 §1-§2), the
+# run leaves its record there for ci/contract.sh to judge instead of a
+# second run: NAME.out, stdout byte for byte, then NAME.rc, the exit code
+# on one line, written last so a record cut short has none. Stdout still
+# reaches the caller once the check has ended, stderr streams untouched,
+# and the check's exit code is returned. With CI_RECORDS empty or unset it
+# only runs the check.
+record_check() {
+  if [ -z "${CI_RECORDS:-}" ]; then
+    sh "$1"
+    return
+  fi
+  mkdir -p "$CI_RECORDS"
+  rm -f "$CI_RECORDS/$2.rc"
+  record_rc=0
+  sh "$1" > "$CI_RECORDS/$2.out" || record_rc=$?
+  cat "$CI_RECORDS/$2.out"
+  printf '%s\n' "$record_rc" > "$CI_RECORDS/$2.rc"
+  return "$record_rc"
 }
 
 # require_range: for the M4 PR gates (docs/adr/0015 §2), which judge a git
