@@ -17,7 +17,7 @@ steps:
   - uses: nicolaguglielmi/test-proof@v0.3.0
 ```
 
-The Marketplace repository above is the one to use once it is published. The form that works today is the Action in the lights-out repository:
+That repository holds a copy of this Action at the same version, for its Marketplace page. The same Action from the lights-out repository:
 
 ```yaml
   - uses: nicolaguglielmi/lights-out/actions/test-proof@v0.3.0
