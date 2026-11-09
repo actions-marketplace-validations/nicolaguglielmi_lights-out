@@ -16,9 +16,33 @@ permissions:
   contents: read
 
 jobs:
-  harness-conformance-podman:
+  # docs/adr/0065: whether this push is judged here (a commit already green
+  # on a branch is not judged again on main) and how much of it (a
+  # docs-only push skips the heavy jobs). Every other job needs it.
+  plan:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      full: ${{ steps.plan.outputs.full }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/plan.sh
+          sparse-checkout-cone-mode: false
+      - id: plan
+        run: sh .github/plan.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUSH_BEFORE: ${{ github.event.before }}
+
+  harness-conformance-podman:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
       - uses: actions/checkout@v7
         with:
