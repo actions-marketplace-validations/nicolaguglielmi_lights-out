@@ -48,7 +48,10 @@ nogo() {
 # if BASE or HEAD is unset — what a cold ci/contract.sh run sees, and what
 # keeps every gates/*.sh instant with no range and no plane. Otherwise sets
 # $base to the merge-base of BASE and HEAD (the PR's own changes, as a code
-# host would show them) and $head to HEAD, for the caller to diff against.
+# host would show them) and $head to the id of the commit HEAD names, for
+# the caller to diff against: an id, because a gate may read it from
+# another worktree (gates/test-proof.sh, on the base), where a name
+# relative to HEAD is another commit.
 # The range is the workload's repository's: this one for a bundled
 # workload, the attached repository's otherwise (docs/adr/0037 §3).
 # Not called by sourcing ci/lib.sh: only gates that need a range call it.
@@ -67,7 +70,8 @@ require_range() {
       || nogo "git merge-base $base_ref $head_ref failed" "$base"
   fi
   # shellcheck disable=SC2034 # head is consumed by the sourcing gate
-  head=$head_ref
+  head=$(git -C "${WORKLOAD:-.}" rev-parse -q --verify "$head_ref^{commit}" 2>/dev/null) \
+    || nogo "HEAD=$head_ref names no commit"
 }
 
 # effective_policy FILE: policy/merge.env with the workload's own

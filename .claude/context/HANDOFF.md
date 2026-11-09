@@ -16,7 +16,7 @@ The standalone Actions have their repositories, `nicolaguglielmi/test-proof` and
 
 Left to the owner (`docs/launch/checklist.md`): publish the three draft releases with the Marketplace box ticked, the upload to PyPI (a dry-run wheel at 0.3.0 was built and answered `GO: gates-light`).
 
-Found, not fixed: `gates/test-proof.sh` passes `HEAD=` as given to `git restore --source` inside the base's worktree, where a HEAD-relative ref names another commit. `HEAD=HEAD` gives NO-GO; the default head, a branch or a sha gives GO.
+Found, and fixed after the tag: `gates/test-proof.sh` passed `HEAD=` as given to `git restore --source` inside the base's worktree, where a HEAD-relative ref names another commit (`HEAD=HEAD` gave NO-GO; the default head, a branch or a sha gave GO). `require_range` in `ci/lib.sh` now sets `$head` to the commit's id; `core/tests/test_gate_range.py` has the seven cases from ADR 0015 §2 and 0053 §2, four of them red before the fix. The 0.3.0 image still has the defect, the guide says so, and the fix ships with the next version.
 
 
 Each section below this line is the branch's own handoff, kept whole.
