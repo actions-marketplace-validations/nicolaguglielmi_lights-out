@@ -143,6 +143,11 @@ the image, the issues and the announcement (plan §14, §15).
 
 Nothing here has run yet. Publishing is your act (ADR 0057).
 
+- [ ] **From the next release on: the version moves in the release
+  commit**, `version=` in `lights-out`, `version` in `pyproject.toml` and
+  the landing page together, right before the tag. `ci/docs-drift.sh`
+  refuses a page whose release is not the wrapper's (ADR 0054, amendment
+  2026-11-09).
 - [x] **Check `version=0.3.0`** in `lights-out` (the wrapper). The
   `publish` job refuses a tag that is not `v` plus that version. Checked
   2026-11-09.

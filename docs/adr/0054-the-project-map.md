@@ -204,3 +204,35 @@ tree, and linked ADR 0020 through a path relative to the wrong directory.
   every page, and more.
 - The map knows nothing a commit does not hold: a ticket only in a
   Tracker, not committed, has no node.
+
+## Amendment 2026-11-09: the landing page is a page too
+
+The landing page, `site/index.html`, is HTML, so the map's citations,
+which read Markdown, never saw it. On 2026-11-09, the day 0.3.0 was
+published, it still named v0.2.0 in its header, told visitors to download
+the 0.2.0 wrapper and image, and linked a release `v0.2.0` that was never
+published: nothing failed. `ci/docs-drift.sh` now reads it too, with three
+rules of its own, after the map's:
+
+- **The release it names is the wrapper's.** Every `v<major>.<minor>.<patch>`
+  on the page, and the tag of every `ghcr.io/nicolaguglielmi/<image>:<version>`,
+  equals the `version=` line of `lights-out`, the one source of the version
+  `package.yml` checks a tag against (ADR 0045 §7). The wrapper's version
+  therefore moves in the release commit, with the page, right before the
+  tag (`docs/launch/checklist.md`).
+- **Every link into this repository at `main` names a path that exists**:
+  `https://github.com/nicolaguglielmi/lights-out/blob/main/<path>` and
+  `…/tree/main/<path>`, the fragment and query left out.
+- **Every `./go <target>` names a target**, as in a Markdown page.
+
+The rules live in the self-check, not in `core/map.py`: they know this
+repository's page, wrapper and image names, which the product must not
+(`ci/app-free.sh`). Like the map's rule, the check first proves it can
+fail on a planted page. What it cannot read is whether the prose still
+says what the product does: that stays a step of the milestone skill
+(`.claude/skills/milestone/SKILL.md`), and the console's stills are
+rendered again by `site.yml` on every push that changes the console.
+
+Rejected: comparing the page with the latest `v*` tag, because a clone
+without tags (a fork, an archive) would fail for want of history, not of
+alignment; and a rule in `core/map.py`, for the reason above.

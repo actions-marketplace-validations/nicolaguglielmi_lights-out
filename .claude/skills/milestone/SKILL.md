@@ -56,6 +56,8 @@ Run the acceptance command on a clean container. Paste the real output. If it fa
 
 Then run `make demo` for the whole repo. A milestone that breaks the demo is not done, whatever else works.
 
+If the milestone changes what a visitor of the landing page sees or runs (a command, a measured number, a screen of the console), `site/index.html` says it in the same branch, and the README, the reference and the tutorial say the same. `ci/docs-drift.sh` checks the page's version, links and `./go` targets, never its prose: reading the page against what changed is part of done. The console's stills are rendered again by the `site` workflow on every push that changes the console; look at them in the `site-review` artifact before calling the milestone closed. Do not move the wrapper's `version=`: that happens in the release commit, with the page, right before the tag.
+
 ## 5. Hand off
 
 Close the session with:
