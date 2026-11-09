@@ -25,6 +25,17 @@
 #              and id-token: write only package.yml's publish (v* tag or
 #              workflow_dispatch), which runs a keyless cosign sign; every job
 #              has the github.com guard (ADR 0039).
+#   first run  (docs/adr/0064 §2, §4) the first-run reason, `the repository has no
+#              .lights-out/workload.env committed; lights-out init drafts one`,
+#              is in both package/entrypoint.sh and action.yml outside the
+#              comments (the Action matches on the entrypoint's exact text), and
+#              so is the removal reason, `the change removes .lights-out/
+#              workload.env, which its base has; a change cannot remove the
+#              contract that judges it`, in the entrypoint; action.yml uses
+#              actions/upload-artifact at v7.0.2's pin cf430e0 and no other ref
+#              of it in the Action or its shims, with include-hidden-files: true and overwrite:
+#              true; no new permission (the yaml checks above, kept: check-runs
+#              the only REST path, at most contents: read and checks: write).
 #   shims      actions/test-proof and actions/test-integrity: composite, a
 #              README.md beside, name, description, branding, exactly one step
 #              `uses: nicolaguglielmi/lights-out@v<the wrapper's version=>`
@@ -118,6 +129,22 @@ wrapper_flaws() {
   done
   run "$w/tools" "$f" version
   { [ "$rc" -eq 0 ] && grep -qF -- "${v:-?}" "$w/o"; } || echo "version does not work with no engine"
+  :
+}
+
+# The two reasons ADR 0064 §2 fixes; the Action matches on the first, exactly.
+FIRST_RUN='the repository has no .lights-out/workload.env committed; lights-out init drafts one'
+REMOVAL='the change removes .lights-out/workload.env, which its base has; a change cannot remove the contract that judges it'
+# code FILE: the lines that are not comments.
+code() { grep -Ev '^[[:space:]]*#' "$1"; }
+# first_run_flaws ROOT: the reasons as text, one line each.
+first_run_flaws() {
+  for f in package/entrypoint.sh action.yml; do
+    code "$1/$f" | grep -qF -- "$FIRST_RUN" \
+      || echo "$f does not hold the first-run reason '$FIRST_RUN' outside the comments: the entrypoint prints it and the Action matches on it (ADR 0064 §4)"
+  done
+  code "$1/package/entrypoint.sh" | grep -qF -- "$REMOVAL" \
+    || echo "package/entrypoint.sh does not hold the removal reason '$REMOVAL' outside the comments (ADR 0064 §2)"
   :
 }
 
@@ -220,6 +247,7 @@ SHIMS = ("actions/test-proof", "actions/test-integrity")
 S = "github.server_url == 'https://github.com'"
 TAG, DISP = r"startsWith\(github\.ref, 'refs/tags/v'\)", r"github\.event_name == 'workflow_dispatch'"
 PUB = re.compile(re.escape(S) + r" && \((%s \|\| %s|%s \|\| %s)\)" % (TAG, DISP, DISP, TAG))
+UP = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"  # v7.0.2, ADR 0064
 AP = r"(\$GITHUB_ACTION_PATH|\$\{GITHUB_ACTION_PATH\}|\$\{\{\s*github\.action_path\s*\}\})"
 names = glob.glob(".github/workflows/*.y*ml", root_dir=root) + [ACT, OLD] + [s + "/action.yml" for s in SHIMS]
 files = [s + "/README.md" for s in SHIMS]
@@ -273,6 +301,23 @@ def flaws(d):
         for p in re.findall(r"(?:GITHUB_API_URL\}?|api\.github\.com)(/[^\s\"'?]*)", run) + re.findall(r"\bgh\s+api\s+(\S+)", run):
             if not p.endswith("check-runs"):
                 yield "action.yml calls %s, a permission beyond checks: write" % p
+        # ADR 0064 §4: the draft is uploaded at one pin, hidden files in, replacing a re-run's.
+        ups = [s for s in steps if str(s.get("uses", "")).startswith("actions/upload-artifact@")]
+        if not ups:
+            yield "action.yml does not upload the draft with %s (ADR 0064 §4)" % UP
+        for s in ups:
+            w = s.get("with") or {}
+            if str(w.get("include-hidden-files")).lower() != "true":
+                yield "action.yml: the upload-artifact step lacks include-hidden-files: true; the draft is .lights-out/, hidden (ADR 0064 §4)"
+            if str(w.get("overwrite")).lower() != "true":
+                yield "action.yml: the upload-artifact step lacks overwrite: true; a re-run redrafts (ADR 0064 §4)"
+    # No other ref of upload-artifact in the Action or its shims (ci.yml's own uploads are the repository's, not the Action's).
+    for path, doc in y.items():
+        if path.startswith(".github/workflows/"):
+            continue
+        for ref in re.findall(r"actions/upload-artifact@([^\s\"']+)", json.dumps(doc)):
+            if ref != UP.split("@")[1]:
+                yield "%s uses actions/upload-artifact@%s, want %s (ADR 0064 §4)" % (path, ref, UP)
     for path, doc in y.items():
         if not path.startswith(".github/workflows/"):
             continue
@@ -373,6 +418,10 @@ def signs_with_key(d):
         s["run"] = str(s.get("run", "")).replace("cosign sign", "cosign sign --key cosign.key")
 
 
+def upload_step(d):
+    return next(s for s in Y(d)[ACT]["runs"]["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
+
+
 def declare(d, p, name="zz", root_too=False, pass_as="${{ inputs.%s }}"):
     Y(d)[p].setdefault("inputs", {})[name] = {"description": "x", "required": False, "default": ""}
     if root_too:
@@ -411,6 +460,16 @@ CASES = [
     ("action.yml's gates defaults to test-proof", lambda d: Y(d)[ACT]["inputs"]["gates"].update(default="test-proof"), "default is all"),
     ("action.yml does not post summary.md", lambda d: text(d, ACT, "summary.md", "details.txt"), "summary.md"),
     ("action.yml calls another REST path", lambda d: runs(d, "check-runs", "issues/1/comments"), "beyond"),
+    ("the upload is a different ref", lambda d: upload_step(d).update(uses="actions/upload-artifact@v4"), "want actions/upload-artifact@cf430e0"),
+    ("the upload is a tag of the same action", lambda d: upload_step(d).update(uses=UP.replace("cf430e030ddbb5b0abf93d22962f4752f3646cd9", "v7")), "want actions/upload-artifact@cf430e0"),
+    ("a shim uploads at another ref", lambda d: Y(d)[SP]["runs"]["steps"].append({"uses": "actions/upload-artifact@v4"}), "actions/test-proof/action.yml uses actions/upload-artifact@v4"),
+    ("the upload skips hidden files", lambda d: upload_step(d)["with"].pop("include-hidden-files"), "include-hidden-files"),
+    ("the upload sets include-hidden-files: false", lambda d: upload_step(d)["with"].update({"include-hidden-files": False}), "include-hidden-files"),
+    ("the upload does not overwrite", lambda d: upload_step(d)["with"].pop("overwrite"), "overwrite"),
+    ("action.yml uploads nothing", lambda d: Y(d)[ACT]["runs"].update(steps=[s for s in Y(d)[ACT]["runs"]["steps"] if not str(s.get("uses", "")).startswith("actions/upload-artifact@")]), "does not upload the draft"),
+    ("a job that uses ./ holds actions: read", lambda d: A(d)["permissions"].update(actions="read"), "uses ./ with"),
+    ("a job that uses ./ holds pull-requests: write", lambda d: A(d)["permissions"].update({"pull-requests": "write"}), "uses ./ with"),
+    ("action.yml calls the artifacts API", lambda d: Y(d)[ACT]["runs"]["steps"].append({"shell": "sh", "run": "gh api repos/o/r/actions/artifacts"}), "beyond"),
     ("test-proof's action.yml is gone", lambda d: Y(d).pop(SP), "actions/test-proof/action.yml is missing"),
     ("test-integrity's action.yml is gone", lambda d: Y(d).pop(ST), "actions/test-integrity/action.yml is missing"),
     ("test-proof is not composite", lambda d: Y(d)[SP]["runs"].update(using="node20"), "not a composite"),
@@ -450,6 +509,7 @@ PY
 judge() { [ -z "$2" ] || nogo "$1: $(printf '%s\n' "$2" | head -n 1)" "$2"; }
 judge wrapper "$(wrapper_flaws "$root")"
 judge doctor "$(doctor_all_flaws "$root")"
+judge first-run "$(first_run_flaws "$root")"
 judge yaml "$(python3 -I "$w/chk.py" "$root" check)"
 
 # --- the checks must be able to fail ----------------------------------------------
@@ -459,6 +519,7 @@ try() {
   mkdir -p "$w/m/package" "$w/m/core"
   cp lights-out "$w/m/"
   cp package/entrypoint.sh "$w/m/package/"
+  cp action.yml "$w/m/"
   cp core/doctor.sh "$w/m/core/"
   (cd "$w/m" && eval "$3")
   got=$($1 "$w/m")
@@ -495,6 +556,13 @@ try wrapper_flaws "'test-integrity BASEX=1' is not refused" 'sed -i "s/^    BASE
 try wrapper_flaws "test-proof refuses BASE= HEAD=" 'sed -i "s/^    BASE=\*|//" lights-out'
 try wrapper_flaws "test-integrity refuses BASE= HEAD=" 'sed -i "s/^    BASE=\*|//" lights-out'
 try doctor_flaws "want exit 1" 'sed -i "/^\. ci\/lib.sh/a echo second" core/doctor.sh'
+# The reasons as text (ADR 0064 §2, §4): either copy changed by a word, or only a comment.
+try first_run_flaws "package/entrypoint.sh does not hold the first-run reason" 'sed -i "s/lights-out init drafts one/lights-out init drafts it/" package/entrypoint.sh'
+try first_run_flaws "action.yml does not hold the first-run reason" 'sed -i "s/lights-out init drafts one/lights-out init drafts it/" action.yml'
+try first_run_flaws "package/entrypoint.sh does not hold the first-run reason" 'sed -i "/lights-out init drafts one/s/^/# /" package/entrypoint.sh'
+try first_run_flaws "action.yml does not hold the first-run reason" 'sed -i "/lights-out init drafts one/s/^/# /" action.yml'
+try first_run_flaws "does not hold the removal reason" 'sed -i "s/a change cannot remove the contract that judges it/a change cannot remove it/" package/entrypoint.sh'
+try first_run_flaws "does not hold the removal reason" 'sed -i "/a change cannot remove the contract/s/^/# /" package/entrypoint.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\necho NO-GO: doctor — key\nexit 1\n" > core/doctor.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\necho GO: doctor\nexit 0\n" > core/doctor.sh'
 try doctor_flaws "want exit 1" 'printf "#!/bin/sh\nprintf \"\\033[31mNO-GO: doctor — engine\\033[0m\\n\"\nexit 1\n" > core/doctor.sh'
