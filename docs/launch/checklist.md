@@ -127,7 +127,10 @@ the image, the issues and the announcement (plan §14, §15).
   by the `org.opencontainers.image.source` label.
 - [ ] **The release `v0.1.0` with notes** (plan §15, phase 0): GitHub →
   Releases → Draft a new release → tag `v0.1.0`.
-- [ ] **Prove the plan's own criterion for M23** once the image is public:
+- [x] **Prove the plan's own criterion for M23** once the image is public
+  (done 2026-11-09 with 0.3.0: the probe's pull request, 27 s, and the
+  wrapper from the tag on an arm64 Mac that had never pulled the image,
+  `GO: gates` in 46 s):
   a PR on another repository with
   `uses: nicolaguglielmi/lights-out@v0.3.0` (the root Action; up to
   v0.2.0 the path was `nicolaguglielmi/lights-out/action@<tag>`), and
@@ -143,13 +146,16 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
 - [x] **Check `version=0.3.0`** in `lights-out` (the wrapper). The
   `publish` job refuses a tag that is not `v` plus that version. Checked
   2026-11-09.
-- [ ] **Tag `v0.3.0` from the merge on `main`.** The `publish` job of
+- [x] **Tag `v0.3.0` from the merge on `main`.** Done 2026-11-09 from
+  b931688; the job passed at its first run (run 42588480235). The `publish` job of
   `.github/workflows/package.yml` builds both images for amd64 and arm64,
   pushes them to ghcr.io and signs both keyless. It has never run, so look
   there first if anything fails.
-- [ ] **Make the new package `lights-out-gates` public**: GitHub → the
+- [x] **Make the new package `lights-out-gates` public** (it answered an
+  anonymous pull right after the publish, 2026-11-09): GitHub → the
   package → Package settings → Change visibility → Public.
-- [ ] **Verify both signatures** from a machine with cosign. Run it once
+- [x] **Verify both signatures** from a machine with cosign (both verified
+  2026-11-09 with the workbench's cosign 3.1.3). Run it once
   for `lights-out-gates:0.3.0` and once for `lights-out:0.3.0`:
   ```sh
   cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0 \
@@ -167,7 +173,10 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
   repository, tag `v0.3.0`, and publish the release to the Marketplace the
   same way. The copies can lag a version without any check failing:
   `ci/package.sh` checks the sources here, never the copies.
-- [ ] **Measure the first pull.** In the public probe repository
+- [x] **Measure the first pull.** Done 2026-11-09, each Action in a job of
+  its own: 27 s, 14 s and 25 s, all GO (probe run 42589663783), written in
+  the README's step 1, which now links the probe: keep it public, or
+  change the link. In the public probe repository
   `nicolaguglielmi/lights-out-probe` (made public on 2026-11-08 because the
   account's Actions billing refused a private run), set the workflow's and
   the two shims' `uses:` to `@v0.3.0`, drop the step that builds the image

@@ -528,9 +528,12 @@ steps:
   input to a digest. The check is in [the README](../README.md#1-gates-on-your-repository).
 - Up to v0.2.0 the path was `nicolaguglielmi/lights-out/action@<tag>`. Those
   tags keep it.
-- **Not proven on another repository.** It is proven in lights-out's own
-  workflow, with `uses: ./` on a scratch repository (a GO and a NO-GO check
-  run). `@v0.3.0` is not published yet.
+- **Proven on one outside repository**,
+  [the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1): with
+  `@v0.3.0` published, the check in 27 s, first pull included (`test-proof`
+  14 s, `test-integrity` 25 s, each in a job of its own). In lights-out's own
+  workflow it runs with `uses: ./` on a scratch repository (a GO and a NO-GO
+  check run).
 
 ### Hook recipes for coding agents
 

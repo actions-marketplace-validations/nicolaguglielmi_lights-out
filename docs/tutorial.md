@@ -693,10 +693,10 @@ steps:
   - uses: nicolaguglielmi/lights-out@v0.3.0
 ```
 
-**`@v0.3.0` is not published yet, and nothing has run on another repository.** The
-Action is proven in lights-out's own workflow only, on a scratch
-repository, once with a good change and
-once with a broken test:
+**Proven on one outside repository.** With `@v0.3.0` published, the Action
+posted its check on [the probe's pull request](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)
+in 27 s, first pull included. In lights-out's own workflow it runs on a
+scratch repository, once with a good change and once with a broken test:
 
 <!-- source: GitHub Actions run 41866972365 (workflow package, commit ee2f679), job action (126703546538); the verdict and check-run lines of the two cases -->
 ```
