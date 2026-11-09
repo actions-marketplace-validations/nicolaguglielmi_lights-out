@@ -6,7 +6,18 @@ Resolved at the merges: the Makefile's `CI_CHECKS` (gitea-compat out, readiness,
 
 Host checks on the merged tree, 2026-11-08: `docs-drift`, `gates-light`, `store-bus` and `readiness` GO; the 681 unit tests OK in 72 s; `./go doctor` GO at L0 without the emulator ports. The proof is the six workflows on the branch head, after which `main` is fast-forwarded to it. The owner's steps are in `docs/launch/checklist.md`: tag `v0.3.0`, PyPI, the three Marketplace pages, the first-pull measure on the probe.
 
-Each section below is the branch's own handoff, kept whole.
+## Release 0.3.0, 2026-11-09
+
+`main` is b931688 (`pyproject.toml` at 0.3.0, the wrapper's version) plus the commit that records the release. The tag `v0.3.0` is on b931688; `package.yml` run 42588480235 built, pushed and signed both images at its first run. Digests: `lights-out-gates@sha256:051894c1703071a98afa4d96d58b457b566364d3029a0d9d863984c8a4736853`, `lights-out@sha256:b5e2404c98ec45688f28c5a97039862e943539c5dfed12ea13eeb6c6d73e31e4`; both public, both signatures verified with the workbench's cosign.
+
+The probe (`nicolaguglielmi/lights-out-probe`, pull request 1) now uses `@v0.3.0` with one job per Action: 27 s, 14 s and 25 s to the check run, first pull included, all GO (run 42589663783). The wrapper from the tag printed `GO: gates` in 46 s on an arm64 Mac, first pull included.
+
+Left to the owner (`docs/launch/checklist.md`): publish the draft release with the Marketplace box ticked, the two repositories for the standalone Actions, the upload to PyPI (a dry-run wheel at 0.3.0 was built and answered `GO: gates-light`).
+
+Found, not fixed: `gates/test-proof.sh` passes `HEAD=` as given to `git restore --source` inside the base's worktree, where a HEAD-relative ref names another commit. `HEAD=HEAD` gives NO-GO; the default head, a branch or a sha gives GO.
+
+
+Each section below this line is the branch's own handoff, kept whole.
 
 ## Handoff: M34, the lean plane (ADR 0060), 2026-11-08
 

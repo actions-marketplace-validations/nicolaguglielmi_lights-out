@@ -44,9 +44,9 @@ Each step asks for one thing more than the one before, and gives back something 
 
 ### 1. Gates on your repository
 
-The `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is 508 MB unpacked (amd64), with no cloud toolchain in it. On a pull request of a repository that is not lights-out ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)), the Action posted its check in 19 s, `test-proof` in 2 s and `test-integrity` in 17 s, with the image built in the job (23 s): the first pull is measured once 0.3.0 is published. `lights-out init` and `gates` took 48 s on a clean runner (`./go demo-package`). The full image, `ghcr.io/nicolaguglielmi/lights-out:0.3.0` (1,246 MB, 1.77 GB before gcloud and terraform left it), is for `triage` and `postmortem` only.
+The `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.3.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is 508 MB unpacked (amd64), with no cloud toolchain in it. On a pull request of a repository that is not lights-out ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)), each in a job of its own so that the first pull of the image is inside the time, the Action posted its check in 27 s, `test-proof` in 14 s and `test-integrity` in 25 s. `lights-out init` and `gates` took 48 s on a clean runner (`./go demo-package`). The full image, `ghcr.io/nicolaguglielmi/lights-out:0.3.0` (1,246 MB, 1.77 GB before gcloud and terraform left it), is for `triage` and `postmortem` only.
 
-Version 0.3.0 is not published yet: publishing is the owner's tag `v0.3.0`. Until then, build the image from a clone with `./go package-gates` and point the wrapper at it with `LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev`. The commands below are the ones that work once it is out.
+Version 0.3.0 was published on 2026-11-09 by the tag `v0.3.0`. From a clone, `./go package-gates` builds the same image, and `LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev` points the wrapper at it.
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH

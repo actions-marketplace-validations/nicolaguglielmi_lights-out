@@ -198,6 +198,14 @@ probe builds the image in the job and reports the build apart. The 4 GiB
 podman VM runs one heavy run at a time (observed 2026-11-07, two VM stops
 with two demos at once).
 
+*Amendment 2026-11-09, the first pull measured.* 0.3.0 is published (tag
+`v0.3.0`, package.yml run 42588480235, both images signed keyless and
+verified). On the probe, with the published image and each Action in a job
+of its own on a runner that had never pulled it, the check run was posted
+in 27 s by the root Action, 14 s by `test-proof` and 25 s by
+`test-integrity`, first pull included (probe run 42589663783): inside the
+300 s.
+
 ## Alternatives rejected
 
 - **A second Containerfile for the gates image.** Two places to bump every
