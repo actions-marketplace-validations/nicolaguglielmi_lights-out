@@ -293,8 +293,9 @@ again the day you list.
   on claude.com. First run `claude plugin validate --strict
   plugins/lights-out`: on 2026-11-10 it passed with one directory warning,
   `ICON_MISSING`. The portal takes the icon only on the first save: add a
-  square PNG, 512 to 2048 px, under 2 MB, at
-  `plugins/lights-out/.claude-plugin/icon.png` before submitting. The hook
+  square PNG, 512 to 2048 px, under 2 MB, as `icon.png` beside the
+  plugin's manifest (`plugins/lights-out/.claude-plugin/`) before
+  submitting. The hook
   and the MCP server are Claude Code components; check the portal's
   component table for what loads on claude.ai.
 - [ ] **The official marketplace, `claude-plugins-official`**: it takes no
