@@ -83,7 +83,7 @@ gates' name:
 NO-GO: gates — the repository has no .lights-out/workload.env committed; lights-out init drafts one
 ```
 
-After 0.3.0 the same check carries the fix (ADR 0064). The Action runs
+Since 0.3.1 the same check carries the fix (ADR 0064). The Action runs
 `lights-out init` on the pull request's base, not on its head, so a pull
 request cannot shape the contract you commit. The check's summary shows
 the draft's `workload.env`, `policy.env` and `worker.md` with their
@@ -116,8 +116,8 @@ high risk.
   its own line, `NO-GO: gates — the change removes .lights-out/workload.env,
   which its base has; a change cannot remove the contract that judges it`,
   and no draft.
-- The 0.3.0 Action prints the NO-GO line only. Until the next release, draft
-  the contract with the wrapper ([below](#without-cloning-lights-out-the-wrapper))
+- The 0.3.0 Action prints the NO-GO line only: pin `@v0.3.1` or later, or
+  draft the contract with the wrapper ([below](#without-cloning-lights-out-the-wrapper))
   or from a clone ([next](#start-from-an-example)).
 
 ### Start from an example
@@ -319,10 +319,9 @@ lights-out gates
   your repository. Keep the `/.` in the `cp` command: a plain `cp -R` into
   an existing `.lights-out/` nests the draft inside it.
 - `gates` judges the last commit, or `BASE=<ref> HEAD=<ref>`. `STAGED=1`
-  judges what is staged as one commit. In 0.3.0, name the head by branch or
-  id, or leave it out: `test-proof` reads a name relative to HEAD
-  (`HEAD=HEAD`, `HEAD=HEAD~1`) from the base's worktree and answers NO-GO.
-  Fixed after the tag, in the next version.
+  judges what is staged as one commit. A name relative to HEAD
+  (`HEAD=HEAD~1`) is the commit it names here; in 0.3.0 `test-proof` read
+  it from the base's worktree and answered NO-GO, fixed in 0.3.1.
 - `triage ALERT=<file>` and `postmortem INCIDENT=<file>` also work. At L0
   they replay only lights-out's own recordings, so on your alerts and
   incidents use `PROFILE=l1` and the key in your environment.
@@ -336,9 +335,9 @@ lights-out gates
   `policy.env`, `runners/`), so a change cannot loosen what judges it.
   With no contract at the base, the head's own judges, and the wrapper says
   so on stderr. A change that removes the base's `workload.env` is NO-GO
-  with a line of its own (after 0.3.0).
-- `init HEAD=<commit>` drafts from that commit instead of `HEAD` (after
-  0.3.0); the Action uses it to draft from the base. Every `init` also
+  with a line of its own (since 0.3.1).
+- `init HEAD=<commit>` drafts from that commit instead of `HEAD` (since
+  0.3.1); the Action uses it to draft from the base. Every `init` also
   writes `init/summary.md` next to the draft: its line, the three small
   files and the runners by size, with no path of your machine in it.
 - The plane (`./go demo`, canary, rollback) stays the clone path.
@@ -562,14 +561,14 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.0
+  - uses: nicolaguglielmi/lights-out@v0.3.1
 ```
 
 - **The check run's summary** has one line per gate, the gates that did not
   run ("not run: stopped at the first NO-GO"), and for a NO-GO the first 20
   lines of that gate's details, such as the surviving mutants or the file
   outside the perimeter. The same summary goes to the job's step summary.
-- **On a repository with no contract** the check is NO-GO, and after 0.3.0
+- **On a repository with no contract** the check is NO-GO, and since 0.3.1
   it carries a draft from the base and the two commands that commit it:
   [the first check](#from-a-pull-request-the-actions-first-check). It asks
   for no permission beyond `contents: read` and `checks: write`; the draft
@@ -579,12 +578,12 @@ steps:
   that the tests a change adds or changes fail on its base.
   `test-integrity` runs test-weakening, then mutation on the changed lines.
 - **Two standalone Actions** run one of those each:
-  `nicolaguglielmi/lights-out/actions/test-proof@v0.3.0` and
-  `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.0`. Their sources
+  `nicolaguglielmi/lights-out/actions/test-proof@v0.3.1` and
+  `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.1`. Their sources
   are `actions/test-proof/` and `actions/test-integrity/`. Each also has a
   repository of its own for its Marketplace page, with a copy at the same
-  version: `nicolaguglielmi/test-proof@v0.3.0` and
-  `nicolaguglielmi/test-integrity@v0.3.0`.
+  version: `nicolaguglielmi/test-proof@v0.3.1` and
+  `nicolaguglielmi/test-integrity@v0.3.1`.
 - Linux runners only. The Action needs docker.
 - A fork PR's token cannot write checks. The post is skipped with a warning,
   and the job status still carries the verdict.

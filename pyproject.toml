@@ -14,7 +14,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lights-out-gates"
-version = "0.3.0"
+version = "0.3.1"
 description = "The gates of lights-out that need only git and Python: one line, GO or NO-GO, no container."
 readme = "README.md"
 license = "Apache-2.0"
