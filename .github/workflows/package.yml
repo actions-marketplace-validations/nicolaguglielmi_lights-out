@@ -66,14 +66,21 @@ jobs:
               b=$(docker image inspect --format '{{.Size}}' "$i" 2>/dev/null) && echo "$i $((b / 1000000)) MB ($b bytes)"
             done; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # The root Action's own test, on a scratch repository made from
-  # workloads/minimal with the drafted contract committed: a good change
-  # (GO, a check run `success` on this commit, its summary one line per
-  # gate), a change that breaks a test (NO-GO, a check run `failure`), and
-  # the good change again with `gates: test-proof` and `gates:
-  # test-integrity`, what the two standalone Actions run. Every check run
-  # lands on this workflow's commit, where the branch's checks show them:
-  # the NO-GO one is red on purpose, and its name says so.
+  # The root Action's own test. First, ADR 0064's first run: a scratch
+  # repository made from workloads/minimal with no workload.env committed,
+  # commits c1 and c2. The Action on c1..c2 must print the first-run NO-GO
+  # line, fail its step and post a `failure` check whose summary names c1,
+  # the three drafted files and the artifact lights-out-draft-<job id>. That
+  # artifact is downloaded, checked to be `.lights-out/` and nothing else,
+  # committed as c3, a good change follows as c4, and the Action on c3..c4
+  # must be GO. Then, on a scratch repository made from workloads/minimal
+  # with the drafted contract committed: a good change (GO, a check run
+  # `success` on this commit, its summary one line per gate), a change that
+  # breaks a test (NO-GO, a check run `failure`), and the good change again
+  # with `gates: test-proof` and `gates: test-integrity`, what the two
+  # standalone Actions run. Every check run lands on this workflow's commit,
+  # where the branch's checks show them: the NO-GO ones are red on purpose,
+  # and their names say so.
   action:
     runs-on: ubuntu-latest
     needs: plan
@@ -87,6 +94,67 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: ./go package-gates
+      - name: A scratch repository with no contract committed (ADR 0064 §6), c1 and c2
+        id: first
+        run: |
+          set -eu
+          repo="$GITHUB_WORKSPACE/scratch-first"
+          mkdir -p "$repo" && cp -R workloads/minimal/. "$repo/"
+          rm "$repo/.lights-out/workload.env"
+          git -C "$repo" init -q -b main
+          git -C "$repo" config user.name lights-out-action-test
+          git -C "$repo" config user.email action-test@lights-out.invalid
+          git -C "$repo" add -A && git -C "$repo" commit -q -m "workloads/minimal, no workload.env"
+          echo "c1=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "c1_short=$(git -C "$repo" rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          printf '\nA line, so that there is a second commit.\n' >> "$repo/README.md"
+          git -C "$repo" commit -q -am "a README line"
+          echo "c2=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: The Action on the first run (NO-GO expected, and a draft)
+        id: first_run
+        continue-on-error: true
+        uses: ./
+        with:
+          path: scratch-first
+          base: ${{ steps.first.outputs.c1 }}
+          head: ${{ steps.first.outputs.c2 }}
+          image: localhost/lights-out-gates:dev
+          name: "lights-out gates (Action test: first run, a NO-GO and a draft expected)"
+      - name: The draft the first run uploaded
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: lights-out-draft-${{ github.job }}
+          path: ${{ runner.temp }}/first-draft
+      - name: The draft is .lights-out/ and nothing else, names c1; committed as c3, then a good change as c4
+        id: second
+        env:
+          C1_SHORT: ${{ steps.first.outputs.c1_short }}
+        run: |
+          set -eu
+          draft="$RUNNER_TEMP/first-draft"
+          entries=$(cd "$draft" && find . -mindepth 1 -maxdepth 1 | LC_ALL=C sort | tr '\n' ' ')
+          [ "$entries" = "./.lights-out " ] || { echo "the artifact is not .lights-out/ and nothing else: $entries"; exit 1; }
+          for f in workload.env policy.env worker.md; do
+            [ -s "$draft/.lights-out/$f" ] || { echo "the artifact has no $f"; exit 1; }
+          done
+          grep -qF "$C1_SHORT" "$draft/.lights-out/workload.env" || { echo "workload.env does not name c1 ($C1_SHORT)"; exit 1; }
+          repo="$GITHUB_WORKSPACE/scratch-first"
+          cp -R "$draft/.lights-out/." "$repo/.lights-out/"
+          git -C "$repo" add -A && git -C "$repo" commit -q -m "the drafted contract"
+          echo "c3=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          printf '\n\n@app.get("/version")\ndef version():\n    return {"version": APP_VERSION}\n' >> "$repo/minimal/app.py"
+          printf '\n\ndef test_version_returns_the_app_version(client):\n    assert client.get("/version").json() == {"version": APP_VERSION}\n' >> "$repo/tests/test_app.py"
+          git -C "$repo" commit -q -am "a /version route, and its test"
+          echo "c4=$(git -C "$repo" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: The Action on the drafted contract and a good change
+        id: drafted
+        uses: ./
+        with:
+          path: scratch-first
+          base: ${{ steps.second.outputs.c3 }}
+          head: ${{ steps.second.outputs.c4 }}
+          image: localhost/lights-out-gates:dev
+          name: "lights-out gates (Action test: the drafted contract, GO expected)"
       - name: A scratch repository with the drafted contract, then a good change and a bad one
         id: scratch
         run: |
@@ -154,9 +222,21 @@ jobs:
           BAD_OUTCOME: ${{ steps.bad.outcome }}
           PROOF: ${{ steps.proof.outputs.line }}
           INTEGRITY: ${{ steps.integrity.outputs.line }}
+          FIRST: ${{ steps.first_run.outputs.line }}
+          FIRST_OUTCOME: ${{ steps.first_run.outcome }}
+          FIRST_SHORT: ${{ steps.first.outputs.c1_short }}
+          ART: lights-out-draft-${{ github.job }}
+          DRAFTED: ${{ steps.drafted.outputs.line }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          printf 'first run: %s (step %s)\ndrafted: %s\n' "$FIRST" "$FIRST_OUTCOME" "$DRAFTED"
+          # ADR 0064 §6: the first run is a NO-GO under the exact first-run line, and the contract it drafted judges c3..c4.
+          [ "$FIRST_OUTCOME" = failure ] || { echo "the first run's step did not fail: $FIRST_OUTCOME"; exit 1; }
+          [ "$FIRST" = "NO-GO: gates — the repository has no .lights-out/workload.env committed; lights-out init drafts one" ] \
+            || { echo "the first run's line is not the first-run line: $FIRST"; exit 1; }
+          [ "$ART" = lights-out-draft-action ] || { echo "the artifact is not named after the job: $ART"; exit 1; }
+          case "$DRAFTED" in "GO: gates — "*) ;; *) echo "the drafted contract did not judge c3..c4 GO: $DRAFTED"; exit 1 ;; esac
           printf 'good: %s\nbad: %s (step %s)\ntest-proof: %s\ntest-integrity: %s\n' "$GOOD" "$BAD" "$BAD_OUTCOME" "$PROOF" "$INTEGRITY"
           case "$GOOD" in "GO: gates — "*) ;; *) echo "the good change was not GO"; exit 1 ;; esac
           case "$BAD" in "NO-GO: gates — test: "*) ;; *) echo "the bad change was not NO-GO at test"; exit 1 ;; esac
@@ -174,6 +254,12 @@ jobs:
               || { echo "no $2 check run named $1… carries its line and $4 gate lines"; exit 1; }
           }
           check "lights-out gates (Action test: a good" success "$GOOD" 8
+          check "lights-out gates (Action test: the drafted" success "$DRAFTED" 8
+          # The first run: a failure titled with the line, naming c1, the three files and the artifact.
+          printf '%s' "$runs" | jq -e --arg p "lights-out gates (Action test: first run" --arg l "$FIRST" --arg s "$FIRST_SHORT" --arg a "$ART" \
+            '[.check_runs[] | select(.name | startswith($p)) | select(.conclusion == "failure" and .output.title == $l)
+              | select(.output.summary | contains($s) and contains("workload.env") and contains("policy.env") and contains("worker.md") and contains($a))] | length > 0' >/dev/null \
+            || { echo "no failure check run for the first run carries its line, c1 ($FIRST_SHORT), the three files and $ART"; exit 1; }
           check "lights-out gates (Action test: a broken" failure "$BAD" 8
           check "lights-out test-proof (Action test" success "$PROOF" 2
           check "lights-out test-integrity (Action test" success "$INTEGRITY" 2
