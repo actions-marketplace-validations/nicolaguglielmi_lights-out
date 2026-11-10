@@ -27,7 +27,7 @@
 # your environment by name, never from a file.
 set -eu
 
-version=0.3.0
+version=0.3.1
 gates_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out-gates:$version}
 full_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out:$version}
 keys="GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY"
