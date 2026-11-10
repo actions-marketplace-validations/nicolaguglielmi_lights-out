@@ -182,6 +182,7 @@ never written into a checkout.
 
 - `./go ci-attach` GO, and NO-GO on the planted regression (above).
 - `sh gates/spec.sh` on every ticket: GO ×15 (5 sqlparse, 5 validators, 5 tenacity).
-- `ci/docs-drift.sh` on the host with `MAP_EXCLUDE`: CI_TBD
-- `./go ci` from a clean clone under `.crew/`: CI_TBD
-- The six workflows on the pushed head: CI_TBD
+- `ci/docs-drift.sh` on the host with `MAP_EXCLUDE`: GO.
+- `./go ci` from a clean clone under `.crew/`: GO, 197 s, on 8dcab41.
+- The six workflows green on 8dcab41: ci 42922530010, stranger 42922529903, self 42922530000, package
+  42922529920, podman 42922530062, site 42922612267 (dispatched). The docs-only commit after it records these ids.
