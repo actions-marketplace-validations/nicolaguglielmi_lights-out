@@ -30,6 +30,7 @@ Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M21 (GitHu
 | packaged command | M23 | ✓ built and tested in CI, published as `ghcr.io/nicolaguglielmi/lights-out:0.2.0` on 2026-11-08 (tag `v0.2.0`; 0.1.0 on 2026-11-05): the image and the `lights-out` wrapper (`init`, `gates`, `triage`, `postmortem`, `doctor`, `version`), the Action, `./go doctor`, `./go package`, `./go demo-package` (ADR 0045); the Action is proven in lights-out's own workflow only |
 | tests that prove | M27 | ✓ `test-weakening` and `test-proof` on every range, `WORKLOAD_TEST_PATHS` in the contract; the tower's `assign` refuses a ticket whose perimeter overlaps an open one, and an attached repository's red base; `./go demo-gates` and `ci/assign.sh` prove it (ADR 0053) |
 | gates without a container | M35 | ✓ `lights-out-gates --light`, the package `lights-out-gates` (from a clone `python3 -m core gates --light`): a Python package, standard library only, from a root `pyproject.toml` mapping `lights_out` onto `core/`; risk and test-weakening by default, perimeter and spec with `TICKET=`, test and test-proof on the host with `TEST_ON_HOST=1`; one line that names the gates that did not run and never says `GO: gates`; 0.14 s on this repository; `ci/gates-light.sh` proves it agrees with the full gates on the nine fixtures; the `--light` hook recipes verified once against Claude Code, Codex and Gemini CLI with the scripted model. On PyPI as `lights-out-gates` 0.3.0 since 2026-11-09 (ADR 0061 and its amendment) |
+| the agent's toolbelt, first slice | M39 | ✓ the Claude Code plugin `plugins/lights-out/` with this repository as its marketplace (`.claude-plugin/marketplace.json`): `/lights-out:gates`, `/lights-out:spec`, a pre-commit hook, and `lights-out-gates mcp`, a read-only MCP server (four tools over the project map and the spec gate); the package's `spec`, `map` and `mcp` commands; `ci/plugin.sh` and `core/tests/test_mcp.py` in `./go ci`; verified once in Claude Code 2.1.311 with the scripted model. Not listed anywhere; Codex and Gemini CLI not built (ADR 0069) |
 | gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
 | GitHub code host | M21 | ✓ implemented: `adapters/github/` with the eight CodeHost verbs, an attached repository's merge built, signed and released by the release step at any code host, `./go codehost-conformance` (Gitea on every push, GitHub nightly once the owner sets the throwaway repository). Not yet run: `./go e2e CODE_HOST=github PROFILE=l1` (ADR 0043) |
 
@@ -179,6 +180,23 @@ lights-out version
 - **Two standalone Actions**, `nicolaguglielmi/lights-out/actions/test-proof@v0.3.1` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.1`. Each is a shim over the Action above with `gates:` set. Their sources are `actions/test-proof/` and `actions/test-integrity/`, each with a README. The Marketplace lists one Action per repository, so each has a repository of its own with a copy at the same version, `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`, created and tagged `v0.3.0` on 2026-11-09; on the probe's pull request, used from those repositories, they posted their checks in 11 s and 23 s, both GO (probe run 42591256328). All three are on the GitHub Marketplace since 2026-11-09: [lights-out gates](https://github.com/marketplace/actions/lights-out-gates), [lights-out test-proof](https://github.com/marketplace/actions/lights-out-test-proof) and [lights-out test-integrity](https://github.com/marketplace/actions/lights-out-test-integrity).
 
 Decisions and rejected alternatives: [ADR 0045](adr/0045-one-command-one-package.md) and [ADR 0057](adr/0057-the-stepped-way-in.md).
+
+## The Claude Code plugin and the MCP server
+
+ADR 0069 (M39, first slice). `plugins/lights-out/` is a Claude Code plugin, and this repository is its marketplace (`.claude-plugin/marketplace.json`, name `lights-out`): `claude plugin marketplace add nicolaguglielmi/lights-out`, `claude plugin install lights-out@lights-out`. Its version is the package's (`pyproject.toml`), checked by `ci/plugin.sh`.
+
+- **Two skills**, invoked by the user only (`disable-model-invocation`): `/lights-out:gates [KEY=VALUE ...]` is `lights-out-gates --light`, `STAGED=1` when no key is given; `/lights-out:spec <file>` is `lights-out-gates spec <file>`. Each puts exactly one line in front of the model (`scripts/skill.sh`).
+- **The hook**, `PreToolUse` on Bash, timeout 30 s: on `git commit`, in a repository whose HEAD has `.lights-out/workload.env`, the light gates on the staged changes; a NO-GO exits 2 with the gates' line on stderr (`scripts/pre-commit.sh`). Removed with the plugin.
+- **The resolver**, `scripts/run.sh`: `lights-out-gates` from PATH when its version is the plugin's, else `uvx --from lights-out-gates==<version>`, else one NO-GO line.
+- **The package's commands** (stdlib only, in `lights_out`):
+
+```sh
+lights-out-gates spec <file>                     # GO: spec, or NO-GO: spec — <the first failure>
+lights-out-gates map [--repo DIR] [--out FILE]   # the project map at HEAD, default inside .git (git rev-parse --git-path lights-out/map.sqlite)
+lights-out-gates mcp [--repo DIR] [--map FILE]   # the read-only MCP server over stdio
+```
+
+- **The MCP server**: stdio, both protocol eras (revision 2026-07-28, stateless, with `server/discover`; and `initialize`, answered with 2025-11-25). Four tools, each `readOnlyHint`: `adrs_for_path`, `tests_for_path`, `tickets_for_path` over the map, opened read-only at every call and refused unless it was built at HEAD (the refusal names both commits and `lights-out-gates map`), and `check_spec` on a draft's text. No engine, plane, network or model. From a clone, `python3 -m core mcp --map .crew/map.sqlite` reads `./go map`'s file.
 
 ## Coding harnesses
 
