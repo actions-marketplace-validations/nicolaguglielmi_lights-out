@@ -20,7 +20,9 @@ Branch `claude/optimistic-meitner-aed1df`, cut from `main` at 3f24804 (0.3.0 rel
 
 - Local, by hand on the gates image built from the implementation: the four wrapper cases above, as the ADR says; init from c1 on workloads/minimal in 25 s of mutation.
 - `./go ci-package`: GO (60 s). `ci/docs-drift.sh` on the host with `MAP_EXCLUDE="docs/PLAN.md docs/plans/* .claude/*"`: GO.
-- `./go demo-package`, `./go ci` from a clean clone under `.crew/`, and the six workflows on the branch head: see the PLAN note (M31, second slice) for the run ids.
+- `./go demo-package` locally on the gates image built from the branch: GO, init and gates 104 s against 300 s, plus every new case.
+- `./go ci` from a clean clone under `.crew/`: GO (176 s; a later run was slowed by the machine sleeping, and one failed `map` on a podman VM clock 89 minutes behind the host, set from the host's clock with `sudo date -s` in the VM).
+- **The six workflows green on 4481389**: ci 42743001712, stranger 42743002218, self 42743001883, package 42743001649, podman 42743001768, site 42743001404 (dispatched). In the `action` job: the first run is a `failure` check titled with the first-run line, its summary drafted from 75fca04 with the three files, the runners by size and the two commands; the artifact `lights-out-draft-action` (84,465 bytes) downloads as `.lights-out/` and nothing else; committed, the good change is `GO: gates — risk low, auto-merge, in workbench`. The docs-only commit after it records these ids.
 
 ## For the owner, at the next release
 
