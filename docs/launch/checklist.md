@@ -28,10 +28,11 @@ the image, the issues and the announcement (plan §14, §15).
 
 - [ ] **Merge the open branches into `main`**, this one included, through
   a `merge/<name>` branch once Actions is green on it
-  (`docs/plans/third-arc-execution.md`). That includes the two parallel
-  sessions: egress for the harnesses, and the tower restoring
-  `.lights-out/runners/` from the base. M23's finding 2 says the second
-  must land before M24 runs on a repository the owner does not control.
+  (`docs/plans/third-arc-execution.md`). The two parallel sessions M23's
+  finding 2 named before M24, egress for the harnesses and the tower
+  restoring `.lights-out/runners/` from the base, are both on `main`
+  (checked 2026-11-10: `ci/attach.sh` case f GO, and NO-GO once the
+  restore is removed).
 - [ ] **`./go demo` green on Linux and on macOS** from a clean clone, before
   every announcement (plan §15, "Rischi").
   ```sh
