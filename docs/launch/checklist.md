@@ -260,6 +260,63 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   from `docs/use-on-your-repo.md` (the hook recipes and the status table),
   `docs/reference.md` and the README.
 
+### The agent's toolbelt (M39)
+
+The Claude Code plugin and `lights-out-gates mcp` (ADR 0069). Nothing is
+listed anywhere: every listing below is the owner's act. What each place
+asks was read on 2026-11-10 (ADR 0069, "Verified before writing"); read it
+again the day you list.
+
+- [ ] **Release the package with the plugin.** The published 0.3.1 has no
+  `spec`, `map` or `mcp` command, and the plugin runs `lights-out-gates` at
+  its own version. In the release commit, move `version` in
+  `pyproject.toml`, in `plugins/lights-out/.claude-plugin/plugin.json`
+  (`ci/plugin.sh` checks they are equal) and the wrapper's `version=`
+  together; upload to PyPI right after the tag (section "The Python
+  package on PyPI"). Until the upload, a plugin install from `main` that
+  falls back to `uvx` answers `NO-GO: lights-out — lights-out-gates
+  <version> not found`.
+- [ ] **Your own marketplace: this repository.** After the merge,
+  `.claude-plugin/marketplace.json` on `main` is the listing; there is no
+  form. Check it once on a clean machine:
+  ```bash
+  claude plugin marketplace add nicolaguglielmi/lights-out
+  claude plugin install lights-out@lights-out
+  ```
+  then `/lights-out:gates` in a repository with a contract. The relative
+  source has no ref: a new install gets `main` (ADR 0069, Consequences).
+  The 14 days the launch plan wants before awesome-claude-code count from
+  this day.
+- [ ] **Anthropic's directory** (claude.ai, Cowork, and Claude Code as
+  `lights-out@synced`): a paid claude.ai plan; submit from the developer
+  portal, `claude.ai/directory/manage`, after the pre-submission checklist
+  on claude.com. First run `claude plugin validate --strict
+  plugins/lights-out`: on 2026-11-10 it passed with one directory warning,
+  `ICON_MISSING`. The portal takes the icon only on the first save: add a
+  square PNG, 512 to 2048 px, under 2 MB, at
+  `plugins/lights-out/.claude-plugin/icon.png` before submitting. The hook
+  and the MCP server are Claude Code components; check the portal's
+  component table for what loads on claude.ai.
+- [ ] **The official marketplace, `claude-plugins-official`**: it takes no
+  submissions through the portal, only through an Anthropic partner
+  contact (Claude Code's publish page, 2026-11-10). The roadmap's "its
+  form" does not exist; skip it unless you have that contact.
+- [ ] **The MCP registry** (in preview): after the PyPI upload of the
+  release, add `mcp-name: io.github.nicolaguglielmi/lights-out` (an HTML
+  comment is enough) to `README.md`, the package's README, and release
+  again so PyPI shows it; write `server.json` with `mcp-publisher init`
+  (name `io.github.nicolaguglielmi/lights-out`, a description of at most
+  100 characters, one `pypi` package `lights-out-gates` at the release's
+  version, transport `stdio`, the argument `mcp`), then
+  `mcp-publisher login github`, `mcp-publisher validate`, `mcp-publisher
+  publish`. Read the registry's PyPI guide that day: these steps come from
+  its quickstart, which shows npm.
+- [ ] **Codex and Gemini CLI**: not built (ADR 0069). Codex distributes
+  skills through plugins and the page read describes no public directory;
+  Gemini CLI's gallery is geminicli.com/extensions/browse, and the
+  reference page does not name the `gemini-cli-extension` topic. Both wait
+  for M39's next slice.
+
 ### The README's front page
 
 - [ ] **Record the rollback** (plan §15, phase 0; assessment Horizon 1

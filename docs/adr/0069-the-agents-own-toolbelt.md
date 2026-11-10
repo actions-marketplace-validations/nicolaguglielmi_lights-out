@@ -204,13 +204,37 @@ what was verified about them is recorded below, nothing is built for them.
 - Codex, Gemini CLI, the MCP registry and the orchestrator recipes are not
   built; the directory listing (b) is the owner's act.
 
-## End-to-end proof (to be filled, once)
+## End-to-end proof (2026-11-10, once)
 
-The pinned 2.1.311 with `gates/harness-conformance/stub.py` as the model,
-the plugin from a local-path marketplace, `claude plugin validate --strict`:
-`/lights-out:gates` answers one line; the hook stops a commit that weakens
-a test; which MCP era 2.1.311 spoke, and its `tools/list`. Result: _(to
-fill)_.
+The pinned 2.1.311 (`adapters/claude-code/package-lock.json`, installed
+with `npm ci` into a host directory and run in the workbench image: the
+podman VM's disk was too full to build the adapter image), with
+`gates/harness-conformance/stub.py` as the model, the package installed
+from a wheel of this branch (`uv tool install`, version 0.3.1, so the
+resolver took it from PATH), the plugin from a local-path marketplace on a
+scratch repository with a contract. Result:
+
+- `claude plugin validate --strict` on the plugin and `claude plugin
+  validate` on the marketplace: passed. One directory warning,
+  `ICON_MISSING`, outside the verdict (the owner's checklist).
+- `claude plugin marketplace add` and `claude plugin install
+  lights-out@lights-out`: installed, enabled, version 0.3.1, read in place.
+- `claude -p '/lights-out:gates'` on a clean staged change: the request to
+  the model carried `GO: gates-light — risk low, auto-merge; 2 of 10 gates
+  ran; …` inside the skill's text.
+- MCP: 2.1.311 spoke the modern era. Its first message was
+  `server/discover` with `_meta` protocolVersion `2026-07-28`, then
+  `tools/list`; the four tools reached the model as deferred tools
+  (`mcp__plugin_lights-out_lights-out__…`). A `tests_for_path` call on the
+  module (through `ToolSearch`, then the tool; the stub's copy had one
+  extra op, `tool`, for this proof only) returned `Tests: - tests/test_add.py`
+  at the map's sha to the model.
+- The hook, with this file's final `hooks.json`: a staged change that
+  removed the test's assertion was stopped. The model received
+  `PreToolUse:Bash hook error: […]: NO-GO: gates-light — test-weakening: …`
+  and no commit landed; a clean staged change committed.
+- Not run in the CLI: `/lights-out:spec` (proven by `ci/plugin.sh` through
+  `skill.sh`), the legacy era (unit tests only), the `uvx` fallback.
 
 ## Golden-rule check
 

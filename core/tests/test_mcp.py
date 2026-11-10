@@ -261,8 +261,18 @@ class Tools(Fixture):
         self.assertIn("history", text)
 
     def test_tickets_for_a_path_no_ticket_touched_is_none(self):
-        """§7: `none` when empty."""
-        text = self.assert_answer("tickets_for_path", PAGE, [], absent=["0001"])
+        """§7: `none` when empty. The fixture's one commit names ticket 0001 and
+        adds every file (a `history` edge to each, ADR 0054 §1), and its
+        perimeter covers pkg/, so the path comes from a later commit that names
+        no ticket, outside the perimeter, on a map built there."""
+        repo, _ = make_repo(self.tmp, "untouched")
+        sha = commit(repo, "another commit", {"notes/other.txt": "x\n"})
+        out = self.tmp / "untouched.sqlite"
+        build_map(repo, out)
+        is_error, text = serve([call(1, "tickets_for_path", path="notes/other.txt")], repo, out).answer(1)
+        self.assertFalse(is_error, text)
+        self.assertIn(sha, text)
+        self.assertFalse(any("0001" in f for f in items(text)), text)
         self.assertTrue("none" in items(text) or "none" in text.splitlines())
 
     def test_check_spec_on_a_good_spec_is_go_and_no_error(self):
@@ -573,9 +583,10 @@ class Commands(unittest.TestCase):
         repo.mkdir()
         git(repo, "init", "-q", "-b", "main")
         commit(repo, "c", {".lights-out/tickets/0007.md": "# 0007 — T\n", "tickets/0001.md": "# 0001 — no\n"})
-        self.assertEqual(self.tickets_of(repo), (".lights-out/tickets", [".lights-out/tickets/0007.md"]))
+        # A ticket node is named by its id (ADR 0054 §1), whichever directory holds it.
+        self.assertEqual(self.tickets_of(repo), (".lights-out/tickets", ["0007"]))
         plain, _ = make_repo(self.tmp, "plain")
-        self.assertEqual(self.tickets_of(plain), ("tickets", [TICKET]))
+        self.assertEqual(self.tickets_of(plain), ("tickets", ["0001"]))
 
     def test_map_outside_a_repository_is_one_nogo_line_and_exit_1(self):
         """§5."""
