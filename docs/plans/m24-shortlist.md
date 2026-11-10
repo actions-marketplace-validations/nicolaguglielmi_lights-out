@@ -1,6 +1,15 @@
 # M24 step 1: a shortlist of legacy repositories
 
-- Status: decided 2026-11-05 by the owner: andialbrecht/sqlparse (rank 1). The ranking and the other candidates stay as they were proposed.
+- Status: decided 2026-11-05 by the owner: andialbrecht/sqlparse (rank 1). **Dropped by the owner on 2026-11-10**:
+  the commit read below, 09dbe1e, is sqlparse's end-of-maintenance announcement (2026-11-01; README "Project
+  Status: End of Maintenance"), which this shortlist missed. The maintainer stepped away over the volume of
+  automated security reports, so a public AI-agent experiment on it now reads as part of that problem, and no
+  PR could land upstream. Its local attach stays as a reference. Rank 2 (validators) and rank 5 (tenacity) were
+  re-checked on 2026-11-10: both maintained, neither with an AI policy. validators stopped when this session's
+  auto-mode classifier refused to run its code, and the owner dropped it; **tenacity is the pick in progress**,
+  with two prep commits (a `uv.lock`, four reviewed `# nosec` lines) and tenacity-05 replaced (the shortlist's was
+  already tested). Details in `.claude/context/handoffs/claude-m24-phase-a-5dacb7.md`. The ranking and the other
+  candidates stay as they were proposed.
 - Date: 2026-11-04, one cloud session, branch `claude/admiring-shannon-7qlb8s`.
 - Scope: step 1 of M24 in [third-arc-execution.md](third-arc-execution.md)
   ("Pick the repository and the ticket batch"), against
