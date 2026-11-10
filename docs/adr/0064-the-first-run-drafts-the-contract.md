@@ -129,6 +129,16 @@ docker on the user's machine; the job that printed the line has docker.
 - A `STAGED=1` removal is still judged by HEAD's contract (§2's order).
 - An artifact expires with the repository's retention; re-run to redraft.
 
+## Found while proving it (2026-11-10)
+
+The first proof on GitHub (package run 42721181005) showed that 0.3.0 posts
+no check at all on a first run. The image refuses before it creates
+`gates/`, so the Action's fallback summary, `gates/summary.md.line`, could
+not be written; under `sh -e` the step ended with exit 2 before the check
+step. A stranger saw a red job and no check run. The Action now creates
+`gates/` before the run. The existing tests could not see it: the first
+Action call in their job had a contract, and its run created the directory.
+
 ## Golden-rule check
 
 `./go demo` does not use the image or the Action. `./go ci` gains static
