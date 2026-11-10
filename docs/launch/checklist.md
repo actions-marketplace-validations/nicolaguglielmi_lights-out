@@ -196,6 +196,23 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
   replacing the 19 s, 2 s and 17 s measured with the image built in the
   job. Delete the probe afterwards if you do not want it public.
 
+### Release 0.3.1 (2026-11-10)
+
+The first run that drafts the contract (ADR 0064) and `test-proof`'s
+HEAD-relative fix. The light tier is unchanged: no new upload to PyPI.
+
+- [x] **The release commit** (995ba3f): `version=` in `lights-out`,
+  `version` in `pyproject.toml` and the landing page at 0.3.1, every usage
+  pinned to `@v0.3.1`; six workflows green (podman after one rerun of the
+  harness-conformance timeout).
+- [x] **Tag `v0.3.1`**: `package.yml` run 42790042827 published and signed
+  both images; both signatures verified with the workbench's cosign.
+- [x] **The two Actions' repositories** refreshed from `actions/` and
+  tagged `v0.3.1`.
+- [ ] **Publish the three draft releases** `v0.3.1` with "Publish this
+  Action to the GitHub Marketplace" ticked: `lights-out`, `test-proof`,
+  `test-integrity`. Owner's act.
+
 ### The Python package on PyPI (M35)
 
 The light tier, `lights-out-gates --light`, is a Python package built from

@@ -30,6 +30,10 @@ The landing page says 0.3.0, and `ci/docs-drift.sh` reads it (ADR 0054, amendmen
 
 PyPI refused the first upload of `lights-out` ("too similar to an existing project": `lightsout`). ADR 0061's amendment of the same day renames the distribution and its one script to `lights-out-gates`, `gates` implied (`lights-out-gates --light`); `python3 -m core gates --light` is unchanged; the package no longer ships a `lights-out` script, so the collision with the wrapper is gone. Tests: `core/tests/test_light.py` `TheGatesScript` (same line and exit as `gates --light`, arguments through, one NO-GO without `--light`, `version`), `ci/gates-light.sh`'s pyproject check (the name, exactly one script, two new planted wrong pyprojects). The hook recipes' command is renamed; their verification of 2026-11-08 ran `lights-out gates --light`, which `lights-out-gates --light` equals line for line. The wheel to upload is built from `main` at the rename, version 0.3.0: the code of the tag `v0.3.0` but for the command's name in three messages and `gates_main`; the owner uploads it.
 
+## Release 0.3.1, 2026-11-10
+
+Release commit 995ba3f on `main`, tag `v0.3.1`, images published and signed (package.yml run 42790042827), signatures verified; `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity` refreshed and tagged. Three draft releases wait for the owner's Marketplace publish. The podman workflow's harness-conformance timed out twice in 40 runs ("the scripted model did not answer within 60 s"): worth a session of its own if it happens again. My landing gate's `grep -q -v` never failed (grep is ugrep in this shell); replaced by awk.
+
 ## Branches landed, one handoff each
 
 Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/context/handoffs/`; this file is the coordinator's: the state of the integration branch and one line per branch landed.
