@@ -28,6 +28,10 @@ Branch `claude/optimistic-meitner-aed1df`, cut from `main` at 3f24804 (0.3.0 rel
 - **The site**, `site/index.html` line ~604: "It needs a committed `.lights-out/` contract, which the wrapper below drafts." is true for 0.3.0 and left as is; at the release it can say that the first check drafts it.
 - README, guide and reference say "after 0.3.0"; at the tag, name the version.
 
+## Found and fixed here
+
+- **0.3.0 posts no check on a first run.** The image refuses before it creates `gates/`, so the Action's fallback `gates/summary.md.line` cannot be written, the step dies with exit 2 under `sh -e`, and the check step never runs: a stranger sees a red job and no check run (package run 42721181005, the first push of this branch). The Action now runs `mkdir -p "$LO_OUT/gates"` first; the new first-run test in the `action` job is what caught it. ADR 0064 records it.
+
 ## Found, not fixed here
 
 - `docs/use-on-your-repo.md`, "Without cloning lights-out: the wrapper", still names `ghcr.io/nicolaguglielmi/lights-out:0.2.0`, the 0.2.0 raw URL and "unsigned".

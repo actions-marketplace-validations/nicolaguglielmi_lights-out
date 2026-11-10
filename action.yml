@@ -110,6 +110,9 @@ runs:
         [ -z "$LO_BASE" ] || set -- "$@" "BASE=$LO_BASE"
         head=${LO_HEAD:-$(git rev-parse HEAD)}
         set -- "$@" "HEAD=$head"
+        # The image refuses some ranges before it creates gates/ (the first
+        # run among them): the line's own summary still needs a place.
+        mkdir -p "$LO_OUT/gates"
         rm -f "$LO_OUT/gates/summary.md"
         if [ -z "$cmd" ]; then
           line="NO-GO: gates — gates: $LO_GATES is not all, test-proof or test-integrity"
