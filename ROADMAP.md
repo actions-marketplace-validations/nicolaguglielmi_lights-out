@@ -47,8 +47,7 @@ a session of its own: egress for the harnesses, and the tower restoring
 - **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
   package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
   Marketplace. **0.3.1** (2026-11-10) ships the first run that drafts the
-  contract (ADR 0064); its three Marketplace releases are the owner's to
-  publish (`docs/launch/checklist.md`).
+  contract (ADR 0064); on the Marketplace too since 2026-11-10.
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.

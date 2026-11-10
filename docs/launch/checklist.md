@@ -209,9 +209,10 @@ HEAD-relative fix. The light tier is unchanged: no new upload to PyPI.
   both images; both signatures verified with the workbench's cosign.
 - [x] **The two Actions' repositories** refreshed from `actions/` and
   tagged `v0.3.1`.
-- [ ] **Publish the three draft releases** `v0.3.1` with "Publish this
+- [x] **Publish the three draft releases** `v0.3.1` with "Publish this
   Action to the GitHub Marketplace" ticked: `lights-out`, `test-proof`,
-  `test-integrity`. Owner's act.
+  `test-integrity`. Published 2026-11-10, the owner confirming with a passkey;
+  the three Marketplace pages show 0.3.1.
 
 ### The Python package on PyPI (M35)
 
