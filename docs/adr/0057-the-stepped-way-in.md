@@ -1,6 +1,6 @@
 # ADR 0057 — The stepped way in: a gates image, the Action at the root, two standalone Actions, doctor per level, a production-readiness gate
 
-- Status: accepted
+- Status: accepted; §6 amended by ADR 0064 (on the first run the Action also posts init's summary and uploads the draft)
 - Date: 2026-11-08
 - Milestone: M31
 - Amends ADR 0028 (its split was never built; gcloud and terraform leave

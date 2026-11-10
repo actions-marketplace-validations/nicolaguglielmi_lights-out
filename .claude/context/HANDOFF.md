@@ -40,3 +40,4 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/festive-cray-5c155e`: Handoff: each `./go ci` check runs once (ADR 0062), 2026-11-09, [handoffs/claude-festive-cray-5c155e.md](handoffs/claude-festive-cray-5c155e.md)
 - `claude/sharp-khayyam-dcb1de`: the podman demo rolls back for the right reason, ADR 0066 (0063 on its branch), [handoffs/claude-sharp-khayyam-dcb1de.md](handoffs/claude-sharp-khayyam-dcb1de.md)
 - `claude/console-ux-flow-1c108a`: M17's first slice, the console says whose turn it is, ADR 0063, [handoffs/claude-console-ux-flow-1c108a.md](handoffs/claude-console-ux-flow-1c108a.md)
+- `claude/optimistic-meitner-aed1df`: the first run on a repository with no contract drafts it, ADR 0064, ships with the next version, [handoffs/claude-optimistic-meitner-aed1df.md](handoffs/claude-optimistic-meitner-aed1df.md)

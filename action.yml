@@ -21,6 +21,13 @@
 # the two standalone Actions in actions/ do. Up to v0.2.0 the path was
 # nicolaguglielmi/lights-out/action@<tag>; those tags keep it.
 #
+# On a repository with no committed .lights-out/ contract, at the head or
+# the base, the check stays NO-GO (nothing judges without a contract at the
+# base, docs/adr/0064): the Action then runs `lights-out init` on the base,
+# puts the draft's three small files in the check's summary, uploads the
+# whole draft as the artifact lights-out-draft-<job id> and writes the two
+# commands that commit it. No permission beyond the two above.
+#
 # The token is used only after the container has exited, never passed into
 # it. On a pull request from a fork the token cannot write checks: the post
 # is skipped with a warning, and the job's own status carries the verdict.
@@ -89,6 +96,7 @@ runs:
         LO_HEAD: ${{ inputs.head }}
         LO_PATH: ${{ inputs.path }}
         LO_OUT: ${{ runner.temp }}/lights-out
+        LO_DRAFT: ${{ runner.temp }}/lights-out-draft
       run: |
         set -u
         [ -n "$LIGHTS_OUT_IMAGE" ] || unset LIGHTS_OUT_IMAGE
@@ -102,6 +110,9 @@ runs:
         [ -z "$LO_BASE" ] || set -- "$@" "BASE=$LO_BASE"
         head=${LO_HEAD:-$(git rev-parse HEAD)}
         set -- "$@" "HEAD=$head"
+        # The image refuses some ranges before it creates gates/ (the first
+        # run among them): the line's own summary still needs a place.
+        mkdir -p "$LO_OUT/gates"
         rm -f "$LO_OUT/gates/summary.md"
         if [ -z "$cmd" ]; then
           line="NO-GO: gates — gates: $LO_GATES is not all, test-proof or test-integrity"
@@ -120,8 +131,65 @@ runs:
         summary="$LO_OUT/gates/summary.md"
         [ -s "$summary" ] || printf '### lights-out %s\n\n`%s`\n' "${cmd:-gates}" "$line" > "$summary.line"
         [ -s "$summary" ] || summary="$summary.line"
+        # The first run (docs/adr/0064 §4): no contract at the head or the base.
+        # The line, the conclusion and the exit stay; init drafts from the base
+        # (else the head judged), for the summary and an artifact.
+        if [ "$line" = "NO-GO: $cmd — the repository has no .lights-out/workload.env committed; lights-out init drafts one" ]; then
+          from=${LO_BASE:-$head}
+          rm -rf "$LO_OUT/.lights-out" "$LO_OUT/init" "$LO_DRAFT"
+          init=$(LIGHTS_OUT_OUT="$LO_OUT" sh "$GITHUB_ACTION_PATH/lights-out" init "HEAD=$from") || true
+          printf '%s\n' "${init:-NO-GO: init — lights-out init gave no verdict; see the log above}" | tail -n 1 >&2
+          if [ -s "$LO_OUT/init/summary.md" ]; then
+            { printf '\n'; cat "$LO_OUT/init/summary.md"; } >> "$summary"
+          else
+            printf '\nlights-out init could not draft a contract from %s; see the log. No draft is offered.\n' "$from" >> "$summary"
+          fi
+          case "$init" in
+            GO:*)
+              if [ -f "$LO_OUT/.lights-out/workload.env" ]; then
+                mkdir -p "$LO_DRAFT" && cp -R "$LO_OUT/.lights-out" "$LO_DRAFT/.lights-out"
+                printf 'draft=%s\n' "$LO_DRAFT" >> "$GITHUB_OUTPUT"
+                printf 'artifact=lights-out-draft-%s\n' "$GITHUB_JOB" >> "$GITHUB_OUTPUT"
+                printf 'from=%s\n' "$(git rev-parse --short "$from")" >> "$GITHUB_OUTPUT"
+              fi ;;
+          esac
+        fi
         cat "$summary" >> "$GITHUB_STEP_SUMMARY"
         printf 'summary=%s\n' "$summary" >> "$GITHUB_OUTPUT"
+
+    # The draft, whole: its runners' lockfiles do not fit a check's summary.
+    # Unzipped at the repository's root it is .lights-out/ and nothing else.
+    - id: upload
+      if: steps.gates.outputs.draft != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ steps.gates.outputs.artifact }}
+        path: ${{ steps.gates.outputs.draft }}
+        include-hidden-files: true
+        overwrite: true
+        if-no-files-found: error
+
+    - id: commands
+      if: steps.gates.outputs.draft != ''
+      shell: sh
+      env:
+        LO_SUMMARY: ${{ steps.gates.outputs.summary }}
+        LO_ARTIFACT: ${{ steps.gates.outputs.artifact }}
+        LO_FROM: ${{ steps.gates.outputs.from }}
+        LO_URL: ${{ steps.upload.outputs.artifact-url }}
+        LO_UPLOADED: ${{ steps.upload.outcome }}
+      run: |
+        set -u
+        # shellcheck disable=SC2016 # the backticks are Markdown, not a command
+        if [ "$LO_UPLOADED" = success ]; then
+          printf '\n#### The fix is one commit\n\nThe whole draft is the artifact [`%s`](%s) of this run. Review the files above, then at the root of the repository:\n\n```sh\ngh run download %s -R %s -n %s\ngit add .lights-out && git commit -m "lights-out: the contract drafted from %s"\n```\n\nThe next run is judged by that contract.\n' \
+            "$LO_ARTIFACT" "$LO_URL" "$GITHUB_RUN_ID" "$GITHUB_REPOSITORY" "$LO_ARTIFACT" "$LO_FROM" > "$LO_SUMMARY.commands"
+        else
+          printf '\nThe draft could not be uploaded as an artifact (see the log); `lights-out init` drafts the same on a machine with podman or docker.\n' > "$LO_SUMMARY.commands"
+        fi
+        cat "$LO_SUMMARY.commands" >> "$LO_SUMMARY"
+        cat "$LO_SUMMARY.commands" >> "$GITHUB_STEP_SUMMARY"
 
     - id: check
       shell: sh
