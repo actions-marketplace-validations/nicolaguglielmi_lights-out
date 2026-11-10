@@ -383,6 +383,7 @@ hook_flaw() {
 
 # skill_flaw PLUGIN: what is wrong with PLUGIN's skill.sh on a good and a
 # bad spec, or nothing.
+# shellcheck disable=SC2016 # the backticks are the spec's markdown
 printf '%s\n' '# 0099 — a request' '' '## Problem' '' 'Something is wrong.' '' '## Acceptance criteria' '' \
   'Given a calculator with two numbers' 'When the caller adds them' 'Then the result is their sum' '' \
   '## Perimeter' '' '- `calc.py`' > "$t/good.md"
@@ -463,7 +464,7 @@ rm "$t/plant-missing/$PLUGIN/scripts/run.sh"
 must_flag missing "run.sh"
 
 plant_scripts() {  # NAME: a copy of the plugin directory in $PLANTS/NAME
-  rm -rf "$PLANTS/$1"
+  rm -rf "${PLANTS:?}/$1"
   mkdir -p "$PLANTS/$1"
   cp -R "$PLUGIN/." "$PLANTS/$1/"
 }

@@ -128,6 +128,7 @@ shape gates "$rc"
 # the probe, never into the checkout's own store) and where there is no
 # repository, and a command the package does not know, which names itself
 # `lights-out`.
+# shellcheck disable=SC2016 # the backticks are the spec's markdown
 printf '%s\n' '# 0099 — a request' '' '## Acceptance criteria' '' \
   'Given a number' 'When the caller negates it' 'Then the result is the number with its sign flipped' '' \
   '## Perimeter' '' '- `calc.py`' > "$probe/good-spec.md"
@@ -142,7 +143,7 @@ light map --repo . --out "$probe/map.sqlite" && rc=0 || rc=$?
 shape map "$rc"
 [ "$rc" -eq 0 ] || bad="$bad map(this checkout's map was refused)"
 mkdir "$probe/no-repo"
-(export GIT_CEILING_DIRECTORIES=$probe; light map --repo "$probe/no-repo" --out "$probe/none.sqlite") && rc=0 || rc=$?
+(export GIT_CEILING_DIRECTORIES="$probe"; light map --repo "$probe/no-repo" --out "$probe/none.sqlite") && rc=0 || rc=$?
 shape map "$rc"
 [ "$rc" -eq 1 ] || bad="$bad map(a directory that is no repository passed)"
 light not-a-command && rc=0 || rc=$?
