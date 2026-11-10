@@ -242,3 +242,179 @@ scratch repository with a contract. Result:
 `ci/plugin.sh`: no engine, network or key. Nothing vendor-specific enters
 `core/`: MCP is a protocol three CLIs speak; the plugin stays under
 `plugins/`. Passes.
+
+## Amendment 2026-11-11: the Codex plugin and the Gemini CLI extension
+
+**Context.** M39's second slice: `/gates` and `/spec` (or each CLI's
+equivalent) and the pre-commit hook, installed by something the plugin or
+extension offers, for Codex (pinned 0.166.0, `adapters/codex`) and Gemini
+CLI (pinned 0.61.0-preview.0, `adapters/gemini-cli`), each proven once with
+the scripted model. Nothing listed or published.
+
+**Verified 2026-11-10/11** (in addition to the list above; nothing else is
+relied on):
+
+- Codex 0.166.0 `--help`: `codex plugin add|list|marketplace|remove`,
+  `codex plugin marketplace add|list|upgrade|remove` ("a local or Git
+  marketplace").
+- learn.chatgpt.com/docs/build-skills (no date): `SKILL.md` needs `name`,
+  `description`; optional `agents/openai.yaml` with
+  `policy.allow_implicit_invocation` (default true); optional `scripts/`;
+  explicit invocation `$name` or `/skills`. A skill is instructions the
+  model follows; no load-time injection like Claude's `` !`cmd` ``.
+- developers.openai.com/codex/plugins/build/ (no date):
+  `.codex-plugin/plugin.json` (name, version, description, author,
+  homepage, repository, license, keywords, `skills: "./skills/"`; optional
+  `hooks`, `interface`, `onboardingSkill`). Repo marketplace
+  `.agents/plugins/marketplace.json`, plugins under `plugins/`; entries
+  `name`, `source {"source":"local","path":"./…"}`, `policy`, `category`.
+  Codex also reads "a legacy-compatible `.claude-plugin/marketplace.json`".
+  Plugin hooks run only "for plugins installed manually in Codex desktop",
+  and "Plugins with hooks aren't eligible for the public plugin directory".
+- learn.chatgpt.com/docs/hooks (no date): `hooks.json` in `~/.codex/` or
+  `<repo>/.codex/`, all sources run; project hooks load only when the
+  project `.codex/` layer is trusted; non-managed hooks run only once
+  reviewed and trusted (`/hooks`), or with `--dangerously-bypass-hook-trust`.
+- geminicli.com/docs/extensions/reference (updated 2026-05-14): the
+  manifest `name` is expected "to match the extension directory name";
+  `commands/<ns>/<cmd>.toml` is `/<ns>:<cmd>`; variable substitution
+  (`${extensionPath}`) "in `gemini-extension.json` and `hooks/hooks.json`"
+  only, **not in command TOML**; `--consent` skips the install prompt.
+- geminicli.com/docs/cli/custom-commands (updated 2026-04-30): `prompt`,
+  `description`; `!{…}` runs a command and injects its stdout; `{{args}}`
+  is shell-escaped inside `!{…}`; the CLI asks before running it.
+- geminicli.com/docs/hooks/reference (updated 2026-04-10): `BeforeTool`,
+  matcher a regex on the tool name, `timeout` in ms; exit 2 blocks with
+  stderr as the reason.
+- geminicli.com/docs/extensions/releasing (updated 2026-05-08): the gallery
+  crawls public repositories with the topic `gemini-cli-extension`, the
+  manifest "in the absolute root of the repository". K6's topic exists
+  (here, not on the reference page); K6's "Codex public directory strips
+  hooks" holds in substance.
+
+**Decision.**
+
+1. **Two more roots, no shared one.** `plugins/lights-out-codex/` and
+   `plugins/lights-out-gemini/`. A shared root would hand Codex and Gemini
+   the Claude `hooks/hooks.json` and `!`-skills, and a Codex root with hooks
+   is not directory-eligible.
+2. **Codex: plugin `lights-out`, three skills, no bundled hooks.** Files:
+   `.agents/plugins/marketplace.json` (name `lights-out`, one entry
+   `lights-out`, source local `./plugins/lights-out-codex`, `policy` and
+   `category` with the page's example values);
+   `plugins/lights-out-codex/.codex-plugin/plugin.json` (the eight fields
+   above and `skills`, nothing else); `skills/{gates,spec,hook}/SKILL.md`,
+   each with `agents/openai.yaml` setting `allow_implicit_invocation:
+   false` (the judge and a file write are user-invoked, as §2); and
+   `skills/hook/scripts/hook.sh`. `gates` tells the model to run
+   `lights-out-gates --light` with the user's KEY=VALUE arguments, or
+   `STAGED=1`, and report the GO/NO-GO line verbatim; `spec` the same with
+   `lights-out-gates spec <file>`; both name `uv tool install
+   lights-out-gates` when the command is not found. No `run.sh`/`skill.sh`:
+   the model runs the command either way, so their exit-0 and one-line
+   shaping, built for `` !`cmd` ``, buy nothing here.
+3. **The Codex hook: `sh <skill dir>/scripts/hook.sh install|remove`.** It
+   writes into `<repo>/.codex/hooks.json` (repository found by `git
+   rev-parse --show-toplevel`) the verified recipe's `PreToolUse` entry
+   verbatim: matcher `*`, timeout 30 (the recipe's, ADR 0061 §8), the
+   `sh -c '… lights-out-gates --light STAGED=1 >&2 || exit 2 …'` command,
+   binary from PATH. Python 3 stdlib `json` merges: other hooks untouched,
+   a second install changes nothing, `remove` deletes only that entry and
+   the keys or file it emptied. Unreadable JSON or no repository: one
+   `NO-GO: hook — …` line, exit 1, nothing written. Otherwise one `GO: hook
+   — …` line naming the file and `/hooks` to trust it. **Repository scope
+   only, no `--user`** (changed from the proposal): the light tier refuses
+   a repository without a contract (`core/light.py`, `Contract`), so a
+   user-level recipe blocks commits everywhere else; the page's manual
+   recipe stays for that. **The PATH binary, not the cache path**: the file
+   lives in the user's repository and may be committed; a path into
+   `~/.codex/plugins/cache/` moves on update and means nothing on another
+   machine.
+4. **Gemini CLI: extension `lights-out-gemini`** (changed from
+   `lights-out`: the name must match the directory). Files in
+   `plugins/lights-out-gemini/`: `gemini-extension.json` (name, version,
+   description; no `contextFileName`, `mcpServers`, `settings`);
+   `commands/lights-out/gates.toml` and `spec.toml`, so the commands are
+   `/lights-out:gates` and `/lights-out:spec` as in Claude Code;
+   `hooks/hooks.json`; `scripts/pre-commit.sh` and `scripts/run.sh`.
+   **Commands use the PATH binary** (changed from `${extensionPath}`, which
+   is not substituted in TOML by the documentation):
+   `!{lights-out-gates --light STAGED=1 2>&1 || true}` and
+   `!{lights-out-gates spec {{args}} 2>&1 || true}`, plus "report the
+   GO/NO-GO line verbatim, or the install line if there is none". `|| true`
+   keeps every outcome on the documented stdout path. `/lights-out:gates`
+   takes no arguments: `{{args}}` arrives shell-escaped, so `BASE=a HEAD=b`
+   would be one argument.
+5. **The Gemini hook is native.** `hooks/hooks.json`: `BeforeTool`,
+   matcher `run_shell_command` (the recipe's), timeout 30000 (the recipe's
+   30 s in ms), command `sh "${extensionPath}/scripts/pre-commit.sh"`.
+   An extension is user-wide, so it needs `pre-commit.sh`'s silence without
+   a contract; its grep of the whole stdin finds `tool_input.command`
+   unchanged. Uninstall removes it. If the pinned CLI does not run
+   extension hooks, the proof stops and this point is reopened; no install
+   command is built in advance.
+6. **Copies, not links.** The Gemini `scripts/` are byte copies of
+   `plugins/lights-out/scripts/pre-commit.sh` and `run.sh`: each CLI copies
+   the root into its own store, where a link out of it breaks. `run.sh`
+   gains one change, kept in all copies: it reads `version` from the first
+   of `../.claude-plugin/plugin.json` and `../gemini-extension.json`.
+7. **No MCP server for Codex or Gemini in this slice**: not asked for, and
+   Codex's plugin stdio server config is not documented enough to build on.
+8. **Versions.** The Codex and Gemini manifests equal `pyproject.toml`'s,
+   like Claude's.
+9. **Tests, in `ci/plugin.sh`.** Codex: marketplace and manifest fields
+   (only the listed keys, no `hooks` key, no `hooks/` directory), three
+   SKILL.md with `name` equal to the directory, three `openai.yaml` with
+   `allow_implicit_invocation: false`; `hook.sh` on scratch repositories
+   (first install writes exactly the entry; a second leaves the JSON equal;
+   an unrelated existing hook survives; `remove` restores the original JSON,
+   or no file; bad JSON and no repository refused with the file untouched;
+   one stdout line each) and the written command run as Codex runs it
+   (exit 2 on a weakening, 0 on a clean change, with the shim). Gemini:
+   manifest fields, name equal to the directory; both TOML files parse with
+   `tomllib` (stdlib, Python 3.11 as the package) and hold §4's `!{…}`;
+   `hooks.json` as §5; `cmp` of both copies; `hook_flaw` on the Gemini root.
+   Planted: a differing copy, a Codex manifest with `hooks`, an implicit
+   skill, a Gemini timeout of 30, a `hook.sh` that appends twice.
+
+**Proof, once each, to be filled.** Codex 0.166.0: `codex plugin
+marketplace add` on a local clone and `codex plugin add
+lights-out@lights-out` (syntax as observed); which marketplace file Codex
+reads when both exist (if the Claude one, stop: §1 fails); the invocation
+name of the skills (`$gates` or namespaced); the GO line reaching the model
+through `gates`; `hook` writing `.codex/hooks.json` under the sandbox (or
+the approval it needed); a weakening commit stopped, with the project layer
+trusted and `--dangerously-bypass-hook-trust` (the `/hooks` trust step
+stays unverified, as in the recipe). Gemini 0.61.0-preview.0: `gemini
+extensions validate`, install `--consent` from the directory; whether `-p`
+runs `/lights-out:gates` and its `!{…}` under `--approval-mode yolo`; the
+injected line; the extension hook stopping a weakening commit, passing a
+clean one, silent without a contract. The scripted model shows the
+mechanism, not that a real model follows the skill's text.
+
+**Alternatives rejected.** Copying `skill.sh`/`run.sh` into the Codex root
+(§2: no `!`, nothing to shape). `${extensionPath}` in TOML (undocumented).
+A Codex plugin hook (desktop only, not directory-eligible). `--user` for
+`hook.sh` (§3). Codex reading the Claude marketplace (Claude-only skills
+and hooks). A `/lights-out:hook` Gemini command in advance (§5).
+
+**Consequences.**
+
+- **The one that will hurt: the Gemini listing is a second repository.**
+  The gallery needs the manifest at a repository root, so the owner copies
+  `plugins/lights-out-gemini/` to its own public repository at each release
+  (ADR 0057 §7's precedent). No check here sees that copy; a stale one is
+  what gallery users install. The checklist says how.
+- Two resolvers: Claude's `run.sh` checks the version and falls back to
+  `uvx`; Codex skills and Gemini commands take whatever `lights-out-gates`
+  is on PATH. An install older than `spec` answers `spec` with `gates`'
+  refusal there.
+- A hook written by `hook.sh` is not updated by a plugin update; the page
+  tells users to rerun `install` when the recipe changes.
+- `.agents/` joins the repository root; this repository's own Codex
+  sessions see the marketplace (installing stays a choice).
+- Listing in Codex's directory (portal) and Gemini's gallery (topic
+  `gemini-cli-extension`) are the owner's acts.
+
+**Golden-rule check.** `./go demo` untouched; `ci/plugin.sh` grows with no
+CLI, engine, network or key; nothing enters `core/`. Passes.
