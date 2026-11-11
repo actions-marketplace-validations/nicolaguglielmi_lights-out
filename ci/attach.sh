@@ -18,6 +18,11 @@
 #   (f) an attached PR is judged by its base's runners/ (docs/adr/0033's
 #       2026-11-04 amendment): the real core/steps/ci.sh on a PR that
 #       rewrites the runner its base's SAST_CMD calls to report no finding.
+#   (g) a contract with the gates half only (docs/adr/0042 §7: the plane
+#       half is required only to run the plane) puts no workload compose
+#       file in COMPOSE_FILE: every path it names exists, so the crew's own
+#       compose services (egress, the harness) still load. Found by M24 on
+#       2026-11-11: every docker-compose call on an attached library failed.
 # Written from the ADR, not from the scripts; ci/tower.sh case (h)'s shape.
 set -eu
 name=attach
@@ -434,5 +439,30 @@ if [ -z "$mismatch" ]; then
   [ ! -e "$t/crew/.crew" ] || fail_case e "core/crew.sh prepared $t/crew/.crew before refusing"
 fi
 
-[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0037 or 0033"
+# (g) The gates half only: workloads/minimal-js, committed as a repository
+# of its own and attached; make's COMPOSE_FILE names files that exist.
+if [ -z "$mismatch" ]; then
+  (
+    mkdir -p "$t/gates-only" && cd "$t/gates-only" && cp -R "$repo/workloads/minimal-js/." . &&
+    [ ! -e .lights-out/compose.yaml ] &&
+    git init -q -b main . && git add -A && commit -m 'a library: the gates half only'
+  ) >"$log" 2>&1 || fail_case g-setup "could not build a repository with the gates half only"
+fi
+if [ -z "$mismatch" ]; then
+  sh core/attach.sh "$t/gates-only" "$t/gates-only-att" >"$log" 2>&1 \
+    || fail_case g-attach "core/attach.sh refused the gates-only repository"
+fi
+if [ -z "$mismatch" ]; then
+  as_ci make --no-print-directory -s ATTACHED="$t/gates-only-att" --eval "$probe" lo-attach-probe >"$t/probe" 2>"$log" \
+    || fail_case g-probe "make on the gates-only clone exited $?"
+  cf=$(probed COMPOSE_FILE)
+  [ -n "$cf" ] || fail_case g "COMPOSE_FILE is empty, want the plane's compose.yaml"
+  old_ifs=$IFS; IFS=:
+  for f in $cf; do
+    [ -e "$f" ] || fail_case g "COMPOSE_FILE=$cf names $f, which does not exist: the crew's compose services would not load"
+  done
+  IFS=$old_ifs
+fi
+
+[ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0037, 0033 or 0042"
 go

@@ -42,7 +42,9 @@ export
 # are := and exported, never ?=, because demo-seam and demo-gates re-enter
 # make with a different WORKLOAD and export is what hands the parent's
 # values down to that recursive call.
-COMPOSE_FILE := compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml
+# A contract with the gates half only has no compose file (docs/adr/0042
+# §7), and the crew's own services must still load (ci/attach.sh case g).
+COMPOSE_FILE := compose.yaml$(if $(wildcard $(WORKLOAD_CONTRACT)/compose.yaml),:$(WORKLOAD_CONTRACT)/compose.yaml)
 export COMPOSE_FILE
 FLAGS_FILE := $(WORKLOAD_CONTRACT)/flags/flags.json
 export FLAGS_FILE
