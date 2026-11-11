@@ -1,0 +1,15 @@
+{
+  "sha256": "f91cfcee2b1b5e4e2d091bbadf17fb08336701db6a0bf283307aeaab5ce7c3df",
+  "servers": [
+    {
+      "name": "docs",
+      "transport": "http",
+      "url": "https://mcp.example.com:443/mcp",
+      "endpoint": "mcp.example.com:443",
+      "token_env": "MCP_DOCS_TOKEN",
+      "tools": [
+        "search_docs"
+      ]
+    }
+  ]
+}
