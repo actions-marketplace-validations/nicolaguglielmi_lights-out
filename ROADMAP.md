@@ -41,9 +41,10 @@ wins when the two disagree. Decisions behind each step are in
 
 The third arc (plan §16) is built, except for the runs that are the
 owner's: the OpenAI recording, a committed Claude recording and the L1
-end-to-end on GitHub. Two things close before M24, each in
-a session of its own: egress for the harnesses, and the tower restoring
-`.lights-out/runners/` from the base.
+end-to-end on GitHub. The two things that had to close before M24 are on
+`main`: egress for the harnesses (ADR 0046), and the tower restoring
+`.lights-out/runners/` from the base (ADR 0033's 2026-11-04 amendment,
+proven by `ci/attach.sh` case f).
 
 - **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
   package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
@@ -55,6 +56,10 @@ a session of its own: egress for the harnesses, and the tower restoring
   The exit criterion is §14's: if at least two tickets in three do not
   reach a mergeable PR without a human touching the code, the thesis is
   weaker than expected.
+  First run, 2026-11-11, on jd/tenacity (sqlparse was dropped: it ended
+  its maintenance): five tests-only tickets on Anthropic, five PRs merged
+  at the first attempt with every gate GO. Gemini and OpenAI, and tickets
+  that change code, are still to run.
 - **M32 — outside adapters, other CIs, one more delivery** (ADR 0058). An
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
