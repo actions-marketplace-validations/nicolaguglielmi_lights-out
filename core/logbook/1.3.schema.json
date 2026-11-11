@@ -447,6 +447,62 @@
                 "boolean",
                 "null"
               ]
+            },
+            "mcp": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "sha256",
+                "servers",
+                "calls"
+              ],
+              "properties": {
+                "sha256": {
+                  "type": "string"
+                },
+                "servers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "unlisted": {
+                  "enum": [
+                    "hidden",
+                    "visible-denied"
+                  ]
+                },
+                "calls": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "server",
+                      "tool",
+                      "count"
+                    ],
+                    "properties": {
+                      "server": {
+                        "type": "string"
+                      },
+                      "tool": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                },
+                "denied": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
             }
           }
         },
@@ -534,6 +590,28 @@
             },
             "model": {
               "$ref": "#/$defs/str_or_null"
+            },
+            "instructions": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "file",
+                "sha256",
+                "base"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "base": {
+                  "type": "string"
+                }
+              }
             }
           }
         },

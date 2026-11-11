@@ -738,7 +738,15 @@ class Task(TowerCase):
         self.assertEqual(code, 0)
         self.assertEqual(task, {"harness": "gemini-cli", "replayed": False, "model": "m", "provider": "p",
                                 "thinking": "low", "turns": 7, "tokens": {"total": 9}, "duration_s": 3,
-                                "input_sha256": "ab"})
+                                "input_sha256": "ab", "mcp": None})
+
+    def test_the_task_carries_the_run_s_mcp(self):
+        """docs/adr/0073 §9-§10: run.json's `mcp` reaches the document, for the ticket's back."""
+        mcp = {"sha256": "cd", "servers": [{"name": "notes", "transport": "stdio", "tools": ["search_notes"]}],
+               "unlisted": "hidden", "calls": [{"server": "notes", "tool": "search_notes", "count": 1}], "denied": []}
+        code, task = self.run_json({"harness": "codex", "mcp": mcp})
+        self.assertEqual(code, 0)
+        self.assertEqual(task["mcp"], mcp)
 
     def test_a_replayed_run_reports_the_recorded_one(self):
         code, task = self.run_json({"harness": "replay", "recorded": {"model": "m", "provider": "p", "turns": 4}})
