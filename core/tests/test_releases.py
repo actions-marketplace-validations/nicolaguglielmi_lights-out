@@ -51,7 +51,7 @@ class Record(ReleasesCase):
     def test_the_record_has_the_shape_launchpad_writes(self):
         self.assertEqual(self.call("record", "held", "25", json.dumps(STAGES), "img@sha")[0], 0)
         self.assertEqual(self.record(), {"version": "v2", "stable": "v1", "stages": STAGES, "verdict": "held",
-                                         "held_at": 25, "image": "img@sha", "sbom": None})
+                                         "held_at": 25, "image": "img@sha", "sbom": None, "dast": None})
 
     def test_the_record_names_the_sbom_attestation_when_the_registry_gives_one(self):
         # docs/adr/0072 §2: the release record gains `sbom`, the digest of the attestation.
@@ -59,6 +59,23 @@ class Record(ReleasesCase):
         self.assertEqual(self.record()["sbom"], "sha256:att")
         self.call("record", "held", "25", "[]", "img@sha", "")
         self.assertIsNone(self.record()["sbom"])
+
+    def test_the_record_keeps_the_staging_dast_line(self):
+        # docs/adr/0072 §3-§4: the gate's stdout line is stored in the release record.
+        line = "GO: dast — canary v2: nothing new (3 inherited from v1)"
+        self.call("record", "held", "25", "[]", "img@sha", "", line)
+        self.assertEqual(self.record()["dast"], line)
+
+
+class Stage(ReleasesCase):
+    def test_a_stage_appends_its_pct_verdict_and_slo_lines(self):
+        # docs/adr/0020 §4: one entry per verified stage with its verdict and the `slo:` lines behind it.
+        code, out = self.call("stage", json.dumps([{"pct": 5, "verdict": "GO: slo", "numbers": []}]), "25",
+                              "NO-GO: slo — error_rate", stdin="noise\nslo: error_rate canary=1.0\nslo: p99 ok\n")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out), [{"pct": 5, "verdict": "GO: slo", "numbers": []},
+                                           {"pct": 25, "verdict": "NO-GO: slo — error_rate",
+                                            "numbers": ["slo: error_rate canary=1.0", "slo: p99 ok"]}])
 
     def test_in_progress_is_recorded_and_never_logged(self):
         self.call("record", "in-progress", "", "[]", "")

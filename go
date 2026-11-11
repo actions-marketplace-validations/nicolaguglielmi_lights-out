@@ -12,6 +12,7 @@
 #   ./go demo           the demo, as far as the current milestone takes it
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
+#   ./go demo-dast      prove the passive DAST scan at staging: the stable against itself GO, a leaky canary rolled back
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
 #   ./go demo-seam      prove attach and the Workload port on workloads/minimal as its own repository
 #   ./go attach <path>  make a repository of yours the workload (its .lights-out/ is the contract, if it has one)
@@ -251,7 +252,7 @@ socket_flags=""
 socket_optional=""
 case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|demo-console|request|answer)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-dast|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|demo-console|request|answer)
     sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}

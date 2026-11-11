@@ -163,6 +163,26 @@ jobs:
         run: pip install --no-cache-dir --quiet playwright==1.64.1
       - run: python3 ci/console-ui.py
 
+  # The passive DAST scan at staging (docs/adr/0072 §3), off by default at
+  # L0: `./go demo-dast` proves both verdicts on a plane of its own and
+  # prints the measures the ADR asks for before DAST may be on in
+  # `./go demo` (the scanner's cold pull, each scan, the stable against
+  # itself). Docker here; podman.yml runs it on rootless podman.
+  dast:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: ./go up
+        env:
+          CONTAINER_ENGINE: docker
+      - run: ./go demo-dast
+        env:
+          CONTAINER_ENGINE: docker
+
   # go-for-launch's proof (docs/adr/0020 §4): a held canary promoted to
   # 100% with the human answered by GO_FOR_LAUNCH=GO, then the un-promote.
   # Not a `demo` stage — plan §2's criterion is the rollback — so it runs

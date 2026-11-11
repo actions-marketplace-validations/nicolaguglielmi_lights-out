@@ -682,6 +682,76 @@ demo-rollback: ## Release the failing default and prove the canary rolls back on
 	fi; \
 	printf 'GO: demo-rollback\n'
 
+# The passive DAST scan at staging, both verdicts, at L0 with no key
+# (docs/adr/0072 §3). The plane must be up. First the pinned scanner's
+# pull, timed. Then DAST_RUNS times the stable against itself: the stable's
+# own image deployed as the canary under another version, verify/dast.sh,
+# rolled back; each run must be GO with nothing new, the "empty diff" the
+# ADR requires before DAST may be on by default. Then a canary built from
+# the workload's fixtures/dast/leaky-header patch, published and signed as
+# any release, released with DAST=on: the launchpad must roll it back at
+# staging on the dast line, before any traffic, with the stable intact.
+# Each step's time goes to stderr, prefixed `[demo-dast] measure:`.
+DAST_RUNS ?= 2
+.PHONY: demo-dast
+demo-dast: ## Prove the passive DAST scan at staging both ways at L0: the stable against itself GO, a leaky canary rolled back (docs/adr/0072 §3)
+	@stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -er .version) \
+		|| { printf 'NO-GO: demo-dast — no stable version at %s/healthz; run ./go up\n' "$(APP_URL)"; exit 1; }; \
+	[ -f "adapters/$(DELIVERY)/canary-url.sh" ] \
+		|| { printf 'NO-GO: demo-dast — DELIVERY=%s has no canary-url.sh\n' "$(DELIVERY)"; exit 1; }; \
+	patches="$(WORKLOAD_CONTRACT)/fixtures/dast/leaky-header"; \
+	ls "$$patches"/*.patch >/dev/null 2>&1 || { printf 'NO-GO: demo-dast — no patch in %s\n' "$$patches"; exit 1; }; \
+	t0=$$(date +%s); \
+	$(COMPOSE) --profile dast pull zap >&2 || { printf 'NO-GO: demo-dast — could not pull the zap image\n'; exit 1; }; \
+	printf '[demo-dast] measure: pull of the zap image %ss\n' "$$(($$(date +%s) - t0))" >&2; \
+	image=$$(sh "adapters/$(REGISTRY)/verify.sh" "$(APP_TAG)") \
+		|| { printf 'NO-GO: demo-dast — the stable image %s does not verify; run ./go up\n' "$(APP_TAG)"; exit 1; }; \
+	run=1; \
+	while [ "$$run" -le "$(DAST_RUNS)" ]; do \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2; \
+		sh "adapters/$(DELIVERY)/deploy.sh" "$$stable-dast" "$$image" >&2 \
+			|| { printf 'NO-GO: demo-dast — the stable image did not come up as the canary\n'; exit 1; }; \
+		t0=$$(date +%s); \
+		out=$$(CANARY_VERSION="$$stable-dast" STABLE_VERSION="$$stable" sh verify/dast.sh); \
+		printf '[demo-dast] measure: stable against stable, run %s: %ss, %s\n' "$$run" "$$(($$(date +%s) - t0))" "$$out" >&2; \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2; \
+		case "$$out" in \
+			"GO: dast — canary $$stable-dast: nothing new ("*) ;; \
+			*) printf 'NO-GO: demo-dast — the stable against itself, run %s: [%s], want GO with nothing new\n' "$$run" "$$out"; exit 1 ;; \
+		esac; \
+		run=$$((run + 1)); \
+	done; \
+	wtd=$$(mktemp -d); wt=$$wtd/wt; \
+	trap 'git -C "$(WORKLOAD)" worktree remove --force "$$wt" >/dev/null 2>&1 || :; rm -rf "$$wtd"' EXIT; \
+	git -C "$(WORKLOAD)" worktree add -q --detach "$$wt" HEAD >&2; \
+	git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid -c commit.gpgsign=false \
+		am "$$(CDPATH= cd -- "$$patches" && pwd)"/*.patch >/dev/null 2>&1 \
+		|| { printf 'NO-GO: demo-dast — %s does not apply; regenerate\n' "$$patches"; exit 1; }; \
+	inside=$$(git -C "$(WORKLOAD)" rev-parse --show-prefix); \
+	t0=$$(date +%s); \
+	if [ -n "$(WORKLOAD_ATTACHED)" ]; then \
+		$(MAKE) --no-print-directory publish TAG=dast-leaky WORKLOAD="$$wt" >/dev/null; \
+	else \
+		env -u APP_TAG -u CANARY_TAG -u CANARY_IMAGE COSIGN_KEY="$$PWD/.crew/cosign.key" \
+			$(MAKE) -C "$$wt" --no-print-directory publish TAG=dast-leaky WORKLOAD="$${inside%/}" >/dev/null; \
+	fi || { printf 'NO-GO: demo-dast — publishing the leaky canary failed; see above\n'; exit 1; }; \
+	printf '[demo-dast] measure: build, SBOM, sign of the leaky canary %ss\n' "$$(($$(date +%s) - t0))" >&2; \
+	rm -f "$(RELEASE_RECORD)"; \
+	t0=$$(date +%s); \
+	if $(MAKE) --no-print-directory release DAST=on CANARY_VERSION="$$stable-leaky" CANARY_TAG=dast-leaky; then \
+		printf 'NO-GO: demo-dast — the leaky canary was released; expected a NO-GO at staging\n'; \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2; exit 1; \
+	fi; \
+	printf '[demo-dast] measure: release of the leaky canary to its rollback %ss\n' "$$(($$(date +%s) - t0))" >&2; \
+	rec=$$(jq -r '[.verdict, (.stages | length), (.dast // "")] | @tsv' "$(RELEASE_RECORD)" 2>/dev/null); \
+	case "$$rec" in \
+		"rolled-back	0	NO-GO: dast — canary $$stable-leaky raises "*) ;; \
+		*) printf 'NO-GO: demo-dast — the leaky canary'"'"'s record is [%s], want rolled-back at staging on the dast line\n' "$$rec"; exit 1 ;; \
+	esac; \
+	v=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
+	[ "$$v" = "$$stable" ] || { printf 'NO-GO: demo-dast — after the rollback %s answers %s, want the stable %s\n' "$(APP_URL)" "$$v" "$$stable"; exit 1; }; \
+	printf 'GO: demo-dast — the stable against itself nothing new %s time(s); the leaky canary rolled back at staging\n' "$(DAST_RUNS)"
+
 # demo-hold rolls back its own held canary, so every rollback here goes
 # through unhold: a `held` record turns `rolled-back` (stages kept, plus
 # rolled_back_by), never left describing a canary the plane no longer

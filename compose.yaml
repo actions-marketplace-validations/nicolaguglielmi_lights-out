@@ -194,6 +194,18 @@ services:
     ports:
       - "5050:5000"
 
+  # ZAP's packaged scans, for the passive baseline at staging (docs/adr/0072
+  # §3): verify/dast.sh runs it once per side with `run --rm`, on the
+  # plane's network, where canary-url.sh's URL resolves; the report is
+  # written to a tmpfs /zap/wrk and printed. Pinned by index digest (amd64
+  # and arm64): the 2.17.0 tag moves with every monthly rebuild. Profile
+  # dast: never started by `up`, pulled only when DAST=on scans.
+  zap:
+    image: docker.io/zaproxy/zap-stable:20261103@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
+    profiles: ["dast"]
+    tmpfs:
+      - /zap/wrk
+
   # Gitea, rootless image, sqlite, installer skipped. Actions off: no
   # runner exists at L0, the release step builds the merge itself (docs/adr/
   # 0060 §5). At L0 Gitea has no users and no data worth protecting; the

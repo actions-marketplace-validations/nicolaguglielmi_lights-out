@@ -1,0 +1,37 @@
+From 9112cb995155dea5860d499fc803e168ff5a785d Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Wed, 11 Nov 2026 12:00:00 +0100
+Subject: [PATCH] =?UTF-8?q?[M42]=20fixture:=20dast=20leaky-header=20?=
+ =?UTF-8?q?=E2=80=94=20every=20response=20names=20the=20app=20and=20its=20?=
+ =?UTF-8?q?version?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A middleware adds X-Powered-By: meetups/<version> to every response. Nothing breaks and no test fails; a passive scan sees the header leak the stack (ZAP rule 10037), which the stable does not. ./go demo-dast publishes a canary built with this patch and requires DAST to roll it back at staging (docs/adr/0072 §3).
+---
+ app/backend/meetups/app.py | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/app/backend/meetups/app.py b/app/backend/meetups/app.py
+index 0dd05bc..6efe8d3 100644
+--- a/app/backend/meetups/app.py
++++ b/app/backend/meetups/app.py
+@@ -21,6 +21,14 @@ app = FastAPI(title="meetups")
+ setup_metrics(app)
+ 
+ 
++@app.middleware("http")
++async def powered_by(request, call_next):
++    """Names the app and its version on every response."""
++    response = await call_next(request)
++    response.headers["X-Powered-By"] = f"meetups/{APP_VERSION}"
++    return response
++
++
+ class SignupRequest(BaseModel):
+     email: str
+     password: str
+-- 
+2.54.0 (Apple Git-157)
+

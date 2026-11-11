@@ -92,7 +92,7 @@ else
   exit 1
 fi
 numbers=$(grep '^slo: ' "$log" | jq -R . | jq -cs .)
-# The image and its SBOM attestation (docs/adr/0072 §2, §4).
-rec=$(jq -c '{image: (.image // ""), sbom: (.sbom // null)}' "$RELEASE_RECORD" 2>/dev/null) || rec='{"image": ""}'
+# The image, its SBOM attestation and the staging DAST line (docs/adr/0072 §2-§4).
+rec=$(jq -c '{image: (.image // ""), sbom: (.sbom // null), dast: (.dast // null)}' "$RELEASE_RECORD" 2>/dev/null) || rec='{"image": ""}'
 jq -cn --arg state "$state" --arg v "$CANARY_VERSION" --arg verdict "$verdict" --argjson numbers "$numbers" --argjson rec "$rec" \
   '{state: $state, release: ({version: $v, verdict: $verdict, numbers: $numbers} + $rec)}'
