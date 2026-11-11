@@ -299,3 +299,26 @@ settled them, and the Decision above is written with these in force.
 12. ADR 0039 is taken by the Gitea runner, so the arc's numbers shifted:
     plan §16 now gives M18 0040, M19 0041 and M20 this one, 0042 (main,
     commit 1d5098f, 2026-11-03).
+
+## Amendment 2026-11-11 (M24 phase C): a test command cosmic-ray cannot start is a failed run
+
+Found on tenacity, the first attached repository whose tickets changed production code. Its
+`MUTATION_CMD` carried `"SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0 uv run …"` as the runner's quoted test
+command. The runner's own clean run uses `sh -c` and passed; cosmic-ray 8.7.0 runs the command as
+`Popen(shlex.split(command))`, with no shell, so every mutant came back `incompetent` with the worker
+outcome `normal` (`cosmic_ray/testing.py`, `run_tests`). `cosmic-ray baseline` fails only on `killed`
+(`cosmic_ray/cli.py`), so it passed too. The scorer left every mutant out of the population, printed
+`{"total": 0}`, and the gate answered GO by absence of subject on a real production change.
+
+- The python scorer (`stacks/python/runners/score.py` and its three copies) prints no score and exits
+  1 when any result is `incompetent` with the worker outcome `normal`: no test ran, so the tool failed
+  (§1, "non-zero only if the tool failed"). The gate reads that as a failed run, NO-GO. `incompetent`
+  with the worker outcome `exception` (`cosmic_ray/mutating.py`: applying the mutation raised) stays
+  out of the population, as before. `core/tests/test_python_score.py`.
+- A variable the test command needs goes before the runner (`VAR=value sh .lights-out/runners/
+  mutation.sh …`), where the `sh -c` line exports it to cosmic-ray and every test run;
+  `docs/use-on-your-repo.md` says so.
+- Rejected: a shell in the runner's test command (`sh -c` around it). It would change what cosmic-ray
+  times and kills (its process group holds the shell), for a case the variable's place already covers.
+- Not changed: a repository whose contract was drafted before this keeps its copy of the scorer until
+  it copies the new one; a PR is judged by its base's runners (ADR 0033).
