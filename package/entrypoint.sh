@@ -9,6 +9,7 @@
 #   init [HEAD=]             attach /repo, draft .lights-out/ from HEAD (or that commit), copy it to /out/.lights-out, its summary to /out/init
 #   gates [BASE= HEAD=]      attach /repo, judge the range (default the last commit)
 #   gates STAGED=1           ... with what /repo has staged as one more commit, judged alone
+#   gates ... JUDGED=<shas>  ... mutation skips the lines unchanged from those judged trees (docs/adr/0074)
 #   test-proof [BASE= HEAD=]     the gates test and test-proof only: the tests a change adds fail on its base
 #   test-integrity [BASE= HEAD=] the gates test-weakening and mutation only: no test weakened, the changed lines' mutants killed
 #   triage ALERT=<file>      a path under /repo (the full image only)
@@ -54,8 +55,8 @@ for a do
     ALERT=/*|INCIDENT=/*) ;;
     ALERT=*) a="ALERT=/repo/${a#ALERT=}" ;;
     INCIDENT=*) a="INCIDENT=/repo/${a#INCIDENT=}" ;;
-    BASE=*|HEAD=*|PROFILE=*|MODEL_PROVIDER=*|MODEL=*) ;;
-    *) nogo "'$a' is not an argument lights-out takes; one of BASE= HEAD= STAGED= ALERT= INCIDENT= PROFILE= MODEL_PROVIDER= MODEL=" ;;
+    BASE=*|HEAD=*|JUDGED=*|PROFILE=*|MODEL_PROVIDER=*|MODEL=*) ;;
+    *) nogo "'$a' is not an argument lights-out takes; one of BASE= HEAD= JUDGED= STAGED= ALERT= INCIDENT= PROFILE= MODEL_PROVIDER= MODEL=" ;;
   esac
   set -- "$@" "$a"
 done

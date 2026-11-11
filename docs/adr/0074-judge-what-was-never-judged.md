@@ -88,6 +88,7 @@ nothing becomes GO because it was too slow to judge.
 (`judged` input, `external_id` in the POST); the `lights-out` wrapper and
 `package/entrypoint.sh` (accept JUDGED=); the Makefile's `gates`;
 `gates/mutation.sh`. `plan.sh` is untouched: its job has no history.
+The tests below are `ci/range.sh`, a self-check in `./go ci`.
 
 ## Tests, from the spec
 
