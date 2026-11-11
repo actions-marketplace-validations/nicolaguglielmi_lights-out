@@ -21,11 +21,11 @@ LLM-heavy work ran as headless `claude -p` on the owner's `ANTHROPIC_API_KEY` cr
 ## What is proven
 
 - `./go ci` from a clean clone under `.crew/`: GO on 2deaadd (13:50) and on 07c0aad (8:16). On 4338d76 (a one-line run.sh fix) the first run stopped on the podman VM's disk (`No space left on device` in ci-logbook, not this code); see the retry's result below.
+- **Live, once, with Claude through the claude-code harness** (ADR 0073, "End-to-end proof"): real `run.sh` in its image, `claude-sonnet-5-5`, `workloads/minimal` with its `notes` server; init `connected`, one `mcp__notes__search_notes` call, `NOTES.md` = `notes-hit:canary:/crew/live-m42/workspace`, `run.json` `mcp.calls` recorded, 4 turns, 33,396 tokens, 145 s. The first two attempts never started the container: the podman VM's disk was full. The owner grew it to 60 GB (`podman machine set --disk-size 60`, then `growpart /dev/vda 4` and `xfs_growfs /var` inside the VM, since `/sysroot` is read-only on CoreOS), after pruning 37 dangling images with their OK.
 - Engine-free checks GO: agents, review (cases i–m), hooks, harness-shape, harness, network, tower, app-free, model-free, vendor-free, docs-drift, shell-boundary; 781 unit tests.
 
 ## What is not proven
 
-- **The live run with Claude through the claude-code harness.** Two attempts (scratchpad `live.sh`: the real `adapters/claude-code/run.sh` on `workloads/minimal` as its own repository, the real API) never started the container: the claude-code image build fails writing its last layer on the VM (1.3–1.6 GB free, 23 GiB disk; 37 dangling images pruned with the owner's OK freed only 1 GB). The owner can grow the disk (`podman machine stop podman-machine-new; podman machine set --disk-size 60 podman-machine-new; podman machine start podman-machine-new`, with nothing else running). Then: from a clean clone, export the key in the process environment only and run `./go shell < live.sh`.
 - Case 10 on GitHub Actions: pending the push (below). Codex's MCP surface under code mode and its stub rendering are a guess the job will confirm or refute; Codex's and Gemini's failure strings for a server that does not start were read from source, never seen live.
 - Remote MCP servers: unit translation only (the stub is plain http). gemini-cli takes stdio only. The check reads the base's `crew-egress.txt`, the proxy still reads the local contract (ADR 0073, Consequences).
 - `ci/logbook.sh`'s LIVE-mode POST cases fail on this macOS host (403) at clean HEAD too; GO inside `./go ci`.

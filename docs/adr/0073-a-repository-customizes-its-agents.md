@@ -558,6 +558,29 @@ antigravity-cli was not researched: no MCP path of agy 1.5.1 is verified.
   MCP tools reach the model only through code mode's JS, the stub follows
   and §8 gains a line.
 
+## End-to-end proof (2026-11-11, once, live)
+
+The real `adapters/claude-code/run.sh`, as `core/crew.sh` runs it, in its
+image (Claude Code 2.1.311), on the owner's podman machine, against the
+real Anthropic API (`claude-sonnet-5-5`, the owner's key). The workspace
+was `workloads/minimal` as a repository of its own, with its committed
+`mcp.json` (the `notes` fixture, `search_notes` named). `CREW_MCP` came
+from `agents.py mcp` at the base. The ticket asked for one
+`search_notes q=canary` call and its answer in `NOTES.md`.
+
+- `system/init`: `notes` `connected`; the model was offered
+  `mcp__notes__search_notes` and `mcp__notes__count_notes`, as §8 expects
+  (`visible-denied`).
+- `hooks.log`: `ALLOW mcp__notes__search_notes`, then `Write`, then `Bash`.
+- `NOTES.md` held `notes-hit:canary:/crew/live-m42/workspace`, so the
+  server ran in the workspace, inside the container.
+- `run.json` recorded `mcp.calls` `[{server: notes, tool: search_notes,
+  count: 1}]` and `denied` `[]`. The run took 4 turns, 33,396 tokens and
+  145 s, and exited 0.
+
+The scripted-model proof of all three CLIs is case 10 of the suite, on
+Actions.
+
 ## Golden-rule check
 
 `./go demo` is unchanged. At L0 the reviewers and the worker replay, and
