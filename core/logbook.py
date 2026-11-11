@@ -405,6 +405,11 @@ def attempts(doc):
     shown_patch allows and its files (docs/adr/0071 §1)."""
     rework = {r.get("attempt"): r for r in doc.get("rework") or [] if isinstance(r, dict)}
     ci = doc.get("ci") if isinstance(doc.get("ci"), dict) else None
+    # The ci on the document judged the PR's head: it vouches for the last
+    # attempt only when that is the head it judged.
+    head = (doc.get("pr") or {}).get("head_sha") if isinstance(doc.get("pr"), dict) else None
+    if ci is not None and ci.get("head_sha") and head and ci.get("head_sha") != head:
+        ci = None
     out = []
     for t in doc.get("tasks") or []:
         row = pick(t, TASK_KEYS + ("attempt",))
@@ -425,10 +430,11 @@ def ticket_files(ticket, adrs_items, holds, tests_of):
     the perimeter glob, the worker, the attempts, the tests the map knows,
     the ADRs citing it and who holds it. None where the source is unread."""
     globs = ticket["perimeter"] if isinstance(ticket.get("perimeter"), list) else []
+    adrs_items = None if is_unread(adrs_items) else adrs_items
+    holds = None if is_unread(holds) else holds
     rows = {}
-    for t in ticket.get("tasks") or []:
-        if not isinstance(t, dict):
-            continue
+    tasks = [t for t in ticket.get("tasks") or [] if isinstance(t, dict)]
+    for t in sorted(tasks, key=lambda t: t.get("attempt") if isinstance(t.get("attempt"), int) else -1):
         for f in t.get("files") or []:
             row = rows.setdefault(f["path"], {"path": f["path"], "attempts": []})
             row["member"] = f.get("member")

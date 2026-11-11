@@ -177,7 +177,10 @@ class Defaults(Case):
         book = netbook()
         newest = max((t for t in book["tickets"]), key=lambda t: (t["updated_at"] or "", t["id"]))
         out = self.ok(book)
-        self.assertEqual(parse(out)["first"], f"ticket {newest['id']} — {newest['title']} · no attempt yet")
+        # A title that already starts with its id is not named twice: the
+        # console's rule for a ticket's name (docs/adr/0063, `named`).
+        title = newest["title"][len(newest["id"]):].lstrip(" —") if newest["title"].startswith(newest["id"]) else newest["title"]
+        self.assertEqual(parse(out)["first"], f"ticket {newest['id']} — {title} · no attempt yet")
         self.assertEqual(newest["id"], "0009")
 
     def test_a_tie_goes_to_the_highest_id(self):
@@ -646,6 +649,15 @@ class OneSourceForTheWords(Case):
         t10["rework"].append({"attempt": 3, "judge": "main", "head_sha": "h10c", "line": "NO-GO: gates — red", "details": [],
                               "at": "2026-11-02T06:51:00Z", "gates": None})
         out.append(("truncated patch, three reworks, an unmatched glob", book, ["--ticket", "0010"]))
+        out.append(("the attempt the reviewer sent back", book, ["--ticket", "0010", "--attempt", "2"]))
+        book = netbook()
+        t10 = ticket_of(book, "0010")
+        t10["tasks"][1]["files"].append({"path": "img/logo.png", "added": None, "removed": None, "member": "impl"})
+        t10["files"].append({"path": "img/logo.png", "glob": None, "member": "impl", "attempts": [2], "tests": None,
+                             "adrs": [], "held_by": []})
+        t10["ci"]["gates"] = t10["ci"]["gates"] + rows(["a line off the contract"])
+        book["thresholds"] = [x for x in book["thresholds"] if x.get("key") != "REWORK_MAX_ATTEMPTS"]
+        out.append(("a binary file outside the perimeter, a line off the contract, no rework cap", book, ["--ticket", "0010"]))
         book = netbook()
         book["adrs"] = {"ok": False, "error": "no map"}
         book["perimeters_held"] = {"ok": False, "error": "no held file"}

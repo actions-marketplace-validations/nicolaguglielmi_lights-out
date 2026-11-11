@@ -49,9 +49,9 @@ TABLE = {
         "review_none_yet": "review: not reached",
         "rework": "rework: {count} sent back to the dev-worker, at most {max} attempts",
         "rework_nomax": "rework: {count} sent back to the dev-worker",
-        "stage": "canary {pct}%: {line}",
+        "stage": "canary {pct}%: {verdict}",
         "stage_none": "canary: not reached",
-        "human": "human gate: {line} via {via}",
+        "human": "human gate: {answer} by {by} via {via}",
         "human_waiting": "human gate: waiting for go-for-launch",
         "human_rolled_back": "human gate: not reached, the canary rolled back",
         "human_none": "human gate: not reached",
@@ -224,27 +224,33 @@ def roles_ran(t):
     return names
 
 
-def human(t):
-    rows = [r for r in t.get("timeline") or [] if isinstance(r, dict)]
-    signed = [r for r in rows if r.get("phase") == "sign-off"]
-    if signed:
-        r = signed[-1]
-        return {"verdict": r.get("verdict"), "text": w("human", line=r.get("line"), via=r.get("via"))}
-    if t.get("state") == "held":
+def release_of(book, t):
+    """The ticket's release in the release log: its ticket and its version, the last one."""
+    version = (t.get("release") or {}).get("version") if isinstance(t.get("release"), dict) else None
+    rels = book.get("releases") if isinstance(book.get("releases"), list) else []
+    mine = [r for r in rels if isinstance(r, dict) and r.get("ticket") == t["id"] and version and r.get("version") == version]
+    return mine[-1] if mine else None
+
+
+def human(rel):
+    answer = (rel or {}).get("answer")
+    if isinstance(answer, dict) and answer.get("answer"):
+        return {"verdict": answer["answer"], "who": f"{answer.get('by')} · {answer.get('via')}",
+                "text": w("human", answer=answer["answer"], by=answer.get("by"), via=answer.get("via"))}
+    if rel and rel.get("verdict") == "held":
         return {"verdict": "waiting", "text": w("human_waiting")}
-    if t.get("state") == "rolled-back":
+    if rel and rel.get("verdict") == "rolled-back":
         return {"verdict": "not-reached", "text": w("human_rolled_back")}
     return {"verdict": "not-reached", "text": w("human_none")}
 
 
 def review(t, n):
-    latest = n == t.get("attempt")
-    r = t.get("review")
-    if latest and isinstance(r, dict) and r.get("verdict"):
-        return {"verdict": r["verdict"], "text": w("review", verdict=r["verdict"], role=r.get("role") or "the reviewer")}
     back = rework_of(t, n)
     if back is not None and back.get("judge") == "review":
         return {"verdict": "changes-requested", "text": w("review_back", attempt=n)}
+    r = t.get("review")
+    if n == t.get("attempt") and isinstance(r, dict) and r.get("verdict"):
+        return {"verdict": r["verdict"], "text": w("review", verdict=r["verdict"], role=r.get("role") or "the reviewer")}
     return {"verdict": "not-reached", "text": w("review_none", attempt=n) if n is not None else w("review_none_yet")}
 
 
@@ -285,10 +291,12 @@ def view(book, ticket=None, attempt=None):
         mx = rework_max(book)
         g.append({"kind": "rework", "count": len(rework), "max": mx,
                   "text": w("rework", count=len(rework), max=mx) if mx is not None else w("rework_nomax", count=len(rework))})
-    stages = [r for r in t.get("timeline") or [] if isinstance(r, dict) and r.get("phase") == "canary"]
-    g += [{"kind": "stage", "pct": s.get("pct"), "verdict": s.get("verdict"), "text": w("stage", pct=s.get("pct"), line=s.get("line"))}
+    rel = release_of(book, t)
+    stages = [s for s in (rel or {}).get("stages") or [] if isinstance(s, dict)]
+    g += [{"kind": "stage", "pct": s.get("pct"), "verdict": "GO" if str(s.get("verdict") or "").startswith("GO") else "NO-GO",
+           "text": w("stage", pct=s.get("pct"), verdict=s.get("verdict"))}
           for s in stages] or [{"kind": "stage", "pct": None, "verdict": None, "text": w("stage_none")}]
-    g.append(dict(human(t), kind="human"))
+    g.append(dict(human(rel), kind="human"))
     out["graph"] = g
 
     stream = []
