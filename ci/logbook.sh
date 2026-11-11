@@ -9,9 +9,10 @@
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.2.json, written by hand from the
-#      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6 and
-#      its 1.2 `adrs` against the stub map (docs/adr/0059 §3). The stub root
+#      golden fixtures/logbook/golden-1.3.json, written by hand from the
+#      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6,
+#      its 1.2 `adrs` against the stub map (docs/adr/0059 §3) and its 1.3
+#      `agents` against the stub contract (docs/adr/0073 §10). The stub root
 #      holds three ADRs, the files they cite and a ticket that names one in
 #      its one commit; its map is built from that commit with core/map.py,
 #      and the logbook's `adrs` and each ticket's `adrs` are worked out
@@ -56,7 +57,7 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.2.json"
+golden="$repo/fixtures/logbook/golden-1.3.json"
 tmp=$(mktemp -d)
 pids=""
 # shellcheck disable=SC2154 # p is the loop's own variable, assigned when the trap runs
@@ -66,7 +67,7 @@ for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.2.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.3.json not found"
 [ -d "$stub" ] || nogo "fixtures/logbook/stub not found"
 
 # --- the checkers, one python file, one subcommand each ---------------------
@@ -947,7 +948,7 @@ run_reader LOGBOOK_FILE=out2.json
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.2.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.3.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
 # the day it was blessed; these are the rules, worked out again from the
@@ -1370,7 +1371,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.2.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.3.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -1380,7 +1381,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.2.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.3.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"

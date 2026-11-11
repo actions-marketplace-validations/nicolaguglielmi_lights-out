@@ -71,6 +71,36 @@ for p in "$WORKSPACE" "$TICKET_FILE"; do
 done
 mkdir -p "$crew_root/.uv-cache"
 
+# The repository's MCP servers for the dev-worker (docs/adr/0073 §8): set
+# by core/crew.sh only when the base declares some, as CREW_MCP, a
+# directory holding agents.py's decl.json. The declaration is copied into
+# OUT (the one directory the container sees), translated there by mcp.sh,
+# and each token named in it must have a real value before the container
+# starts; it reaches the container by name (-e), never in a file.
+set --
+mcp_tokens=""
+if [ -n "${CREW_MCP:-}" ]; then
+  [ -f "$CREW_MCP/decl.json" ] || { printf 'harness-codex: CREW_MCP=%s holds no decl.json (docs/adr/0073 §7)\n' "$CREW_MCP" >&2; exit 1; }
+  mkdir -p "$OUT/mcp"
+  [ "$CREW_MCP" = "$OUT/mcp" ] || cp "$CREW_MCP/decl.json" "$OUT/mcp/decl.json"
+  sh "$here/mcp.sh" "$OUT/mcp/decl.json" "$OUT/mcp" "$(to_container "$WORKSPACE")" || exit 1
+  for v in $(jq -r '.servers[] | .token_env // empty' "$OUT/mcp/decl.json"); do
+    case "$v" in
+      MCP_*[!A-Z0-9_]*|MCP_) printf 'harness-codex: token_env %s is not an MCP_* name (docs/adr/0073 §6)\n' "$v" >&2; exit 1 ;;
+      MCP_*) ;;
+      *) printf 'harness-codex: token_env %s is not an MCP_* name (docs/adr/0073 §6)\n' "$v" >&2; exit 1 ;;
+    esac
+    token=""
+    eval "token=\${$v:-}"
+    case "$token" in
+      ""|replace-me) printf 'harness-codex: mcp.json names %s, which needs a real value in .env (docs/adr/0073 §6)\n' "$v" >&2; exit 1 ;;
+    esac
+    set -- "$@" -e "$v"
+    mcp_tokens="$mcp_tokens $v"
+  done
+  set -- "$@" -e CREW_MCP_DIR="$(to_container "$OUT/mcp")"
+fi
+
 # The one seam gates/harness-conformance.sh sets (docs/adr/0041 §7): the
 # entrypoint turns it into a model provider of its own (codex ignores
 # OPENAI_BASE_URL, verified 2026-11-04).
@@ -94,6 +124,7 @@ docker-compose --profile crew run --rm --build \
   -e THINKING -e MAX_TURNS -e TIMEOUT_S -e TOKEN_BUDGET \
   -e MODEL -e OPENAI_EFFORT \
   ${endpoint:+-e MODEL_BASE_URL="$endpoint"} \
+  "$@" \
   -v "$run_dir:$(to_container "$run_dir")" \
   -v "$crew_root/.uv-cache:/crew/.uv-cache" \
   codex >&2 || container_rc=$?
@@ -117,15 +148,49 @@ tok_total=$(jq -n --argjson a "$tok_in" --argjson b "$tok_out" 'if $a == null or
 model_served=$(cat "$OUT/served_model" 2>/dev/null || true)
 [ -n "$model_served" ] || model_served=unknown
 
+# What the run used of the repository's MCP servers (docs/adr/0073 §9),
+# null when none was declared: the calls counted from hooks.log, the one
+# record every harness writes in one shape (a hook-denied Codex call leaves
+# no item in the event stream). enabled_tools hides the unnamed tools.
+mcp=null
+calls_err=""
+if [ -n "${CREW_MCP:-}" ]; then
+  hooks_log=$OUT/hooks.log
+  [ -f "$hooks_log" ] || hooks_log=/dev/null
+  calls=$(python3 core/agents.py calls --allow "$OUT/mcp/allow" --hooks "$hooks_log") || { calls_err=$calls; calls='{"calls": null, "denied": null}'; }
+  mcp=$(jq -c --argjson c "$calls" --arg unlisted hidden \
+    '{sha256, servers: [.servers[] | {name, transport} + (if .endpoint then {endpoint} else {} end) + {tools}],
+      unlisted: $unlisted, calls: $c.calls, denied: $c.denied}' "$OUT/mcp/decl.json")
+fi
+
 jq -n \
   --arg harness codex --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
   --argjson turns "$turns" --arg insha "$input_sha256" \
   --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
   --argjson duration "$duration" --argjson exitCode "$container_rc" --arg endpoint "$endpoint" \
+  --argjson mcp "$mcp" \
   '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
     tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
     duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
-    + (if $endpoint == "" then {} else {endpoint: $endpoint} end)' > "$OUT/run.json"
+    + (if $endpoint == "" then {} else {endpoint: $endpoint} end) + {mcp: $mcp}' > "$OUT/run.json"
+
+# A declared server that did not come up fails the run (docs/adr/0073 §8):
+# mcp.sh declares every server required, so `codex exec` fails before
+# thread.started with "required MCP servers failed to initialize: <server>:
+# <error>" on stderr; the line names the declared servers it mentions.
+if [ -n "${CREW_MCP:-}" ]; then
+  [ -z "$calls_err" ] || { printf 'harness-codex: core/agents.py calls: %s\n' "$calls_err" >&2; exit 1; }
+  failed=$(awk 'index($0, "required MCP servers failed to initialize") { l = $0 } END { print l }' "$OUT/stderr.log" 2>/dev/null || true)
+  if [ -n "$failed" ]; then
+    down=""
+    for s in $(jq -r '.servers[].name' "$OUT/mcp/decl.json"); do
+      case "$failed" in *"$s:"*) down="$down${down:+, }$s" ;; esac
+    done
+    [ -n "$down" ] || down=$(jq -r '[.servers[].name] | join(", ")' "$OUT/mcp/decl.json")
+    printf 'harness-codex: declared MCP server %s did not come up (ADR 0073 §8): %s\n' "$down" "$failed" >&2
+    exit 1
+  fi
+fi
 
 # The stop reason (docs/adr/0041 §5): the budget hook's marker (it kills
 # codex, so the exit code is the TERM's), or timeout's 124.
@@ -181,3 +246,10 @@ if grep -rFl "$OPENAI_API_KEY" "$OUT"/* >/dev/null 2>&1; then
   printf 'harness-codex: OPENAI_API_KEY appears in the run artefacts under %s; refusing to record\n' "$OUT" >&2
   exit 1
 fi
+for v in $mcp_tokens; do
+  eval "token=\${$v}"
+  if grep -rFl "$token" "$OUT"/* >/dev/null 2>&1; then
+    printf 'harness-codex: %s appears in the run artefacts under %s; refusing to record\n' "$v" "$OUT" >&2
+    exit 1
+  fi
+done

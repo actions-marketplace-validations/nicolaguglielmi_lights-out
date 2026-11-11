@@ -215,7 +215,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin plan contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -1290,6 +1290,13 @@ demo-init: ## Prove attach, init and gates without the plane on workloads/minima
 init: ## Draft the attached repository's .lights-out/ in the clone, baseline measured, never in your repository: ./go init <path> (docs/adr/0042 §6)
 	@sh core/init.sh
 
+# What the workload's contract gives the agents (docs/adr/0073 §10): the
+# reviewers' role files and the dev-worker's MCP servers, one line each on
+# stderr, then the one contract line. No plane, no model, no engine.
+.PHONY: agents
+agents: ## What the contract gives the agents: the reviewers' role files, the dev-worker's MCP servers (docs/adr/0073)
+	@python3 core/agents.py gate --contract "$(WORKLOAD_CONTRACT)"
+
 # What `./go attach <path>` runs once the clone exists (docs/adr/0037 §1,
 # §7): the attached repository's contract, checked the way ci/workloads.sh
 # checks the ones in this checkout.
@@ -1368,7 +1375,7 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 # (gates/harness-conformance/proof.sh): a
 # suite that cannot fail would say GO to everything.
 .PHONY: harness-conformance
-harness-conformance: ## Every CLI harness against a scripted model, ten cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
+harness-conformance: ## Every CLI harness against a scripted model, eleven cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
 	@sh gates/harness-conformance/proof.sh
 	@CONFORMANCE=1 \
 		WORKLOAD=workloads/minimal WORKLOAD_CONTRACT=workloads/minimal/.lights-out \

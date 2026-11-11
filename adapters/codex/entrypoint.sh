@@ -59,6 +59,20 @@ else
   set -- -c model_provider=openai
 fi
 
+# The repository's MCP servers (docs/adr/0073 §8), only when run.sh found
+# some and wrote this harness's translation (adapters/codex/mcp.sh) into
+# CREW_MCP_DIR: one `-c` override per line of codex-args. CREW_MCP_ALLOW is
+# the guard's list (§9), set here where the model cannot change it, empty
+# without servers, so then every MCP call is denied.
+CREW_MCP_ALLOW=""
+if [ -n "${CREW_MCP_DIR:-}" ]; then
+  while IFS= read -r override; do
+    [ -z "$override" ] || set -- "$@" -c "$override"
+  done < "$CREW_MCP_DIR/codex-args"
+  CREW_MCP_ALLOW=$(awk '{ printf "%s%s", sep, $1; sep = " " }' "$CREW_MCP_DIR/allow")
+fi
+export CREW_MCP_ALLOW
+
 {
   cat "$TICKET_FILE"
   printf '\n---\n\n'

@@ -18,6 +18,7 @@ The script of the running case is /work/case.json, read on every request:
                {"op": "write", "path": "...", "content": "..."},
                {"op": "grep", "pattern": "...", "path": "..."},
                {"op": "jsread", "path": "..."}, {"op": "final", "text": "..."},
+               {"op": "mcp", "server": "...", "tool": "...", "args": {...}},
                {"op": "hang"}]}
 
 A step is abstract and is rendered as each vendor's own tool call: Bash, Read and
@@ -32,7 +33,14 @@ is not usable, refuses a file as dir_path before BeforeTool fires), and `grep -r
 through Bash, run_command and the shell for the others. `jsread`
 is the one probe of OpenAI's code mode: JavaScript that tries to read a file and
 the environment itself, with no nested tool call, so no hook fires; on every
-other surface it is a `read`. `hang` never answers.
+other surface it is a `read`. `mcp` is a call to a repository's MCP tool (docs/
+adr/0073, case 10), rendered as whatever the request declares: the declared tool
+whose name ends with the step's tool name, this server's first, called by that name
+(and, on OpenAI, in the namespace that declared it); when no declared tool ends with
+it, the call goes to the name the vendor would give it (mcp__<server>__<tool>, or
+mcp_<server>_<tool> on Gemini), and the CLI answers that it has no such tool.
+Codex's MCP surface under code mode is not established: the requests' `declared`
+says what each one offered. `hang` never answers.
 
 The step a request gets is the number of tool results already in it. One
 exception, Antigravity's: a command still running after 10 s comes back as "Tool is
@@ -48,7 +56,9 @@ answered request that carries tools reports exactly 1,000 tokens, split 900
 input and 100 output, whatever the protocol calls them.
 
 Per case, under /work/<case>/: requests.jsonl, one record per request (never a
-header value, and the `key` query parameter is dropped from the path), and
+header value, and the `key` query parameter is dropped from the path; `declared`
+lists the names of the tools the request offered, `<namespace>.<name>` for one an
+OpenAI namespace groups), and
 bodies/NNNN.json, the request body as it arrived, decoded. Every record, of
 whatever method and path, carries `peer`, the address the connection came
 from, and `sink`, true when the request's Host names `conformance-sink`: the
@@ -291,25 +301,58 @@ def code_mode_source(path):
     return CODE_MODE_JS % json.dumps([path[:half], path[half:]])
 
 
-def request_tools(body):
-    """The tools a request offers, flattened. Found running codex 0.166.0 through
-    the suite: it sends no top-level `tools`; they ride in an `input` item of
-    type `additional_tools`, grouped in `namespace` entries (`functions.exec`,
-    the code-mode tool, among them)."""
+def namespaced_tools(body):
+    """[(namespace or None, tool)] for every tool a request offers, flattened. Found
+    running codex 0.166.0 through the suite: it sends no top-level `tools`; they
+    ride in an `input` item of type `additional_tools`, grouped in `namespace`
+    entries (`functions.exec`, the code-mode tool, among them)."""
     out = []
 
-    def walk(items):
+    def walk(items, ns):
         for t in items or []:
             if isinstance(t, dict) and t.get("type") == "namespace":
-                walk(t.get("tools"))
+                walk(t.get("tools"), t.get("name"))
             elif isinstance(t, dict):
-                out.append(t)
+                out.append((ns, t))
 
-    walk(body.get("tools"))
+    walk(body.get("tools"), None)
     for item in body.get("input") or []:
         if isinstance(item, dict) and item.get("type") == "additional_tools":
-            walk(item.get("tools"))
+            walk(item.get("tools"), None)
     return out
+
+
+def request_tools(body):
+    """The tools a request offers, flattened (namespaced_tools without the namespaces)."""
+    return [t for _, t in namespaced_tools(body)]
+
+
+def declared(proto, body):
+    """[(namespace or None, name)] of the tools a request offers, in the request's order."""
+    if proto == "gemini":
+        out = []
+        for t in body.get("tools") or []:
+            if isinstance(t, dict):
+                for d in t.get("functionDeclarations") or t.get("function_declarations") or []:
+                    if isinstance(d, dict) and isinstance(d.get("name"), str):
+                        out.append((None, d["name"]))
+        return out
+    return [(ns, t.get("name") or t.get("type")) for ns, t in namespaced_tools(body)
+            if isinstance(t.get("name") or t.get("type"), str)]
+
+
+def declared_names(proto, body):
+    return [("%s.%s" % (ns, n)) if ns else n for ns, n in declared(proto, body)]
+
+
+def mcp_target(proto, body, server, tool):
+    """-> (namespace or None, name, declared?): the declared tool whose name ends with
+    TOOL, one that also names SERVER first; else the vendor's own name for it."""
+    found = [(ns, n) for ns, n in declared(proto, body) if n.endswith(tool) or ("%s.%s" % (ns, n)).endswith(tool)]
+    found.sort(key=lambda c: server not in ("%s.%s" % c if c[0] else c[1]))
+    if found:
+        return found[0][0], found[0][1], True
+    return None, ("mcp_%s_%s" if proto == "gemini" else "mcp__%s__%s") % (server, tool), False
 
 
 def pick_openai_surface(tools):
@@ -330,6 +373,12 @@ def render(proto, step, cwd, body):
     op = step.get("op")
     if op == "final":
         return op, None, ("text", step.get("text", ""))
+    if op == "mcp":
+        server, tool, args = step.get("server"), step.get("tool"), step.get("args") or {}
+        if not isinstance(server, str) or not isinstance(tool, str) or not isinstance(args, dict):
+            raise Fault(503, "case.json: an mcp step needs server and tool, strings, and args, an object")
+        ns, name, offered = mcp_target(proto, body, server, tool)
+        return op, offered, ("tool", name, args, ns)
     if op not in ("shell", "read", "write", "jsread", "grep"):
         raise Fault(503, "case.json: unknown op %r" % op)
     if proto == "anthropic":
@@ -437,6 +486,8 @@ def respond_openai(h, body, served, rendering, tokens):
     else:
         item = {"type": "function_call", "id": "fc_%d" % next(IDS), "call_id": "call_%d" % next(IDS),
                 "name": rendering[1], "arguments": json.dumps(rendering[2])}
+        if len(rendering) > 3 and rendering[3]:
+            item["namespace"] = rendering[3]
     usage = {"input_tokens": tokens[0], "input_tokens_details": {"cached_tokens": 0},
              "output_tokens": tokens[1], "output_tokens_details": {"reasoning_tokens": 0},
              "total_tokens": tokens[0] + tokens[1]}
@@ -568,6 +619,7 @@ class Handler(BaseHTTPRequestHandler):
         requested = path_model or body.get("model")
         rec = {"method": "POST", "path": clean_path(self.path), "protocol": proto, "kind": kind,
                "auth": auth, "requested": requested, "tools": bool(request_tools(body)),
+               "declared": declared_names(proto, body),
                "step": None, "op": None, "hooked": None, "reported_tokens": 0, "last_result": ""}
         rec.update(self.origin())
         if kind == "other":

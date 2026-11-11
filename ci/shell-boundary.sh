@@ -27,7 +27,7 @@ core/postmortem.sh 49
 core/promote.sh 84
 core/steps/ci.sh 85
 core/steps/release.sh 56
-core/steps/review.sh 73
+core/steps/review.sh 71
 core/steps/rework.sh 51
 core/toolchain.sh 126
 '

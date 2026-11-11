@@ -17,6 +17,7 @@
 #   ./go attach <path>  make a repository of yours the workload (its .lights-out/ is the contract, if it has one)
 #   ./go init [<path>]  draft the attached repository's .lights-out/ in the clone, baseline measured (ADR 0042)
 #   ./go gates          judge a range of the workload: BASE=<ref> HEAD=<ref>, default the last commit; no plane needed
+#   ./go agents         what the contract gives the agents: role files for the reviewers, MCP servers for the dev-worker (ADR 0073)
 #   ./go demo-init      prove attach, init and gates on the two example repositories, without the plane
 #   ./go detach         drop the attached repository; the workload is app/ again
 #   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)

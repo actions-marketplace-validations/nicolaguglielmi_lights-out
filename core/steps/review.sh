@@ -69,12 +69,17 @@ sh "adapters/$TRACKER/get.sh" "$TICKET" > "$review_dir/ticket.md" \
 # timestamp) for byte-identical content every time, so a sha embedded
 # here would make input_matches_recorded false on every
 # ordinary replay — a constant false positive, not a drift signal.
-{
-  cat "$review_dir/ticket.md"
-  printf '\n---\n\nDiff:\n\n```diff\n'
-  git -C "$review_dir/workspace" diff "$BASE_SHA".."$HEAD_SHA"
-  printf '```\n'
-} > "$review_dir/input.md"
+# The repository's instructions for this role (docs/adr/0073 §1-§5), read
+# at BASE_SHA in this clone: never the PR head, which would let a PR choose
+# its own judge's instructions, and never the platform's local contract,
+# which can lag the code host's main. roles/ and mcp.json are checked
+# first; a refusal is its one NO-GO line on stderr, exit 1, before any
+# model call. With a role file its block follows the ticket and a platform
+# paragraph restating the output contract follows the diff; without one
+# the document is the ticket and the diff alone, byte for byte as before.
+instructions=$(python3 core/agents.py review --contract "${WORKLOAD_CONTRACT:-${WORKLOAD:-.}}" --role "$ROLE" \
+  --repo "$review_dir/workspace" --base "$BASE_SHA" --head "$HEAD_SHA" --ticket "$review_dir/ticket.md" --out "$review_dir/input.md") \
+  || { printf '%s\n' "${instructions:-step-review: core/agents.py could not build the input}" >&2; exit 1; }
 input_sha256=$(sha256sum "$review_dir/input.md" | cut -d' ' -f1)
 
 # BASE is the workspace's own HEAD, not the ticket's BASE_SHA: the
@@ -131,5 +136,6 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" review "$verdict: $(pri
 
 jq -cn --arg state "$state" --arg role "$ROLE" --arg verdict "$verdict" --arg reason "$reason" \
   --arg insha "$input_sha256" --argjson matches "$input_matches" --argjson task "$task" \
+  --argjson instructions "$instructions" \
   '{state: $state, review: ($task + {role: $role, verdict: $verdict, reason: $reason,
-    input_sha256: $insha, input_matches_recorded: $matches})}'
+    input_sha256: $insha, input_matches_recorded: $matches, instructions: $instructions})}'

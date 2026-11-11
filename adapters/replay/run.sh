@@ -31,6 +31,16 @@ fixture="$here/fixtures/$rel"
 
 mkdir -p "$OUT"
 
+# The repository's MCP servers (docs/adr/0073 §8): nothing runs here, so
+# nothing is translated, but a recording made under another declaration
+# (or under none) is refused before anything is applied.
+if [ -n "${CREW_MCP:-}" ]; then
+  [ -f "$CREW_MCP/decl.json" ] || { printf 'harness-replay: CREW_MCP=%s holds no decl.json (docs/adr/0073 §7)\n' "$CREW_MCP" >&2; exit 1; }
+  mkdir -p "$OUT/mcp"
+  [ "$CREW_MCP" = "$OUT/mcp" ] || cp "$CREW_MCP/decl.json" "$OUT/mcp/decl.json"
+  FIXTURE_RUN_JSON="$fixture/run.json" sh "$here/adapters/replay/mcp.sh" "$OUT/mcp/decl.json" "$OUT/mcp" "$WORKSPACE" || exit 1
+fi
+
 if [ -f "$fixture/final.md" ] && [ ! -s "$fixture/patch" ]; then
   for f in input.md final.md run.json transcript.jsonl hooks.log; do
     [ -f "$fixture/$f" ] && cp "$fixture/$f" "$OUT/$f"

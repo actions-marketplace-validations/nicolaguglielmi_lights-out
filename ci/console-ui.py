@@ -11,7 +11,7 @@ job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 
 Written from docs/adr/0059 and the DOM contract it names, not from
 console/index.html. It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.2.json, and drives it with Playwright:
+fixtures/logbook/golden-1.3.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -86,7 +86,7 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.2.json"
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.3.json"
 SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds"]
 THEME_KEY = "lights-out.theme"
 TIMEOUT_MS = 5000
@@ -2269,6 +2269,19 @@ def s_nodrag(browser, bases):
     ctx.close()
 
 
+def t_agents(browser, bases, golden):
+    """ADR 0073 §10: the Thresholds screen's Agents panel prints the logbook's lines verbatim, the same text `./go agents` prints."""
+    lines = (golden.get("agents") or {}).get("lines")
+    need(isinstance(lines, list) and lines, f"t: the golden has no agents lines: {json.dumps(golden.get('agents'))[:200]}")
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    tab.load("#thresholds")
+    tab.page.wait_for_selector("h2:text-is('Agents')", timeout=5000)
+    shown_text = tab.page.evaluate("() => { const h = [...document.querySelectorAll('h2')].find((x) => x.textContent === 'Agents'); const pre = h && h.nextElementSibling && h.nextElementSibling.querySelector('pre'); return pre ? pre.textContent : null; }")
+    need(shown_text == "\n".join(lines), f"t: the Agents panel shows {shown_text!r}, the logbook's lines are {lines!r}")
+    ctx.close()
+
+
 # --- the checks that the checks themselves can fail ------------------------------------
 
 def self_checks():
@@ -2495,7 +2508,7 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 logbook")
+        need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2-or-later logbook")
         self_checks()
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
@@ -2524,6 +2537,7 @@ def main():
                             q_contrast(browser, bases)
                             r_bands(browser, bases, golden)
                             s_nodrag(browser, bases)
+                            t_agents(browser, bases, golden)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)

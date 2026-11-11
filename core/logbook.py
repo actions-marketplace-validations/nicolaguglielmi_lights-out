@@ -2,11 +2,12 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.2` (core/logbook/1.2.schema.json) from the
+Assembles `lights-out/logbook/1.3` (core/logbook/1.3.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
-project map's ADRs (MAP_FILE, docs/adr/0059 §3). Every rule
+project map's ADRs (MAP_FILE, docs/adr/0059 §3) and what the contract
+gives the agents (core/agents.py, docs/adr/0073 §10). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -36,13 +37,15 @@ try:
     from .spec import fields
     from .assign import HOLDING, overlaps
     from .map import SCHEMA as MAP_SCHEMA
+    from . import agents as contract_agents
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
     from assign import HOLDING, overlaps
     from map import SCHEMA as MAP_SCHEMA
+    import agents as contract_agents
 
-SCHEMA = "lights-out/logbook/1.2"
+SCHEMA = "lights-out/logbook/1.3"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -593,6 +596,23 @@ def thresholds():
     return out
 
 
+# --- agents ---------------------------------------------------------------
+
+
+def agents():
+    """{lines}: what the local contract gives the agents, the wording `./go
+    agents` prints (docs/adr/0073 §10); unread, as thresholds, on a refusal."""
+    contract = env("WORKLOAD_CONTRACT")
+    if not contract:
+        return unread("WORKLOAD_CONTRACT not set; run this via ./go logbook")
+    try:
+        return {"lines": contract_agents.lines_for(contract)}
+    except contract_agents.Refusal as exc:
+        return unread(f"NO-GO: agents — {exc}")
+    except OSError as exc:
+        return unread(f"{exc.filename}: {exc.strerror}")
+
+
 # --- post mortems ---------------------------------------------------------
 
 
@@ -705,6 +725,7 @@ def main(argv):
         "releases": rels,
         "postmortems": postmortems(),
         "thresholds": thresholds(),
+        "agents": agents(),
         "launch": launch(record),
         "perimeters_held": holds,
         "docs_to_realign": docs_to_realign(held),

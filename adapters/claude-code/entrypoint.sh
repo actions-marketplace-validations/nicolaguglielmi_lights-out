@@ -52,6 +52,25 @@ settings=$(jq -cn --arg guard "$hooks/guard.sh" --arg budget "$hooks/budget.sh" 
   printf 'say your final message must be, nothing else.\n'
 } > "$CREW_OUT/prompt.md"
 
+# The repository's MCP servers (docs/adr/0073 §8), only when run.sh found
+# some and wrote this harness's translation (adapters/claude-code/mcp.sh)
+# into CREW_MCP_DIR: the --mcp-config file beside --strict-mcp-config, the
+# named tools pre-approved, the 30 s start of ADR 0073 §6. --tools is
+# unchanged: it does not touch MCP tools. CREW_MCP_ALLOW is the guard's
+# list (§9), set here where the model cannot change it, empty without
+# servers, so then every MCP call is denied.
+allowed=Bash,Edit,Read,Write
+CREW_MCP_ALLOW=""
+set --
+if [ -n "${CREW_MCP_DIR:-}" ]; then
+  allowed="$allowed,$(cat "$CREW_MCP_DIR/allowed-tools")"
+  CREW_MCP_ALLOW=$(awk '{ printf "%s%s", sep, $1; sep = " " }' "$CREW_MCP_DIR/allow")
+  MCP_TIMEOUT=30000
+  export MCP_TIMEOUT
+  set -- --mcp-config "$CREW_MCP_DIR/claude.json"
+fi
+export CREW_MCP_ALLOW
+
 cd "$CREW_WORKSPACE"
 rc=0
 timeout "$TIMEOUT_S" claude \
@@ -62,9 +81,10 @@ timeout "$TIMEOUT_S" claude \
   --effort "$ANTHROPIC_EFFORT" \
   --max-turns "$MAX_TURNS" \
   --tools Bash,Edit,Read,Write \
-  --allowedTools Bash,Edit,Read,Write \
+  --allowedTools "$allowed" \
   --setting-sources user \
   --strict-mcp-config \
+  "$@" \
   --settings "$settings" \
   > "$CREW_OUT/transcript.jsonl" 2> "$CREW_OUT/stderr.log" || rc=$?
 

@@ -547,6 +547,163 @@ The dev-worker reads the ticket, then your `worker.md`. Its toolchain is
 your `TOOLCHAIN_IMAGE` when that names an image, and the workbench otherwise
 (ADR 0042 §8).
 
+## Customize the agents
+
+<a id="agents"></a>
+
+How far can a repository shape its agents? As far as the files below, which
+live in your `.lights-out/` and are read from your **base** branch (ADR
+0073). Everything else is the platform's, on purpose. Nothing here is
+drafted by `init`: nothing about your review preferences or connectors can
+be inferred.
+
+### What you can customize today
+
+| What | Where | Effect |
+|---|---|---|
+| The dev-worker's brief | `worker.md` | Goes into the worker's input after the ticket (ADR 0037 §6) |
+| Instructions for the test-reviewer and the architect | `test-reviewer.md`, `architect.md`, in `roles/` | Added to that reviewer's input, after the platform's prompt. 3,072 bytes at most, UTF-8 |
+| MCP servers for the dev-worker | `mcp.json` | Up to 4 servers and 16 tools, each tool named |
+| Your thresholds | `policy.env` | Nine keys (section 3) |
+| The hosts the worker may reach | `crew-egress.txt` | One `name:port` per line (section 2). A remote MCP server must be one of them |
+| The model and provider | the profile: `MODEL_PROVIDER`, `MODEL` | Per profile (`profiles/`), on the command line or in `.env` |
+| The harness | `AGENT_HARNESS` | `claude-code`, `codex`, `gemini-cli` (the default) or `antigravity-cli`; each takes one provider |
+
+Every file under `.lights-out/` is high risk: a change to it goes to a
+human review whatever `RISK_AUTO_MERGE_LEVELS` says.
+
+**`worker.md`** is the brief you already have. A `dev-worker.md` role file is
+refused, with a line naming `worker.md`: one role gets one file.
+
+**Role instructions.** Write what your reviewer should know about your code.
+The file is added to its input, with a heading that names the file and its
+sha256. A restated output contract follows the diff, so your text cannot
+change the form of the answer.
+
+```md
+<!-- roles/test-reviewer.md, in your contract -->
+- A test that only asserts a status code is not enough here: our handlers
+  return 200 with an error body. Ask for the body to be asserted.
+- Tests under `tests/legacy/` are known to be weak. Do not ask for them to be
+  improved in a change that does not touch them.
+- Our money amounts are integers in cents. A float in a payment path is a
+  reason to ask for changes.
+```
+
+```md
+<!-- roles/architect.md, in your contract -->
+- `src/billing/` may import from `src/core/`, never the other way round.
+- A new dependency needs a sentence in the ticket saying why the standard
+  library does not do.
+```
+
+**`mcp.json`** gives the dev-worker tools beyond the harness's own. Two
+servers, one on stdio and one remote:
+
+```json
+{"servers": {
+  "notes": {"command": ["python3", ".lights-out/mcp/notes.py"],
+            "tools": ["search_notes"]},
+  "docs":  {"url": "https://mcp.example.com:443/mcp",
+            "tools": ["search_docs"],
+            "token_env": "MCP_DOCS_TOKEN"}}}
+```
+
+- A server name is lower-case alphanumerics, 10 characters at most. A tool
+  name is `A-Za-z0-9_-`, 48 at most.
+- `tools` is mandatory and lists exact names, with no wildcard. Nothing is
+  offered unless it is named. The platform cannot see what a tool does, so
+  the human who approves the `mcp.json` change is the check: name read tools
+  only.
+- A stdio `command` is an argv list. It runs inside the harness container,
+  with the workspace as its working directory, with the model's privileges
+  and no secret: there is no `env` and no `cwd` key. A server that needs a
+  secret or the network is a remote one.
+- A remote `url` is `https` with an explicit port, and its `host:port` must
+  be a line of your `crew-egress.txt`:
+
+  ```
+  mcp.example.com:443
+  ```
+
+- The credential is a name, never a value. `token_env` matches
+  `MCP_[A-Z0-9_]+`, so a provider key can never be forwarded. Put the value
+  in `.env` under that name. The run refuses when it is unset or
+  `replace-me`.
+- Start and each call time out at 30 s.
+- A declared server that does not come up fails the run, in one line naming
+  it. Nothing is dropped silently.
+- Harnesses that take an `mcp.json`: `claude-code`, `codex` and
+  `gemini-cli`. Any other refuses, in one line that lists those that do.
+
+### What is fixed by design, and why
+
+- **The role prompts and the verdict line.** Your text is added to the
+  platform's prompt, never replaces it. The verdict is the first line of the
+  review, exactly `APPROVED` or `CHANGES-REQUESTED`, and anything else is no
+  verdict: the step fails and nothing is approved. A role file with a line
+  that starts with either word is refused before any model call.
+- **MCP for the reviewers.** A judge whose inputs include a server you chose
+  is a judge you partly control at run time, and a remote server's answers
+  change without a commit. The worker's tools are bounded by the reviewers
+  that come after it. The reviewers' are not.
+- **The ADK roles** (`product`, `release`, `ops-triage`). They answer in
+  structured calls the platform consumes, they never read your code, and
+  their recordings are keyed on the prompt. a `product.md` role file and the like
+  are refused, naming this section.
+- **Secrets in the repository.** `mcp.json` has no `env`, no `headers` and
+  no literal token. It is committed and read in the clear.
+- **Files are read from the base.** The reviewers' instructions and
+  `mcp.json` come from the commit a change forks from, never from the pull
+  request. A PR that edits `test-reviewer.md` is judged with the old
+  file, or with none: a change cannot pick its own judge.
+- **antigravity-cli** takes no MCP servers: no MCP path of it is verified.
+- **Remote MCP on gemini-cli.** Refused. A remote server that answers 401 is
+  silent at the pinned version, so a missing token would become a silently
+  missing tool. Use stdio there.
+- **Claude Code shows unnamed tools but denies them.** It has no way to hide
+  an unnamed tool of a declared server. The model sees it, and every call is
+  denied twice, by Claude's permission check and by the guard.
+  `run.json` says `visible-denied`. Codex and Gemini hide it.
+
+### See what is declared
+
+```sh
+./go agents
+```
+
+One line on stdout: `GO: agents — <n> role files, <n> MCP servers, <n> tools`,
+or `NO-GO: agents — <first refusal>`. The detail goes to stderr, in the same
+words the console uses:
+
+```
+test-reviewer: +1,204 bytes from .lights-out/roles/test-reviewer.md
+dev-worker MCP: notes (stdio: python3 .lights-out/mcp/notes.py) — tools search_notes
+dev-worker MCP: none
+```
+
+The console shows the same lines in an "Agents" panel on the Thresholds
+screen, and on a ticket's back it shows the review's instructions and the
+MCP calls the worker made. The record of a run is `run.json`'s `mcp`: the
+declaration's sha256, the servers and tools offered, the calls counted and
+the calls denied. `./go agents` shows what the contract declares now; a run
+records what it used, at its base.
+
+### The honest limits
+
+- **A repository can tell its own reviewer to be lenient.** The platform
+  fixes who chooses the instructions (the base, through a high-risk change a
+  human approved) and the form of the verdict. It does not fix the
+  judgement. The gates, the risk policy and the human gate before 100% are
+  not touched. The instructions are shown on every review.
+- **Remote MCP is proven only by unit translation.** The suite runs a stdio
+  server against the pinned CLIs. No remote server has been run live; the
+  first such run is yours.
+- **A typo in `tools` offers nothing and fails nothing.** The platform
+  cannot see a server's own list. The calls count shows 0.
+- **A stdio server is code with the model's privileges**, and a token in
+  `MCP_*` is as exposed to the model as the provider key is.
+
 ## 5. Before a commit and on a PR
 
 ### The Action
