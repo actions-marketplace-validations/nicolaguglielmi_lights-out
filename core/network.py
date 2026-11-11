@@ -46,6 +46,7 @@ TABLE = {
         "review": "review: {verdict} by {role}",
         "review_back": "review: sent attempt {attempt} back",
         "review_none": "review: not reached on attempt {attempt}",
+        "review_none_yet": "review: not reached",
         "rework": "rework: {count} sent back to the dev-worker, at most {max} attempts",
         "rework_nomax": "rework: {count} sent back to the dev-worker",
         "stage": "canary {pct}%: {line}",
@@ -101,6 +102,11 @@ def minor(book):
         return int(schema.rsplit(".", 1)[1])
     except (IndexError, ValueError):
         return 0
+
+
+def version(book):
+    """The logbook's version, `1.2` of `lights-out/logbook/1.2`."""
+    return str(book.get("schema") or "").rsplit("/", 1)[-1]
 
 
 def load(path):
@@ -239,7 +245,7 @@ def review(t, n):
     back = rework_of(t, n)
     if back is not None and back.get("judge") == "review":
         return {"verdict": "changes-requested", "text": w("review_back", attempt=n)}
-    return {"verdict": "not-reached", "text": w("review_none", attempt=n)}
+    return {"verdict": "not-reached", "text": w("review_none", attempt=n) if n is not None else w("review_none_yet")}
 
 
 def joined(values):
@@ -271,8 +277,9 @@ def view(book, ticket=None, attempt=None):
     if n is not None:
         ws = workers(task_of(t, n))
         g += [dict(m, kind="worker", text=worker_fact(m)) for m in ws] or [{"kind": "worker", "id": None, "text": w("no_worker", attempt=n)}]
-        g += [dict(e, kind="gate", attempt=n) for e in gate_edges(t, n)]
-        g.append(dict(review(t, n), kind="review"))
+    # With no attempt yet every gate is still drawn, none of them run.
+    g += [dict(e, kind="gate", attempt=n) for e in gate_edges(t, n)]
+    g.append(dict(review(t, n), kind="review"))
     rework = [r for r in t.get("rework") or [] if isinstance(r, dict)]
     if rework:
         mx = rework_max(book)
@@ -286,7 +293,7 @@ def view(book, ticket=None, attempt=None):
 
     stream = []
     if old:
-        stream.append({"kind": "old", "text": w("old_logbook", version=book.get("schema"))})
+        stream.append({"kind": "old", "text": w("old_logbook", version=version(book))})
     for k in reversed(ns):
         task = task_of(t, k)
         who = ", ".join(m["id"] for m in workers(task)) or w("who_unknown")
@@ -318,7 +325,7 @@ def view(book, ticket=None, attempt=None):
     chosen = next((e for e in stream if e["kind"] == "attempt" and e["attempt"] == n), None)
     out["patch"] = chosen["patch"] if chosen else None
 
-    files = []
+    files = [{"kind": "old", "text": w("old_logbook", version=version(book))}] if old else []
     if unread(book.get("adrs")):
         files.append({"kind": "unread", "text": w("unread", what="the project map", error=book["adrs"]["error"])})
     if unread(book.get("perimeters_held")):
