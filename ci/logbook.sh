@@ -9,21 +9,34 @@
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.2.json, written by hand from the
+#      golden fixtures/logbook/golden-1.3.json, written by hand from the
 #      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6 and
-#      its 1.2 `adrs` against the stub map (docs/adr/0059 §3). The stub root
-#      holds three ADRs, the files they cite and a ticket that names one in
-#      its one commit; its map is built from that commit with core/map.py,
+#      its 1.2 `adrs` against the stub map (docs/adr/0059 §3), and its 1.3
+#      fields of ticket 0010, the network ticket, one by one against the
+#      stub's tower documents and ADR 0071 (docs/adr/0071 §8): each task's
+#      members (ids, harness, model, hand-written), files with their added
+#      and removed counts, the patch shown, ci.gates (eight GO in the
+#      Makefile's order), rework[0].gates (six GO, then mutation NO-GO), no
+#      raw `lines`, the patch of 0004's attempt in flight withheld with the
+#      contract's error, and tickets[].files rows (glob, member, attempts,
+#      tests, adrs, held_by), each hand check run again on a logbook with
+#      one fact planted wrong, which it must refuse. golden-1.2.json stays in
+#      the repository, untouched, as the old-logbook fixture. The stub root
+#      holds three ADRs, the files they cite, the notifier and its test, and
+#      a ticket that names one in its one commit; its map is built from that
+#      commit with core/map.py,
 #      and the logbook's `adrs` and each ticket's `adrs` are worked out
 #      again here from the map's rows with sqlite3 and fnmatch, not by
 #      calling the reader's functions. Then variants of the sources, each
 #      checked on the one field the plan's rule decides: no map, a map of
 #      schema 1, a map at another commit, a map with no ADR, a map opened
 #      read-only, a wide glob, who requested.
+#      With no map, the files' tests and adrs are null; with the perimeters
+#      held unread, their held_by is null (docs/adr/0071 §1).
 #      The kanban's every card sits in its ticket's state's column, and moves
 #      when the tower moves the ticket (docs/adr/0055 §7).
-#   b. The golden validates against every committed schema of its major,
-#      and against the schema file of its own minor.
+#   b. The golden validates against every committed schema of its major
+#      (1.0 to 1.3), and against the schema file of its own minor.
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
 #      snapshot is drift; with neither, this point is skipped.
@@ -32,7 +45,12 @@
 #      `core/spec.py draft` and `make answer` / `make request` only, and has
 #      four POST routes (docs/adr/0055 §2, docs/adr/0059 §4); index.html
 #      fetches /v1/ only, POSTs to those four routes and declares no
-#      `draggable` and no drag or drop listener (docs/adr/0059 §1).
+#      `draggable` and no drag or drop listener (docs/adr/0059 §1). The
+#      page's `#network-words` is `python3 core/network.py --table` as JSON,
+#      its roles are the directories of roles/ and its gates the Makefile's
+#      `GATES :=` (docs/adr/0071 §5), a wrong copy refused; and `make network
+#      NETWORK_LOGBOOK=<golden>` prints on stdout what core/network.py prints
+#      over the golden, for the default view and for TICKET and ATTEMPT.
 #   e. The console at runtime: snapshot mode refuses to write and answers the
 #      spec check without writing; the ETag answers 304; the start-up
 #      refusals (§5); LIVE mode in the stub root refuses every bad press
@@ -56,7 +74,7 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.2.json"
+golden="$repo/fixtures/logbook/golden-1.3.json"
 tmp=$(mktemp -d)
 pids=""
 # shellcheck disable=SC2154 # p is the loop's own variable, assigned when the trap runs
@@ -66,7 +84,7 @@ for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.2.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.3.json not found"
 [ -d "$stub" ] || nogo "fixtures/logbook/stub not found"
 
 # --- the checkers, one python file, one subcommand each ---------------------
@@ -440,6 +458,46 @@ def cmd_machine(path):
         die(f"the bands' states {states} are not core/logbook.py's COLUMNS {list(logbook.COLUMNS)}")
 
 
+# The network screen's words as the console embeds them (docs/adr/0071 §5, the
+# tower table's twin): the copy is `core/network.py --table`, its roles are the
+# directories of roles/ that hold a role.env and its gates the Makefile's
+# `GATES :=` line, in order. ROOT is where core/, roles/ and the Makefile are.
+def cmd_words(path, root="."):
+    import subprocess
+    page = open(path, encoding="utf-8").read()
+    m = re.search(r'<script type="application/json" id="network-words">(.*?)</script>', page, re.S)
+    if not m:
+        die(f"{path} embeds no network-words table (<script type=application/json id=network-words>)")
+    try:
+        words = json.loads(m.group(1))
+    except ValueError as exc:
+        die(f"{path}: network-words is not JSON: {exc}")
+    if not isinstance(words, dict):
+        die("network-words is not an object")
+    roles = sorted(os.path.basename(os.path.dirname(f)) for f in glob.glob(os.path.join(root, "roles", "*", "role.env")))
+    mk = re.search(r"^GATES := (.*)$", open(os.path.join(root, "Makefile"), encoding="utf-8").read(), re.M)
+    if not mk:
+        die("the Makefile has no `GATES :=` line")
+    gates = mk.group(1).split()
+    if words.get("roles") != roles:
+        die(f"roles: console {words.get('roles')} vs the directories of roles/ {roles}")
+    if words.get("gates") != gates:
+        die(f"gates: console {words.get('gates')} vs the Makefile's GATES {gates}")
+    ran = subprocess.run([sys.executable, "core/network.py", "--table"], cwd=root, capture_output=True, text=True)
+    if ran.returncode != 0:
+        die(f"core/network.py --table exited {ran.returncode}: {ran.stderr.strip()[:200]}")
+    try:
+        table = json.loads(ran.stdout)
+    except ValueError as exc:
+        die(f"core/network.py --table is not JSON: {exc}")
+    if table.get("roles") != roles or table.get("gates") != gates:
+        die(f"core/network.py's TABLE has roles {table.get('roles')} and gates {table.get('gates')}, "
+            f"want the directories of roles/ {roles} and the Makefile's GATES {gates}")
+    if words != table:
+        die(f"network-words is not `core/network.py --table`: differs at "
+            f"{sorted(k for k in set(words) | set(table) if words.get(k) != table.get(k))}")
+
+
 if __name__ == "__main__":
     globals()["cmd_" + sys.argv[1]](*sys.argv[2:])
 PY
@@ -478,6 +536,14 @@ jq '.adrs.items[0].number = 59' "$golden" > "$st/bad-adr-number.json"
 jq '.adrs.items[0].files = "app/backend/router.py"' "$golden" > "$st/bad-adr-files.json"
 jq '.adrs.map_sha = 5' "$golden" > "$st/bad-adr-sha.json"
 jq '.tickets[0].adrs = "0001"' "$golden" > "$st/bad-ticket-adrs.json"
+# 1.3 (docs/adr/0071 §1): each new field is typed. The golden's ticket 0010 is
+# the one that carries them all.
+jq '(.tickets[] | select(.id == "0010") | .ci.gates) = "GO: risk"' "$golden" > "$st/bad-ci-gates.json"
+jq '(.tickets[] | select(.id == "0010") | .rework[0].gates) = "NO-GO: mutation"' "$golden" > "$st/bad-rework-gates.json"
+jq '(.tickets[] | select(.id == "0010") | .tasks[0].members) = "impl"' "$golden" > "$st/bad-members.json"
+jq '(.tickets[] | select(.id == "0010") | .files[0].tests) = "tests/test_notify.py"' "$golden" > "$st/bad-files-tests.json"
+jq '(.tickets[] | select(.id == "0010") | .files[0].attempts) = [1, "2"]' "$golden" > "$st/bad-files-attempts.json"
+jq '(.tickets[] | select(.id == "0010") | .tasks[0].patch.bytes) = "577"' "$golden" > "$st/bad-patch-bytes.json"
 (
   cd "$st"
   must_reject "schema validation (an enum value)" valid bad-enum.json
@@ -488,6 +554,12 @@ jq '.tickets[0].adrs = "0001"' "$golden" > "$st/bad-ticket-adrs.json"
   must_reject "schema validation (an ADR's files that is not a list)" valid bad-adr-files.json
   must_reject "schema validation (a map_sha that is not a string)" valid bad-adr-sha.json
   must_reject "schema validation (a ticket's adrs that is not a list)" valid bad-ticket-adrs.json
+  must_reject "schema validation (a ci.gates that is not a list)" valid bad-ci-gates.json
+  must_reject "schema validation (a rework entry's gates that is not a list)" valid bad-rework-gates.json
+  must_reject "schema validation (members that is not a list)" valid bad-members.json
+  must_reject "schema validation (a file's tests that is not a list)" valid bad-files-tests.json
+  must_reject "schema validation (a file's attempts that are not integers)" valid bad-files-attempts.json
+  must_reject "schema validation (a patch's bytes that is not an integer)" valid bad-patch-bytes.json
   must_accept "schema validation" valid "$golden"
 ) || exit 1
 
@@ -648,6 +720,34 @@ mach states-swapped '.bands[2].states |= reverse'
 mach states-dropped '.bands[3].states |= .[0:3]'
 mach states-extra '.bands[0].states += ["assigned"]'
 
+# The network screen's words (docs/adr/0071 §5): the good copy is the table
+# core/network.py prints, and each rule is broken once on a copy.
+[ -f "$repo/core/network.py" ] || nogo "core/network.py not found"
+(cd "$repo" && python3 core/network.py --table) > "$st/words-good.json" 2>"$tmp/words.err" \
+  || nogo "core/network.py --table failed" "$(cat "$tmp/words.err")"
+wrap_words() { { printf '<!doctype html><script type="application/json" id="network-words">'; cat "$1"; printf '</script>\n'; } > "$2"; }
+wrap_words "$st/words-good.json" "$st/words-good.html"
+must_accept "the console's network words" words "$st/words-good.html" "$repo"
+# word NAME JQ: the good table with one rule broken; the checker must refuse it.
+word() { jq -c "$2" "$st/words-good.json" > "$st/words-$1.json"; wrap_words "$st/words-$1.json" "$st/words-$1.html"; must_reject "the console's network words ($1)" words "$st/words-$1.html" "$repo"; }
+printf '<!doctype html><p>no table</p>\n' > "$st/words-none.html"
+must_reject "the console's network words (no table at all)" words "$st/words-none.html" "$repo"
+printf '<script type="application/json" id="network-words">{not json</script>\n' > "$st/words-badjson.html"
+must_reject "the console's network words (not JSON)" words "$st/words-badjson.html" "$repo"
+printf '<script type="application/json" id="network-words">[]</script>\n' > "$st/words-array.html"
+must_reject "the console's network words (not an object)" words "$st/words-array.html" "$repo"
+word sentence-changed '.words[(.words | keys[0])] = "a sentence the CLI does not print"'
+word sentence-dropped 'del(.words[(.words | keys[0])])'
+word sentence-added '.words.invented = "a sentence of the page itself"'
+word role-dropped '.roles |= .[1:]'
+word role-added '.roles += ["orchestrator"]'
+word roles-reordered '.roles |= reverse'
+word gate-dropped '.gates |= .[0:-1]'
+word gates-swapped '.gates |= ([.[1], .[0]] + .[2:])'
+word gate-added '.gates += ["canary"]'
+word roles-absent 'del(.roles)'
+word key-added '. + {extra: 1}'
+
 # The checkers the stub root's logbook is judged by (docs/adr/0059 §3): a map
 # by hand, a logbook by hand, and each rule broken once.
 mkdir -p "$st/adrmap"
@@ -806,19 +906,28 @@ must_accept "provenance in baseline mode ignores other keys" prov baseline "$st/
 # map and ADR search do not hold them. What the rules must find in them:
 #   0001 accepted; cites two files that exist and one that does not; names
 #        ADR 0002, ADR 0999 (held nowhere) and ticket 0007
-#   0002 two Status lines (the first is the status, stripped); cites two
-#        files; names Ticket 0002, Tickets 0004 (and a bare 0008, which no
-#        pattern reads) and ADR 0001
+#   0002 two Status lines (the first is the status, stripped); cites three
+#        files, the notifier among them; names Ticket 0002, Tickets 0004
+#        (and a bare 0008, which no pattern reads) and ADR 0001
 #   0003 no Status line; cites the README by a link; names itself, ADR 0001
 #        and ticket 0006, which names it back
 stub_tree() {
-  mkdir -p "$1/docs/adr" "$1/app/backend/meetups" "$1/app/backend/waitlist" "$1/app/backend/migrations"
+  mkdir -p "$1/docs/adr" "$1/app/backend/meetups" "$1/app/backend/waitlist" "$1/app/backend/migrations" \
+    "$1/app/backend/notify" "$1/tests"
   printf '# Stub\n' > "$1/README.md"
   printf '# Venues\n' > "$1/docs/venues.md"
   printf 'def venue():\n    return 404\n' > "$1/app/backend/meetups/views.py"
   printf 'def queue():\n    return []\n' > "$1/app/backend/waitlist/queue.py"
   printf 'def route():\n    return None\n' > "$1/app/backend/router.py"
   printf 'x = 1\n' > "$1/app/backend/migrations/0001_init.py"
+  # Ticket 0010's notifier and its test (docs/adr/0071 §8): the test imports
+  # the notifier, so the project map records a `tests` edge into it, and
+  # ADR 0002 cites the notifier, so a ticket whose perimeter holds it is
+  # governed by ADR 0002.
+  : > "$1/app/backend/__init__.py"
+  : > "$1/app/backend/notify/__init__.py"
+  printf 'def notify(queue, send):\n    return send(queue[0]) if queue else None\n' > "$1/app/backend/notify/send.py"
+  printf 'from app.backend.notify.send import notify\n\n\ndef test_the_first_waiting_is_told():\n    told = []\n    notify(["ada"], told.append)\n    assert told == ["ada"]\n' > "$1/tests/test_notify.py"
   cat > "$1/docs/adr/0001-venues-are-checked.md" <<'ADR'
 # ADR 0001 — Venues are checked at the edge
 
@@ -836,7 +945,8 @@ ADR
     '- Status:   proposed — supersedes nothing  ' '- Status: accepted' '' \
     'The queue is `app/backend/waitlist/queue.py`, routed by' \
     '`app/backend/router.py`. Ticket 0002 builds it and tickets 0004 and 0008' \
-    'touch the router. It follows ADR 0001.' > "$1/docs/adr/0002-waitlist-order.md"
+    'touch the router. It follows ADR 0001. The waitlist is told by' \
+    '`app/backend/notify/send.py`.' > "$1/docs/adr/0002-waitlist-order.md"
   cat > "$1/docs/adr/0003-keep-the-readme-short.md" <<'ADR'
 # ADR 0003 — Keep the README short
 
@@ -848,7 +958,7 @@ ADR
 
 # The hash of that one commit, which the golden's source.commit and adrs.map_sha
 # name; it changes with any byte of stub_tree, of the tickets or of the commit.
-stub_commit=cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4
+stub_commit=2db9f76c0cdf3fcaecdf1f365246546eaef5cc93
 
 # mkroot DIR: core/, ci/, gates/ symlinked from this repository, a copy of
 # console/, stub policy files, a stub contract, tickets, tower documents (one
@@ -908,7 +1018,7 @@ STUB
   # every run (the golden names it). Only the tickets and stub_tree's files
   # are added; the symlinks and the rest of the root are not in it.
   git -C "$r" init -q . >/dev/null 2>&1
-  git -C "$r" add README.md docs app tickets >/dev/null 2>&1
+  git -C "$r" add README.md docs app tests tickets >/dev/null 2>&1
   GIT_AUTHOR_NAME=stub GIT_AUTHOR_EMAIL=stub@example.invalid GIT_COMMITTER_NAME=stub \
     GIT_COMMITTER_EMAIL=stub@example.invalid GIT_AUTHOR_DATE="1793491200 +0000" \
     GIT_COMMITTER_DATE="1793491200 +0000" \
@@ -939,15 +1049,15 @@ mkroot "$root"
 
 # --- a. the reader, twice, against the golden --------------------------------
 run_reader LOGBOOK_FILE=out1.json
-[ "$out" = "GO: logbook — out1.json, 8 tickets" ] \
-  || nogo "core/logbook.sh printed '$out' (exit $rc), want 'GO: logbook — out1.json, 8 tickets'" "$(cat "$root/reader.err")"
+[ "$out" = "GO: logbook — out1.json, 9 tickets" ] \
+  || nogo "core/logbook.sh printed '$out' (exit $rc), want 'GO: logbook — out1.json, 9 tickets'" "$(cat "$root/reader.err")"
 run_reader LOGBOOK_FILE=out2.json
-[ "$out" = "GO: logbook — out2.json, 8 tickets" ] \
-  || nogo "the second run printed '$out' (exit $rc), want 'GO: logbook — out2.json, 8 tickets'" "$(cat "$root/reader.err")"
+[ "$out" = "GO: logbook — out2.json, 9 tickets" ] \
+  || nogo "the second run printed '$out' (exit $rc), want 'GO: logbook — out2.json, 9 tickets'" "$(cat "$root/reader.err")"
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.2.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.3.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
 # the day it was blessed; these are the rules, worked out again from the
@@ -963,11 +1073,12 @@ jq -e --arg sha "$stub_commit" '
   and (.adrs.items | map({(.number): .title}) | add) == {"0001": "ADR 0001 — Venues are checked at the edge",
        "0002": "ADR 0002 — The waitlist is first in, first out", "0003": "ADR 0003 — Keep the README short"}
   and (.adrs.items | map({(.number): .files}) | add) == {"0001": ["app/backend/meetups/views.py", "docs/venues.md"],
-       "0002": ["app/backend/router.py", "app/backend/waitlist/queue.py"], "0003": ["README.md"]}
+       "0002": ["app/backend/notify/send.py", "app/backend/router.py", "app/backend/waitlist/queue.py"],
+       "0003": ["README.md"]}
   and (.adrs.items | map({(.number): .adrs}) | add) == {"0001": ["0002", "0003"], "0002": ["0001"], "0003": ["0001"]}
-  and (.adrs.items | map({(.number): .tickets}) | add) == {"0001": ["0001", "0007"], "0002": ["0002", "0004", "0008"], "0003": ["0003", "0006"]}
+  and (.adrs.items | map({(.number): .tickets}) | add) == {"0001": ["0001", "0007"], "0002": ["0002", "0004", "0008", "0010"], "0003": ["0003", "0006"]}
   and (.tickets | map({(.id): .adrs}) | add) == {"0001": ["0001"], "0002": ["0002"], "0003": ["0003"], "0004": [],
-       "0005": [], "0007": [], "0008": ["0002"], "0009": []}' "$root/out1.json" >/dev/null \
+       "0005": [], "0007": [], "0008": ["0002"], "0009": [], "0010": ["0002"]}' "$root/out1.json" >/dev/null \
   || nogo "the stub map's ADRs are not what the stub files give" \
     "$(jq -c '{adrs: (.adrs | if has("items") then {map_sha, items: [.items[] | del(.text)]} else . end), tickets: [.tickets[] | {id, adrs}]}' "$root/out1.json")"
 for f in "$root"/docs/adr/*.md; do
@@ -975,6 +1086,135 @@ for f in "$root"/docs/adr/*.md; do
   jq -j --arg n "$n" '.adrs.items[] | select(.number == $n) | .text' "$root/out1.json" | cmp -s - "$f" \
     || nogo "ADR $n's text in the logbook is not the file's, byte for byte"
 done
+
+# The 1.3 fields (docs/adr/0071 §1, §8), worked out from the stub's tower
+# documents (state/tickets.0010.json, state/tickets.0004.json), the Makefile's
+# GATES line, the project map and ADR 0002 above, and written down by hand; the
+# reader's code is not read. Ticket 0010 is the network ticket: attempt 1 has
+# two members, `impl` (a model ran) and `tests` (hand-written, no model), the
+# mutation gate said NO-GO; attempt 2 has the same two members, the eight gates
+# said GO. Its perimeter is app/backend/notify/* and tests/test_notify.py; the
+# map knows send.py (cited by ADR 0002, covered by test_notify.py, which
+# imports it) and test_notify.py (which no test covers). Ticket 0004's one
+# attempt is still in flight and its gates never ran: its patch is withheld.
+gate_order=$(awk '/^GATES := / { sub(/^GATES := /, ""); n = split($0, a, " "); printf "["; for (i = 1; i <= n; i++) printf "%s\"%s\"", (i > 1 ? "," : ""), a[i]; printf "]"; exit }' "$repo/Makefile")
+[ -n "$gate_order" ] || nogo "the Makefile has no GATES := line"
+[ "$(printf '%s' "$gate_order" | jq 'length')" = 8 ] || nogo "the Makefile's GATES line holds $(printf '%s' "$gate_order" | jq 'length') gates, ADR 0071 draws eight: $gate_order"
+# h13 WHAT JQ_EXPR FILE: one hand check; WHAT names it when it fails.
+h13() {
+  jq -e --argjson order "$gate_order" --slurpfile s10 "$stub/state/tickets.0010.json" \
+    --slurpfile s4 "$stub/state/tickets.0004.json" --slurpfile old "$repo/fixtures/logbook/golden-1.2.json" \
+    "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+t10='(.tickets[] | select(.id == "0010"))'
+t04='(.tickets[] | select(.id == "0004"))'
+hand_13() {
+  # shellcheck disable=SC2016 # $old is jq's own variable
+  h13 "nothing new at the top level, and the schema is 1.3" \
+    '.schema == "lights-out/logbook/1.3" and (keys == ($old[0] | keys))' "$1" || return 1
+  h13 "0010's two attempts, as the tower recorded them" \
+    "$t10 | (.tasks | map(.attempt)) == [1, 2]" "$1" || return 1
+  h13 "0010 attempt 1: members impl and tests, in that order, with their harness, model and perimeter" \
+    "$t10 | .tasks[0].members | map(.id) == [\"impl\", \"tests\"]
+      and (map({(.id): {harness, replayed, model}}) | add) == {impl: {harness: \"replay\", replayed: true, model: \"gemini-3.8-flash\"},
+                                                              tests: {harness: \"replay\", replayed: true, model: null}}
+      and (map({(.id): .perimeter}) | add) == {impl: [\"app/backend/notify/*\"], tests: [\"tests/test_notify.py\"]}" "$1" || return 1
+  h13 "0010 attempt 1: impl ran a model (hand_written null), tests was written by hand (hand_written true)" \
+    "$t10 | .tasks[0].members | (map({(.id): .hand_written}) | add) == {impl: null, tests: true}" "$1" || return 1
+  h13 "0010 attempt 1: impl's cost, 3 turns, 42,110 tokens, 48 s; the hand-written member's null" \
+    "$t10 | .tasks[0].members | (.[0] | .turns == 3 and .tokens.total == 42110 and .duration_s == 48 and .thinking == \"high\")
+      and (.[1] | .turns == null and .tokens == null and .duration_s == null and .provider == null)" "$1" || return 1
+  h13 "0010 attempt 2: the same two members, impl's cost 2 turns, 40,220 tokens" \
+    "$t10 | .tasks[1].members | map(.id) == [\"impl\", \"tests\"] and (.[0] | .turns == 2 and .tokens.total == 40220)
+      and (map({(.id): .hand_written}) | add) == {impl: null, tests: true}" "$1" || return 1
+  h13 "0010's members are the tower's own, passed through" \
+    "$t10 | (.tasks | map(.members)) == (\$s10[0].tasks | map(.members))" "$1" || return 1
+  h13 "0010 attempt 1 touched send.py (+6 -0, impl) and test_notify.py (+8 -0, tests)" \
+    "$t10 | .tasks[0].files == [{path: \"app/backend/notify/send.py\", added: 6, removed: 0, member: \"impl\"},
+                              {path: \"tests/test_notify.py\", added: 8, removed: 0, member: \"tests\"}]" "$1" || return 1
+  h13 "0010 attempt 2 touched send.py only (+2 -1, impl)" \
+    "$t10 | .tasks[1].files == [{path: \"app/backend/notify/send.py\", added: 2, removed: 1, member: \"impl\"}]" "$1" || return 1
+  h13 "0010's patches are shown whole (1129 and 577 bytes, not truncated), the tower's own text" \
+    "$t10 | (.tasks | map(.patch.bytes)) == [1129, 577] and (.tasks | map(.patch.truncated)) == [false, false]
+      and (.tasks | map(.patch)) == (\$s10[0].tasks | map(.patch))
+      and (.tasks[0].patch.text | contains(\"+++ b/tests/test_notify.py\")) and (.tasks[1].patch.text | startswith(\"From c3c3\"))" "$1" || return 1
+  h13 "0010's ci.gates: the eight gates in the Makefile's order, all GO, each line verbatim" \
+    "$t10 | .ci.gates | map(.gate) == \$order and all(.verdict == \"GO\")
+      and (map(.line) == \$s10[0].ci.lines)
+      and .[0] == {gate: \"risk\", verdict: \"GO\", line: \"GO: risk — low, review\"}
+      and .[1] == {gate: \"secrets\", verdict: \"GO\", line: \"GO: secrets\"}
+      and .[6] == {gate: \"mutation\", verdict: \"GO\", line: \"GO: mutation — score 92% against a baseline of 80%\"}
+      and .[7].gate == \"test-proof\"" "$1" || return 1
+  h13 "0010's rework[0].gates: risk to test GO, then mutation NO-GO, each line verbatim" \
+    "$t10 | .rework[0].gates | map(.gate) == \$order[0:7]
+      and (map(.verdict) == [\"GO\", \"GO\", \"GO\", \"GO\", \"GO\", \"GO\", \"NO-GO\"])
+      and (map(.line) == \$s10[0].rework[0].lines)
+      and .[6].line == \"NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%\"" "$1" || return 1
+  h13 "the raw lines are not exposed, on ci nor on a rework entry" \
+    "[.tickets[] | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(has(\"gates\") and (has(\"lines\") | not))" "$1" || return 1
+  h13 "a ticket whose gates recorded no lines has gates null, ci and rework alike" \
+    "[.tickets[] | select(.id != \"0010\") | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(.gates == null)" "$1" || return 1
+  h13 "0004's attempt in flight: the patch is withheld with the contract's error, its files and null members stay" \
+    "$t04 | .tasks[0].patch == {ok: false, error: \"withheld: the secrets gate did not say GO on attempt 1\"}
+      and .tasks[0].files == \$s4[0].tasks[0].files and .tasks[0].members == null" "$1" || return 1
+  h13 "0010's file rows: glob, member of the latest attempt, attempts, tests, ADRs, holders" \
+    "$t10 | .files | map(del(.tests)) == [
+      {path: \"app/backend/notify/send.py\", glob: \"app/backend/notify/*\", member: \"impl\", attempts: [1, 2],
+       adrs: [\"0002\"], held_by: []},
+      {path: \"tests/test_notify.py\", glob: \"tests/test_notify.py\", member: \"tests\", attempts: [1],
+       adrs: [], held_by: []}]
+      and .[0].tests == [\"tests/test_notify.py\"]" "$1" || return 1
+  # The map holds test_notify.py as a test, not as a file; whether "knows the
+  # file" covers it is not fixed by the ADR, so [] and null are both read (a
+  # test no one covers, or a path the map has no file for), and nothing else.
+  h13 "0010's test_notify.py row: no test covers it, or the map holds no file for it" \
+    "$t10 | .files[1].tests | . == [] or . == null" "$1" || return 1
+  h13 "0004's file row: the map does not know the file (tests null), no ADR cites it, nobody holds it" \
+    "$t04 | .files == [{path: \"app/backend/migrations/0002_rename.py\", glob: \"app/backend/migrations/*\", member: null,
+      attempts: [1], tests: null, adrs: [], held_by: []}]" "$1" || return 1
+  h13 "a ticket with no task carrying files has files []" \
+    "[.tickets[] | select(.id != \"0010\" and .id != \"0004\") | .files] | all(. == [])" "$1" || return 1
+  h13 "a task with no members, patch or files says null for each, 0004's apart" \
+    "[.tickets[] | select(.id != \"0010\" and .id != \"0004\") | .tasks | select(type == \"array\") | .[]]
+      | all(.members == null and .patch == null and .files == null)" "$1" || return 1
+}
+bad=$(hand_13 "$root/out1.json") || nogo "the 1.3 fields over the stub sources: $bad" \
+  "$(jq -c "$t10 | {tasks: [.tasks[] | {attempt, members: (.members | if type == \"array\" then map(.id) else . end), files, patch: (.patch | if type == \"object\" then del(.text) else . end)}], ci_gates: (.ci.gates | if type == \"array\" then map(.gate + \":\" + .verdict) else . end), files}" "$root/out1.json" 2>&1)"
+# The hand checks can fail: one fact planted wrong in a copy of the logbook,
+# each refused by the check that owns it.
+plant() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_13 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.3 fields accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+tix() { printf '.tickets |= map(if .id == "%s" then %s else . end)' "$1" "$2"; }
+plant "a member's hand_written flipped" "$(tix 0010 '.tasks[0].members[1].hand_written = null')"
+plant "a member's model changed" "$(tix 0010 '.tasks[1].members[0].model = "other"')"
+plant "a member dropped" "$(tix 0010 '.tasks[0].members |= .[0:1]')"
+plant "a file's added count changed" "$(tix 0010 '.tasks[0].files[0].added = 7')"
+plant "a file's member changed" "$(tix 0010 '.tasks[0].files[1].member = "impl"')"
+plant "a patch cut" "$(tix 0010 '.tasks[1].patch.truncated = true')"
+plant "a patch withheld that should show" "$(tix 0010 '.tasks[1].patch = {ok: false, error: "withheld: x"}')"
+plant "0004's patch shown" "$(tix 0004 '.tasks[0].patch = {text: "x", bytes: 1, truncated: false}')"
+plant "0004's withheld reason changed" "$(tix 0004 '.tasks[0].patch.error = "withheld"')"
+plant "ci.gates reversed" "$(tix 0010 '.ci.gates |= reverse')"
+plant "a ci gate's verdict changed" "$(tix 0010 '.ci.gates[6].verdict = "NO-GO"')"
+plant "a ci gate's line changed" "$(tix 0010 '.ci.gates[0].line = "GO: risk"')"
+plant "the raw ci lines exposed" "$(tix 0010 '.ci.lines = []')"
+plant "a rework entry's NO-GO turned GO" "$(tix 0010 '.rework[0].gates[6].verdict = "GO"')"
+plant "a rework entry's gates null" "$(tix 0010 '.rework[0].gates = null')"
+plant "the raw rework lines exposed" "$(tix 0010 '.rework[0].lines = []')"
+plant "a file row's tests null" "$(tix 0010 '.files[0].tests = null')"
+plant "a file row's tests empty" "$(tix 0010 '.files[0].tests = []')"
+plant "a file row's attempts changed" "$(tix 0010 '.files[0].attempts = [2]')"
+plant "a file row's glob changed" "$(tix 0010 '.files[1].glob = "tests/*"')"
+plant "a file row's ADRs empty" "$(tix 0010 '.files[0].adrs = []')"
+plant "a file row's holders named" "$(tix 0010 '.files[0].held_by = ["0008"]')"
+plant "a file row dropped" "$(tix 0010 '.files |= .[0:1]')"
+plant "0004's tests known" "$(tix 0004 '.files[0].tests = []')"
+plant "a field new at the top level" '. + {network: {}}'
+plant "another schema" '.schema = "lights-out/logbook/1.2"'
 
 # The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
 # state, and every ticket is on exactly one card. Then the tower moves a
@@ -1065,7 +1305,7 @@ var_case "a brief for another version" '
 var_case "no release record" '
   .launch.record == null and .launch.pressable == false
   and .launch.disabled_reason == "no release record; run ./go release"
-  and (.releases | length) == 3 and all(.releases[]; .from == "releases.jsonl")' RELEASE_RECORD=absent.json
+  and (.releases | length) == 4 and all(.releases[]; .from == "releases.jsonl")' RELEASE_RECORD=absent.json
 # A record that is not JSON.
 printf 'not json\n' > "$root/release.bad.json"
 var_case "a record that is not JSON" '
@@ -1079,7 +1319,7 @@ var_case "a rolled-back record" '
   and (.releases[-1] | .from == "release.json" and .verdict == "rolled-back")' RELEASE_RECORD=release.rb.json
 # A record the last log entry already is: no second entry.
 jq -c 'select(.kind == "release" and .record.version == "0.4.0-c") | .record' "$root/releases.jsonl" > "$root/release.same.json"
-var_case "a record equal to the last log entry" '(.releases | length) == 3 and all(.releases[]; .from == "releases.jsonl")' \
+var_case "a record equal to the last log entry" '(.releases | length) == 4 and all(.releases[]; .from == "releases.jsonl")' \
   RELEASE_RECORD=release.same.json
 
 # An absent log: no entries, then the record's own.
@@ -1094,6 +1334,23 @@ mkdir -p "$root/adapters/stub-state-down"
 printf '#!/bin/sh\nprintf "noise\\nthe store is down\\n" >&2\nexit 2\n' > "$root/adapters/stub-state-down/get.sh"
 chmod +x "$root/adapters/stub-state-down/get.sh"
 var_case "a store that is down" '.tickets == {ok: false, error: "the store is down"}' STATE_STORE=stub-state-down
+
+# Only the perimeters held unread (docs/adr/0071 §1): the files' held_by is null,
+# their tests and ADRs, which the map answers, are not.
+mkdir -p "$root/adapters/stub-state-noheld"
+cat > "$root/adapters/stub-state-noheld/get.sh" <<'STUB'
+#!/bin/sh
+set -eu
+d=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+[ "$1" != perimeters ] || { printf 'noise\nthe held file is down\n' >&2; exit 2; }
+f="$d/state/$1.$2.json"
+[ -f "$f" ] || exit 1
+cat "$f"
+STUB
+chmod +x "$root/adapters/stub-state-noheld/get.sh"
+var_case "perimeters held unread: a file's holders" '.perimeters_held == {ok: false, error: "the held file is down"}
+  and ((.tickets[] | select(.id == "0010")) | .files | length == 2 and all(.held_by == null)
+       and .[0].tests == ["tests/test_notify.py"] and .[0].adrs == ["0002"])' STATE_STORE=stub-state-noheld
 
 # A policy that does not parse: the whole field.
 mkdir -p "$root/badcontract"
@@ -1130,6 +1387,8 @@ map_of() {
 }
 var_case "no map" '.adrs | type == "object"' MAP_FILE=absent.sqlite
 chk unread "$root/var.json" "./go map" >"$tmp/chk.out" || nogo "with no map, adrs is not {ok: false, error} naming ./go map" "$(cat "$tmp/chk.out")"
+# docs/adr/0071 §1: the files the map cannot speak for say null, not [].
+var_case "no map: a file's tests and adrs" '(.tickets[] | select(.id == "0010")) | .files | length == 2 and all(.tests == null and .adrs == null and (.held_by | type == "array"))' MAP_FILE=absent.sqlite
 cp "$root/.crew/map.sqlite" "$root/map-1.sqlite"
 chk mapset "$root/map-1.sqlite" schema 1 >"$tmp/chk.out" || nogo "could not make a schema 1 map" "$(cat "$tmp/chk.out")"
 var_case "a map of schema 1" '.adrs | type == "object"' MAP_FILE=map-1.sqlite
@@ -1152,7 +1411,7 @@ map_of "$other" "$root/other.sqlite"
 var_case "a map at another commit than HEAD" ".adrs.map_sha == \"$other_sha\" and .adrs.map_sha != .source.commit
   and (.adrs.items | map(.number) == [\"0042\"]) and .adrs.items[0].files == [\"app/backend/router.py\"]
   and .adrs.items[0].tickets == [\"0008\"] and .adrs.items[0].status == \"accepted\"
-  and ([.tickets[] | {(.id): .adrs}] | add) == {\"0001\": [], \"0002\": [], \"0003\": [], \"0004\": [], \"0005\": [], \"0007\": [], \"0008\": [\"0042\"], \"0009\": []}" \
+  and ([.tickets[] | {(.id): .adrs}] | add) == {\"0001\": [], \"0002\": [], \"0003\": [], \"0004\": [], \"0005\": [], \"0007\": [], \"0008\": [\"0042\"], \"0009\": [], \"0010\": []}" \
   MAP_FILE=other.sqlite
 chk adrs "$root/var.json" "$root/other.sqlite" >"$tmp/chk.out" || nogo "the ADRs of a map at another commit break the rules" "$(cat "$tmp/chk.out")"
 
@@ -1206,6 +1465,26 @@ chk names console >"$tmp/chk.out" || nogo "console/ names what it must not" "$(c
 chk serve console/serve.py >"$tmp/chk.out" || nogo "console/serve.py is outside its perimeter" "$(cat "$tmp/chk.out")"
 chk index console/index.html >"$tmp/chk.out" || nogo "console/index.html is outside its perimeter" "$(cat "$tmp/chk.out")"
 chk machine console/index.html >"$tmp/chk.out" || nogo "console/index.html's tower table disagrees with core/tower.py or core/logbook.py" "$(cat "$tmp/chk.out")"
+chk words console/index.html "$repo" >"$tmp/chk.out" || nogo "console/index.html's network-words disagree with core/network.py --table, roles/ or the Makefile's GATES" "$(cat "$tmp/chk.out")"
+
+# `./go network` (docs/adr/0071 §4): the recipe over a given logbook runs no
+# reader and prints on stdout what core/network.py prints, the view and nothing
+# else; TICKET and ATTEMPT reach the view. The check can fail: the view of
+# another ticket is not the default's.
+# Without the TICKET a calling make exports (its `TICKET ?= 0001`): the recipe
+# passes on only a ticket its caller gave, and the default is the view's own.
+net_make() { env -u TICKET -u ATTEMPT make --no-print-directory network NETWORK_LOGBOOK="$golden" "$@" 2>"$tmp/net-make.err"; }
+net_make > "$tmp/net-make.out" || nogo "make network NETWORK_LOGBOOK=<golden> failed" "$(cat "$tmp/net-make.err")"
+python3 core/network.py --logbook "$golden" > "$tmp/net-py.out" 2>"$tmp/net-py.err" || nogo "core/network.py --logbook <golden> failed" "$(cat "$tmp/net-py.err")"
+[ -s "$tmp/net-py.out" ] || nogo "core/network.py printed nothing over the golden"
+cmp -s "$tmp/net-make.out" "$tmp/net-py.out" \
+  || nogo "make network NETWORK_LOGBOOK=<golden> does not print what core/network.py prints" "$(diff "$tmp/net-py.out" "$tmp/net-make.out" | head -20)"
+net_make TICKET=0001 ATTEMPT=1 > "$tmp/net-make-1.out" || nogo "make network TICKET=0001 ATTEMPT=1 failed" "$(cat "$tmp/net-make.err")"
+python3 core/network.py --logbook "$golden" --ticket 0001 --attempt 1 > "$tmp/net-py-1.out" 2>"$tmp/net-py.err" \
+  || nogo "core/network.py --ticket 0001 --attempt 1 failed" "$(cat "$tmp/net-py.err")"
+cmp -s "$tmp/net-make-1.out" "$tmp/net-py-1.out" \
+  || nogo "make network TICKET=0001 ATTEMPT=1 does not print what core/network.py --ticket 0001 --attempt 1 prints" "$(diff "$tmp/net-py-1.out" "$tmp/net-make-1.out" | head -20)"
+! cmp -s "$tmp/net-py.out" "$tmp/net-py-1.out" || nogo "the view of ticket 0001 is the default view; TICKET changes nothing, so the check above proves nothing"
 
 # --- e. the console at runtime -----------------------------------------------
 free_port() {
@@ -1370,7 +1649,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.2.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.3.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -1380,7 +1659,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.2.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.3.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"

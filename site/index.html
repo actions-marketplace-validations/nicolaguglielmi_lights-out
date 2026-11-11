@@ -246,7 +246,7 @@ nav .gh{font-size:14px;padding:9px 12px}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
 .shot{margin:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
 .shot.wide{grid-column:1/-1}
-.shot img{display:block;width:100%;height:auto;background:#f6f7f9}
+.shot img,.shot video{display:block;width:100%;height:auto;background:#f6f7f9}
 .shot figcaption{padding:14px 16px 16px;font-size:14px;color:var(--mute)}
 .shot figcaption b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 @media (max-width:760px){.shots{grid-template-columns:1fr}}
@@ -523,6 +523,12 @@ Then the response is not 500 …
         <img src="media/console-kanban.jpg" alt="The console's kanban: lists for the tower's states under four coloured bands, Spec, Build, Test and review, Release, the empty lists narrow; each card with its priority and feature labels, whose turn it is, an icon for who has the ball, how long it has been in its state and its rework attempts" loading="lazy">
         <figcaption><b>Kanban</b>One list per tower state, under four bands of the flow, the whole board on one screen. Every card says whose turn it is, a role's or yours with the one thing to do, and its badges show who has the ball, how long it has sat there and how many rework attempts it has used. "Your turn only" keeps what waits for you; search, filters, collapsed lists and the open card live in the link. A card moves only when the tower moves its ticket, and flies there when it does: there is no drag-and-drop.</figcaption>
       </figure>
+      <figure class="shot wide reveal" id="network">
+        <video controls muted playsinline preload="none" poster="media/network.jpg" aria-label="A replay of the console's network screen for ticket 0010: the tower, the six roles, two workers, eight gates lighting up, the mutation gate's NO-GO sending the first attempt back, the second attempt's eight GO, the reviewer, the canary at 5% and 25%, and a person's GO at the human gate">
+          <source src="media/network.mp4" type="video/mp4">
+        </video>
+        <figcaption><b>The governed network, replayed</b>One ticket's agent network from the logbook alone: the tower at the centre, the six roles, the attempt's workers with their harness and model, each gate lighting GO or NO-GO, the rework loop back to the dev-worker, the canary stages and the one human gate before 100%. Beside it every attempt with the gate lines that judged it and its patch; below, the files by perimeter with the tests and ADRs that cover them. This clip is a replay of ticket 0010 in the logbook the tests build, stub data rather than a real run: two workers, the mutation gate's NO-GO, a rework, eight GO, the reviewer, 5% and 25%, and a person's GO. Nothing is running in it. On your own run <code>./go console</code> lights each node as the tower moves the ticket, and <code>./go network</code> prints the same facts in the same words.</figcaption>
+      </figure>
       <figure class="shot reveal">
         <img src="media/console-card.jpg" alt="The back of card 0009 in the dark theme, a dialog over the dimmed board: its labels, Your turn to answer the spec gate's question with an Answer it button, the question itself, the strip of the four bands, and a compact timeline from the request to the spec gate's NO-GO" loading="lazy">
         <figcaption><b>A card's back</b>Click a card, or press Enter, and it turns over above the board: whose turn it is and the one thing to do, the open question itself, where it is in the four bands, and its timeline in a few lines. Esc puts it back. In the dark theme.</figcaption>
@@ -548,7 +554,7 @@ Then the response is not 500 …
         <figcaption><b>The project's decisions</b>This repository's own ADRs, from its project map: by number, title, status, text or a file one cites, each with its files, tickets and linked ADRs. In the dark theme.</figcaption>
       </figure>
     </div>
-    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.2.json</code>), which holds tickets in more states than one demo leaves; its model is a stub. The ADR search reads a logbook built in CI from this repository's own project map.</p>
+    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.3.json</code>), which holds tickets in more states than one demo leaves; its model is a stub. The ADR search reads a logbook built in CI from this repository's own project map.</p>
     <div class="board-link reveal">
       <p><b>Open it on your own run.</b> After <code>./go demo</code>, <code>./go console</code> serves it on localhost:8098 over the live record.</p>
       <a class="btn" href="https://github.com/nicolaguglielmi/lights-out/tree/main/console">console/ ↗</a>

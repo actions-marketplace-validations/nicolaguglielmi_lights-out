@@ -9,9 +9,9 @@ console-ui` or `NO-GO: console-ui — <why>`, exit 0 or 1; everything else goes
 to stderr. It is not in `./go ci`: the workbench has no browser. It runs as a
 job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 
-Written from docs/adr/0059 and the DOM contract it names, not from
-console/index.html. It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.2.json, and drives it with Playwright:
+Written from docs/adr/0059 and the DOM contract it names (and, for t-z, from
+docs/adr/0071), not from console/index.html. It starts console/serve.py itself, in snapshot mode, over
+fixtures/logbook/golden-1.3.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -21,8 +21,9 @@ fixtures/logbook/golden-1.2.json, and drives it with Playwright:
   b. a view set by interactions, read from location.hash and opened in a new
      page, draws the same lanes, columns, collapsed columns, cards and drawer;
      so does a hash written by hand;
-  c. every screen's main text is the same under the system theme (light and
-     dark), the light and the dark theme, and with localStorage refusing;
+  c. every screen's main text, #network's included, is the same under the system
+     theme (light and dark), the light and the dark theme, and with localStorage
+     refusing;
   d. the editor: its line is the one gates/spec.sh prints on its preview;
   e. the board's theme switch changes its theme and nothing it says;
   f. the ADR search, over a logbook read from this repository's own map,
@@ -63,9 +64,47 @@ fixtures/logbook/golden-1.2.json, and drives it with Playwright:
   p. a long column scrolls inside itself with its header in view (§4);
   q. contrast and focus (§6), light and dark: every text in the board and in the
      open back against the first opaque background behind it (WCAG 2.1 AA), a
-     focused card's outline at 3:1;
+     focused card's outline at 3:1; the same for #network (an SVG text by its
+     fill), every control the keyboard reaches there at 2 px and 3:1, and the
+     replay label;
   r. the phone's band bar (§5);
-  s. no drag: no draggable attribute, no drag or drop listener registered.
+  s. no drag: no draggable attribute, no drag or drop listener registered, on the
+     board and on #network (which sends no POST either);
+
+ADR 0071, the governed network (every expectation is worked out from the golden's
+own fields at run time; the CLI is core/network.py run as a subprocess):
+
+  t. the route `#network[/<id>][?attempt=<n>&replay=1]` (keys in that order,
+     defaults left out), the nav link, the default ticket (newest updated_at,
+     ties to the highest id), select#net-ticket writing the link, a link opened
+     in a new page drawing the same screen (same .net-fact set, same data-
+     attributes), ?attempt=1 lighting attempt 1's gates, #network-words equal to
+     `core/network.py --table`;
+  u. section 2's contract for every golden ticket: section#net, #net-tower, the
+     six .net-role and their data-ran, the .net-worker of each member (harness,
+     model, replayed, hand-written), the .net-gate edges in run order then the
+     Makefile's remaining GATES as not-run, #net-review, #net-rework only when
+     there is a rework, the .net-stage nodes, #net-human; the stream (lines
+     verbatim, the patch equal to the logbook's or its withheld reason); the
+     tr.net-file rows with their tests, ADR links and holders;
+  v. on logbooks derived from the golden: a patch over the cap shows
+     data-truncated="true" and the CLI says so; an attempt rejected at perimeter
+     shows one NO-GO edge and its withheld patch;
+  w. the .net-fact texts of section#net are exactly the CLI's fact lines (the
+     lines that start with a space) for each golden ticket at its default
+     attempt, and for the default ticket;
+  x. the replay, on Playwright's clock: label visible, data-row counting 0..N on
+     the 2000 ms beat, data-replay=done with the static drawing at the end, no
+     request sent, by the button and by ?replay=1;
+  y. live, SIMULATED (page.route answers /v1/console.json with mode "live" and
+     /v1/logbook.json first with a logbook derived from the golden where 0010 is
+     at attempt 1 and ci-failed, then with the golden): net-new on what changed,
+     #announce naming 0010, an animation unless prefers-reduced-motion, where
+     none runs and the mark stays; the screen without an id follows the newest
+     ticket;
+  z. a 1.2 logbook (golden-1.2.json, a second console) draws the one
+     .net-gate[data-gate=gates] and says the old_logbook sentence of the page's
+     own #network-words, the perimeter still shown.
 
 Every comparison is shown first to fail on a wrong input (self_checks, and
 the probes in a_board and a_posts): a gate that cannot fail is not a gate.
@@ -86,8 +125,8 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.2.json"
-SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds"]
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.3.json"
+SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds", "network", "network/0010"]
 THEME_KEY = "lights-out.theme"
 TIMEOUT_MS = 5000
 
@@ -2269,6 +2308,894 @@ def s_nodrag(browser, bases):
     ctx.close()
 
 
+# --- ADR 0071: the governed network, on screen and in text ---------------------------------
+# Written from docs/adr/0071 (§2 the DOM contract, §3 live and replay, §5 the words, §6
+# degradation, §8 proof) and the interface contract fixed with it, never from
+# console/index.html or core/network.py. Every expectation is computed from the golden's own
+# fields at run time (the logbook 1.3 shape is in the ADR §1), and the CLI's view is the one
+# `python3 core/network.py --logbook <file> --ticket <id>` prints.
+
+GOLDEN_12 = ROOT / "fixtures" / "logbook" / "golden-1.2.json"
+NETWORK_TICKET = "0010"
+REPLAY_LABEL = "Replay of the recorded logbook: nothing is running"
+BEAT_MS = 2000  # ADR 0071 §3: one timeline row per 2 s (provenance there: one live poll, a decision)
+MARK_MS = 4000  # ADR 0059 §1 / 0071 §3: the live mark lasts 4 s
+CLOCK_T0 = 1_800_000_000_000  # a fixed epoch, in ms, for page.clock
+TRUNCATED_BYTES = 70000  # over the cap of 65,536 (contract-0071: PATCH_CAP); only "larger than the text" matters to the probe
+SHORT = {"true": True, "false": False}
+
+
+def makefile_gates():
+    """The Makefile's `GATES :=` list, in order."""
+    found = re.search(r"^GATES\s*:=\s*(.*)$", (ROOT / "Makefile").read_text(encoding="utf-8"), re.M)
+    need(found and found.group(1).split(), "the Makefile has no `GATES :=` line")
+    return found.group(1).split()
+
+
+def roles_dirs():
+    return sorted(p.name for p in (ROOT / "roles").iterdir() if p.is_dir())
+
+
+def version_of(book):
+    """'1.3' of 'lights-out/logbook/1.3'."""
+    return book["schema"].rsplit("/", 1)[1]
+
+
+def default_ticket(book):
+    """The ticket with the newest updated_at (null last), ties to the highest id (ADR 0071 §2)."""
+    return max(book["tickets"], key=lambda t: (t.get("updated_at") is not None, t.get("updated_at") or "", t["id"]))["id"]
+
+
+def attempts_of(t):
+    got = {x["attempt"] for x in t.get("tasks") or [] if x.get("attempt") is not None}
+    got |= {r["attempt"] for r in t.get("rework") or [] if r.get("attempt") is not None}
+    if t.get("attempt") is not None:
+        got.add(t["attempt"])
+    return sorted(got)
+
+
+def gates_of(t, n, latest):
+    """The gates of attempt N (contract-0071): the rework entry of that attempt, else the ticket's ci when N is
+    the latest attempt, else none."""
+    for r in t.get("rework") or []:
+        if r.get("attempt") == n:
+            return r.get("gates")
+    if n == latest and t.get("ci"):
+        return t["ci"].get("gates")
+    return None
+
+
+def task_of(t, n, latest):
+    for x in t.get("tasks") or []:
+        if x.get("attempt") == n:
+            return x
+    return t.get("task") if n == latest else None
+
+
+def release_of(book, t):
+    version = (t.get("release") or {}).get("version")
+    return next((r for r in book.get("releases") or [] if version and r.get("version") == version), None)
+
+
+def stage_verdict(raw):
+    return "NO-GO" if str(raw).startswith("NO-GO") else "GO"
+
+
+def gates_of_pairs(rows, table_gates):
+    ran = {r["gate"] for r in rows}
+    return [(r["gate"], r["verdict"]) for r in rows] + [(g, "not-run") for g in table_gates if g not in ran]
+
+
+def expect_net(book, tid, attempt, table_gates, roles):
+    """What section#net must say for ticket TID at ATTEMPT (None: the latest), from the record alone."""
+    t = next(x for x in book["tickets"] if x["id"] == tid)
+    atts = attempts_of(t)
+    latest = atts[-1] if atts else None
+    n = attempt if attempt is not None else latest
+    rows = [r for r in (gates_of(t, n, latest) or []) if r.get("gate")]
+    gate_pairs = gates_of_pairs(rows, table_gates)
+    # A judge recorded with no gate lines (before 1.3 recorded them): one
+    # summary edge with its verdict, as for a 1.2 logbook (docs/adr/0071 §6);
+    # eight `not-run` edges would draw history the record does not hold. A
+    # rework entry the reviewer or main's check wrote followed a gates GO.
+    back = next((r for r in t.get("rework") or [] if r.get("attempt") == n), None)
+    judge = back if back is not None else (t.get("ci") if n == latest and isinstance(t.get("ci"), dict) else None)
+    if judge is not None and judge.get("gates") is None:
+        v = ("GO" if back.get("judge") != "gates" else "NO-GO") if back is not None else judge.get("verdict")
+        gate_pairs = [("gates", v if v in ("GO", "NO-GO") else "not-run")]
+    named = {x.get("role") for x in t.get("tasks") or []} | {(t.get("task") or {}).get("role"), (t.get("review") or {}).get("role")}
+    if (t.get("product") or {}).get("consulted"):
+        named.add("product")
+    task = task_of(t, n, latest)
+    if task is None:
+        workers = None
+    elif task.get("members"):
+        workers = [{"worker": m["id"], "harness": m.get("harness") or "", "model": m.get("model") or "", "replayed": m.get("replayed"),
+                    "hand": m.get("hand_written") is True} for m in task["members"]]
+    else:
+        workers = [{"worker": None, "harness": task.get("harness") or "", "model": task.get("model") or "", "replayed": task.get("replayed"), "hand": False}]
+    top = next((x["value"] for x in book.get("thresholds") or [] if x.get("key") == "REWORK_MAX_ATTEMPTS"), None)
+    rel = release_of(book, t)
+    answer = (rel or {}).get("answer")
+    if answer:
+        human = {"verdict": answer["answer"], "contains": [answer["by"], answer["via"]]}
+    elif rel and rel.get("verdict") == "held":
+        human = {"verdict": "waiting", "contains": []}
+    else:
+        human = {"verdict": "not-reached", "contains": []}
+    stream = []
+    for a in reversed(atts):
+        task_a = task_of(t, a, latest) or {}
+        patch = task_a.get("patch")
+        if isinstance(patch, dict) and "text" in patch:
+            shown_patch = ("text", patch["text"], bool(patch.get("truncated")))
+        elif isinstance(patch, dict) and patch.get("ok") is False:
+            shown_patch = ("withheld", patch["error"])
+        else:
+            shown_patch = None
+        stream.append({"attempt": str(a), "open": a == n, "patch": shown_patch, "members": [m["id"] for m in task_a.get("members") or []],
+                       "lines": [(r["gate"], r["verdict"], r["line"]) for r in (gates_of(t, a, latest) or []) if r.get("gate")]})
+    return {"ticket": tid, "version": version_of(book), "attempt": n, "roles": sorted(roles), "ran": {r: r in named for r in roles},
+            "workers": workers, "gates": gate_pairs, "gate_attempt": "" if n is None else str(n),
+            # The graph lights the attempt shown (docs/adr/0071 §2, `attempt`):
+            # the record's review belongs to the latest; an earlier attempt was
+            # sent back by the reviewer, or never reached it.
+            "review": "changes-requested" if any(r.get("attempt") == n and r.get("judge") == "review" for r in t.get("rework") or [])
+                      else ((t.get("review") or {}).get("verdict") if n == latest else "not-reached"),
+            "rework": {"count": str(len(t["rework"])), "max": None if top is None else str(top)} if t.get("rework") else None,
+            "stages": [(str(s["pct"]), stage_verdict(s["verdict"])) for s in (rel or {}).get("stages") or []],
+            "human": human, "stream": stream, "files": t.get("files"), "perimeter": t.get("perimeter")}
+
+
+def expect_net_old(book, tid):
+    """A 1.2 logbook (ADR 0071 §6): one summary edge, from the rework entry's line or ci.verdict; gates None when the record has neither."""
+    t = next(x for x in book["tickets"] if x["id"] == tid)
+    atts = attempts_of(t)
+    latest = atts[-1] if atts else None
+    entry = next((r for r in t.get("rework") or [] if r.get("attempt") == latest), None)
+    if entry is not None:
+        verdict = stage_verdict(entry.get("line") or "")
+    elif t.get("ci"):
+        verdict = t["ci"].get("verdict")
+    else:
+        return {"gates": None, "perimeter": t.get("perimeter")}
+    return {"gates": [("gates", verdict)], "perimeter": t.get("perimeter")}
+
+
+NET_JS = """() => {
+  const s = document.querySelector('section#net');
+  if (!s) return null;
+  const norm = (x) => x.replace(/\\s+/g, ' ').trim();
+  const a = (e, n) => (e ? e.getAttribute(n) : null);
+  const q = (sel) => [...s.querySelectorAll(sel)];
+  const out = (e) => !e.closest('#net-stream');
+  const one = (sel) => document.querySelector(sel);
+  const shown = (e) => !!e && !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length) && getComputedStyle(e).visibility !== 'hidden';
+  const label = one('#net-replay-label');
+  const rework = one('#net-rework'), human = one('#net-human'), review = one('#net-review');
+  const sel = one('select#net-ticket');
+  return {ticket: a(s, 'data-ticket'), schema: a(s, 'data-schema'), replay: a(s, 'data-replay'), row: a(s, 'data-row'),
+    tower: !!one('#net-tower'),
+    roles: q('.net-role').map((e) => ({role: a(e, 'data-role'), ran: a(e, 'data-ran')})),
+    workers: q('.net-worker').filter(out).map((e) => ({worker: a(e, 'data-worker'), harness: a(e, 'data-harness'), model: a(e, 'data-model'),
+      replayed: a(e, 'data-replayed'), hand: a(e, 'data-hand-written')})),
+    gates: q('.net-gate').filter(out).map((e) => ({gate: a(e, 'data-gate'), verdict: a(e, 'data-verdict'), attempt: a(e, 'data-attempt')})),
+    review: review ? a(review, 'data-verdict') : null,
+    rework: rework ? {count: a(rework, 'data-count'), max: a(rework, 'data-max')} : null,
+    stages: q('.net-stage').map((e) => ({pct: a(e, 'data-pct'), verdict: a(e, 'data-verdict')})),
+    human: human ? {verdict: a(human, 'data-verdict'), text: norm(human.textContent)} : null,
+    stream: q('ol#net-stream > li.net-attempt').map((li) => {
+      const d = li.querySelector('details.net-patch'), pre = d ? d.querySelector('pre') : null;
+      return {attempt: a(li, 'data-attempt'), text: norm(li.textContent),
+        lines: [...li.querySelectorAll('li.net-line')].map((l) => ({gate: a(l, 'data-gate'), verdict: a(l, 'data-verdict'), text: l.textContent.trim()})),
+        patch: d ? {truncated: a(d, 'data-truncated'), open: d.open, text: pre ? pre.textContent : null} : null};
+    }),
+    files: q('tr.net-file').map((r) => {
+      const t = r.querySelector('.net-tests'), d = r.querySelector('.net-adrs');
+      return {path: a(r, 'data-path'), glob: a(r, 'data-glob'), member: a(r, 'data-member'), held: a(r, 'data-held-by'),
+        tests: t ? norm(t.textContent) : null, adrs: d ? [...d.querySelectorAll('a[href]')].map((x) => x.getAttribute('href')) : null};
+    }),
+    facts: q('.net-fact').map((e) => norm(e.textContent)),
+    text: norm(s.textContent), stream_text: norm((one('#net-stream') || {textContent: ''}).textContent),
+    label: label ? {visible: shown(label), text: norm(label.textContent)} : null,
+    select: sel ? {value: sel.value, options: [...sel.options].map((o) => o.value)} : null};
+}"""
+
+
+def net_info(tab):
+    return tab.page.evaluate(NET_JS)
+
+
+def net_open(tab, hash_, what):
+    """Load the screen at HASH and wait until it has drawn a ticket."""
+    tab.page.goto("about:blank")
+    tab.load(hash_)
+    wait_for(tab, "section#net[data-ticket]", what)
+    tab.page.wait_for_timeout(300)
+    return net_info(tab)
+
+
+def net_problems(info, exp):
+    """Why the screen INFO (what NET_JS read) is not what EXP says (§2), or [] when it is."""
+    if info is None:
+        return ["there is no section#net"]
+    bad = []
+
+    def eq(what, got, want):
+        if got != want:
+            bad.append(f"{what} is {got!r}, want {want!r}")
+
+    eq("section#net data-ticket", info["ticket"], exp["ticket"])
+    if not (info["schema"] or "").endswith(exp["version"]):
+        bad.append(f"section#net data-schema is {info['schema']!r}, want the logbook's {exp['version']}")
+    if not info["tower"]:
+        bad.append("there is no #net-tower")
+    eq("the .net-role[data-role] nodes", sorted(r["role"] for r in info["roles"]), exp["roles"])
+    eq("the roles' data-ran", {r["role"]: r["ran"] for r in info["roles"]}, {r: str(v).lower() for r, v in exp["ran"].items()})
+    if exp["workers"] is not None:
+        got = sorted(info["workers"], key=lambda w: w["worker"] or "")
+        want = sorted(exp["workers"], key=lambda w: w["worker"] or "")
+        if len(got) != len(want):
+            bad.append(f"the graph draws {len(got)} .net-worker, the record has {len(want)}")
+        for g, w in zip(got, want):
+            if w["worker"] is not None:
+                eq("a .net-worker's data-worker", g["worker"], w["worker"])
+            eq(f"worker {w['worker']}: data-harness", g["harness"] or "", w["harness"])
+            eq(f"worker {w['worker']}: data-model", g["model"] or "", w["model"])
+            eq(f"worker {w['worker']}: data-hand-written", g["hand"] == "true", w["hand"])
+            if w["replayed"] is not None:
+                eq(f"worker {w['worker']}: data-replayed", SHORT.get(g["replayed"]), bool(w["replayed"]))
+    eq("the .net-gate edges (gate, verdict) in order", [(g["gate"], g["verdict"]) for g in info["gates"]], exp["gates"])
+    for g in info["gates"]:
+        if g["attempt"] is None:
+            bad.append(f"the edge {g['gate']} has no data-attempt")
+        elif g["verdict"] != "not-run" and g["attempt"] != exp["gate_attempt"]:
+            bad.append(f"the edge {g['gate']} says data-attempt {g['attempt']!r}, the attempt lit is {exp['gate_attempt']}")
+    if exp["review"] is not None:
+        eq("#net-review data-verdict", info["review"], exp["review"])
+    eq("#net-rework (data-count, data-max), drawn only when the record has a rework",
+       None if info["rework"] is None else (info["rework"]["count"], info["rework"]["max"]),
+       None if exp["rework"] is None else (exp["rework"]["count"], exp["rework"]["max"]))
+    eq("the .net-stage nodes (data-pct, data-verdict)", [(s["pct"], s["verdict"]) for s in info["stages"]], exp["stages"])
+    if info["human"] is None:
+        bad.append("there is no #net-human")
+    else:
+        eq("#net-human data-verdict", info["human"]["verdict"], exp["human"]["verdict"])
+        for word in exp["human"]["contains"]:
+            if word not in info["human"]["text"]:
+                bad.append(f"#net-human says {info['human']['text']!r}, want it to name {word!r}")
+    eq("the attempts of ol#net-stream, newest first", [s["attempt"] for s in info["stream"]], [s["attempt"] for s in exp["stream"]])
+    for got, want in zip(info["stream"], exp["stream"]):
+        n = want["attempt"]
+        eq(f"attempt {n}: its li.net-line (gate, verdict, text)", [(x["gate"], x["verdict"], x["text"]) for x in got["lines"]], want["lines"])
+        for member in want["members"]:
+            if member not in got["text"]:
+                bad.append(f"attempt {n}: the stream entry does not name its worker {member!r}")
+        patch = got["patch"]
+        if want["patch"] is not None:
+            if patch is None:
+                bad.append(f"attempt {n}: no details.net-patch")
+            elif want["patch"][0] == "text":
+                eq(f"attempt {n}: the patch text", patch["text"], want["patch"][1])
+                eq(f"attempt {n}: data-truncated", patch["truncated"], str(want["patch"][2]).lower())
+            elif want["patch"][1] not in (patch["text"] or ""):
+                bad.append(f"attempt {n}: the withheld patch says {(patch['text'] or '')[:120]!r}, want the reason {want['patch'][1]!r}")
+        if patch is not None:
+            eq(f"attempt {n}: its details.net-patch open", patch["open"], want["open"])
+    if exp["files"] is not None:
+        rows = {f["path"]: f for f in info["files"]}
+        eq("the tr.net-file paths", sorted(rows), sorted(f["path"] for f in exp["files"]))
+        for f in exp["files"]:
+            r = rows.get(f["path"])
+            if r is None:
+                continue
+            eq(f"{f['path']}: data-glob", r["glob"] or "", f["glob"] or "")
+            eq(f"{f['path']}: data-member", r["member"] or "", f["member"] or "")
+            eq(f"{f['path']}: data-held-by", sorted(set(re.findall(r"[0-9A-Za-z-]+", r["held"] or ""))), sorted(f["held_by"] or []))
+            if r["tests"] is None or r["adrs"] is None:
+                bad.append(f"{f['path']}: the row has no .net-tests or no .net-adrs cell")
+                continue
+            for test in f["tests"] or []:
+                if test not in r["tests"]:
+                    bad.append(f"{f['path']}: .net-tests says {r['tests']!r}, want it to name {test}")
+            if f["adrs"] is not None:
+                eq(f"{f['path']}: the links of .net-adrs", sorted(r["adrs"]), sorted(f"#adr/{n}" for n in f["adrs"]))
+    if not info["facts"]:
+        bad.append("the screen has no .net-fact")
+    return bad
+
+
+def net_old_problems(info, exp, sentence):
+    """§6: a 1.2 logbook draws the one summary edge, says it records no patches or gate lines (stream and files), shows the perimeter."""
+    if info is None:
+        return ["there is no section#net"]
+    bad = []
+    if exp["gates"] is not None:
+        got = [(g["gate"], g["verdict"]) for g in info["gates"]]
+        if got != exp["gates"]:
+            bad.append(f"the .net-gate edges are {got}, a 1.2 logbook has the one {exp['gates']}")
+    if sentence not in info["stream_text"]:
+        bad.append(f"#net-stream does not say {sentence!r}: {info['stream_text'][:160]!r}")
+    if info["text"].count(sentence) < 2:
+        bad.append(f"the sentence {sentence!r} is said {info['text'].count(sentence)} time(s) in section#net, want the stream's and the files'")
+    perimeter = exp["perimeter"]
+    if isinstance(perimeter, dict) and perimeter.get("ok") is False:
+        # An unread perimeter (a ticket with no `## Perimeter`): its reason is shown instead.
+        if perimeter.get("error", "") not in info["text"]:
+            bad.append(f"the perimeter could not be read, and the screen does not say why: {perimeter.get('error')!r}")
+        perimeter = []
+    for glob in perimeter or []:
+        if glob not in info["text"]:
+            bad.append(f"the perimeter {glob!r} is not shown")
+    if any(s["lines"] for s in info["stream"]):
+        bad.append("a 1.2 logbook has no gate lines, but the stream lists some")
+    return bad
+
+
+# --- the CLI's view: the facts are the lines that start with a space -----------------------
+
+def cli_run(path, ticket=None, attempt=None):
+    argv = [sys.executable, "core/network.py", "--logbook", str(path)]
+    if ticket:
+        argv += ["--ticket", ticket]
+    if attempt:
+        argv += ["--attempt", str(attempt)]
+    done = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, check=False)
+    need(done.returncode == 0, f"core/network.py {' '.join(argv[2:])} exited {done.returncode}", done.stderr.strip()[-300:])
+    return done.stdout
+
+
+def cli_facts(text):
+    """The set of fact lines of a view: every line that starts with a space, stripped, whitespace collapsed; the patch
+    block (between the two marker lines at column 0) holds no fact."""
+    facts, inside = set(), False
+    for line in text.splitlines():
+        if re.match(r"--- patch of attempt \d+ ---$", line):
+            inside = True
+        elif line == "--- end of patch ---":
+            inside = False
+        elif not inside and line.startswith(" ") and line.strip():
+            facts.add(" ".join(line.split()))
+    return facts
+
+
+def fact_problems(page, cli):
+    """Why the .net-fact texts of the page are not the CLI's fact lines, or []."""
+    page, cli = set(page), set(cli)
+    bad = [f"the page says, the CLI does not: {x[:140]!r}" for x in sorted(page - cli)[:5]]
+    bad += [f"the CLI says, the page does not: {x[:140]!r}" for x in sorted(cli - page)[:5]]
+    if not cli:
+        bad.append("the CLI printed no fact line (a line that starts with a space)")
+    return bad
+
+
+def net_hash(ticket="", attempt="", replay=False):
+    """#network[/<id>][?attempt=<n>&replay=1]: keys in this order, defaults left out."""
+    query = ([f"attempt={attempt}"] if attempt else []) + (["replay=1"] if replay else [])
+    return "#network" + (f"/{ticket}" if ticket else "") + ("?" + "&".join(query) if query else "")
+
+
+def net_hash_problems(raw, want):
+    if raw == want:
+        return None
+    return f"location.hash is {raw!r}, want exactly {want!r} (keys in the order attempt, replay; defaults left out)"
+
+
+def table_words(tab):
+    """The page's #network-words, parsed, checked against what the CLI prints with --table."""
+    raw = tab.page.evaluate("() => { const e = document.getElementById('network-words'); return e ? e.textContent : null; }")
+    need(raw, "the page has no script#network-words")
+    words = json.loads(raw)
+    done = subprocess.run([sys.executable, "core/network.py", "--table"], cwd=ROOT, capture_output=True, text=True, check=False)
+    need(done.returncode == 0, "core/network.py --table failed", done.stderr.strip()[-300:])
+    need(json.loads(done.stdout) == words, "#network-words is not what core/network.py --table prints")
+    need(words["roles"] == roles_dirs() and words["gates"] == makefile_gates(), f"the table's roles {words['roles']} and gates {words['gates']} are not roles/ and the Makefile's GATES")
+    need("old_logbook" in words["words"] and "not_run" in words["words"], f"the table's words have {sorted(words['words'])}, want old_logbook and not_run")
+    return words
+
+
+# --- derived logbooks (as derive() does): over the cap, rejected at perimeter, early ---------------
+
+def derive_net(golden, tmp):
+    """Logbooks derived from the golden, written to TMP: trunc (ticket 0010's last patch is over the cap), perimeter (its last
+    attempt was rejected at the perimeter gate, its patch withheld) and early (0010 is at attempt 1, ci-failed; 0009 is no longer
+    the newest ticket), the live simulation's first answer."""
+    trunc = json.loads(json.dumps(golden))
+    t = next(x for x in trunc["tickets"] if x["id"] == NETWORK_TICKET)
+    last = t["tasks"][-1]
+    need(isinstance(last.get("patch"), dict) and "text" in last["patch"], f"the golden's ticket {NETWORK_TICKET} has no shown patch on its last attempt")
+    last["patch"] = {**last["patch"], "bytes": TRUNCATED_BYTES, "truncated": True}
+    if isinstance(t.get("task"), dict) and isinstance(t["task"].get("patch"), dict):
+        t["task"]["patch"] = dict(last["patch"])
+    perimeter = json.loads(json.dumps(golden))
+    t = next(x for x in perimeter["tickets"] if x["id"] == NETWORK_TICKET)
+    line = "NO-GO: perimeter — app/backend/other.py is outside the declared perimeter"
+    t["ci"] = {**t["ci"], "verdict": "NO-GO", "failed": "perimeter", "line": line, "gates": [{"gate": "perimeter", "verdict": "NO-GO", "line": line}]}
+    t["tasks"][-1]["patch"] = {"ok": False, "error": f"withheld: the secrets gate did not say GO on attempt {t['tasks'][-1]['attempt']}"}
+    if isinstance(t.get("task"), dict) and "patch" in t["task"]:
+        t["task"]["patch"] = dict(t["tasks"][-1]["patch"])
+    early = json.loads(json.dumps(golden))
+    t = next(x for x in early["tickets"] if x["id"] == NETWORK_TICKET)
+    first = t["rework"][0]
+    cut = t["history"][2]["at"]
+    t["state"], t["attempt"] = "ci-failed", 1
+    t["history"] = t["history"][:3]
+    t["timeline"] = [r for r in t["timeline"] if r.get("at") is not None and r["at"] <= cut]
+    t["tasks"] = t["tasks"][:1]
+    t["task"] = {k: v for k, v in t["tasks"][0].items() if k != "attempt"}
+    t["rework"], t["review"], t["merge"], t["release"], t["outcome"] = [], None, None, None, None
+    t["ci"] = {**t["ci"], "verdict": "NO-GO", "failed": "mutation", "line": first["line"], "head_sha": first["head_sha"], "gates": first["gates"]}
+    t["updated_at"] = cut
+    t["files"] = [f for f in t["files"] if 1 in f["attempts"]]
+    for f in t["files"]:
+        f["attempts"] = [1]
+    for col in early["kanban"]:
+        if NETWORK_TICKET in col["tickets"]:
+            col["tickets"].remove(NETWORK_TICKET)
+        if col["state"] == "ci-failed":
+            col["tickets"].append(NETWORK_TICKET)
+    next(x for x in early["tickets"] if x["id"] == default_ticket(golden))["updated_at"] = "2026-11-02T00:00:00Z"
+    paths = {}
+    for name, book in (("net-trunc", trunc), ("net-perimeter", perimeter), ("net-early", early)):
+        paths[name] = tmp / f"{name}.json"
+        paths[name].write_text(json.dumps(book), encoding="utf-8")
+    return {"trunc": trunc, "perimeter": perimeter, "early": early}, paths
+
+
+# --- t. the route, the nav link, the default ticket, the select, the link reopened ----------------
+
+def t_route(browser, bases, book):
+    gates, roles = makefile_gates(), roles_dirs()
+    ids = [x["id"] for x in book["tickets"]]
+    default = default_ticket(book)
+    need(default != NETWORK_TICKET, f"t: the golden's newest ticket is {NETWORK_TICKET}: the default ticket and an explicit one prove nothing apart")
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    tab.load("#overview")
+    need(tab.page.locator("nav#nav a[data-s=network]").count() == 1, "t: nav#nav has no a[data-s=network] (exactly one)")
+    tab.page.click("nav#nav a[data-s=network]")
+    wait_for(tab, "section#net[data-ticket]", "t, the nav link")
+    tab.page.wait_for_timeout(300)
+    info = net_info(tab)
+    problem = net_hash_problems(tab.page.evaluate("location.hash"), net_hash())
+    need(problem is None, f"t, the nav link: {problem}")
+    need(info["ticket"] == default, f"t: #network shows ticket {info['ticket']!r}, the newest updated_at (ties to the highest id) is {default}")
+    need(info["select"] and info["select"]["value"] == default and sorted(info["select"]["options"]) == sorted(ids),
+         f"t: select#net-ticket is {info['select']}, want {default} chosen among {sorted(ids)}")
+    bad = net_problems(info, expect_net(book, default, None, gates, roles))
+    need(not bad, f"t, the default ticket {default}: {bad[0] if bad else ''}", *bad)
+    table_words(tab)
+    # The select writes the link (ADR 0071 §2): a ticket that is not the default, then the link reopened in a new page.
+    other = next(i for i in ids if i not in (default, NETWORK_TICKET))
+    tab.page.select_option("select#net-ticket", other)
+    tab.wait("id => { const s = document.querySelector('section#net'); return !!s && s.dataset.ticket === id; }", other, f"t: choosing {other} did not draw it")
+    tab.page.wait_for_timeout(300)
+    problem = net_hash_problems(tab.page.evaluate("location.hash"), net_hash(other))
+    need(problem is None, f"t, the select: {problem}")
+    first = net_info(tab)
+    again = Tab(ctx, bases["golden"])
+    second = net_open(again, net_hash(other), "t, the link reopened")
+    need(first == second, f"t: the link {net_hash(other)} reopened in a new page draws another screen: {text_diff(json.dumps(first, indent=1), json.dumps(second, indent=1))}")
+    again.audit("t, the link reopened")
+    # An attempt in the link lights that attempt (0010's first was rejected at mutation).
+    n1 = net_open(again, net_hash(NETWORK_TICKET, attempt=1), "t, ?attempt=1")
+    problem = net_hash_problems(again.page.evaluate("location.hash"), net_hash(NETWORK_TICKET, attempt=1))
+    need(problem is None, f"t, ?attempt=1: {problem}")
+    exp1 = expect_net(book, NETWORK_TICKET, 1, gates, roles)
+    need(("mutation", "NO-GO") in exp1["gates"] and ("test-proof", "not-run") in exp1["gates"],
+         f"t: the golden's attempt 1 of {NETWORK_TICKET} is not a mutation NO-GO with test-proof not run: {exp1['gates']}")
+    bad = net_problems(n1, exp1)
+    need(not bad, f"t, {NETWORK_TICKET} at attempt 1: {bad[0] if bad else ''}", *bad)
+    latest = net_open(again, net_hash(NETWORK_TICKET), "t, 0010 at its latest attempt")
+    need([g["verdict"] for g in n1["gates"]] != [g["verdict"] for g in latest["gates"]], "t: ?attempt=1 lights the same gates as the latest attempt")
+    again.page.reload()
+    again.page.wait_for_selector("section#net[data-ticket]", timeout=TIMEOUT_MS)
+    again.page.wait_for_timeout(300)
+    need(net_info(again) == latest, "t: a reload draws another screen")
+    again.audit("t, ?attempt=1")
+    tab.audit("t")
+    ctx.close()
+
+
+# --- u. the contract of §2 for every golden ticket, the files, and the stream ------------------------
+
+def u_contract(browser, bases, book):
+    gates, roles = makefile_gates(), roles_dirs()
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    seen = {"gates": 0, "workers": 0, "rework": 0, "stages": 0, "human": set(), "patch": set(), "files": 0}
+    for t in book["tickets"]:
+        ident = t["id"]
+        info = net_open(tab, net_hash(ident), f"u, {ident}")
+        exp = expect_net(book, ident, None, gates, roles)
+        bad = net_problems(info, exp)
+        need(not bad, f"u, {ident}: {bad[0] if bad else ''}", *bad)
+        seen["gates"] += sum(g["verdict"] != "not-run" for g in info["gates"])
+        seen["workers"] += len(info["workers"])
+        seen["rework"] += info["rework"] is not None
+        seen["stages"] += len(info["stages"])
+        seen["human"].add(info["human"]["verdict"])
+        seen["patch"] |= {x["patch"][0] for x in exp["stream"] if x["patch"]}
+        seen["files"] += len(info["files"])
+        tab.audit(f"u, {ident}")
+    # The golden must hold what the checks above need, or they prove nothing.
+    need(seen["gates"] and seen["workers"] and seen["rework"] and seen["stages"] and seen["files"], f"u: the golden is too thin for the contract: {seen}")
+    need({"GO", "not-reached"} <= seen["human"], f"u: the golden's human gates are {sorted(seen['human'])}, want GO and not-reached among them")
+    need(seen["patch"] == {"text", "withheld"}, f"u: the golden's patches are {sorted(seen['patch'])}, want a shown one and a withheld one")
+    # The ADR's network ticket, by name (§8): its members, rework, stages, human gate.
+    info = net_open(tab, net_hash(NETWORK_TICKET), "u, the network ticket")
+    need(sorted(w["worker"] for w in info["workers"]) == ["impl", "tests"], f"u: {NETWORK_TICKET} draws the workers {[w['worker'] for w in info['workers']]}, want impl and tests")
+    byid = {w["worker"]: w for w in info["workers"]}
+    need(byid["impl"]["model"] == "gemini-3.8-flash" and byid["impl"]["hand"] != "true" and not byid["tests"]["model"] and byid["tests"]["hand"] == "true",
+         f"u: {NETWORK_TICKET}'s workers are {byid}: impl on gemini-3.8-flash, tests hand-written with no model")
+    need(info["stages"] == [{"pct": "5", "verdict": "GO"}, {"pct": "25", "verdict": "GO"}], f"u: {NETWORK_TICKET}'s stages are {info['stages']}, want 5 and 25, GO")
+    need(info["human"]["verdict"] == "GO" and "bob" in info["human"]["text"] and "cli" in info["human"]["text"],
+         f"u: {NETWORK_TICKET}'s human gate is {info['human']}, want GO by bob through cli")
+    need(info["rework"] is not None and info["rework"]["count"] == "1", f"u: {NETWORK_TICKET}'s rework is {info['rework']}, want count 1")
+    need([g["verdict"] for g in info["gates"]] == ["GO"] * len(gates), f"u: {NETWORK_TICKET}'s latest attempt is {[g['verdict'] for g in info['gates']]}, want eight GO")
+    need(info["review"] == "approved", f"u: {NETWORK_TICKET}'s review is {info['review']!r}, want approved")
+    ran = {r["role"] for r in info["roles"] if r["ran"] == "true"}
+    need({"dev-worker", "test-reviewer"} <= ran, f"u: {NETWORK_TICKET}'s roles that ran are {sorted(ran)}")
+    rolled = net_open(tab, net_hash("0001"), "u, the rollback")
+    need(rolled["stages"] == [{"pct": "5", "verdict": "NO-GO"}] and rolled["human"]["verdict"] == "not-reached",
+         f"u: 0001's stages {rolled['stages']} and human gate {rolled['human']}: want 5% NO-GO and not-reached")
+    inflight = net_open(tab, net_hash("0004"), "u, the attempt in flight")
+    need(any(s["patch"] and "withheld" in (s["patch"]["text"] or "") for s in inflight["stream"]), f"u: 0004's attempt in flight does not show its patch as withheld: {inflight['stream']}")
+    tab.audit("u")
+    ctx.close()
+
+
+# --- v. derived logbooks: a patch over the cap, an attempt rejected at perimeter ---------------------
+
+def v_derived(browser, nbooks, npaths):
+    gates, roles = makefile_gates(), roles_dirs()
+    with Console(npaths["net-trunc"]) as c:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, c.base)
+        info = net_open(tab, net_hash(NETWORK_TICKET), "v, a patch over the cap")
+        exp = expect_net(nbooks["trunc"], NETWORK_TICKET, None, gates, roles)
+        need(exp["stream"][0]["patch"][2] is True, "v: the derived logbook's last patch is not truncated")
+        bad = net_problems(info, exp)
+        need(not bad, f"v, a patch over the cap: {bad[0] if bad else ''}", *bad)
+        need(info["stream"][0]["patch"]["truncated"] == "true", f"v: the truncated patch says data-truncated={info['stream'][0]['patch']['truncated']!r}, want 'true'")
+        need(info["stream"][-1]["patch"]["truncated"] == "false", "v: an untruncated patch says data-truncated other than 'false'")
+        said = re.compile(r"truncat|cut off|cut at|70000|70,000", re.I)
+        out = cli_run(npaths["net-trunc"], NETWORK_TICKET)
+        need(any(said.search(f) for f in cli_facts(out)), "v: the CLI does not say, in a fact line, that the patch is truncated")
+        need(any(said.search(f) for f in info["facts"]), "v: the screen does not say, in a .net-fact, that the patch is truncated")
+        bad = fact_problems(info["facts"], cli_facts(out))
+        need(not bad, f"v, a patch over the cap: the .net-fact set is not the CLI's: {bad[0] if bad else ''}", *bad)
+        tab.audit("v, a patch over the cap")
+        ctx.close()
+    with Console(npaths["net-perimeter"]) as c:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, c.base)
+        info = net_open(tab, net_hash(NETWORK_TICKET), "v, rejected at perimeter")
+        exp = expect_net(nbooks["perimeter"], NETWORK_TICKET, None, gates, roles)
+        need(exp["gates"][0] == ("perimeter", "NO-GO") and len(exp["gates"]) == 1 + len(gates), f"v: the derived expectation is {exp['gates']}")
+        bad = net_problems(info, exp)
+        need(not bad, f"v, rejected at perimeter: {bad[0] if bad else ''}", *bad)
+        need([g["verdict"] for g in info["gates"]].count("NO-GO") == 1 and info["gates"][0]["gate"] == "perimeter",
+             f"v: an attempt rejected at perimeter draws {[(g['gate'], g['verdict']) for g in info['gates']]}, want one NO-GO edge, perimeter, first")
+        need("withheld" in (info["stream"][0]["patch"]["text"] or ""), f"v: the rejected attempt's patch says {info['stream'][0]['patch']}, want the reason it is withheld")
+        out = cli_run(npaths["net-perimeter"], NETWORK_TICKET)
+        bad = fact_problems(info["facts"], cli_facts(out))
+        need(not bad, f"v, rejected at perimeter: the .net-fact set is not the CLI's: {bad[0] if bad else ''}", *bad)
+        tab.audit("v, rejected at perimeter")
+        ctx.close()
+
+
+# --- w. every .net-fact is a line of the CLI's view ---------------------------------------------------
+
+def w_cli(browser, bases, book):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    for t in book["tickets"]:
+        info = net_open(tab, net_hash(t["id"]), f"w, {t['id']}")
+        out = cli_run(GOLDEN, t["id"])
+        first = out.splitlines()[0] if out else ""
+        need(first.startswith(f"ticket {t['id']} — "), f"w: the CLI's first line for {t['id']} is {first!r}")
+        bad = fact_problems(info["facts"], cli_facts(out))
+        need(not bad, f"w, {t['id']}: the .net-fact set is not the CLI's fact lines: {bad[0] if bad else ''}", *bad)
+        tab.audit(f"w, {t['id']}")
+    # With no ticket the CLI and the screen choose the same one (the newest updated_at).
+    info = net_open(tab, net_hash(), "w, the default ticket")
+    out = cli_run(GOLDEN)
+    first = out.splitlines()[0] if out else ""
+    need(first.startswith(f"ticket {default_ticket(book)} — "), f"w: the CLI's default ticket is not {default_ticket(book)}: {first!r}")
+    bad = fact_problems(info["facts"], cli_facts(out))
+    need(not bad, f"w, the default ticket: {bad[0] if bad else ''}", *bad)
+    ctx.close()
+
+
+# --- x. the replay, on Playwright's clock -------------------------------------------------------------
+
+def replay_problems(info, replay, row, static, final_count, last_count):
+    """Why the screen INFO is not at ROW rows revealed with data-replay REPLAY: the label, the facts against the STATIC
+    drawing's, the rework count against its final value and the one before it."""
+    bad = []
+    if info["replay"] != replay:
+        bad.append(f"data-replay is {info['replay']!r}, want {replay!r}")
+    if info["row"] != str(row):
+        bad.append(f"data-row is {info['row']!r}, want {row}")
+    label = info["label"]
+    if not label or not label["visible"] or label["text"] != REPLAY_LABEL:
+        bad.append(f"#net-replay-label is {label}, want it visible and reading {REPLAY_LABEL!r}")
+    extra = set(info["facts"]) - set(static)
+    if extra:
+        bad.append(f"the replay shows a fact the static drawing does not hold: {sorted(extra)[0][:120]!r}")
+    if replay == "done" and set(info["facts"]) != set(static):
+        bad.append(f"the final frame lacks {sorted(set(static) - set(info['facts']))[:1]}: it must equal the static drawing")
+    if replay == "on" and row == 0 and set(info["facts"]) == set(static):
+        bad.append("at row 0 the replay already shows the whole drawing")
+    count = int(info["rework"]["count"]) if info["rework"] else 0
+    if count > final_count or count < last_count:
+        bad.append(f"the rework count is {count} at row {row}: it counts the rows revealed so far (final {final_count}, previous {last_count})")
+    if replay == "done" and count != final_count:
+        bad.append(f"the final rework count is {count}, want {final_count}")
+    return bad
+
+
+def drive_replay(tab, rows, static, final_count, what):
+    """Advance the paused clock one beat at a time: after 1999 ms nothing moved, after 2000 ms one more row; the last row is
+    followed by data-replay=done (within one more beat); the label is visible throughout."""
+    clock, last = tab.page.clock, 0
+    for i in range(rows):
+        info = net_info(tab)
+        bad = replay_problems(info, "on", i, static, final_count, last)
+        need(not bad, f"{what}, before beat {i + 1}: {bad[0] if bad else ''}", *bad)
+        last = int(info["rework"]["count"]) if info["rework"] else 0
+        clock.run_for(BEAT_MS - 1)
+        tab.page.wait_for_timeout(30)
+        early = net_info(tab)
+        need(early["row"] == str(i), f"{what}: {BEAT_MS - 1} ms into beat {i + 1} data-row is {early['row']!r}, want {i}: the beat is {BEAT_MS} ms")
+        clock.run_for(1)
+        tab.page.wait_for_timeout(30)
+    info = net_info(tab)
+    if info["replay"] != "done":
+        clock.run_for(BEAT_MS)
+        tab.page.wait_for_timeout(30)
+        info = net_info(tab)
+    bad = replay_problems(info, "done", rows, static, final_count, last)
+    need(not bad, f"{what}, after {rows} rows: {bad[0] if bad else ''}", *bad)
+    return info
+
+
+def x_replay(browser, bases, book):
+    t = next(x for x in book["tickets"] if x["id"] == NETWORK_TICKET)
+    rows = len(t["timeline"])
+    final_count = len(t["rework"])
+    need(rows >= 4, f"x: {NETWORK_TICKET}'s timeline has {rows} rows: the replay proves nothing")
+    # The probe that makes 'no request was sent' mean something: a fetch a page makes is seen by the recorder.
+    ctx = browser.new_context()
+    seen = []
+    probe = ctx.new_page()
+    probe.on("request", lambda r: seen.append(r.url))
+    probe.goto(bases["golden"] + "/v1/console.json")
+    probe.evaluate("() => fetch('/v1/console.json').then(() => 0)")
+    probe.wait_for_timeout(300)
+    need(len(seen) >= 2, f"x: the request recorder saw {len(seen)} requests of a page that made two")
+    ctx.close()
+    # By the button.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    tab.page.clock.install(time=CLOCK_T0 / 1000)  # Playwright for Python takes seconds
+    info = net_open(tab, net_hash(NETWORK_TICKET), "x, the static drawing")
+    static = info["facts"]
+    need(info["replay"] == "off" and not (info["label"] and info["label"]["visible"]),
+         f"x: before it is asked, the screen is data-replay={info['replay']!r} with the label {info['label']}: want off and no visible label")
+    need(tab.page.locator("#net-replay").count() == 1, "x: there is no #net-replay button")
+    tab.page.clock.pause_at((tab.page.evaluate("Date.now()") + 20) / 1000)
+    requests = []
+    tab.page.on("request", lambda r: requests.append(f"{r.method} {r.url}"))
+    tab.page.click("#net-replay")
+    tab.wait("() => { const s = document.querySelector('section#net'); return !!s && s.dataset.replay === 'on'; }", None, "x: #net-replay did not start the replay")
+    tab.page.wait_for_timeout(50)
+    raw = tab.page.evaluate("location.hash")
+    need(net_hash_problems(raw, net_hash(NETWORK_TICKET)) is None or net_hash_problems(raw, net_hash(NETWORK_TICKET, replay=True)) is None,
+         f"x: pressing the replay leaves the hash {raw!r}")
+    final = drive_replay(tab, rows, static, final_count, "x, the button")
+    need(final["label"]["visible"], "x: the replay label went away when the replay ended")
+    need(not requests, f"x: the replay sent {len(requests)} request(s): {requests[:3]}")
+    tab.audit("x, the button")
+    ctx.close()
+    # By the link.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    tab.page.clock.install(time=CLOCK_T0 / 1000)  # Playwright for Python takes seconds
+    tab.page.goto("about:blank")
+    # Paused before the load: the beat counts from the moment the page starts
+    # the replay, which is then the clock's own, not a race with this script.
+    tab.page.clock.pause_at((tab.page.evaluate("Date.now()") + 20) / 1000)
+    tab.load(net_hash(NETWORK_TICKET, replay=True))
+    wait_for(tab, "section#net[data-replay=on]", "x, ?replay=1 did not start the replay")
+    start = net_info(tab)
+    need(start["row"] == "0", f"x, ?replay=1: data-row is {start['row']!r} a moment after the load, want 0")
+    drive_replay(tab, rows, static, final_count, "x, ?replay=1")
+    tab.audit("x, ?replay=1")
+    ctx.close()
+
+
+# --- y. live, SIMULATED ---------------------------------------------------------------------------------
+
+NET_ANIMATE = """(() => { window.__netAnimated = [];
+  const note = (el) => { if (el && el.closest && el.closest('section#net')) window.__netAnimated.push(String(el.getAttribute('class') || el.tagName)); };
+  const orig = Element.prototype.animate;
+  Element.prototype.animate = function (...args) { note(this); return orig.apply(this, args); };
+  for (const type of ['animationstart', 'transitionrun']) window.addEventListener(type, (e) => note(e.target), true); })();"""
+NET_NEW_JS = "() => [...document.querySelectorAll('section#net .net-new')].length"
+NET_ANNOUNCE_JS = """() => { const a = document.getElementById('announce');
+  return {live: a ? a.getAttribute('aria-live') : null, text: a ? a.textContent.replace(/\\s+/g, ' ').trim() : null, animated: (window.__netAnimated || []).length}; }"""
+
+
+def live_problems(marked, announce, reduced):
+    """Why the screen after a new logbook is not marked, announced and (un)animated as §3 says."""
+    bad = []
+    if marked < 1:
+        bad.append("no element of section#net carries the class net-new")
+    if announce["live"] != "polite":
+        bad.append(f"#announce has aria-live {announce['live']!r}, want 'polite'")
+    if NETWORK_TICKET not in (announce["text"] or ""):
+        bad.append(f"#announce says {announce['text']!r}, want it to name ticket {NETWORK_TICKET}")
+    if reduced and announce["animated"]:
+        bad.append(f"with reduced motion {announce['animated']} animation(s) ran in section#net, want none")
+    if not reduced and not announce["animated"]:
+        bad.append("without reduced motion nothing in section#net animated (no Element.animate, no CSS animation, no transition)")
+    return bad
+
+
+def y_live(browser, bases, golden, nbooks):
+    """A LIVE console, SIMULATED in the browser: ctx.route answers /v1/console.json with the real answer turned live (a mode and a
+    read_at) and /v1/logbook.json first with a logbook derived from the golden where ticket 0010 is at attempt 1, ci-failed, then
+    with the golden. The snapshot server behind is never asked; the page polls every 2 s in live mode (ADR 0047 §4)."""
+    real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+    live = {**real, "mode": "live", "read_at": READ_AT}
+    early, gates, roles = nbooks["early"], makefile_gates(), roles_dirs()
+    need(default_ticket(early) != default_ticket(golden), "y: the early logbook and the golden have the same default ticket")
+    for reduced in (False, True):
+        what = "y, reduced motion" if reduced else "y, motion"
+        ctx = browser.new_context(viewport=DESKTOP, reduced_motion="reduce" if reduced else "no-preference")
+        ctx.add_init_script(NET_ANIMATE)
+        phase = {"moved": False}
+        ctx.route("**/v1/console.json", lambda route: route.fulfill(status=200, content_type="application/json", headers={"Cache-Control": "no-store"}, body=json.dumps(live)))
+        ctx.route("**/v1/logbook.json", lambda route: route.fulfill(
+            status=200, content_type="application/json", headers={"Cache-Control": "no-store", "ETag": '"golden"' if phase["moved"] else '"early"'},
+            body=json.dumps(golden if phase["moved"] else early)))
+        pinned = Tab(ctx, bases["golden"])
+        net_open(pinned, net_hash(NETWORK_TICKET), f"{what}, the pinned ticket")
+        following = Tab(ctx, bases["golden"])
+        info = net_open(following, net_hash(), f"{what}, the default ticket")
+        need(info["ticket"] == default_ticket(early), f"{what}: #network shows {info['ticket']!r}, the early logbook's default is {default_ticket(early)}")
+        before = net_info(pinned)
+        bad = net_problems(before, expect_net(early, NETWORK_TICKET, None, gates, roles))
+        need(not bad, f"{what}, the early drawing of {NETWORK_TICKET}: {bad[0] if bad else ''}", *bad)
+        n_new = pinned.page.evaluate(NET_NEW_JS)
+        need(len(before["stream"]) == 1 and n_new == 0, f"{what}: before the move the stream has {len(before['stream'])} attempt(s) and {n_new} marked elements")
+        pinned.page.evaluate("window.__netAnimated = []")
+        phase["moved"] = True
+        pinned.wait("() => document.querySelectorAll('section#net .net-new').length > 0", None,
+                    f"{what}: nothing in section#net was ever marked net-new within the polls", timeout=9000)
+        pinned.page.wait_for_timeout(100)
+        marked = pinned.page.evaluate(NET_NEW_JS)
+        pinned.wait("() => { const a = document.getElementById('announce'); return !!a && a.textContent.trim() !== ''; }", None, f"{what}: #announce said nothing", timeout=9000)
+        bad = live_problems(marked, pinned.page.evaluate(NET_ANNOUNCE_JS), reduced)
+        need(not bad, f"{what}: {bad[0] if bad else ''}", *bad)
+        pinned.wait("() => document.querySelectorAll(\"ol#net-stream > li.net-attempt[data-attempt='2']\").length === 1", None,
+                    f"{what}: the new attempt never joined the stream", timeout=9000)
+        # With reduced motion the mark stays and only the motion goes (docs/adr/
+        # 0071 §3, ADR 0059 §1's mark): it was drawn above, with no animation
+        # (live_problems); like any mark it lasts MARK_MS.
+        pinned.wait("() => document.querySelectorAll('section#net .net-new').length === 0", None,
+                    f"{what}: the mark never went away (it lasts {MARK_MS} ms)", timeout=MARK_MS + 5000)
+        bad = net_problems(net_info(pinned), expect_net(golden, NETWORK_TICKET, None, gates, roles))
+        need(not bad, f"{what}, the drawing after the poll: {bad[0] if bad else ''}", *bad)
+        following.wait("t => { const s = document.querySelector('section#net'); return !!s && s.dataset.ticket === t; }", default_ticket(golden),
+                       f"{what}: the screen without an id did not follow the newest ticket to {default_ticket(golden)}", timeout=9000)
+        sel = following.page.evaluate("document.querySelector('select#net-ticket').value")
+        need(sel == default_ticket(golden), f"{what}: after following, select#net-ticket is {sel!r}, want {default_ticket(golden)}")
+        pinned.audit(what)
+        following.audit(what)
+        ctx.close()
+
+
+# --- z. the 1.2 degradation -------------------------------------------------------------------------------
+
+def z_old(browser, book12):
+    with Console(GOLDEN_12) as c:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, c.base)
+        info = net_open(tab, net_hash(), "z, a 1.2 logbook")
+        words = table_words(tab)
+        sentence = words["words"]["old_logbook"].format(version=version_of(book12))
+        need("1.2" in sentence, f"z: the old_logbook sentence is {sentence!r}: it names no version")
+        need(info["ticket"] == default_ticket(book12), f"z: #network over 1.2 shows {info['ticket']!r}, want {default_ticket(book12)}")
+        checked = 0
+        for t in book12["tickets"]:
+            info = net_open(tab, net_hash(t["id"]), f"z, {t['id']}")
+            exp = expect_net_old(book12, t["id"])
+            bad = net_old_problems(info, exp, sentence)
+            need(not bad, f"z, {t['id']}: {bad[0] if bad else ''}", *bad)
+            if exp["gates"] is not None:
+                need([g["gate"] for g in info["gates"]] == ["gates"], f"z, {t['id']}: the 1.2 edges are {[g['gate'] for g in info['gates']]}, want the one .net-gate[data-gate=gates]")
+                checked += 1
+            tab.audit(f"z, {t['id']}")
+        need(checked >= 3, f"z: only {checked} 1.2 tickets have a ci or a rework line: the summary edge is hardly proved")
+        ctx.close()
+    with Console(GOLDEN) as c:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, c.base)
+        info = net_open(tab, net_hash(NETWORK_TICKET), "z, the 1.3 golden")
+        need(sentence not in info["text"], f"z: the 1.3 golden says the 1.2 sentence {sentence!r}")
+        ctx.close()
+
+
+# --- s. (the network's part) no POST, no drag --------------------------------------------------------------
+
+def net_nodrag(browser, bases):
+    ctx = browser.new_context(viewport=DESKTOP)
+    ctx.add_init_script(RECORD_EVENTS)
+    tab = Tab(ctx, bases["golden"])
+    net_open(tab, net_hash(NETWORK_TICKET), "s, the network")
+    tab.page.click("#net-replay")
+    tab.page.wait_for_timeout(300)
+    tab.page.select_option("select#net-ticket", "0003")
+    tab.page.wait_for_timeout(300)
+    events = tab.page.evaluate("window.__events")
+    need(len(events) > 5, f"s: the recorder saw {len(events)} registrations in a whole session on #network: it is not recording")
+    bad = drag_problems(events, tab.page.evaluate("document.querySelectorAll('[draggable]').length"))
+    need(not bad, f"s, #network: {bad[0] if bad else ''}", *bad)
+    tab.audit("s, #network")
+    ctx.close()
+
+
+# --- q. (the network's part) contrast and focus -----------------------------------------------------------
+
+# SVG text is painted with `fill`, not `color`: the walker reads the fill there.
+NET_MEASURE_JS = MEASURE_JS.replace("fg = parse(s.color)", "fg = parse(el instanceof SVGElement && s.fill !== 'none' ? s.fill : s.color)")
+NET_FOCUS_JS = "() => {" + COLOR_JS + """
+  const a = document.activeElement;
+  if (!a || a === document.body || !a.closest || !a.closest('main')) return null;
+  const s = getComputedStyle(a), bg = bgOf(a).rgb, c = parse(s.outlineColor);
+  return {tag: a.tagName.toLowerCase(), id: a.id, style: s.outlineStyle, width: parseFloat(s.outlineWidth), color: over(c, bg), bg};
+}"""
+
+
+def q_network(browser, bases):
+    need(NET_MEASURE_JS != MEASURE_JS, "q: the network's walker reads the same colour as the board's: SVG text would be measured by `color`")
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        net_open(tab, net_hash(NETWORK_TICKET), f"q ({scheme}), the network")
+        items = tab.page.evaluate(NET_MEASURE_JS, "section#net")
+        need(items and len(items) >= 30, f"q ({scheme}): the walker found {len(items or [])} texts in section#net, want a network's worth")
+        bad = contrast_problems(items, f"q ({scheme}), #network")
+        need(not bad, bad[0] if bad else "", *bad[:20])
+        # Focus: every control the keyboard reaches in main has a 2 px outline at 3:1 (§6).
+        tab.page.focus("select#net-ticket")
+        stops = []
+        for _ in range(60):
+            info = tab.page.evaluate(NET_FOCUS_JS)
+            if info:
+                stops.append(info)
+            tab.page.keyboard.press("Tab")
+            if not tab.page.evaluate("() => !!document.activeElement && !!document.activeElement.closest && !!document.activeElement.closest('main')"):
+                break
+        need(len(stops) >= 3, f"q ({scheme}): the keyboard reached {len(stops)} controls in #network, want at least 3 (the ticket select, the replay button, a patch)")
+        need(any(s["tag"] == "summary" for s in stops), f"q ({scheme}): the keyboard never reached a details.net-patch summary: {[s['tag'] for s in stops]}")
+        for s in stops:
+            bad = focus_problems(s)
+            need(not bad, f"q ({scheme}): the focused {s['tag']}#{s['id']} on #network: {bad[0] if bad else ''}", *bad)
+        # The label of the replay is text too.
+        tab.page.click("#net-replay")
+        tab.page.wait_for_timeout(100)
+        items = tab.page.evaluate(NET_MEASURE_JS, "#net-replay-label")
+        need(items, f"q ({scheme}): the replay label has no measurable text")
+        bad = contrast_problems(items, f"q ({scheme}), the replay label")
+        need(not bad, bad[0] if bad else "", *bad)
+        tab.audit(f"q ({scheme}), #network")
+        ctx.close()
+
+
 # --- the checks that the checks themselves can fail ------------------------------------
 
 def self_checks():
@@ -2343,6 +3270,7 @@ def self_checks():
     need(inside(box, 1440, 900) and not inside({**box, "top": 880, "bottom": 920}, 1440, 900) and not inside({**box, "h": 0}, 1440, 900)
          and not inside(None, 1440, 900) and not inside({**box, "right": 500}, 390, 844), "the viewport test does not tell inside from outside")
     self_checks_0068(book)
+    self_checks_0071()
 
 
 def self_checks_0068(book):
@@ -2362,7 +3290,7 @@ def self_checks_0068(book):
     need(set(ACTOR_OF_STEP) == set(tower.PRECONDITION) and set(ACTOR_OF_STEP.values()) <= set(ACTORS), "the actor table of this suite is not core/tower.py's steps")
     by_id = {t["id"]: t for t in book["tickets"]}
     turns = turns_of(book)
-    want = {"0001": "done", "0002": "done", "0003": "dev", "0004": "you", "0005": "you", "0007": "you", "0008": "dev", "0009": "you"}
+    want = {"0001": "done", "0002": "done", "0003": "dev", "0004": "you", "0005": "you", "0007": "you", "0008": "dev", "0009": "you", "0010": "done"}
     need({i: actor_of(by_id[i], turns[i]) for i in by_id} == want, f"the badge rule gives {({i: actor_of(by_id[i], turns[i]) for i in by_id})}, want {want}")
     answered = {"id": "9", "state": "questions", "questions": [{"question": "q", "answer": "a"}]}
     need(actor_of(answered, {"turn": "tower"}) == "product", "an answered question is not the product role's turn")
@@ -2488,6 +3416,176 @@ def self_checks_0068(book):
         need(drag_problems(events, draggable), f"no drag: {what} is accepted")
 
 
+def self_checks_0071():
+    """ADR 0071: the expectations and every comparison of t-z, each shown to fail on a wrong input. They run over a small logbook
+    written here, not over the golden: the golden is the reader's output, and these checks must stand before it exists."""
+    import copy
+    gates = ["risk", "secrets", "mutation", "test-proof"]
+    roles = ["architect", "dev-worker", "ops-triage", "product", "release", "test-reviewer"]
+    err = "withheld: the secrets gate did not say GO on attempt 2"
+    row = lambda g, v, d="": {"gate": g, "verdict": v, "line": f"{v}: {g}" + (f" — {d}" if d else "")}  # noqa: E731
+    mini = {"schema": "lights-out/logbook/1.3", "thresholds": [{"key": "REWORK_MAX_ATTEMPTS", "value": "4"}],
+            "releases": [{"version": "1.0", "ticket": "0010", "verdict": "held", "answer": {"answer": "GO", "by": "bob", "via": "cli"},
+                          "stages": [{"pct": 5, "verdict": "GO"}, {"pct": 25, "verdict": "GO"}]},
+                         {"version": "2.0", "ticket": "0011", "verdict": "held", "answer": None, "stages": [{"pct": 5, "verdict": "NO-GO: x — y"}]}],
+            "tickets": [
+                {"id": "0010", "title": "T", "updated_at": "2026-01-02T00:00:00Z", "attempt": 2, "state": "held", "perimeter": ["a/*"],
+                 "tasks": [{"role": "dev-worker", "attempt": 1, "harness": "network", "model": None,
+                            "members": [{"id": "a", "harness": "replay", "model": "m", "replayed": True, "hand_written": None},
+                                        {"id": "b", "harness": "replay", "model": None, "replayed": True, "hand_written": True}],
+                            "patch": {"text": "diff A\n", "bytes": 7, "truncated": False}},
+                           {"role": "dev-worker", "attempt": 2, "harness": "network", "model": None,
+                            "members": [{"id": "a", "harness": "replay", "model": "m", "replayed": True, "hand_written": None},
+                                        {"id": "b", "harness": "replay", "model": None, "replayed": True, "hand_written": True}],
+                            "patch": {"ok": False, "error": err}}],
+                 "rework": [{"attempt": 1, "gates": [row("risk", "GO", "low"), row("mutation", "NO-GO", "3 survived")]}],
+                 "ci": {"gates": [row("risk", "GO"), row("secrets", "GO"), row("mutation", "GO")]},
+                 "review": {"role": "test-reviewer", "verdict": "approved"}, "product": {"consulted": False}, "release": {"version": "1.0"},
+                 "files": [{"path": "a/x.py", "glob": "a/*", "member": "a", "attempts": [1, 2], "tests": ["t/x.py"], "adrs": ["0005"], "held_by": ["0002"]}]},
+                {"id": "0011", "title": "U", "updated_at": "2026-01-01T00:00:00Z", "attempt": None, "state": "held", "perimeter": ["b/*"],
+                 "tasks": [], "rework": [], "ci": None, "review": None, "product": {"consulted": True}, "release": {"version": "2.0"}, "files": []},
+                {"id": "0012", "title": "V", "updated_at": "2026-01-02T00:00:00Z", "attempt": None, "state": "opened", "perimeter": [],
+                 "tasks": [], "rework": [], "ci": None, "review": None, "product": None, "release": None, "files": None}]}
+    need(default_ticket(mini) == "0012", f"the default ticket of the small logbook is {default_ticket(mini)}: ties go to the highest id")
+    mini["tickets"][2]["updated_at"] = None
+    need(default_ticket(mini) == "0010", "a ticket with no updated_at is not last")
+    need(attempts_of(mini["tickets"][0]) == [1, 2] and attempts_of(mini["tickets"][1]) == [], "the attempts are wrong")
+    need(version_of(mini) == "1.3", "the version is wrong")
+    need(len(makefile_gates()) == 8 and "mutation" in makefile_gates() and len(roles_dirs()) == 6, f"the Makefile's gates {makefile_gates()} or roles/ {roles_dirs()} are not read")
+    exp = expect_net(mini, "0010", None, gates, roles)
+    need(exp["gates"] == [("risk", "GO"), ("secrets", "GO"), ("mutation", "GO"), ("test-proof", "not-run")], f"the gates of the latest attempt are {exp['gates']}")
+    need(expect_net(mini, "0010", 1, gates, roles)["gates"] == [("risk", "GO"), ("mutation", "NO-GO"), ("secrets", "not-run"), ("test-proof", "not-run")],
+         "the gates of attempt 1 are not the rework entry's, then the rest as not-run")
+    need([r for r, v in exp["ran"].items() if v] == ["dev-worker", "test-reviewer"], f"the roles that ran are {exp['ran']}")
+    need(expect_net(mini, "0011", None, gates, roles)["human"]["verdict"] == "waiting" and expect_net(mini, "0011", None, gates, roles)["stages"] == [("5", "NO-GO")]
+         and expect_net(mini, "0012", None, gates, roles)["human"]["verdict"] == "not-reached" and expect_net(mini, "0011", None, gates, roles)["ran"]["product"],
+         "a held release with no answer is not waiting, or a NO-GO stage is a GO, or a ticket with no release is reached, or product did not run")
+    info = {"ticket": "0010", "schema": "lights-out/logbook/1.3", "tower": True,
+            "roles": [{"role": r, "ran": "true" if r in ("dev-worker", "test-reviewer") else "false"} for r in roles],
+            "workers": [{"worker": "a", "harness": "replay", "model": "m", "replayed": "true", "hand": "false"},
+                        {"worker": "b", "harness": "replay", "model": "", "replayed": "true", "hand": "true"}],
+            "gates": [{"gate": g, "verdict": v, "attempt": "2"} for g, v in exp["gates"]],
+            "review": "approved", "rework": {"count": "1", "max": "4"},
+            "stages": [{"pct": "5", "verdict": "GO"}, {"pct": "25", "verdict": "GO"}],
+            "human": {"verdict": "GO", "text": "Held at 25%: answered GO by bob through cli"},
+            "stream": [{"attempt": "2", "text": "attempt 2 a b", "lines": [{"gate": g, "verdict": "GO", "text": f"GO: {g}"} for g in ("risk", "secrets", "mutation")],
+                        "patch": {"truncated": None, "open": True, "text": err}},
+                       {"attempt": "1", "text": "attempt 1 a b",
+                        "lines": [{"gate": "risk", "verdict": "GO", "text": "GO: risk — low"}, {"gate": "mutation", "verdict": "NO-GO", "text": "NO-GO: mutation — 3 survived"}],
+                        "patch": {"truncated": "false", "open": False, "text": "diff A\n"}}],
+            "files": [{"path": "a/x.py", "glob": "a/*", "member": "a", "held": "0002", "tests": "t/x.py", "adrs": ["#adr/0005"]}],
+            "facts": ["a fact"], "label": None, "replay": "off", "row": None}
+    need(net_problems(info, exp) == [], f"a screen that is what the record says is refused: {net_problems(info, exp)}")
+    need(net_problems(None, exp), "a page with no section#net is accepted")
+
+    def mutated(what, change):
+        bad = copy.deepcopy(info)
+        change(bad)
+        need(net_problems(bad, exp), f"net_problems accepts {what}")
+
+    mutated("another ticket", lambda i: i.update(ticket="0011"))
+    mutated("a schema of another version", lambda i: i.update(schema="lights-out/logbook/1.2"))
+    mutated("no tower", lambda i: i.update(tower=False))
+    mutated("five roles", lambda i: i["roles"].pop())
+    mutated("a role that ran, dark", lambda i: i["roles"][1].update(ran="false"))
+    mutated("a role that did not run, lit", lambda i: i["roles"][0].update(ran="true"))
+    mutated("a worker on another model", lambda i: i["workers"][0].update(model="x"))
+    mutated("a worker with a model that has none", lambda i: i["workers"][1].update(model="m"))
+    mutated("a hand-written worker not marked", lambda i: i["workers"][1].update(hand="false"))
+    mutated("a model-run worker marked hand-written", lambda i: i["workers"][0].update(hand="true"))
+    mutated("a replayed worker not marked", lambda i: i["workers"][0].update(replayed="false"))
+    mutated("a missing worker", lambda i: i["workers"].pop())
+    mutated("another harness", lambda i: i["workers"][0].update(harness="adk"))
+    mutated("a gate with the wrong verdict", lambda i: i["gates"][0].update(verdict="NO-GO"))
+    mutated("a gate that ran, not-run", lambda i: i["gates"][1].update(verdict="not-run"))
+    mutated("gates out of the order run", lambda i: i["gates"].reverse())
+    mutated("a missing not-run gate", lambda i: i["gates"].pop())
+    mutated("an edge with no attempt", lambda i: i["gates"][0].update(attempt=None))
+    mutated("an edge of another attempt", lambda i: i["gates"][0].update(attempt="1"))
+    mutated("another review verdict", lambda i: i.update(review="changes-requested"))
+    mutated("no rework loop", lambda i: i.update(rework=None))
+    mutated("another rework count", lambda i: i["rework"].update(count="2"))
+    mutated("no rework max", lambda i: i["rework"].update(max=None))
+    mutated("a canary stage missing", lambda i: i["stages"].pop())
+    mutated("a stage with the wrong verdict", lambda i: i["stages"][0].update(verdict="NO-GO"))
+    mutated("no human gate", lambda i: i.update(human=None))
+    mutated("a human gate waiting", lambda i: i["human"].update(verdict="waiting"))
+    mutated("a human gate that does not say who", lambda i: i["human"].update(text="Held at 25%: answered GO through cli"))
+    mutated("a stream oldest first", lambda i: i["stream"].reverse())
+    mutated("a changed gate line", lambda i: i["stream"][1]["lines"][1].update(text="NO-GO: mutation — 4 survived"))
+    mutated("a line with another verdict", lambda i: i["stream"][1]["lines"][1].update(verdict="GO"))
+    mutated("a missing line", lambda i: i["stream"][0]["lines"].pop())
+    mutated("a stream entry that names no worker", lambda i: i["stream"][0].update(text="attempt 2"))
+    mutated("a changed patch", lambda i: i["stream"][1]["patch"].update(text="diff B\n"))
+    mutated("a truncated flag that is wrong", lambda i: i["stream"][1]["patch"].update(truncated="true"))
+    mutated("no patch", lambda i: i["stream"][1].update(patch=None))
+    mutated("a withheld patch with another reason", lambda i: i["stream"][0]["patch"].update(text="nothing"))
+    mutated("the wrong patch open", lambda i: i["stream"][1]["patch"].update(open=True))
+    mutated("a file row of another glob", lambda i: i["files"][0].update(glob="b/*"))
+    mutated("a file row of another member", lambda i: i["files"][0].update(member="b"))
+    mutated("a file held by another", lambda i: i["files"][0].update(held="0003"))
+    mutated("a file with no test", lambda i: i["files"][0].update(tests="none"))
+    mutated("an ADR link that is not #adr/NNNN", lambda i: i["files"][0].update(adrs=["#adrs?q=0005"]))
+    mutated("a file with no ADR link", lambda i: i["files"][0].update(adrs=[]))
+    mutated("a file row missing", lambda i: i.update(files=[]))
+    mutated("a screen with no fact", lambda i: i.update(facts=[]))
+    # A network ticket's tests: files with no row is a problem only when the record has files.
+    need(net_problems({**info, "files": []}, {**exp, "files": None}) == [], "a record with unread files still demands file rows")
+    # §6: the 1.2 degradation.
+    sentence = "this logbook (1.2) records no patches or gate lines"
+    old = {"gates": [{"gate": "gates", "verdict": "NO-GO", "attempt": "1"}], "stream_text": f"attempt 1 {sentence}", "text": f"{sentence} a/* {sentence}",
+           "stream": [{"lines": []}]}
+    exp_old = {"gates": [("gates", "NO-GO")], "perimeter": ["a/*"]}
+    need(net_old_problems(old, exp_old, sentence) == [], f"a good 1.2 screen is refused: {net_old_problems(old, exp_old, sentence)}")
+    for what, bad in (("two edges", {**old, "gates": old["gates"] + [{"gate": "risk", "verdict": "GO", "attempt": "1"}]}),
+                      ("another verdict", {**old, "gates": [{"gate": "gates", "verdict": "GO", "attempt": "1"}]}),
+                      ("a stream that does not say it", {**old, "stream_text": "attempt 1"}),
+                      ("a sentence said once", {**old, "text": f"{sentence} a/*"}),
+                      ("no perimeter", {**old, "text": f"{sentence} {sentence}"}),
+                      ("gate lines in a 1.2 stream", {**old, "stream": [{"lines": [{"gate": "risk"}]}]})):
+        need(net_old_problems(bad, exp_old, sentence), f"the 1.2 check accepts {what}")
+    need(net_old_problems(None, exp_old, sentence), "a 1.2 check accepts a page with no section#net")
+    t12 = {"id": "1", "attempt": 2, "rework": [{"attempt": 2, "line": "NO-GO: gates — x"}], "ci": {"verdict": "GO"}, "tasks": [], "perimeter": []}
+    need(expect_net_old({"tickets": [t12]}, "1")["gates"] == [("gates", "NO-GO")] and expect_net_old({"tickets": [{**t12, "rework": []}]}, "1")["gates"] == [("gates", "GO")]
+         and expect_net_old({"tickets": [{**t12, "rework": [], "ci": None}]}, "1")["gates"] is None, "the 1.2 summary edge's rule is wrong")
+    # The CLI's facts: the lines that start with a space, outside the patch block.
+    view = "ticket 0010 — T · attempt 2\ngraph\n  role dev-worker: ran\n   gate risk:   GO\nstream\n  attempt 2\n--- patch of attempt 2 ---\n  not a fact\n--- end of patch ---\nfiles by perimeter\n  a/x.py\n"
+    need(cli_facts(view) == {"role dev-worker: ran", "gate risk: GO", "attempt 2", "a/x.py"}, f"the CLI's facts are read as {sorted(cli_facts(view))}")
+    need(fact_problems(["a"], ["a"]) == [] and fact_problems(["a", "b"], ["a"]) and fact_problems(["a"], ["a", "b"]) and fact_problems([], []),
+         "the fact comparison does not see an extra, a missing or an empty set")
+    # The link.
+    need(net_hash() == "#network" and net_hash("0010") == "#network/0010" and net_hash("0010", 1) == "#network/0010?attempt=1"
+         and net_hash("0010", 1, True) == "#network/0010?attempt=1&replay=1" and net_hash("", "", True) == "#network?replay=1", "the link writer is wrong")
+    need(net_hash_problems("#network/0010?attempt=1", net_hash("0010", 1)) is None and net_hash_problems("#network/0010?replay=1&attempt=1", net_hash("0010", 1, True))
+         and net_hash_problems("#network/0010", net_hash()) and net_hash_problems("#kanban", net_hash()), "the link comparison is wrong")
+    # The replay.
+    static = ["a", "b", "c"]
+    on = {"replay": "on", "row": "1", "label": {"visible": True, "text": REPLAY_LABEL}, "facts": ["a"], "rework": {"count": "0"}}
+    need(replay_problems(on, "on", 1, static, 1, 0) == [], f"a good replay frame is refused: {replay_problems(on, 'on', 1, static, 1, 0)}")
+    done = {**on, "replay": "done", "row": "5", "facts": static, "rework": {"count": "1"}}
+    need(replay_problems(done, "done", 5, static, 1, 0) == [], f"a good final frame is refused: {replay_problems(done, 'done', 5, static, 1, 0)}")
+    for what, frame, args in (("another state", {**on, "replay": "done"}, ("on", 1)), ("another row", {**on, "row": "2"}, ("on", 1)),
+                              ("no label", {**on, "label": None}, ("on", 1)), ("a hidden label", {**on, "label": {"visible": False, "text": REPLAY_LABEL}}, ("on", 1)),
+                              ("another label", {**on, "label": {"visible": True, "text": "Replay"}}, ("on", 1)),
+                              ("a fact the static drawing lacks", {**on, "facts": ["a", "z"]}, ("on", 1)),
+                              ("a final frame that lacks a fact", {**done, "facts": ["a", "b"]}, ("done", 5)),
+                              ("a whole drawing at row 0", {**on, "row": "0", "facts": static}, ("on", 0)),
+                              ("a rework count above its final", {**on, "rework": {"count": "2"}}, ("on", 1)),
+                              ("a final rework count that is short", {**done, "rework": {"count": "0"}}, ("done", 5))):
+        need(replay_problems(frame, args[0], args[1], static, 1, 0), f"the replay check accepts {what}")
+    need(replay_problems({**on, "rework": {"count": "0"}}, "on", 1, static, 1, 1), "a rework count that went back is accepted")
+    # Live.
+    announce = {"live": "polite", "text": "0010 attempt 2: mutation NO-GO", "animated": 2}
+    need(live_problems(1, announce, False) == [] and live_problems(1, {**announce, "animated": 0}, True) == [], "a good live answer is refused")
+    for what, args in (("no mark", (0, announce, False)), ("an assertive region", (1, {**announce, "live": "assertive"}, False)),
+                       ("an announcement that does not name the ticket", (1, {**announce, "text": "something moved"}, False)),
+                       ("motion that did not run", (1, {**announce, "animated": 0}, False)), ("motion under reduced motion", (1, announce, True))):
+        need(live_problems(*args), f"the live check accepts {what}")
+    # The colour the walker reads on SVG text, and the files the screen draws.
+    need(NET_MEASURE_JS != MEASURE_JS and "s.fill" in NET_MEASURE_JS, "the network's contrast walker does not read an SVG text's fill")
+    need(NET_MEASURE_JS.count(": s.color)") == 1 and "parse(s.color)" not in NET_MEASURE_JS, "the network's walker lost the colour of HTML text")
+
+
 def main():
     real = sys.stdout
     sys.stdout = sys.stderr  # a library that prints must not break the one-line contract
@@ -2495,7 +3593,10 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 logbook")
+        need(golden.get("schema") == "lights-out/logbook/1.3", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.3")
+        need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 or later logbook")
+        need(GOLDEN_12.is_file(), f"{GOLDEN_12.relative_to(ROOT)} not found: the 1.2 degradation (z) reads it")
+        book12 = json.loads(GOLDEN_12.read_text(encoding="utf-8"))
         self_checks()
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
@@ -2512,6 +3613,7 @@ def main():
                 f_adrs(browser)
                 with tempfile.TemporaryDirectory() as tmp:
                     books, paths = derive(golden, pathlib.Path(tmp))
+                    nbooks, npaths = derive_net(golden, pathlib.Path(tmp))
                     with Console(GOLDEN) as plain, Console(paths["held"]) as held, Console(paths["holders"]) as waiting:
                         bases = {"golden": plain.base, "held": held.base, "holders": waiting.base}
                         with Console(paths["faces"]) as faces, Console(paths["long"]) as long:
@@ -2524,6 +3626,15 @@ def main():
                             q_contrast(browser, bases)
                             r_bands(browser, bases, golden)
                             s_nodrag(browser, bases)
+                            net_nodrag(browser, bases)
+                            q_network(browser, bases)
+                            t_route(browser, bases, golden)
+                            u_contract(browser, bases, golden)
+                            v_derived(browser, nbooks, npaths)
+                            w_cli(browser, bases, golden)
+                            x_replay(browser, bases, golden)
+                            y_live(browser, bases, golden, nbooks)
+                            z_old(browser, book12)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)
