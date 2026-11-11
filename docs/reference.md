@@ -97,6 +97,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go gates           # judge a range: BASE=<ref> HEAD=<ref>, default the last commit; no plane, no engine socket on the workbench toolchain (ADR 0042 §4-§5)
 ./go demo-init       # prove attach, init and gates on workloads/minimal and workloads/minimal-js without the plane, timed against 300 s (ADR 0042 §10)
 ./go demo-hold       # release the same version with kill switch on and prove it holds at 25%
+./go demo-dast       # prove the passive DAST scan at staging both ways: the stable against itself GO, a leaky canary rolled back; pulls a 1.2 GB scanner (ADR 0072 §3)
 ./go demo-gates      # run all six PR gate fixtures and prove both verdicts
 ./go e2e             # run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 ./go audit           # rebuild the chain from a ticket's state: ./go audit TICKET=0001
@@ -326,7 +327,9 @@ At L0 the canary revision reuses the same image as stable, with the `waitlist` f
 
 ## Release controller
 
-`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable. A stage whose Metrics query fails (curl error, HTTP error, an answer that is not JSON or not `success`) cannot be judged: `verify/slo.sh` prints `NO-GO: slo — cannot judge: <query>: <cause>` and the launchpad `NO-GO: launchpad — <pct>%: cannot judge: … → rolled back`. It rolls back too, but it is never read as a verdict on the canary ([ADR 0066](adr/0066-a-canary-that-cannot-be-judged.md)). `verify/slo.promql` collapses `target_info` by `(job, instance, service_version)` before the join, so a stale series left by a restarted target does not break it.
+`core/launchpad.sh` is the production release flow at every level. It stages a canary through four phases: `staging` (app readiness), `5%`, `25%`, then holds for the human gate (M7 `go-for-launch`). At each phase except staging it evaluates `verify/slo.sh`, comparing the canary against stable on three metrics: `traffic`, `error_rate`, and `latency_p95`. A NO-GO at any stage rolls back automatically to 100/0 on stable. A stage whose Metrics query fails (curl error, HTTP error, an answer that is not JSON or not `success`) cannot be judged: `verify/slo.sh` prints `NO-GO: slo — cannot judge: <query>: <cause>` and the launchpad `NO-GO: launchpad — <pct>%: cannot judge: … → rolled back`. It rolls back too, but it is never read as a verdict on the canary ([ADR 0066](adr/0066-a-canary-that-cannot-be-judged.md)). **Optional DAST at staging (ADR 0072 §3).** With `DAST=on` (`DAST=off` in every `profiles/*.env`), `core/launchpad.sh` runs `verify/dast.sh` after the Delivery port's `deploy.sh` and before the shift to 5%. It runs ZAP's baseline scan, passive only (the plane's `zap` service, compose profile `dast`, `zaproxy/zap-stable:20261103` pinned by index digest), against the stable at `APP_URL` (weight 0 at staging, checked with `status.sh`) and against the canary at the URL the Delivery port's optional fifth verb, `canary-url.sh`, prints: a URL that reaches only the canary. `envoy-canary` prints `http://envoy:8081`, a canary-only Envoy listener on the plane's network, published on no host port. `argo-rollouts` has no such verb, so `DAST=on` with it is refused before staging. An alert is (plugin id, method, path without query), host stripped. The verdict is NO-GO only for an alert the canary has and the stable lacks, at any risk level. ZAP's exit codes 1 and 2 are ignored; exit 3 or an unreadable report is `cannot judge` and rolls back. The lines are `GO: dast — canary <v>: nothing new (<n> inherited from <stable>)` and `NO-GO: dast — canary <v> raises <n> alert(s) stable <stable> does not` (the list on stderr); on NO-GO the launchpad prints `NO-GO: launchpad — staging: <reason> → rolled back`. The line goes into the release record (`dast`), the tower document and `./go audit` (a `staging:` line). It is off in `./go demo`: the scanner image is about 1.2 GB and its cold pull alone was longer than the demo's margin on a 4.66 GiB podman VM (298 s, measured 2026-11-11); turning it on is the owner's call.
+
+`verify/slo.promql` collapses `target_info` by `(job, instance, service_version)` before the join, so a stale series left by a restarted target does not break it.
 
 The controller itself generates no load; the Makefile starts the active workload's `load.sh` (`$(WORKLOAD_CONTRACT)/load.sh`, default `app/load.sh`) beside it, stopping when the controller exits. A `load.sh` that cannot set up its traffic says so on stderr and exits non-zero; the release then rolls back on `no traffic from canary` (ADR 0066 §4). The canary deploy starts `backend-canary` alone (`--no-deps`), leaving the plane's other services as `./go up` started them.
 
@@ -334,11 +337,12 @@ At L0, the release is a manual Makefile target (`./go release` with `CANARY_VERS
 
 - `./go demo-rollback` releases the failing version (waitlist on), expects the kill switch's `error_rate` NO-GO at 5% and refuses any other reason (`cannot judge`, `no traffic`), and asserts the rollback (weights.canary=0, traffic on stable). `./go e2e` checks the same verdict on its release record (ADR 0066 §5). This is now `./go demo`'s last stage.
 - `./go demo-hold` releases the same failing version with the kill switch thrown first (waitlist off), expects GO all the way, and asserts the canary is held at 25% (not silently rolled back), then rolls back itself for clean state.
+- `./go demo-dast` (plane up; at L0, no key) pulls the scanner, runs the stable against itself twice (GO, nothing new), then releases a canary built from `app/fixtures/dast/leaky-header`, which adds an `X-Powered-By` header, with `DAST=on`; it must be rolled back at staging. It prints `[demo-dast] measure:` lines. Measured on the 4.66 GiB podman VM on 2026-11-11: one scan 34–40 s, the pair 74–80 s; the leaky canary raised 4 alerts (rule 10037 on 4 paths), 13 inherited. CI runs it in the `dast` job (docker) and `dast-podman`.
 - `./go demo-launch` proves go-for-launch: a held canary, the brief, `GO_FOR_LAUNCH=GO` to promote to 100%, then the un-promote. A reader can step through the stages or let it run end-to-end (~150 s warm).
 
 **Release of an attached repository (ADR 0043 §4), at any code host.** The bundled app still waits for the Gitea `image` job. For an attached repository `core/steps/release.sh` fetches the default branch, checks that the merge is on it, builds the merge commit in a throwaway worktree with `make publish` (the repository's own Containerfile, through the `backend` service of its `.lights-out/compose.yaml`) and signs it. The unchanged launchpad then verifies the signature and releases. `TOOLCHAIN_IMAGE` is not a release artefact: it holds no application. A workload without `.lights-out/compose.yaml` has no release. The build has no timeout of its own.
 
-`demo-rollback` and `demo-hold` are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path. `demo-launch` is also optional; the manual human path is `./go kill-switch`, `./go release`, `./go promote` (the answer travels as `./go promote GO_FOR_LAUNCH=GO`; `go` forwards no host environment).
+`demo-rollback`, `demo-hold` and `demo-dast` are manual, optional; only `./go demo` (which includes `demo-rollback`) is on the critical path. `demo-launch` is also optional; the manual human path is `./go kill-switch`, `./go release`, `./go promote` (the answer travels as `./go promote GO_FOR_LAUNCH=GO`; `go` forwards no host environment).
 
 **Kill switch and freeze** are feature-flag edits in the active workload's `flags/flags.json`, live within seconds through flagd's file poller, no deploy:
 - `./go kill-switch` turns off the active workload's kill-switch flag (named by `WORKLOAD_KILL_SWITCH`; for the app it is literally `waitlist`) for every version: the canary stops producing 501s.
@@ -397,7 +401,7 @@ lights-out/
   LICENSE                   # Apache 2.0 license
   NOTICE                    # copyright
   README.md                 # this file
-  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-launch, triage, demo-triage, incident, postmortem, demo-postmortem, record-postmortem, promote, record-evals, kill-switch, freeze, unfreeze, e2e, request, answer, board, logbook, console, demo-console
+  Makefile                  # targets: help, ci, ci-*, demo, up, smoke, down, test, verify, demo-rollback, demo-seam, demo-hold, demo-dast, demo-launch, triage, demo-triage, incident, postmortem, demo-postmortem, record-postmortem, promote, record-evals, kill-switch, freeze, unfreeze, e2e, request, answer, board, logbook, console, demo-console
   go                        # host entrypoint, POSIX sh
   .env.example              # template for secrets (gitignored)
   .gitignore
@@ -486,6 +490,7 @@ lights-out/
     slo.promql               # traffic, error_rate and latency_p95, canary vs stable via target_info join
     metric-shape.sh         # checks them against one live /metrics scrape
     slo.sh                  # verifies canary metrics against stable, the release gate
+    dast.sh                 # optional passive ZAP scan at staging, the canary against the stable (DAST=on; ADR 0072 §3)
 
   app/                      # the default workload (docs/adr/0005-0010)
     backend/                 # FastAPI + psycopg, meetups/, migrations/, tests/
@@ -510,7 +515,7 @@ lights-out/
 
   adapters/                 # one directory per adapter named in profiles/*.env
     adk/                    # M7: ADK roles, replay/recording model, evalsets
-    envoy-canary/           # Containerfile, envoy.yaml, ready.sh, deploy.sh, shift.sh, rollback.sh
+    envoy-canary/           # Containerfile, envoy.yaml, ready.sh, deploy.sh, shift.sh, rollback.sh, status.sh, canary-url.sh (optional, ADR 0072 §3)
     prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh (calls promql with http://$PLANE_HOST:9090)
     promql/                 # M22: query.sh, any Prometheus-compatible endpoint at METRICS_URL
     gitea/                  # ready.sh and the eight CodeHost verbs; no runner (ADR 0060)

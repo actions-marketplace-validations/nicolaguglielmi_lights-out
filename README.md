@@ -136,6 +136,7 @@ The first run downloads about 1.2 GB and builds the toolchain image (3–6 minut
 ./go record-postmortem PROFILE=l1 # record that answer once, with your Gemini key
 ./go up              # start the local plane (about 15 s once downloaded)
 ./go demo-rollback   # just the self-rollback, about a minute
+./go demo-dast       # the passive DAST scan at staging both ways: a leaky canary rolled back; pulls a 1.2 GB scanner, off in ./go demo
 ./go board           # the pipeline explained, and live while the plane runs: localhost:8099
 ./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
 ./go console         # the client's view: kanban (whose turn on every card), specs, a new-request editor, ADR search, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098

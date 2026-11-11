@@ -73,7 +73,7 @@ demo-loop`, the toolbelt, then the launch), is
   ticket, attempt, worker and threshold you changed. The console (M29)
   already shows the tickets, their timelines and the thresholds; its
   first slice (ADR 0063) says on each ticket whose turn it is.
-- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M42): the first two slices are built, SAST judged on the diff as dependencies already are, and a signed SBOM with every release, attested before the signature and carried by the release record and `./go audit`; a passive DAST scan of the canary before it takes traffic is next, not built. The console's timeline does not show the SBOM yet.
+- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M42): all three slices are built: SAST judged on the diff as dependencies already are, a signed SBOM with every release, attested before the signature and carried by the release record and `./go audit`, and a passive DAST scan at staging (`./go demo-dast`), off by default until the owner turns it on. The console's timeline does not show the SBOM or the dast line yet.
 
 ## When someone needs it
 
