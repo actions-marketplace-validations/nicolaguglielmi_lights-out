@@ -760,5 +760,343 @@ class Task(TowerCase):
             self.assertEqual(tower.main(["task", "absent.json"], {}), 1)
 
 
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def diff(path, hunks, mode=None):
+    """One file's section of a patch, as `git format-patch` writes it: the
+    header lines, then one `@@` hunk per entry of HUNKS (each a list of lines)."""
+    out = [f"diff --git a/{path} b/{path}"]
+    if mode:
+        out.append(mode)
+    out += [f"--- a/{path}", f"+++ b/{path}"]
+    for lines in hunks:
+        out.append("@@ -1,3 +1,3 @@")
+        out += lines
+    return "\n".join(out) + "\n"
+
+
+def commit(*sections, n=1, of=1):
+    """One commit of a patch series: the mbox header, the sections, the `--` signature."""
+    head = f"From {'a' * 40} Mon Sep 17 00:00:00 2001\nFrom: w <w@example.invalid>\nSubject: [PATCH {n}/{of}] x\n\n---\n"
+    return head + "\n".join(sections) + "--\n2.43.0\n\n"
+
+
+class Members(TowerCase):
+    """docs/adr/0071 §1: a network attempt's run.json holds `members`; each
+    goes through the same task() rule, with its id, its perimeter and
+    `hand_written`, true when the run or its `recorded` says so, else null."""
+
+    RECORDED = {"model": "m", "provider": "p", "thinking": "high", "turns": 2,
+                "tokens": {"total": 9}, "duration_s": 31, "input_sha256": "bb"}
+
+    def run_json(self, run, *flags):
+        (self.root / "run.json").write_text(json.dumps(run))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = tower.main(["task", *flags, "run.json"], {})
+        return code, json.loads(out.getvalue()) if code == 0 else None
+
+    def member(self, ident, perimeter, run):
+        return {"id": ident, "perimeter": perimeter, "run": run}
+
+    def test_a_network_attempt_gains_its_members_in_order(self):
+        run = {"harness": "network", "members": [
+            self.member("impl", ["app/*"], {"harness": "replay", "recorded": self.RECORDED}),
+            self.member("tests", ["tests/*"], {"harness": "replay", "recorded": {"hand_written": True}})]}
+        code, got = self.run_json(run)
+        self.assertEqual(code, 0)
+        self.assertEqual([m["id"] for m in got["members"]], ["impl", "tests"])
+        self.assertEqual(got["harness"], "network")
+
+    def test_each_member_goes_through_the_task_rule(self):
+        run = {"harness": "network", "members": [
+            self.member("a", ["app/*"], {"harness": "replay", "recorded": self.RECORDED}),
+            self.member("b", ["docs/*"], {"harness": "gemini-cli", "model": "live", "provider": "g", "thinking": "low",
+                                          "turns": 7, "tokens": {"total": 70}, "duration_s": 3, "input_sha256": "cc"})]}
+        _, got = self.run_json(run)
+        self.assertEqual(got["members"][0], {
+            "id": "a", "perimeter": ["app/*"], "hand_written": None, "harness": "replay", "replayed": True,
+            "model": "m", "provider": "p", "thinking": "high", "turns": 2, "tokens": {"total": 9},
+            "duration_s": 31, "input_sha256": "bb"})
+        self.assertEqual(got["members"][1], {
+            "id": "b", "perimeter": ["docs/*"], "hand_written": None, "harness": "gemini-cli", "replayed": False,
+            "model": "live", "provider": "g", "thinking": "low", "turns": 7, "tokens": {"total": 70},
+            "duration_s": 3, "input_sha256": "cc"})
+
+    def test_the_member_task_is_the_same_as_task_of_its_run(self):
+        run = {"harness": "replay", "recorded": self.RECORDED}
+        _, got = self.run_json({"members": [self.member("a", ["x"], run)]})
+        want = tower.task(run)
+        self.assertEqual({k: v for k, v in got["members"][0].items() if k not in ("id", "perimeter", "hand_written")}, want)
+
+    def test_hand_written_from_recorded_is_true(self):
+        run = {"harness": "replay", "recorded": {"hand_written": True}}
+        _, got = self.run_json({"members": [self.member("tests", ["tests/*"], run)]})
+        self.assertIs(got["members"][0]["hand_written"], True)
+        self.assertIsNone(got["members"][0]["model"])
+        self.assertTrue(got["members"][0]["replayed"])
+
+    def test_hand_written_from_the_run_itself_is_true(self):
+        _, got = self.run_json({"members": [self.member("a", ["x"], {"harness": "replay", "hand_written": True})]})
+        self.assertIs(got["members"][0]["hand_written"], True)
+
+    def test_hand_written_is_null_otherwise_never_false(self):
+        runs = [{"harness": "replay"}, {"harness": "replay", "hand_written": False},
+                {"harness": "replay", "recorded": {"hand_written": False}}, {"harness": "replay", "recorded": {}}]
+        for run in runs:
+            _, got = self.run_json({"members": [self.member("a", ["x"], run)]})
+            self.assertIsNone(got["members"][0]["hand_written"], run)
+
+    def test_a_member_run_with_no_harness_is_unknown_and_nothing_is_guessed(self):
+        _, got = self.run_json({"members": [self.member("a", ["x"], {})]})
+        m = got["members"][0]
+        self.assertEqual(m["harness"], "unknown")
+        self.assertEqual({k for k, v in m.items() if v not in (None, False, [])} - {"id"}, {"harness", "perimeter"})
+
+    def test_no_members_key_when_the_run_has_none(self):
+        for run in ({}, {"harness": "gemini-cli"}, {"members": None}, {"members": "impl"}, {"members": {"id": "a"}}):
+            _, got = self.run_json(run)
+            self.assertNotIn("members", got, run)
+            self.assertNotIn("members", tower.task(run), run)
+
+    def test_an_empty_list_of_members_is_a_list(self):
+        _, got = self.run_json({"harness": "network", "members": []})
+        self.assertEqual(got["members"], [])
+
+    def test_task_itself_carries_the_members(self):
+        got = tower.task({"harness": "network", "members": [self.member("a", ["x"], {"harness": "replay"})]})
+        self.assertEqual([m["id"] for m in got["members"]], ["a"])
+        self.assertEqual(got["members"][0]["perimeter"], ["x"])
+
+    def test_the_task_of_the_network_itself_is_still_the_networks(self):
+        _, got = self.run_json({"harness": "network", "members": [self.member("a", ["x"], {"harness": "replay"})]})
+        self.assertEqual((got["harness"], got["replayed"], got["model"]), ("network", False, None))
+
+
+class PatchFields(unittest.TestCase):
+    """docs/adr/0071 §1: patch_fields(bytes, members) gives the patch capped
+    at 65,536 bytes, cut at a newline, and the files counted on the whole."""
+
+    MEMBERS = [{"id": "impl", "perimeter": ["app/backend/notify/*"]}, {"id": "tests", "perimeter": ["tests/test_notify.py"]}]
+
+    def test_the_cap_is_65536_bytes(self):
+        self.assertEqual(tower.PATCH_CAP, 65536)
+
+    def test_a_small_patch_is_whole(self):
+        data = commit(diff("a.py", [[" k", "+new", "-old"]])).encode()
+        got = tower.patch_fields(data, [])
+        self.assertEqual(got["patch"], {"text": data.decode(), "bytes": len(data), "truncated": False})
+
+    def test_a_patch_of_exactly_the_cap_is_whole(self):
+        data = (b"x" * 99 + b"\n") * 655 + b"y" * 36
+        self.assertEqual(len(data), tower.PATCH_CAP)
+        got = tower.patch_fields(data, [])["patch"]
+        self.assertEqual((got["text"], got["bytes"], got["truncated"]), (data.decode(), 65536, False))
+
+    def test_a_patch_over_the_cap_is_cut_at_a_newline(self):
+        lines = [f"line {n:04d} ".ljust(99, "x") + "\n" for n in range(700)]
+        data = "".join(lines).encode()
+        self.assertEqual(len(data), 70000)
+        got = tower.patch_fields(data, [])["patch"]
+        self.assertTrue(got["truncated"])
+        self.assertEqual(got["bytes"], 70000)
+        # 655 whole lines fit under the cap, the 656th crosses it: the text is
+        # the 655 lines, with the last newline or without it, and not a byte more.
+        first = "".join(lines[:655])
+        self.assertIn(got["text"], (first, first[:-1]))
+        self.assertLessEqual(len(got["text"].encode()), tower.PATCH_CAP)
+        self.assertNotIn("line 0655", got["text"])
+
+    def test_the_cut_never_ends_inside_a_line(self):
+        lines = [f"l{n:05d}-" + "z" * (n % 37) + "\n" for n in range(6000)]
+        data = "".join(lines).encode()
+        self.assertGreater(len(data), tower.PATCH_CAP)
+        text = tower.patch_fields(data, [])["patch"]["text"]
+        self.assertTrue(set(text.rstrip("\n").split("\n")) <= {line.rstrip("\n") for line in lines})
+        self.assertTrue(data.decode().startswith(text))
+        self.assertLessEqual(len(text.encode()), tower.PATCH_CAP)
+        # no line that fit was dropped: the next line would not have fitted
+        kept = len(text.encode()) + (0 if text.endswith("\n") else 1)
+        following = data[kept:].split(b"\n", 1)[0] + b"\n"
+        self.assertGreater(kept + len(following), tower.PATCH_CAP)
+
+    def test_a_newline_on_the_last_byte_of_the_cap_is_a_cut_point(self):
+        block = (b"x" * 63 + b"\n") * 1024
+        self.assertEqual(len(block), tower.PATCH_CAP)
+        data = block + b"one more line\n"
+        got = tower.patch_fields(data, [])["patch"]
+        self.assertTrue(got["truncated"])
+        self.assertEqual(got["bytes"], len(data))
+        self.assertIn(got["text"], (block.decode(), block.decode()[:-1]))
+
+    def test_bytes_is_the_whole_size_in_bytes_not_characters(self):
+        data = ("é" * 40000 + "\n").encode()
+        got = tower.patch_fields(data, [])["patch"]
+        self.assertEqual(got["bytes"], 80001)
+        self.assertTrue(got["truncated"])
+
+    def test_text_is_decoded_with_replacement(self):
+        got = tower.patch_fields(b"ok \xff\xfe\n", [])["patch"]
+        self.assertEqual(got["text"], "ok ��\n")
+
+    def test_files_are_counted_on_the_whole_patch_not_the_cut_text(self):
+        filler = ["+filler " + "f" * 80 for _ in range(900)]
+        patch = commit(diff("app/backend/notify/a.py", [[" k", "-old"] + filler]),
+                       diff("tests/test_notify.py", [[" k", "+a", "+b", "-c"]]))
+        data = patch.encode()
+        self.assertGreater(len(data), tower.PATCH_CAP)
+        got = tower.patch_fields(data, self.MEMBERS)
+        self.assertTrue(got["patch"]["truncated"])
+        self.assertNotIn("tests/test_notify.py", got["patch"]["text"])
+        self.assertEqual(got["files"], [
+            {"path": "app/backend/notify/a.py", "added": 900, "removed": 1, "member": "impl"},
+            {"path": "tests/test_notify.py", "added": 2, "removed": 1, "member": "tests"}])
+
+    def test_added_and_removed_count_hunk_lines_not_headers(self):
+        patch = commit(diff("a.py", [[" ctx", "+one", "+two", "-gone", " ctx"], [" ctx", "+three"]]))
+        files = tower.patch_fields(patch.encode(), [])["files"]
+        self.assertEqual(files, [{"path": "a.py", "added": 3, "removed": 1, "member": None}])
+
+    def test_the_signature_and_the_mbox_header_are_not_lines_of_a_hunk(self):
+        patch = commit(diff("a.py", [["+x"]]))
+        self.assertIn("\n--\n", patch)
+        files = tower.patch_fields(patch.encode(), [])["files"]
+        self.assertEqual((files[0]["added"], files[0]["removed"]), (1, 0))
+
+    def test_a_file_in_two_commits_is_summed_in_first_seen_order(self):
+        patch = (commit(diff("b.py", [["+1", "+2"]]), diff("a.py", [["-1"]]), n=1, of=2)
+                 + commit(diff("c.py", [["+1"]]), diff("b.py", [["+3", "-4", "-5"]]), n=2, of=2))
+        files = tower.patch_fields(patch.encode(), [])["files"]
+        self.assertEqual([(f["path"], f["added"], f["removed"]) for f in files],
+                         [("b.py", 3, 2), ("a.py", 0, 1), ("c.py", 1, 0)])
+
+    def test_a_binary_file_counts_null_and_is_still_listed(self):
+        patch = commit(
+            "diff --git a/img/logo.png b/img/logo.png\nindex 1..2 100644\nBinary files a/img/logo.png and b/img/logo.png differ\n",
+            diff("a.py", [["+x"]]))
+        files = tower.patch_fields(patch.encode(), [])["files"]
+        self.assertEqual(files[0], {"path": "img/logo.png", "added": None, "removed": None, "member": None})
+        self.assertEqual((files[1]["added"], files[1]["removed"]), (1, 0))
+
+    def test_a_git_binary_patch_counts_null_too(self):
+        patch = commit("diff --git a/x.bin b/x.bin\nnew file mode 100644\nindex 0..1\nGIT binary patch\nliteral 4\nLcmZQz0000100001\n\n")
+        files = tower.patch_fields(patch.encode(), [])["files"]
+        self.assertEqual(files, [{"path": "x.bin", "added": None, "removed": None, "member": None}])
+
+    def test_member_is_the_one_whose_perimeter_matches_and_star_crosses_slash(self):
+        patch = commit(diff("app/backend/notify/deep/er/send.py", [["+x"]]), diff("tests/test_notify.py", [["+y"]]),
+                       diff("README.md", [["+z"]]))
+        files = tower.patch_fields(patch.encode(), self.MEMBERS)["files"]
+        self.assertEqual([f["member"] for f in files], ["impl", "tests", None])
+
+    def test_a_glob_matches_the_whole_path_and_with_case(self):
+        members = [{"id": "m", "perimeter": ["app/*.py"]}]
+        patch = commit(diff("app/a.py", [["+x"]]), diff("app/a.txt", [["+x"]]), diff("APP/a.py", [["+x"]]),
+                       diff("xapp/a.py", [["+x"]]))
+        files = tower.patch_fields(patch.encode(), members)["files"]
+        self.assertEqual([f["member"] for f in files], ["m", None, None, None])
+
+    def test_every_glob_of_a_member_counts(self):
+        members = [{"id": "m", "perimeter": ["docs/*", "README.md"]}]
+        patch = commit(diff("README.md", [["+x"]]), diff("docs/a/b.md", [["+x"]]))
+        self.assertEqual([f["member"] for f in tower.patch_fields(patch.encode(), members)["files"]], ["m", "m"])
+
+    def test_a_single_worker_has_no_member(self):
+        patch = commit(diff("app/backend/notify/send.py", [["+x"]]))
+        self.assertIsNone(tower.patch_fields(patch.encode(), [])["files"][0]["member"])
+
+    def test_the_stub_patches_of_ticket_0010_give_the_files_the_tower_recorded(self):
+        doc = json.loads((ROOT / "fixtures/logbook/stub/state/tickets.0010.json").read_text(encoding="utf-8"))
+        for task in doc["tasks"]:
+            got = tower.patch_fields(task["patch"]["text"].encode(), self.MEMBERS)
+            self.assertEqual(got["files"], task["files"], f"attempt {task['attempt']}")
+            self.assertEqual(got["patch"], task["patch"])
+
+
+class TaskPatch(TowerCase):
+    """`task --patch <run.json>` reads the `patch` file beside run.json
+    (docs/adr/0071 §1); without --patch a reviewer's run stores none."""
+
+    def write(self, run, patch=None):
+        (self.root / "out").mkdir(exist_ok=True)
+        (self.root / "out" / "run.json").write_text(json.dumps(run))
+        if patch is not None:
+            (self.root / "out" / "patch").write_bytes(patch)
+
+    def task(self, *flags):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = tower.main(["task", *flags, "out/run.json"], {})
+        return code, (json.loads(out.getvalue()) if code == 0 else None), err.getvalue()
+
+    def test_without_the_flag_there_are_no_patch_keys_even_with_a_patch_file(self):
+        self.write({"harness": "replay"}, commit(diff("a.py", [["+x"]])).encode())
+        code, got, _ = self.task()
+        self.assertEqual(code, 0)
+        self.assertNotIn("patch", got)
+        self.assertNotIn("files", got)
+
+    def test_with_the_flag_the_patch_and_its_files_are_merged_into_the_task(self):
+        data = commit(diff("a.py", [["+x", "-y"]])).encode()
+        self.write({"harness": "replay", "model": "m"}, data)
+        code, got, _ = self.task("--patch")
+        self.assertEqual(code, 0)
+        self.assertEqual(got["patch"], {"text": data.decode(), "bytes": len(data), "truncated": False})
+        self.assertEqual(got["files"], [{"path": "a.py", "added": 1, "removed": 1, "member": None}])
+        self.assertEqual((got["harness"], got["model"]), ("replay", "m"))
+
+    def test_with_the_flag_and_no_patch_file_both_are_null(self):
+        self.write({"harness": "gemini-cli"})
+        code, got, _ = self.task("--patch")
+        self.assertEqual(code, 0)
+        self.assertIn("patch", got)
+        self.assertIn("files", got)
+        self.assertIsNone(got["patch"])
+        self.assertIsNone(got["files"])
+
+    def test_the_members_of_the_run_attribute_the_files_by_perimeter(self):
+        run = {"harness": "network", "members": [
+            {"id": "impl", "perimeter": ["app/backend/notify/*"], "run": {"harness": "replay"}},
+            {"id": "tests", "perimeter": ["tests/test_notify.py"],
+             "run": {"harness": "replay", "recorded": {"hand_written": True}}}]}
+        patch = (commit(diff("app/backend/notify/send.py", [["+x"]]), n=1, of=2)
+                 + commit(diff("tests/test_notify.py", [["+y"]]), n=2, of=2))
+        self.write(run, patch.encode())
+        code, got, _ = self.task("--patch")
+        self.assertEqual(code, 0)
+        self.assertEqual([(f["path"], f["member"]) for f in got["files"]],
+                         [("app/backend/notify/send.py", "impl"), ("tests/test_notify.py", "tests")])
+        self.assertEqual([m["id"] for m in got["members"]], ["impl", "tests"])
+        self.assertIs(got["members"][1]["hand_written"], True)
+
+    def test_a_patch_over_the_cap_through_the_cli(self):
+        data = (diff("big.txt", [[]]) + ("+" + "q" * 98 + "\n") * 1000).encode()
+        self.assertGreater(len(data), tower.PATCH_CAP)
+        self.write({"harness": "replay"}, data)
+        code, got, _ = self.task("--patch")
+        self.assertEqual(code, 0)
+        self.assertTrue(got["patch"]["truncated"])
+        self.assertEqual(got["patch"]["bytes"], len(data))
+        self.assertLessEqual(len(got["patch"]["text"].encode()), tower.PATCH_CAP)
+        self.assertEqual(got["files"][0]["added"], 1000)
+
+    def test_an_unreadable_run_is_still_a_failure_with_the_flag(self):
+        (self.root / "out").mkdir()
+        (self.root / "out" / "run.json").write_text("not json")
+        code, got, err = self.task("--patch")
+        self.assertEqual(code, 1)
+        self.assertIsNone(got)
+        self.assertTrue(err.strip())
+
+    def test_an_absent_run_is_a_failure_with_the_flag_too(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = tower.main(["task", "--patch", "nowhere/run.json"], {})
+        self.assertEqual(code, 1)
+        self.assertEqual(out.getvalue(), "")
+
+
 if __name__ == "__main__":
     unittest.main()
