@@ -38,6 +38,16 @@ A card's column is the logbook's `kanban`. Nothing on the page moves a card: the
 
 A refresh redraws only when the logbook changed, and keeps the focus, the drawer and the search box.
 
+## The network
+
+`#network` ([ADR 0071](../docs/adr/0071-the-governed-network-on-screen-and-in-text.md)) draws one ticket's agent network from the logbook alone: the tower at the centre, the six roles (lit when the record names them), the attempt's workers with their harness and model (a network attempt's members, at most four, ADR 0036), each gate lighting GO or NO-GO in the order it ran and the gates that did not run, the reviewer, the rework loop back to the dev-worker with its count, the canary stages and the one human gate before 100%. Beside it, every attempt, newest first, with the files it touched, the gate lines that judged it, verbatim, and its patch; a patch is shown only once that attempt's `secrets` gate said GO, and is cut at 64 KiB. Below, the files by perimeter: which glob holds each, which worker and attempts touched it, which tests cover it (the project map's `tests` edges), which ADRs cite it and which open ticket holds it.
+
+- **The view is the link**: `#network/<ticket>?attempt=<n>`; with no ticket it follows the one updated last.
+- **Live**: when the 2 s poll brings a logbook that adds facts to the ticket shown, they are marked for 4 s and said to a screen reader. A patch and its gate lines reach the logbook when the attempt's step ends: the stream is per attempt, not per keystroke.
+- **Replay**: the Replay button (or `?replay=1`) reveals the record one timeline row every 2 s under a label that says it is a replay and that nothing is running. It sends no request until it ends.
+- **The same facts in text**: `./go network TICKET=<id> [ATTEMPT=<n>]` prints every fact of the screen in the same words, from the same logbook. The words are one table, `core/network.py --table`, embedded in the page as `#network-words`; `./go ci` proves the copy equal.
+- **An older logbook** (1.2) draws one worker per attempt and one summary gate edge, and says it records no patches or gate lines.
+
 ## The request editor
 
 The spec gate's line and the Request button sit in a bar held at the bottom of the window, so the verdict is in view while you type. After a save that wrote the ticket, the form is emptied, Request waits for the next edit, and the top of the editor links the new ticket's timeline: a second press cannot file the same text twice.

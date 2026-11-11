@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "lights-out/logbook/1.3",
   "title": "lights-out logbook 1.3",
-  "description": "The one document the console reads and a consumer collects (docs/adr/0047 §2, §6; field by field in docs/plans/console.md). Assembled by core/logbook.sh, no clock of its own. An added optional field is a minor version; readers ignore fields they do not know. A source the reader could not read is {ok: false, error}, never a default. 1.1 (docs/adr/0055 §6) adds, all optional: each ticket's feature, priority, questions, product, tasks and timeline, the spec's verdict, line, criteria, by and at; each ticket's wait (ADR 0053's refused assign) and map (ADR 0054); and at the top level kanban, perimeters_held (ADR 0053's perimeters/held) and docs_to_realign (ADR 0054's docs tickets). 1.2 (docs/adr/0059 §3) adds, all optional: the project map's ADRs at the top level (adrs: {map_sha, items}, each with its status, text and the files, tickets and ADRs it is linked to), each ticket's adrs (the ADRs that govern its perimeter's files), and the request row's by and via (docs/adr/0059 §4). 1.3 (docs/adr/0073 §10) adds, optional: agents at the top level, {lines}, what the local contract gives the agents in the wording ./go agents prints, unread when the contract is refused.",
+  "description": "The one document the console reads and a consumer collects (docs/adr/0047 §2, §6; field by field in docs/plans/console.md). Assembled by core/logbook.sh, no clock of its own. An added optional field is a minor version; readers ignore fields they do not know. A source the reader could not read is {ok: false, error}, never a default. 1.1 (docs/adr/0055 §6) adds, all optional: each ticket's feature, priority, questions, product, tasks and timeline, the spec's verdict, line, criteria, by and at; each ticket's wait (ADR 0053's refused assign) and map (ADR 0054); and at the top level kanban, perimeters_held (ADR 0053's perimeters/held) and docs_to_realign (ADR 0054's docs tickets). 1.2 (docs/adr/0059 §3) adds, all optional: the project map's ADRs at the top level (adrs: {map_sha, items}, each with its status, text and the files, tickets and ADRs it is linked to), each ticket's adrs (the ADRs that govern its perimeter's files), and the request row's by and via (docs/adr/0059 §4). 1.3 (docs/adr/0071 §1) adds, all optional: each attempt's members (a network's workers), patch (capped, withheld as {ok: false, error} until its secrets gate said GO) and files; the gates of ci and of every rework entry, one {gate, verdict, line} per gate line; and each ticket's files, one row per path an attempt touched, with its perimeter glob, worker, attempts, tests, ADRs and holders. 1.3 also adds (docs/adr/0073 §10), all optional: agents at the top level, {lines}, what the local contract gives the agents in the wording ./go agents prints, unread when the contract is refused; each ticket's task.mcp (run.json's mcp: the declared servers, the calls the guard allowed and those it denied; null when nothing is declared, §9) and review.instructions ({file, sha256, base}, the reviewer's instructions read from the base, or null).",
   "type": "object",
   "required": [
     "schema",
@@ -509,7 +509,12 @@
         "rework": {
           "type": "array",
           "items": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "gates": {
+                "$ref": "#/$defs/gates"
+              }
+            }
           }
         },
         "pr": {
@@ -567,6 +572,9 @@
             },
             "head_sha": {
               "$ref": "#/$defs/str_or_null"
+            },
+            "gates": {
+              "$ref": "#/$defs/gates"
             }
           }
         },
@@ -804,6 +812,22 @@
                   "integer",
                   "null"
                 ]
+              },
+              "members": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/$defs/member"
+                },
+                "maxItems": 4
+              },
+              "patch": {
+                "$ref": "#/$defs/patch"
+              },
+              "files": {
+                "$ref": "#/$defs/changed"
               }
             }
           }
@@ -882,6 +906,73 @@
           "items": {
             "type": "string",
             "pattern": "^[0-9]{4}$"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "glob",
+              "member",
+              "attempts",
+              "tests",
+              "adrs",
+              "held_by"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "glob": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "member": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "attempts": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "tests": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "adrs": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}$"
+                }
+              },
+              "held_by": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
           }
         }
       }
@@ -1405,6 +1496,176 @@
         }
       },
       "additionalProperties": false
+    },
+    "gate_row": {
+      "type": "object",
+      "required": [
+        "gate",
+        "verdict",
+        "line"
+      ],
+      "properties": {
+        "gate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "verdict": {
+          "enum": [
+            "GO",
+            "NO-GO",
+            null
+          ]
+        },
+        "line": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gates": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/$defs/gate_row"
+      }
+    },
+    "patch": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "text",
+            "bytes",
+            "truncated"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "changed": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "added",
+          "removed",
+          "member"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "added": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "removed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "member": {
+            "$ref": "#/$defs/str_or_null"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": [
+        "id",
+        "perimeter",
+        "hand_written",
+        "harness",
+        "model"
+      ],
+      "properties": {
+        "harness": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "provider": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "model": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "thinking": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "turns": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tokens": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "input_sha256": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "replayed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "perimeter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hand_written": {
+          "enum": [
+            true,
+            null
+          ]
+        }
+      }
     }
   }
 }

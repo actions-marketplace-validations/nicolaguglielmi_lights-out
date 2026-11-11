@@ -727,7 +727,7 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.1
+  - uses: nicolaguglielmi/lights-out@v0.4.0
 ```
 
 - **The check run's summary** has one line per gate, the gates that did not
@@ -744,12 +744,12 @@ steps:
   that the tests a change adds or changes fail on its base.
   `test-integrity` runs test-weakening, then mutation on the changed lines.
 - **Two standalone Actions** run one of those each:
-  `nicolaguglielmi/lights-out/actions/test-proof@v0.3.1` and
-  `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.1`. Their sources
+  `nicolaguglielmi/lights-out/actions/test-proof@v0.4.0` and
+  `nicolaguglielmi/lights-out/actions/test-integrity@v0.4.0`. Their sources
   are `actions/test-proof/` and `actions/test-integrity/`. Each also has a
   repository of its own for its Marketplace page, with a copy at the same
-  version: `nicolaguglielmi/test-proof@v0.3.1` and
-  `nicolaguglielmi/test-integrity@v0.3.1`.
+  version: `nicolaguglielmi/test-proof@v0.4.0` and
+  `nicolaguglielmi/test-integrity@v0.4.0`.
 - Linux runners only. The Action needs docker.
 - A fork PR's token cannot write checks. The post is skipped with a warning,
   and the job status still carries the verdict.
