@@ -1371,7 +1371,7 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 # beside it; the worker image is built on the workbench, not the workload's
 # toolchain. CONFORMANCE_HARNESS=<name> runs one. The suite is proved first,
 # on a made-up harness and a stand-in for compose, to accept a good harness
-# and refuse thirty-three wrong ones, its probe proved one way out at a time
+# and refuse fifty-four wrong ones (two good runs), its probe proved one way out at a time
 # (gates/harness-conformance/proof.sh): a
 # suite that cannot fail would say GO to everything.
 .PHONY: harness-conformance

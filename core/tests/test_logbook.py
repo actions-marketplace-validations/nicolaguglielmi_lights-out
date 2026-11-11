@@ -272,7 +272,7 @@ class Agents(unittest.TestCase):
     def test_the_ticket_carries_the_task_s_mcp_and_the_review_s_instructions(self):
         mcp = {"sha256": "cd", "servers": [], "unlisted": "hidden",
                "calls": [{"server": "notes", "tool": "search_notes", "count": 1}], "denied": []}
-        instructions = {"file": ".lights-out/roles/test-reviewer.md", "sha256": "ef", "base": "b1"}
+        instructions = {"file": "contract/roles/test-reviewer.md", "sha256": "ef", "base": "b1"}
         doc = {"state": "review", "history": [H("open", "opened", "t0")],
                "task": {"role": "dev-worker", "harness": "codex", "mcp": mcp},
                "review": {"role": "test-reviewer", "verdict": "approved", "instructions": instructions}}
