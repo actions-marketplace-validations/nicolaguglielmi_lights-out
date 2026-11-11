@@ -390,20 +390,20 @@ class DiffTest(Tmp):
         self.assertEqual(res[3]["where"], "compose:backend-test")
 
     def test_prefix_is_carried_into_paths(self):
-        prefix = "app/backend/"
+        prefix = "svc/backend/"
         res = self.judge(
             {"src/new.py": "x\nassert x\n", "src/fresh.py": "eval(q)\n"},
             {"src/old.py": "assert x\n"},
             [("B101", "./src/new.py", 2), ("B307", "src//fresh.py", 1)],
             [("B101", "src/old.py", 1)],
-            renames=[("R100", "app/backend/src/old.py", "app/backend/src/new.py")],
+            renames=[("R100", "svc/backend/src/old.py", "svc/backend/src/new.py")],
             prefix=prefix,
         )
         self.assertNew(res, 1, inherited=1)
         record = res[3]
-        self.assertEqual(record["inherited"], [{"rule": "B101", "file": "app/backend/src/new.py", "line": 2}])
-        self.assertEqual(record["new"], [{"rule": "B307", "file": "app/backend/src/fresh.py", "line": 1}])
-        self.assertIn("app/backend/src/fresh.py", res[2])
+        self.assertEqual(record["inherited"], [{"rule": "B101", "file": "svc/backend/src/new.py", "line": 2}])
+        self.assertEqual(record["new"], [{"rule": "B307", "file": "svc/backend/src/fresh.py", "line": 1}])
+        self.assertIn("svc/backend/src/fresh.py", res[2])
 
     def test_prefix_makes_paths_repository_paths_for_the_comparison(self):
         # The rename record names repository paths: without the prefix on the
