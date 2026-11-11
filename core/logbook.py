@@ -6,10 +6,10 @@ Assembles `lights-out/logbook/1.3` (core/logbook/1.3.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
-project map's ADRs (MAP_FILE, docs/adr/0059 §3) and what the contract
-gives the agents (core/agents.py, docs/adr/0073 §10), and per ticket what
-its last run used: the task's `mcp` and the review's `instructions`
-(§10, the ticket's back). Every rule
+project map's ADRs and tests (MAP_FILE, docs/adr/0059 §3, docs/adr/0071 §1), what the
+contract gives the agents (core/agents.py, docs/adr/0073 §10), and per ticket
+what its last run used: the task's `mcp` and the review's `instructions`
+(docs/adr/0073 §10, the ticket's back). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -55,6 +55,8 @@ COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "revie
 _DECIMAL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 _PROVENANCE = re.compile(r"^#\s*Provenance, (measurement|external|decision):\s*(.*)$")
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
+# A gate's one line (CLAUDE.md, the gate output contract).
+_GATE_LINE = re.compile(r"^(GO|NO-GO): ([a-z0-9-]+)(?: — .*)?$")
 VERIFY_KEYS = ("ERROR_RATE_MAX_DELTA", "LATENCY_P95_MAX_DELTA")
 
 
@@ -150,6 +152,30 @@ def adrs():
                       "adrs": sorted({number(n) for k, n in near if k == "adr"}),
                       "tickets": sorted({n for k, n in near if k == "ticket"})})
     return {"map_sha": meta.get("sha"), "items": items}
+
+
+def map_tests():
+    """{path: sorted tests} for every file the project map knows, from its
+    `tests` edges (docs/adr/0054, docs/adr/0071 §1); None when the map is
+    unread, as `adrs` says why."""
+    path = env("MAP_FILE", ".crew/map.sqlite")
+    if not os.path.isfile(path):
+        return None
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
+            if meta.get("schema") != MAP_SCHEMA:
+                return None
+            out = {name: [] for (name,) in db.execute("SELECT name FROM node WHERE kind IN ('file', 'test')")}
+            for test, target in db.execute("SELECT t.name, f.name FROM edge e JOIN node t ON t.id = e.src "
+                                           "JOIN node f ON f.id = e.dst WHERE e.kind = 'tests'"):
+                out.setdefault(target, []).append(test)
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return None
+    return {k: sorted(set(v)) for k, v in out.items()}
 
 
 def governing(book_adrs, tickets):
@@ -331,9 +357,9 @@ def tickets(rels):
             "outcome": outcome(doc, tid, rels),
             "spec": spec,
             "task": pick(doc.get("task"), TASK_KEYS + ("mcp",)),
-            "rework": doc.get("rework") or [],
+            "rework": [judged(r) for r in doc.get("rework") or []],
             "pr": pick(doc.get("pr"), ("number", "url", "base_sha", "head_sha")),
-            "ci": pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha")),
+            "ci": judged(pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha", "lines"))),
             "review": pick(doc.get("review"), ("role", "verdict", "reason", "harness", "model", "instructions")),
             "merge": pick(doc.get("merge"), ("sha", "head_sha")),
             "map": pick(doc.get("map"), ("sha", "docs_ticket")),
@@ -341,8 +367,96 @@ def tickets(rels):
             "history": history,
             "questions": doc.get("questions") or [],
             "product": pick(doc.get("product"), TASK_KEYS[1:] + ("consulted", "why")),
-            "tasks": [pick(t, TASK_KEYS + ("attempt",)) for t in doc.get("tasks") or []],
+            "tasks": attempts(doc),
             "timeline": timeline(doc, tid, rels, perimeter(path)),
+        })
+    return out
+
+
+def gate_rows(lines):
+    """[{gate, verdict, line}] from a judge's gate lines, by the gate output
+    contract; a line off the contract keeps its text with gate and verdict
+    None (docs/adr/0071 §1). None when there are no lines."""
+    if not isinstance(lines, list):
+        return None
+    rows = []
+    for line in lines:
+        m = _GATE_LINE.match(line) if isinstance(line, str) else None
+        rows.append({"gate": m.group(2) if m else None, "verdict": m.group(1) if m else None, "line": line})
+    return rows
+
+
+def judged(entry):
+    """A ci or rework entry with `gates` in place of its raw `lines`."""
+    if not isinstance(entry, dict):
+        return entry
+    out = {k: v for k, v in entry.items() if k != "lines"}
+    out["gates"] = gate_rows(entry.get("lines"))
+    return out
+
+
+def shown_patch(patch, gates, attempt):
+    """The attempt's patch only once its secrets gate said GO, else why not
+    (docs/adr/0071 §1): a key a worker pasted never reaches a snapshot."""
+    if patch is None:
+        return None
+    if any(g.get("gate") == "secrets" and g.get("verdict") == "GO" for g in gates or []):
+        return patch
+    return unread(f"withheld: the secrets gate did not say GO on attempt {attempt}")
+
+
+def attempts(doc):
+    """Every attempt's run (tower `tasks`), with its workers, its patch as
+    shown_patch allows and its files (docs/adr/0071 §1)."""
+    rework = {r.get("attempt"): r for r in doc.get("rework") or [] if isinstance(r, dict)}
+    ci = doc.get("ci") if isinstance(doc.get("ci"), dict) else None
+    # The ci on the document judged the PR's head: it vouches for the last
+    # attempt only when that is the head it judged.
+    head = (doc.get("pr") or {}).get("head_sha") if isinstance(doc.get("pr"), dict) else None
+    if ci is not None and ci.get("head_sha") and head and ci.get("head_sha") != head:
+        ci = None
+    out = []
+    for t in doc.get("tasks") or []:
+        row = pick(t, TASK_KEYS + ("attempt",))
+        if row is None:
+            out.append(t)
+            continue
+        n = row["attempt"]
+        source = rework.get(n) or (ci if ci is not None and n == doc.get("attempt") else None)
+        row["members"] = t.get("members")
+        row["patch"] = shown_patch(t.get("patch"), gate_rows((source or {}).get("lines")), n)
+        row["files"] = t.get("files")
+        out.append(row)
+    return out
+
+
+def ticket_files(ticket, adrs_items, holds, tests_of):
+    """One row per path any attempt of TICKET touched (docs/adr/0071 §1):
+    the perimeter glob, the worker, the attempts, the tests the map knows,
+    the ADRs citing it and who holds it. None where the source is unread."""
+    globs = ticket["perimeter"] if isinstance(ticket.get("perimeter"), list) else []
+    adrs_items = None if is_unread(adrs_items) else adrs_items
+    holds = None if is_unread(holds) else holds
+    rows = {}
+    tasks = [t for t in ticket.get("tasks") or [] if isinstance(t, dict)]
+    for t in sorted(tasks, key=lambda t: t.get("attempt") if isinstance(t.get("attempt"), int) else -1):
+        for f in t.get("files") or []:
+            row = rows.setdefault(f["path"], {"path": f["path"], "attempts": []})
+            row["member"] = f.get("member")
+            if t.get("attempt") not in row["attempts"]:
+                row["attempts"].append(t.get("attempt"))
+    out = []
+    for path in sorted(rows):
+        row = rows[path]
+        out.append({
+            "path": path,
+            "glob": next((g for g in globs if fnmatch.fnmatchcase(path, g)), None),
+            "member": row["member"],
+            "attempts": sorted(a for a in row["attempts"] if a is not None),
+            "tests": None if tests_of is None or path not in tests_of else tests_of[path],
+            "adrs": None if adrs_items is None else sorted(a["number"] for a in adrs_items if path in a["files"]),
+            "held_by": None if not isinstance(holds, list) else sorted(
+                h["ticket"] for h in holds if h["holding"] and any(fnmatch.fnmatchcase(path, g) for g in h["globs"])),
         })
     return out
 
@@ -719,6 +833,10 @@ def main(argv):
         t["wait"] = waiting(t, holds)
     decisions = adrs()
     governing(decisions, held)
+    items = decisions.get("items") if isinstance(decisions, dict) and not is_unread(decisions) else None
+    tests_of = map_tests() if items is not None else None
+    for t in held if isinstance(held, list) else []:
+        t["files"] = ticket_files(t, items, holds, tests_of)
     book = {
         "schema": SCHEMA,
         "source": source(),

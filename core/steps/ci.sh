@@ -66,7 +66,7 @@ gates_dir=""
 : > "$details_file"
 if [ "$perimeter_rc" -ne 0 ]; then
   out="NO-GO: perimeter — $(printf '%s' "$perimeter" | tr '\n' ' ')"
-  printf '%s\n' "$perimeter" > "$details_file"
+  printf '%s\n' "$perimeter" > "$details_file"; printf '%s\n' "$out" > "$tmp/lines"
   printf 'GATES=NO-GO\nFAILED=perimeter\nRISK_LEVEL=unknown\nRISK_DECISION=unknown\n' > "$GATES_OUT/verdict.env"
 else
   err=$(git -C "$WORKLOAD" worktree add --detach "$wt" FETCH_HEAD 2>&1 >/dev/null) \
@@ -128,6 +128,6 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
 
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
-  --argjson details "$details" \
+  --argjson details "$details" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
   '{state: $state, ci: {verdict: $verdict, failed: (if $failed == "" then null else $failed end),
-    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details}}'
+    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, lines: $lines}}'

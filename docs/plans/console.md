@@ -571,3 +571,25 @@ to the whole timeline. It holds no answer box: the kanban writes nothing.
 `turn=you` in the hash is "Your turn only". When a refresh moves a card it
 flies for 400 ms from where it was (none with `prefers-reduced-motion`),
 and `#announce`, a polite live region, says which card moved where.
+
+## 1.3: the governed network (ADR 0071, 2026-11-11)
+
+All optional; the schema is `core/logbook/1.3.schema.json`. A field never
+recorded is `null`; a source that exists and cannot be read is
+`{ok: false, error}`.
+
+| Field | From | Rule |
+|---|---|---|
+| `tickets[].tasks[].members` | the network adapter's `run.json` through `core/tower.py task` | `[{id, perimeter, hand_written, harness, replayed, model, …}]`, each member by `task()`'s rule; `hand_written` is `true` or `null` |
+| `tickets[].tasks[].patch` | the `patch` beside `run.json`, through `core/tower.py task --patch` (assign and rework only) | `{text, bytes, truncated}`, the text cut at the last newline within 65,536 bytes; shown only when that attempt's `secrets` gate said GO, else `{ok: false, error: "withheld: …"}` |
+| `tickets[].tasks[].files` | the same patch, counted whole | `[{path, added, removed, member}]`; a binary file's counts `null`; `member` by the members' perimeter globs |
+| `tickets[].ci.gates`, `tickets[].rework[].gates` | `$GATES_OUT/lines` recorded by `core/steps/ci.sh` as `ci.lines`, copied by `core/steps/rework.sh` | `[{gate, verdict, line}]` by the gate output contract, `line` verbatim; the raw `lines` are not in the logbook |
+| `tickets[].files` | the attempts' files, the project map's `tests` edges, `adrs.items[].files`, `perimeters_held` | one row per path: `{path, glob, member, attempts, tests, adrs, held_by}` |
+
+The attempt whose gates a ci entry gives is the ticket's last, and only
+when `ci.head_sha` is the PR's head.
+
+`#network[/<id>][?attempt=<n>&replay=1]` draws one ticket from these fields
+and from `releases[]` (its stages and the human answer); `./go network`
+prints the same facts in the same words, from the table
+`core/network.py --table` that the page embeds as `#network-words`.

@@ -41,9 +41,10 @@ wins when the two disagree. Decisions behind each step are in
 
 The third arc (plan §16) is built, except for the runs that are the
 owner's: the OpenAI recording, a committed Claude recording and the L1
-end-to-end on GitHub. Two things close before M24, each in
-a session of its own: egress for the harnesses, and the tower restoring
-`.lights-out/runners/` from the base.
+end-to-end on GitHub. The two things that had to close before M24 are on
+`main`: egress for the harnesses (ADR 0046), and the tower restoring
+`.lights-out/runners/` from the base (ADR 0033's 2026-11-04 amendment,
+proven by `ci/attach.sh` case f).
 
 - **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
   package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
@@ -55,6 +56,10 @@ a session of its own: egress for the harnesses, and the tower restoring
   The exit criterion is §14's: if at least two tickets in three do not
   reach a mergeable PR without a human touching the code, the thesis is
   weaker than expected.
+  First run, 2026-11-11, on jd/tenacity (sqlparse was dropped: it ended
+  its maintenance): five tests-only tickets on Anthropic, five PRs merged
+  at the first attempt with every gate GO. Gemini and OpenAI, and tickets
+  that change code, are still to run.
 - **M32 — outside adapters, other CIs, one more delivery** (ADR 0058). An
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
@@ -73,9 +78,16 @@ demo-loop`, the toolbelt, then the launch), is
   ticket, attempt, worker and threshold you changed. The console (M29)
   already shows the tickets, their timelines and the thresholds; its
   first slice (ADR 0063) says on each ticket whose turn it is.
+- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), deferred by the owner on 2026-11-11, nothing built): SAST judged on the diff as dependencies already are, a signed SBOM with every release, and a passive DAST scan of the canary before it takes traffic.
 
 ## When someone needs it
 
+- **M44 — deploy on the main clouds** (planned 2026-11-11, nothing built):
+  connectors and installable plugins that deploy, release and operate the
+  repository lights-out is attached to on GCP, AWS, Azure, Hetzner and the
+  other main providers, each behind the same Delivery, Registry, Metrics and
+  Flags ports and its conformance suite, with no long-lived credential in
+  the repository. Started by the owner when a user needs it.
 - **M8 cloud track (L2)**: Google Cloud with Terraform and Cloud Deploy.
 - **M10 (L3)**: Agent Engine and the nightly self-test.
 
