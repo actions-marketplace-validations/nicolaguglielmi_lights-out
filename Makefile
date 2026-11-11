@@ -1365,6 +1365,7 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 # toolchain. CONFORMANCE_HARNESS=<name> runs one. The suite is proved first,
 # on a made-up harness and a stand-in for compose, to accept a good harness
 # and refuse thirty-three wrong ones, its probe proved one way out at a time
+# and its port picker under the proxy's load
 # (gates/harness-conformance/proof.sh): a
 # suite that cannot fail would say GO to everything.
 .PHONY: harness-conformance
