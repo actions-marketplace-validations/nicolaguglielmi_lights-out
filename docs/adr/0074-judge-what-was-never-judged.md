@@ -158,3 +158,15 @@ The tests below are `ci/range.sh`, a self-check in `./go ci`.
 `./go demo` and `./go ci` are unchanged: the frontier and the trees live
 in a GitHub-only job (ADR 0039); locally `lights-out gates` without
 JUDGED= judges exactly as before, with no account and no key.
+
+## Amendment 2026-11-11: a judge older than this ADR
+
+The first push that brought this ADR onto the integration branch (38935b1)
+was judged from a base whose image predates it: the Action, from HEAD,
+passed `JUDGED=` to the base's entrypoint, which refused it as an unknown
+argument (`NO-GO: gates`, run 43023293782). The judge is the base's by
+design, so the workflow now passes no judged trees when the base's
+`package/entrypoint.sh` does not take `JUDGED=`, and says so in a notice:
+mutation covers the whole range, as before this ADR. Nothing is skipped
+that the old rule would have judged; the speed comes once the base carries
+this ADR.
