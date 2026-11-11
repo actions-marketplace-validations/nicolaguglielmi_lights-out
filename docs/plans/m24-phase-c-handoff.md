@@ -152,7 +152,11 @@ What the PRs did, as I read them (no gate read them):
    and on `main` after a merge. Case g-self now judges the copies committed at HEAD. Case (k), five
    throwaway repositories, was NO-GO on the base's contract before the change and is GO after. ADR 0049 is
    amended.
-6. Once, `./go gates` in `.crew/proof` failed in 1 s with `make: No rule to make target
+6. The same base-contract effect hit the scorer test in `self` (`NO-GO: core-tests`, run 43090524734): it
+   listed lights-out's own contract copy, which `self` holds at the base's version. The test now lists the
+   stack's copy and the two bundled ones; case g-self holds the contract copy to the stack's. Before pushing,
+   `self` was simulated locally: the base's `.lights-out/` put back into the working tree, `./go ci` GO.
+7. Once, `./go gates` in `.crew/proof` failed in 1 s with `make: No rule to make target
    '.attached/workload.env'` right after a `git checkout` of the attached clone. It did not recur on the same
    heads. Not investigated.
 
@@ -203,4 +207,15 @@ produce a mergeable PR without a human touching the code.
   stacks/python/tests`, run by `ci/core-tests.sh`.
 - The gates on the references and the scorer before and after the fix: sections 1 and 2.
 - The runs: section 3, from the tower documents and `./go network TICKET=<id>`.
-- `./go ci` and the six workflows: recorded in the commit after this handoff's.
+- `./go ci` from this clone before each push: GO on fdd3120 (238 s), 4159f09 (299 s), 8cb7aca (326 s), and
+  GO with the base's contract put back (365 s). The first attempts were NO-GO at `secrets` (this session's
+  nested checkouts under `.crew/`, since moved out) and `app-free` (the scorer test under `core/tests/`).
+  Two runs stalled at `ci-shell` while the host slept on battery.
+- Workflows on 8cb7aca: ci 43092952113 success, stranger 43092952295 success, package 43092952181 success,
+  podman 43092952070 success, site 43092984037 success (dispatched), **self 43092952183 still running at
+  80 minutes** when this was written. Its range runs from the last green ancestor, 653d29f, and holds about
+  630 lines of python under `core/` from the M42 merges that no green run has judged (`core/network.py`,
+  `core/logbook.py`, `core/tower.py`). This branch changes none of them. Two other branches' `self` runs today
+  were cancelled at GitHub's 6-hour limit (43029223575, 43029879949). Earlier `self` runs here: red at
+  `init` g-self on fdd3120 (43087538182) and at `core-tests` on 4159f09 (43090524734), both fixed above.
+  The owner should read 43092952183's verdict when it lands.
