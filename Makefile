@@ -215,7 +215,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin plan contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin plan contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -472,7 +472,10 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk,
 # a verify wired to always pass -- or fail -- would pass its own demo too).
 # Each fixture is a real commit applied by `git am` in its own throwaway
 # worktree off the workload repository's HEAD, judged as the range
-# HEAD..<applied>, then discarded. A bundled workload's worktree carries
+# HEAD..<applied>, then discarded. A fixture with a base/ directory has its
+# patches applied first, and the commit they make is the range's base: a
+# base that is already red, for a gate that judges the diff (docs/adr/0072
+# §1). A bundled workload's worktree carries
 # this checkout, so make runs inside it, as before; an attached one's
 # carries only the target, so make runs here with WORKLOAD pointing at it
 # (docs/adr/0037 §4).
@@ -497,20 +500,24 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 		err=$$(git -C "$(WORKLOAD)" worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
 			printf 'NO-GO: demo-gates — %s: git worktree add failed: %s\n' "$$name" "$$err"; exit 1; \
 		}; \
-		if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
-				am "$$f"*.patch >/dev/null 2>&1; then \
-			git -C "$$wt" am --abort >/dev/null 2>&1 || true; \
-			drop_wt; \
-			printf 'NO-GO: demo-gates — %s does not apply; regenerate\n' "$$name"; \
-			exit 1; \
-		fi; \
+		for patches in base/ ""; do \
+			[ -n "$$patches" ] || base_sha=$$(git -C "$$wt" rev-parse HEAD); \
+			[ -z "$$patches" ] || [ -d "$$f$$patches" ] || continue; \
+			if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
+					-c commit.gpgsign=false am "$$f$$patches"*.patch >/dev/null 2>&1; then \
+				git -C "$$wt" am --abort >/dev/null 2>&1 || true; \
+				drop_wt; \
+				printf 'NO-GO: demo-gates — %s does not apply; regenerate\n' "$$name"; \
+				exit 1; \
+			fi; \
+		done; \
 		head_sha=$$(git -C "$$wt" rev-parse HEAD); \
 		if [ -n "$(WORKLOAD_ATTACHED)" ]; then \
 			verdict="$$wtd/gates-out/verdict.env"; \
-			out=$$($(MAKE) --no-print-directory gates WORKLOAD="$$wt" GATES_OUT="$$wtd/gates-out" BASE="$$main_sha" HEAD="$$head_sha"); \
+			out=$$($(MAKE) --no-print-directory gates WORKLOAD="$$wt" GATES_OUT="$$wtd/gates-out" BASE="$$base_sha" HEAD="$$head_sha"); \
 		else \
 			verdict="$$wt/$(GATES_OUT)/verdict.env"; \
-			out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
+			out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$base_sha" HEAD="$$head_sha") ); \
 		fi; \
 		printf '[demo-gates] %s: %s\n' "$$name" "$$out" >&2; \
 		sort "$$verdict" > "$$tmp1" 2>/dev/null || : > "$$tmp1"; \

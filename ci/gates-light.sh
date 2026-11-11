@@ -3,7 +3,8 @@
 #
 # ci-gates-light: proves docs/adr/0061 §9 cold, no engine, no network.
 #   (a) each app/fixtures/gates fixture of `make demo-gates`, applied with
-#       `git am` in a throwaway worktree of HEAD, is judged by the light
+#       `git am` in a throwaway worktree of HEAD (its base/ patches first,
+#       their commit the base), is judged by the light
 #       tier (`python3 -m core gates --light`) against the fixture's
 #       committed `expect`: RISK_LEVEL and RISK_DECISION always equal; where
 #       expect failed at a gate the light tier ran, the light tier fails at
@@ -25,7 +26,6 @@ name=gates-light
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 root=$(pwd)
-main=$(git rev-parse HEAD)
 order=$(sed -n 's/^GATES := //p' Makefile)
 [ -n "$order" ] || nogo "no GATES := line in the Makefile"
 t=$(mktemp -d)
@@ -73,11 +73,19 @@ judge_fixture() {
   jf_flaw=""
   git worktree add --detach "$t/wt-$jf" HEAD >/dev/null 2>"$t/$jf.err" \
     || { printf 'git worktree add failed: %s' "$(cat "$t/$jf.err")"; return; }
-  if git -C "$t/wt-$jf" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
+  # A base/ directory's patches first: the commit they make is the base
+  # (docs/adr/0072 §1, as make demo-gates).
+  jf_applied=1
+  if [ -d "$1/base" ]; then
+    git -C "$t/wt-$jf" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
+      -c commit.gpgsign=false am "$1"/base/*.patch >/dev/null 2>"$t/$jf.err" || jf_applied=0
+  fi
+  jf_base=$(git -C "$t/wt-$jf" rev-parse HEAD)
+  if [ "$jf_applied" = 1 ] && git -C "$t/wt-$jf" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
       -c commit.gpgsign=false am "$1"/*.patch >/dev/null 2>"$t/$jf.err"; then
     jf_head=$(git -C "$t/wt-$jf" rev-parse HEAD)
     (cd "$t/wt-$jf" && PYTHONPATH="$root" PYTHONSAFEPATH=1 python3 -m core gates --light \
-      BASE="$main" HEAD="$jf_head" WORKLOAD=app GATES_OUT="$t/out-$jf") >/dev/null 2>"$t/$jf.err" </dev/null || :
+      BASE="$jf_base" HEAD="$jf_head" WORKLOAD=app GATES_OUT="$t/out-$jf") >/dev/null 2>"$t/$jf.err" </dev/null || :
     if [ -f "$t/out-$jf/verdict.env" ]; then
       jf_flaw=$(verdict_flaw "$1/expect" "$t/out-$jf/verdict.env")
       [ -z "$jf_flaw" ] || jf_flaw="$jf_flaw (got: $(tr '\n' ' ' <"$t/out-$jf/verdict.env"); want: $(tr '\n' ' ' <"$1/expect"))"
@@ -128,7 +136,7 @@ for dir in app/fixtures/gates/*/; do
   [ -d "$dir" ] || continue
   found=$((found + 1))
   dir=${dir%/}
-  flaw=$(judge_fixture "$dir")
+  flaw=$(judge_fixture "$root/$dir")
   [ -z "$flaw" ] || nogo "fixture $(basename "$dir"): $flaw" "$(cat "$t/$(basename "$dir").err")"
 done
 [ "$found" -gt 0 ] || nogo "no fixture in app/fixtures/gates/"

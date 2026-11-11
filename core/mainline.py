@@ -38,7 +38,8 @@ except ImportError:  # run as a script: core/ is sys.path[0]
 
 COLLECTION, DOC = "mainline", "main"
 # The gates whose subject is the whole tree (§3): the diff gates already
-# judged each PR's own diff.
+# judged each PR's own diff. Since docs/adr/0072 §1 `sast` judges what the
+# group adds since the last green main, which is what a merge can break.
 TREE_GATES = "sast test"
 POLICY = "policy/mainline.env"
 IDENTITY = ["-c", "user.name=lights-out-tower", "-c", "user.email=tower@lights-out.invalid"]

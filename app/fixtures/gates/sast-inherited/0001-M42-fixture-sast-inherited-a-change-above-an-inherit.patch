@@ -1,0 +1,31 @@
+From 07b693db8d6f2ccc292750feac651bc66fa739b7 Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Wed, 11 Nov 2026 10:05:00 +0100
+Subject: [PATCH] =?UTF-8?q?[M42]=20fixture:=20sast-inherited=20=E2=80=94?=
+ =?UTF-8?q?=20a=20change=20above=20an=20inherited=20finding=20adds=20none?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On a base already red at sast (base/: an unused eval(), B307), this change adds a comment above the flagged function, so the finding's line moves. Its rule, file and text are the base's: inherited, listed on stderr, not gating (docs/adr/0072 §1). Nothing else changes, so every other gate is GO.
+---
+ app/backend/meetups/legacy.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/app/backend/meetups/legacy.py b/app/backend/meetups/legacy.py
+index 5c43b56..046e93e 100644
+--- a/app/backend/meetups/legacy.py
++++ b/app/backend/meetups/legacy.py
+@@ -5,6 +5,9 @@ sast-added-on-red-base (docs/adr/0072 §1): a base that is red at sast
+ before the change under test.
+ """
+ 
++# Kept unused until its callers are gone; a change above the finding moves
++# its line, and the finding is still the base's.
++
+ 
+ def evaluate(expression: str) -> object:
+     return eval(expression)
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,29 @@
+From d22be990c2dba94cd35fcdabeca7e5f49b2aafd5 Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Wed, 11 Nov 2026 10:10:00 +0100
+Subject: [PATCH] =?UTF-8?q?[M42]=20fixture:=20sast-added-on-red-base=20?=
+ =?UTF-8?q?=E2=80=94=20a=20second=20finding=20on=20a=20red=20base?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On a base already red at sast (base/: an unused eval(), B307), this change adds an unused function calling exec() (B102). The base's finding is inherited; the new one is the diff's own, so sast is NO-GO with one finding introduced (docs/adr/0072 §1).
+---
+ app/backend/meetups/legacy.py | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/app/backend/meetups/legacy.py b/app/backend/meetups/legacy.py
+index 5c43b56..166ebe0 100644
+--- a/app/backend/meetups/legacy.py
++++ b/app/backend/meetups/legacy.py
+@@ -8,3 +8,7 @@ before the change under test.
+ 
+ def evaluate(expression: str) -> object:
+     return eval(expression)
++
++
++def run(source: str) -> None:
++    exec(source)
+-- 
+2.54.0 (Apple Git-157)
+

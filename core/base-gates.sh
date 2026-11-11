@@ -3,8 +3,9 @@
 #
 # core-base-gates (docs/adr/0053 §6): an attached repository's base is
 # green before a ticket starts on it. The code host's HEAD, the commit
-# the worker will clone, judged by the gates that judge the tree and not
-# the diff, `sast` and `test`, on an empty range in a throwaway worktree,
+# the worker will clone, judged by the gate that judges the tree and not
+# the diff, `test` (`sast` judges the diff since docs/adr/0072 §1), on an
+# empty range in a throwaway worktree,
 # isolated as the CI step runs them. A GO is cached as bases/<sha> in the
 # StateStore and never run again for that commit; a NO-GO is not cached.
 # Exit 0 when green, 1 with one `[assign]` line otherwise; all on stderr,
@@ -25,7 +26,7 @@ fi
 tmp=$(mktemp -d)
 trap 'git -C "$WORKLOAD" worktree remove --force "$tmp/wt" >/dev/null 2>&1 || :; rm -rf "$tmp"' EXIT
 git -C "$WORKLOAD" worktree add -q --detach "$tmp/wt" "$sha" >&2
-out=$(make --no-print-directory gates WORKLOAD="$tmp/wt" GATES_OUT="$tmp/out" GATES="sast test" \
+out=$(make --no-print-directory gates WORKLOAD="$tmp/wt" GATES_OUT="$tmp/out" GATES="test" \
   BASE="$sha" HEAD="$sha" TOOLCHAIN_ISOLATE=1) && rc=0 || rc=$?
 failed=$(sed -n 's/^FAILED=//p' "$tmp/out/verdict.env" 2>/dev/null) || failed=""
 if [ "$rc" -ne 0 ]; then
