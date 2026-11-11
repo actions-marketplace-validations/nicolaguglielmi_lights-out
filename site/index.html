@@ -341,8 +341,8 @@ html:not(.js) .scene:first-child{opacity:1;visibility:visible;transform:none}
   <div class="field" aria-hidden="true"><svg id="runway" viewBox="0 0 1600 1000" preserveAspectRatio="xMaxYMid slice"></svg><div class="house"></div></div>
   <div class="wrap">
     <div class="eyebrow"><span class="dot"></span>GO / NO-GO · v0.3.1 · Apache-2.0</div>
-    <h1>The safety system for a <em>dark factory</em> of AI coding agents.</h1>
-    <p class="lead">A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system: the guardrails for agents that write and ship code, with Claude Code, Gemini CLI or Codex at the keyboard.</p>
+    <h1>Your AI agents ship code. <em>Who checks it?</em></h1>
+    <p class="lead">Tests pass and CI is green, yet nobody verified that those tests prove anything. lights-out judges every pull request an agent opens with numbers, not opinions: the new tests must fail without the change, the mutants on the changed lines must die, nothing may leave the ticket's files. What passes takes 5% of the traffic, rolls itself back on errors, and waits for one human GO before 100%. With Claude Code, Codex or Gemini CLI at the keyboard.</p>
     <div class="cta">
       <button class="btn primary" type="button" data-play="overview" data-name="The tour" data-blurb="from ticket to rollback, on the board"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>Watch the tour<span data-len="overview"></span></button>
       <a class="btn" href="#try">Try it: <code>./go demo</code></a>
@@ -457,7 +457,7 @@ Then the response is not 500 …
         <li class="step on" id="how-1" data-step="1">
           <span class="n">01 · TICKET</span>
           <h3>A ticket draws the perimeter.</h3>
-          <p>A markdown file: the problem, Given/When/Then criteria and a <code>## Perimeter</code> listing the files the change may touch.</p>
+          <p>It starts as a request: a few lines in the console's editor or <code>./go request</code>. The product role asks what is missing, you answer, and the spec gate lets it through only with Given/When/Then criteria and a <code>## Perimeter</code> listing the files the change may touch.</p>
           <p>Every path the agent changes must match it, checked before a pull request exists. One file outside, and no PR is ever opened.</p>
           <span class="src">core/perimeter.sh</span>
         </li>
