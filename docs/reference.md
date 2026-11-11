@@ -129,8 +129,9 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go freeze          # stop launchpad from deploying or shifting (manual flag edit)
 ./go unfreeze        # re-enable launchpad after freeze
 ./go board           # the pipeline explained, live while the plane runs, on localhost:8099 (BOARD_PORT to move it)
-./go console         # the client's console on localhost:8098: an overview that opens with what waits for you, a kanban under four bands whose cards carry labels, who has the ball, the time in their state and their rework attempts, turn over to their back and filter to "Your turn only", each ticket's timeline from request to release with whose turn it is, post mortems, go-for-launch, thresholds; three writes, go-for-launch, the answer to an open question and a new request, and a spec check that writes nothing; ten screens, a theme switch (CONSOLE_PORT; CONSOLE_SNAPSHOT=<file> without the plane; ADR 0047, 0055, 0059, 0063, 0068)
+./go console         # the client's console on localhost:8098: an overview that opens with what waits for you, a kanban under four bands whose cards carry labels, who has the ball, the time in their state and their rework attempts, turn over to their back and filter to "Your turn only", each ticket's timeline from request to release with whose turn it is, post mortems, go-for-launch, thresholds; three writes, go-for-launch, the answer to an open question and a new request, and a spec check that writes nothing; the agent network of one ticket (the tower, the six roles, the workers, every gate's verdict, the rework loop, the canary and the human gate, beside each attempt's gate lines and patch and the files by perimeter, with a replay of the record); eleven screens, a theme switch (CONSOLE_PORT; CONSOLE_SNAPSHOT=<file> without the plane; ADR 0047, 0055, 0059, 0063, 0068, 0071)
 ./go logbook         # write the logbook, the one versioned record the console and a consumer read: LOGBOOK_FILE (default .crew/logbook.json)
+./go network         # one ticket's agent network in text, the facts of the console's #network screen in the same words: TICKET (default the newest updated), ATTEMPT (default its latest), NETWORK_LOGBOOK=<file> to read a logbook instead of writing one; exit 1 when the logbook cannot be read, 2 for a ticket or attempt it does not hold (ADR 0071)
 ./go demo-console    # prove go-for-launch pressed from the console: held canary, POST GO → 100% via console, then the un-promote
 ./go doctor          # host-side: engine, podman socket, git, workbench image, the plane's ports, the key the profile needs; one line each, then GO or NO-GO (ADR 0045 §4)
 ./go doctor --level l2   # what a level still lacks, from profiles/<level>.env (l0 to l3): one line per item, adapters with no adapters/<name>/ named "designed, not built" (ADR 0057 §8)
@@ -411,7 +412,7 @@ lights-out/
     serve.py                # serves it and /state.json, read through the port verbs
 
   console/
-    index.html              # M11: the client's ten screens over the logbook, a theme switch (ADR 0047, 0059)
+    index.html              # M11: the client's eleven screens over the logbook, a theme switch (ADR 0047, 0059, 0071)
     serve.py                # serves it, /v1/logbook.json (ETag), and four POSTs: go-for-launch, answer, request, and the spec check that writes nothing
     README.md               # how to run it, CONSOLE_AUTH, what is real at L0, who built it
 
@@ -421,9 +422,9 @@ lights-out/
     postmortem.sh           # M22: ./go postmortem, runs the role, checks and files tickets
     postmortem.py           # M22: the document and anchor checks
     logbook.sh              # M11: ./go logbook, the one versioned record (ADR 0047 §2)
-    logbook.py              # M11: its reader, by the rules in docs/plans/console.md; 1.1 adds the timeline (ADR 0055), 1.2 the map's ADRs (ADR 0059)
+    logbook.py              # M11: its reader, by the rules in docs/plans/console.md; 1.1 adds the timeline (ADR 0055), 1.2 the map's ADRs (ADR 0059), 1.3 each attempt's workers, patch and gate lines (ADR 0071)
     spec.py                 # M29: the spec gate and the product role's step before the ticket (ADR 0055); `draft` turns the request editor's fields into a ticket file (ADR 0059)
-    logbook/1.0.schema.json # M11: the logbook's schema, one file per minor (1.0, 1.1, 1.2)
+    logbook/1.0.schema.json # M11: the logbook's schema, one file per minor (1.0, 1.1, 1.2, 1.3)
     risk.py                 # risk classifier: rules-based PR scoring
     tests/                  # unit tests for risk.py
 

@@ -15,7 +15,7 @@ The business client's view of lights-out ([ADR 0047](../docs/adr/0047-console-re
 
 A switch in the header sets the theme: `system` (the default, it follows `prefers-color-scheme`), `light` or `dark`. The choice is kept in the browser's `localStorage` under `lights-out.theme`. A browser that refuses storage gets the system theme, and the switch works until the page closes. The theme changes colours only.
 
-It reads **one document, the logbook** (`lights-out/logbook/1.2`, [schema](../core/logbook/1.2.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. It has **three writes**: go-for-launch, through the same `core/promote.sh` and the same checks as `./go promote`; the answer to a ticket's open question, through `make answer`, the recipe `./go answer` runs, accepted only for the question the logbook shows open; and a new request, through `make request`, the recipe `./go request` runs. Each records who pressed and `via: console`. One more route, `/v1/spec-check`, writes nothing. `ci/logbook.sh` checks all of it. `GET /v1/logbook.json` carries an `ETag` and answers `304` to a matching `If-None-Match`, so the 2 s poll of an unchanged logbook costs no body.
+It reads **one document, the logbook** (`lights-out/logbook/1.3`, [schema](../core/logbook/1.3.schema.json)), which `./go logbook` writes. It never reads the tower, the plane or a file behind it. It has **three writes**: go-for-launch, through the same `core/promote.sh` and the same checks as `./go promote`; the answer to a ticket's open question, through `make answer`, the recipe `./go answer` runs, accepted only for the question the logbook shows open; and a new request, through `make request`, the recipe `./go request` runs. Each records who pressed and `via: console`. One more route, `/v1/spec-check`, writes nothing. `ci/logbook.sh` checks all of it. `GET /v1/logbook.json` carries an `ETag` and answers `304` to a matching `If-None-Match`, so the 2 s poll of an unchanged logbook costs no body.
 
 ## Whose turn it is
 
@@ -37,6 +37,16 @@ A card's column is the logbook's `kanban`. Nothing on the page moves a card: the
 - **Contrast**: every text on the board and on a card's back is at least WCAG 2.1 AA in both themes, and `ci/console-ui.py` measures it.
 
 A refresh redraws only when the logbook changed, and keeps the focus, the drawer and the search box.
+
+## The network
+
+`#network` ([ADR 0071](../docs/adr/0071-the-governed-network-on-screen-and-in-text.md)) draws one ticket's agent network from the logbook alone: the tower at the centre, the six roles (lit when the record names them), the attempt's workers with their harness and model (a network attempt's members, at most four, ADR 0036), each gate lighting GO or NO-GO in the order it ran and the gates that did not run, the reviewer, the rework loop back to the dev-worker with its count, the canary stages and the one human gate before 100%. Beside it, every attempt, newest first, with the files it touched, the gate lines that judged it, verbatim, and its patch; a patch is shown only once that attempt's `secrets` gate said GO, and is cut at 64 KiB. Below, the files by perimeter: which glob holds each, which worker and attempts touched it, which tests cover it (the project map's `tests` edges), which ADRs cite it and which open ticket holds it.
+
+- **The view is the link**: `#network/<ticket>?attempt=<n>`; with no ticket it follows the one updated last.
+- **Live**: when the 2 s poll brings a logbook that adds facts to the ticket shown, they are marked for 4 s and said to a screen reader. A patch and its gate lines reach the logbook when the attempt's step ends: the stream is per attempt, not per keystroke.
+- **Replay**: the Replay button (or `?replay=1`) reveals the record one timeline row every 2 s under a label that says it is a replay and that nothing is running. It sends no request until it ends.
+- **The same facts in text**: `./go network TICKET=<id> [ATTEMPT=<n>]` prints every fact of the screen in the same words, from the same logbook. The words are one table, `core/network.py --table`, embedded in the page as `#network-words`; `./go ci` proves the copy equal.
+- **An older logbook** (1.2) draws one worker per attempt and one summary gate edge, and says it records no patches or gate lines.
 
 ## The request editor
 
