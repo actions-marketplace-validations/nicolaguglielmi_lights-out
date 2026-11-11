@@ -140,7 +140,7 @@ transcript="$OUT/transcript.jsonl"
 # cached included, plus output).
 turns=$(cat "$OUT/requests" 2>/dev/null || echo null)
 case "$turns" in ''|*[!0-9]*) turns=null ;; esac
-usage=$(jq -cs '[.[] | select(.type == "turn.completed") | .usage] | if length == 0 then null else {input: (map(.input_tokens // 0) | add), output: (map(.output_tokens // 0) | add)} end' "$transcript" 2>/dev/null || echo null)
+usage=$(jq -cs '[.[] | select(.type == "turn.completed") | .usage] | if length == 0 then null else {input: (map(.input_tokens // 0) | add), output: (map(.output_tokens // 0) | add)} end' "$transcript" 2>/dev/null) || usage=null
 [ -n "$usage" ] || usage=null
 tok_in=$(printf '%s' "$usage" | jq '.input // null')
 tok_out=$(printf '%s' "$usage" | jq '.output // null')
