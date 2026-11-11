@@ -456,3 +456,41 @@ named.
    first ticket in the "your turn" list.
 7. **Release and ops-triage stay dark.** Alternative kept: logbook 1.4
    ties the brief's author role and a post mortem to the ticket.
+
+## Decided at build (2026-11-11)
+
+Readings the tests and the code had to agree on, each where the text above
+left room. None adds a field or a number without provenance.
+
+1. **The graph lights the attempt shown, the review included.** An earlier
+   attempt's `#net-review` is `changes-requested` when its rework entry's
+   judge is the reviewer, otherwise `not-reached`; only the latest attempt
+   shows the record's `review`.
+2. **A judge recorded with no gate lines** (a 1.3 logbook whose `ci` or
+   rework entry predates `lines`) draws the one summary edge of §6, not
+   eight `not-run` edges: those would draw history the record does not
+   hold. A rework entry the reviewer or main's check wrote followed a gates
+   GO, so its summary edge is GO.
+3. **A ticket with no attempt yet** still draws every gate, `not run yet`.
+4. **The canary stages and the human answer** are read from `releases[]`
+   (the entry of that ticket and that release version), not from the
+   timeline rows that copy them; the human node names who answered and
+   through what.
+5. **A ci entry vouches for the latest attempt only when its `head_sha` is
+   the PR's head.** Otherwise that attempt has no gates and its patch is
+   withheld.
+6. **The heading names a ticket as the console does** (ADR 0063's
+   `named`): a title that already starts with its id is not prefixed twice.
+7. **The 1.2 sentence names the minor** ("this logbook (1.2) …") and is said
+   in the stream and in the files.
+8. **The replay** dims the graph's nodes until their row and draws a fact
+   only once its row is revealed; the rework count counts the rework rows
+   revealed so far. `?replay=1` starts it as the screen is drawn.
+9. **The live mark lasts 4 s with or without reduced motion**; reduced
+   motion removes the pulse, not the mark.
+10. **The patch's files** are counted hunk by hunk up to the next header;
+    format-patch's `-- ` signature is told from a removed line by the git
+    version line that follows it.
+11. **Below 720 px the graph keeps a 620 px minimum width and scrolls in
+    its panel.** Provenance, decision: about 80% of the 760-unit drawing,
+    chosen by eye on the golden's ticket 0010 at 390 px.
