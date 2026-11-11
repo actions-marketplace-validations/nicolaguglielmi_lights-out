@@ -141,7 +141,7 @@ turns=$(printf '%s' "$result" | jq '.num_turns // null')
 tok_in=$(printf '%s' "$result" | jq '.usage // null | if . == null then null else (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0) end')
 tok_out=$(printf '%s' "$result" | jq '.usage.output_tokens // null')
 tok_total=$(jq -n --argjson a "$tok_in" --argjson b "$tok_out" 'if $a == null or $b == null then null else $a + $b end')
-model_served=$(jq -rs '[.[] | select(.type == "assistant") | .message.model // empty] | group_by(.) | max_by(length) | .[0] // "unknown"' "$transcript" 2>/dev/null || echo unknown)
+model_served=$(jq -rs '[.[] | select(.type == "assistant") | .message.model // empty] | group_by(.) | max_by(length) | .[0] // "unknown"' "$transcript" 2>/dev/null) || model_served=unknown
 [ -n "$model_served" ] || model_served=unknown
 
 # What the run used of the repository's MCP servers (docs/adr/0073 §9),
