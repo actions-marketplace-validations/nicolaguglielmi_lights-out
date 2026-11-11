@@ -943,6 +943,10 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - `docs/use-on-your-repo.md` ha "Customize the agents" (cosa si personalizza oggi, come, cosa è fisso per scelta e perché); README e `docs/reference.md` dove elencano il contratto; `lights-out init` lo dice in una riga. `ci/docs-drift.sh` verde, `./go ci` verde da un clone pulito, i sei workflow verdi, `./go demo` invariato a L0 senza chiave.
 - **Fuori:** server MCP remoti provati dal vivo (solo traduzione unit-testata; il primo run remoto è dell'owner), remoti su gemini-cli, istruzioni per i ruoli ADK, tool MCP per i revisori, antigravity-cli con MCP.
 
+### Più avanti — Scansione di sicurezza: SAST sul diff, SBOM firmato, DAST passivo (ADR 0072)
+
+*Aggiunto 2026-11-11, decisione dell'owner: più avanti nella roadmap.* Su sqlparse e tenacity (M24, 2026-11-10) la base era rossa a `sast` per un `assert` (B101) e per `random` usato come jitter (B311), e ogni ticket aspettava che un umano aggiungesse `# nosec`. ADR 0072 (proposta, rimandata, niente costruito) decide per dopo: il gate `sast` giudica il diff come `deps` (impronta: regola, file, hash del testo della riga; i finding ereditati elencati, mai bloccanti) e `sast` esce dal controllo della base verde; un SBOM SPDX 2.3 per immagine rilasciata, prodotto da osv-scanner già nel workbench e attestato con cosign accanto alla firma, separato dall'attestazione di K3 (M36), che lo nomina; una scansione passiva ZAP baseline del canary allo staging, prima di ogni traffico, NO-GO solo per gli alert che lo stabile non ha, spenta di default a L0 e L1 finché pull e durata non sono misurati contro i 222 s di margine sui 900 s; la stessa riga del gate in `./go`, nel wrapper e nella console.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
