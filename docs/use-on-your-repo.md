@@ -25,6 +25,8 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | The `--light` recipes **verified** once per CLI on 2026-11-08 (Claude Code 2.1.311, Codex 0.166.0, Gemini CLI 0.61.0-preview.0) against the scripted model, not a vendor; each recipe says what was not covered. The full variant was not run against the CLIs |
 | The light tier, `lights-out-gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. On PyPI as `lights-out-gates` since 2026-11-09, and `uvx lights-out-gates --light` from PyPI answered GO on this repository that day |
+| The Claude Code plugin and `lights-out-gates mcp` (ADR 0069) | **Verified** once on 2026-11-10, Claude Code 2.1.311 with the scripted model, the plugin from a local marketplace directory: `claude plugin validate --strict` passed, `/lights-out:gates` answered its line, the MCP server answered a tool call, the hook stopped a commit that weakened a test. Not listed anywhere yet; `/lights-out:spec` and the MCP server need the next release of the package (section 5) |
+| The Codex plugin and the Gemini CLI extension (ADR 0069, amendment 2026-11-11) | **Verified** once on 2026-11-11, Codex 0.166.0 and Gemini CLI 0.61.0-preview.0 with the scripted model, each from a local copy of this repository: the gates line reached the model, and the hook stopped a commit that weakened a test. Not listed anywhere yet; the trust steps a person takes were not run |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
 Known limits today, before you start:
@@ -598,6 +600,165 @@ steps:
   14 s, `test-integrity` 25 s, each in a job of its own). In lights-out's own
   workflow it runs with `uses: ./` on a scratch repository (a GO and a NO-GO
   check run).
+
+### The Claude Code plugin
+
+The plugin puts the gates in a Claude Code session (ADR 0069). This
+repository is its marketplace:
+
+```bash
+claude plugin marketplace add nicolaguglielmi/lights-out
+```
+
+```bash
+claude plugin install lights-out@lights-out
+```
+
+It brings four things, and writes nothing into your repository or your
+settings:
+
+- **`/lights-out:gates [KEY=VALUE ...]`**: the light gates
+  (`lights-out-gates --light`, the next section) on what is staged, or on
+  the keys you give (`BASE=` and `HEAD=`, `TICKET=`, `TEST_ON_HOST=1`). One
+  line. The model reports it and does not run the gates on its own: the
+  two commands are for you to type.
+- **`/lights-out:spec <file>`**: the spec gate on a draft, one line, `GO:
+  spec` or `NO-GO: spec — <the first failure>` (ADR 0055 §4).
+- **A pre-commit hook**: before Claude runs `git commit` through Bash, in a
+  repository whose last commit has `.lights-out/workload.env`, the light
+  gates judge the staged changes, and a NO-GO stops the commit with the
+  gates' line. Elsewhere it does nothing. It is the light recipe of the
+  next section, installed by the plugin: if you copied the recipe into a
+  settings file, drop it, or the gates run twice.
+- **An MCP server**, `lights-out-gates mcp`, read-only. Four tools:
+  `adrs_for_path` (the ADRs and pages that cite a path), `tests_for_path`
+  (the tests that cover it), `tickets_for_path` (the tickets whose
+  perimeter or commits touched it) and `check_spec` (the spec gate on a
+  draft's text). The first three read the project map (ADR 0054). Build it
+  once per commit; it is written inside `.git`, so `git add -A` never picks
+  it up:
+
+  ```bash
+  lights-out-gates map
+  ```
+
+  A map built at another commit is refused with a line naming both commits
+  and the command, never read. The server needs no engine, no plane and
+  no key, and never writes.
+
+Every command runs `lights-out-gates` at the plugin's version: from your
+PATH when `lights-out-gates version` names it, else through `uvx`. With
+neither, the command answers `NO-GO: lights-out — lights-out-gates <version>
+not found…`, and in a repository with a contract the hook stops the commit
+with that line: a judge you asked for is never skipped. **The published
+0.3.1 package has no `spec`, `map` or `mcp` command**: until the next
+release, install the package from the repository, which carries the
+plugin's version:
+
+```bash
+uv tool install git+https://github.com/nicolaguglielmi/lights-out
+```
+
+To remove it, disable or uninstall it; its hook and server go with it:
+
+```bash
+claude plugin uninstall lights-out@lights-out
+```
+
+**Verified on 2026-11-10, once,** with the Claude Code pinned in
+`adapters/claude-code/` (2.1.311) and the scripted model of `./go
+harness-conformance` in place of the vendor, the package installed from a
+wheel of this commit: `claude plugin validate --strict` passed;
+`claude plugin marketplace add` from a local directory and `claude plugin
+install` worked; `/lights-out:gates` put `GO: gates-light — risk low,
+auto-merge; 2 of 10 gates ran; …` in front of the model; Claude Code spoke
+MCP revision 2026-07-28 to the server (`server/discover`, then
+`tools/list`), and a `tests_for_path` call returned the test that covers
+the module; a staged change that removed an assertion was stopped (`PreToolUse:Bash
+hook error: […] NO-GO: gates-light — test-weakening: …`), and a clean one
+committed. The MCP call needed a one-off step the scripted model does not
+have (call a named tool); `/lights-out:spec` was not run in the CLI, only
+in `ci/plugin.sh`.
+
+### The Codex plugin
+
+The same gates in Codex (ADR 0069, amendment 2026-11-11). This repository
+is its marketplace too (`.agents/plugins/marketplace.json`):
+
+```bash
+codex plugin marketplace add nicolaguglielmi/lights-out
+```
+
+```bash
+codex plugin add lights-out@lights-out
+```
+
+Three skills, invoked by you only (`allow_implicit_invocation: false`):
+
+- **`$lights-out:gates [KEY=VALUE ...]`**: the model runs `lights-out-gates
+  --light`, `STAGED=1` when you give no key, and reports its line.
+- **`$lights-out:spec <file>`**: the model runs `lights-out-gates spec
+  <file>` and reports its line.
+- **`$lights-out:hook install`** (or `remove`): writes the light recipe of
+  the next section into this repository's `.codex/hooks.json`, beside
+  whatever hooks are there, and prints one line. Codex runs it only after
+  you review and trust it with `/hooks`, and only in a project whose
+  `.codex/` layer is trusted; an untrusted hook is skipped, and the commit
+  goes through. Install it only where `.lights-out/workload.env` is
+  committed: the recipe refuses every commit elsewhere. A plugin update
+  does not change a hook already written: run `install` again when the
+  recipe changes.
+
+The plugin bundles no hook (Codex 0.166.0 lists plugin hooks as removed,
+and a plugin with hooks cannot be listed in Codex's directory) and no MCP
+server. Each skill needs `lights-out-gates` on PATH:
+
+```bash
+uv tool install lights-out-gates
+```
+
+**Verified on 2026-11-11, once,** with Codex 0.166.0 (pinned in
+`adapters/codex/`) and the scripted model: Codex read the marketplace from
+`.agents/plugins/marketplace.json`, `codex plugin add` installed it,
+`$lights-out:gates` gave the model `GO: gates-light — …`,
+`$lights-out:hook install` wrote the hook, and a commit that removed an
+assertion was stopped (`Command blocked by PreToolUse hook: … NO-GO:
+gates-light — test-weakening: …`) with the project trusted and
+`--dangerously-bypass-hook-trust`; without that flag the untrusted hook was
+skipped. `/hooks` itself was not run.
+
+### The Gemini CLI extension
+
+The same gates in Gemini CLI, as the extension `lights-out-gemini` (its
+name must be its directory's). Until it has a repository of its own,
+install it from a clone of this one:
+
+```bash
+gemini extensions install ./plugins/lights-out-gemini
+```
+
+Gemini CLI asks you to trust the source folder first. It brings:
+
+- **`/lights-out:gates`**: the light gates on the staged changes, their
+  line in front of the model. It takes no keys: Gemini CLI passes the
+  arguments to the command as one word.
+- **`/lights-out:spec <file>`**: the spec gate on a draft.
+- **A hook**, `BeforeTool` on `run_shell_command`, timeout 30000 ms: the
+  same `pre-commit.sh` as the Claude Code plugin, silent where the last
+  commit has no `.lights-out/workload.env`. Uninstalling the extension
+  removes it; drop the settings recipe if you copied it.
+
+Both commands run `lights-out-gates` from PATH, as Codex does. Gemini CLI
+asks before it runs a command's shell line, unless you approve all
+(`--approval-mode yolo`).
+
+**Verified on 2026-11-11, once,** with Gemini CLI 0.61.0-preview.0 (pinned
+in `adapters/gemini-cli/`) and the scripted model: `gemini extensions
+validate` passed, the extension installed from the directory,
+`/lights-out:gates` under `-p --approval-mode yolo` gave the model `GO:
+gates-light — …`, and the hook stopped a commit that removed an assertion
+(`Tool execution blocked: NO-GO: gates-light — test-weakening: …`), let a
+clean one through, and stayed silent without a contract.
 
 ### Hook recipes for coding agents
 

@@ -1,0 +1,20 @@
+{
+  "name": "lights-out",
+  "interface": {
+    "displayName": "lights-out"
+  },
+  "plugins": [
+    {
+      "name": "lights-out",
+      "source": {
+        "source": "local",
+        "path": "./plugins/lights-out-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

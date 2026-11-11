@@ -415,13 +415,14 @@ class Refusals(LightCase):
         self.assertEqual(p.returncode, 1)
         self.assertRegex(self.line(p), rf"^NO-GO: gates-light {DASH} '[^']*FOO[^']*' is not an argument")
 
-    def test_an_unknown_command_lists_the_two_there_are(self):
-        """§5: `NO-GO: lights-out — unknown command '<cmd>'; one of: gates --light, version`."""
+    def test_an_unknown_command_lists_the_commands_there_are(self):
+        """§5, amended by ADR 0069 §5: `NO-GO: lights-out — unknown command '<cmd>'; one of: gates --light,
+        spec, map, mcp, version`."""
         r = self.repo()
         p = self.cli(["frobnicate"], r.path)
         self.assertEqual(p.returncode, 1)
         self.assertEqual(self.line(p), (
-            f"NO-GO: lights-out {DASH} unknown command 'frobnicate'; one of: gates --light, version"))
+            f"NO-GO: lights-out {DASH} unknown command 'frobnicate'; one of: gates --light, spec, map, mcp, version"))
 
     def test_version_exits_zero(self):
         """§5: `version` is a command."""
