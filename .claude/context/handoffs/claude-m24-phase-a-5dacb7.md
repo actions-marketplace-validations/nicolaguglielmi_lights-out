@@ -236,9 +236,13 @@ default): M28's half-with-the-map comparison was not run. Between tickets the me
 
 ## Proofs
 
-- `./go ci-attach` GO, and NO-GO on the planted regression (above).
+- `./go ci-attach` GO, and NO-GO on the planted regression of `runners/` (section 1).
+- The three fixes, each test first: `./go ci-assign` NO-GO at case (h) before 7fa0c00, GO after; `./go ci-attach`
+  NO-GO at case (g) before bb021cc and again before 0ffb890 (the project did not load), GO after;
+  `ci-workloads`, `ci-app-free`, `ci-shell-boundary` GO.
 - `sh gates/spec.sh` on every ticket: GO ×15 (5 sqlparse, 5 validators, 5 tenacity).
+- Phase B: section 6, from each ticket's tower document (`.crew/full/.crew/state.sqlite`) and `run.json`.
 - `ci/docs-drift.sh` on the host with `MAP_EXCLUDE`: GO.
-- `./go ci` from a clean clone under `.crew/`: GO, 197 s, on 8dcab41.
-- The six workflows green on 8dcab41: ci 42922530010, stranger 42922529903, self 42922530000, package
-  42922529920, podman 42922530062, site 42922612267 (dispatched). The docs-only commit after it records these ids.
+- `./go ci` from a clean clone under `.crew/`: GO, 347 s, on c2fef9f.
+- The six workflows green on c2fef9f: ci 43012186055, stranger 43012186002, self 43012185936, package
+  43012185938, podman 43012186003, site 43012207575 (dispatched). The docs-only commit after it records these ids.
