@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "docs": {
+      "url": "https://mcp.example.com:443/mcp",
+      "tools": [
+        "search_docs"
+      ],
+      "token_env": "MCP_DOCS_TOKEN"
+    }
+  }
+}

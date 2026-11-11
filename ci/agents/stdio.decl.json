@@ -1,0 +1,19 @@
+{
+  "sha256": "5b812d8b9848526d360f19013167f94148b43c936603b9e9beb8c495d8f5b391",
+  "servers": [
+    {
+      "name": "notes",
+      "transport": "stdio",
+      "command": [
+        "python3",
+        ".lights-out/mcp/notes.py",
+        "--root",
+        "docs"
+      ],
+      "tools": [
+        "search_notes",
+        "get-note"
+      ]
+    }
+  ]
+}

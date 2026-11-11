@@ -1,0 +1,16 @@
+{
+  "mcp_servers.notes.command": "python3",
+  "mcp_servers.notes.args": [
+    ".lights-out/mcp/notes.py",
+    "--root",
+    "docs"
+  ],
+  "mcp_servers.notes.cwd": "/crew/0042/workspace",
+  "mcp_servers.notes.enabled_tools": [
+    "search_notes",
+    "get-note"
+  ],
+  "mcp_servers.notes.required": true,
+  "mcp_servers.notes.startup_timeout_sec": 30,
+  "mcp_servers.notes.tool_timeout_sec": 30
+}

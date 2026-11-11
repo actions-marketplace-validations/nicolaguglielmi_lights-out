@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "python3",
+      "args": [
+        ".lights-out/mcp/notes.py",
+        "--root",
+        "docs"
+      ],
+      "timeout": 30000
+    }
+  }
+}
