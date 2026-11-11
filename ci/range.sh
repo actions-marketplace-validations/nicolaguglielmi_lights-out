@@ -175,7 +175,7 @@ done_case() {
 }
 side() { g checkout -q -b "$1" "$2"; }  # NAME FROM: a branch off FROM, checked out
 merge() {  # NAME BRANCH: merge BRANCH into the checked-out main, tagged NAME
-  g merge -q --no-ff -m "$1" "$2"
+  g merge -q --no-ff -m "$1" "$2" >&2
   g tag "$1"
 }
 
@@ -498,10 +498,10 @@ setline 22 'side22 = 1'
 printf 'side_tail = 1\n' >> "$w/pkg/m.py"
 wc_commit S
 wg checkout -q -b br-mg M1
-wg merge -q --no-ff -m MG S
+wg merge -q --no-ff -m MG S >&2
 wg tag MG
 wg checkout -q -b br-mgr M1
-wg merge -q --no-ff --no-commit S
+wg merge -q --no-ff --no-commit S >&2
 printf 'resolved = 1\n' >> "$w/pkg/m.py"
 wc_commit MGR
 # X: never merged
@@ -516,10 +516,10 @@ wg checkout -q -b br-sb B0
 setline 25 'sideb25 = 1'
 wc_commit SB
 wg checkout -q -b br-ma M1
-wg merge -q --no-ff -m MA SA
+wg merge -q --no-ff -m MA SA >&2
 wg tag MA
 wg checkout -q -b br-mb MA
-wg merge -q --no-ff --no-commit SB
+wg merge -q --no-ff --no-commit SB >&2
 printf 'resolved2 = 1\n' >> "$w/pkg/m.py"
 wc_commit MB
 
