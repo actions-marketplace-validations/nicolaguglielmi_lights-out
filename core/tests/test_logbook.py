@@ -492,7 +492,7 @@ class TicketFiles(unittest.TestCase):
 ROOT = Path(__file__).resolve().parents[2]
 STUB = ROOT / "fixtures" / "logbook" / "stub"
 GET_SH = '#!/bin/sh\nset -eu\nd=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)\nf="$d/state/$1.$2.json"\n[ -f "$f" ] || exit 1\ncat "$f"\n'
-ENV = {"LEVEL": "l0", "WORKLOAD": "app", "CODE_HOST": "gitea", "STATE_STORE": "stub-state", "DELIVERY": "stub-delivery",
+ENV = {"LEVEL": "l0", "WORKLOAD": "app", "CODE_HOST": "stub-host", "STATE_STORE": "stub-state", "DELIVERY": "stub-delivery",
        "TICKETS_DIR": "tickets", "RELEASE_RECORD": "release.json", "RELEASES_LOG": "releases.jsonl",
        "PROMOTE_OUT": "promote", "POSTMORTEM_DIR": "postmortem", "WORKLOAD_CONTRACT": "contract"}
 
