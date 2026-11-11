@@ -34,8 +34,26 @@ Branch `claude/release-automation-005454`, cut from `origin/main` at f97085d (0.
 
 ## Proven
 
-- On the Mac, `sh ci/release.sh` gives `GO`. Against the real public repository, `sh package/sync-action.sh test-proof 0.3.1 <dir>` answers "v0.3.1 already holds these files; nothing to push": the 0.3.1 copies equal `actions/` and `LICENSE` today.
-- See the PR or this file's update for the `./go ci` result from `.crew/release` and the Actions run ids, including the dry-run dispatch.
+- On the Mac and in the workbench, `sh ci/release.sh` gives `GO`. Against the real public repository, `sh package/sync-action.sh test-proof 0.3.1 <dir>` answers "v0.3.1 already holds these files; nothing to push": the 0.3.1 copies equal `actions/` and `LICENSE` today.
+- **`./go ci` from a clean clone under `.crew/`** on df27c96: `GO: ci` in 5:48, 45 checks GO, `GO: release` among them. Before that, `release`, `plan` and `package` were run alone in the workbench image. The first run on GitHub had caught the awk interval that mawk refuses.
+- **Six workflows green on df27c96:**
+
+  | Workflow | Run | Result |
+  |---|---|---|
+  | ci | 43102935859 | engine-compat `GO: demo, milestone M9, 631s to rollback` |
+  | stranger | 43102935748 | `GO: demo, milestone M9, 572s to rollback` |
+  | self | 43102935717 | green |
+  | package | 43102935758 | green |
+  | podman | 43102935731 | green |
+  | site | 43103004311 | green, dispatched by hand because its paths were untouched |
+
+- **The dry-run dispatch**, package run 43099901825 on a96ba73, with `dry_run=true`:
+  - `dist` built `lights_out_gates-0.3.1-py3-none-any.whl` and the sdist, looked inside, and ran it: `lights-out-gates 0.3.1 (the light tier: --light)`.
+  - `publish` printed the buildx, `cosign sign` and `cosign verify` commands for both images, with the identity `…/package.yml@refs/heads/claude/release-automation-005454`, and built nothing.
+  - `actions` cloned both repositories and answered "v0.3.1 already holds these files; nothing to push", then printed both drafts' notes.
+  - `release` printed the notes and the `gh release create` command.
+  - `pypi` was skipped.
+  - Nothing was pushed, uploaded or tagged. The dispatch's jobs ran in under 40 s.
 
 ## Not proven
 
