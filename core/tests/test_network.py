@@ -277,9 +277,12 @@ class Graph(Case):
     def test_a_worker_line_carries_harness_and_model_and_the_hand_written_one_has_no_model(self):
         workers = {re.match(r"worker ([^:]+):", f).group(1): f for f in self.graph() if f.startswith("worker ")}
         self.assertIn("replay", workers["impl"])
-        self.assertIn("gemini-3.8-flash", workers["impl"])
+        # The stub member's model, read from its record: no model id is
+        # spelt in core/ (ci/model-free.sh).
+        model = ticket_of(netbook(), "0010")["tasks"][0]["members"][0]["model"]
+        self.assertIn(model, workers["impl"])
         self.assertIn("replay", workers["tests"])
-        self.assertNotIn("gemini", workers["tests"])
+        self.assertNotIn(model, workers["tests"])
         self.assertNotEqual(workers["impl"].split(":", 1)[1], workers["tests"].split(":", 1)[1])
 
     def test_a_single_worker_attempt_draws_one_worker(self):
