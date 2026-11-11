@@ -14,7 +14,13 @@
 #               with every character outside [A-Za-z0-9_] turned into `_`.
 # Each value is TOML, written as JSON: a JSON string or array of strings is
 # a TOML basic string or array. enabled_tools matches the server's raw names
-# and removes the other tools from what the model sees (`hidden`);
+# and removes the other tools from what the model sees (`hidden`). Under
+# code mode (eleven of the pin's twelve bundled models, gpt-6.1-sol among
+# them, are code_mode_only, and that metadata beats any feature flag) a tool
+# is in no request: it is deferred, reachable only from exec's JavaScript
+# as tools.mcp__<s>__<t> and listed in ALL_TOOLS; the PreToolUse hook still
+# fires on that nested call, with that name (docs/adr/0073, amendment
+# 2026-11-11, seen running 0.166.0);
 # required = true makes `codex exec` fail before thread.started when a
 # server does not start, which run.sh turns into one line (ADR 0073 §8).
 # 30 s, start and each call: ADR 0073 §6 (start, the CLI's own default at
