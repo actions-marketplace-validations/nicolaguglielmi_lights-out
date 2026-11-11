@@ -44,11 +44,33 @@ fixtures/logbook/golden-1.2.json, and drives it with Playwright:
   k. the editor (§5): the gate's line and the Request button are in the
      viewport while a criterion has the focus, at both sizes; a save answered
      GO (intercepted: the server side is ci/logbook.sh's runtime check) clears
-     the draft, disables Request and links the new ticket.
+     the draft, disables Request and links the new ticket;
+  l. the card's face (docs/adr/0068 §2): the labels (priority, feature with its
+     hue), the title with the search's <mark>, the actor badge by the table's
+     rule, the time in state against the reference "now", the rework pips;
+  m. the card's back (§3): a modal dialog#card-back holding aside#drawer, focus
+     in and the board inert, the now line, the strip and the compact rows equal
+     the timeline's, the one action and the open question, Esc and a click on
+     the backdrop close it and the focus returns to the card, full screen at
+     390 px, no POST;
+  n. "Your turn only" (§5): button#only-mine[aria-pressed], the cards, the hash
+     key `turn=you` in its place in the key order, a page opened on that hash;
+  o. the flight and the announcement (§4), on a LIVE console SIMULATED in the
+     browser (page.route answers /v1/console.json with mode "live" and
+     /v1/logbook.json first with the golden, then with one card moved): the
+     moved card is marked, announced, and runs an animation unless the
+     visitor prefers reduced motion;
+  p. a long column scrolls inside itself with its header in view (§4);
+  q. contrast and focus (§6), light and dark: every text in the board and in the
+     open back against the first opaque background behind it (WCAG 2.1 AA), a
+     focused card's outline at 3:1;
+  r. the phone's band bar (§5);
+  s. no drag: no draggable attribute, no drag or drop listener registered.
 
 Every comparison is shown first to fail on a wrong input (self_checks, and
 the probes in a_board and a_posts): a gate that cannot fail is not a gate.
 """
+import datetime
 import fnmatch
 import json
 import os
@@ -87,7 +109,7 @@ def need(cond, why, *details):
 
 # --- what a view is, and how the hash writes it (docs/adr/0059 §1) --------------
 
-HASH_KEYS = ("q", "feature", "priority", "group", "empty", "collapsed", "card")
+HASH_KEYS = ("q", "feature", "priority", "turn", "group", "empty", "collapsed", "card")
 
 
 def enc(value):
@@ -99,12 +121,12 @@ class View:
     """The page's one view; every interaction changes it and nothing else."""
 
     def __init__(self, **kw):
-        self.q, self.feature, self.priority, self.group, self.empty = "", "", "", "", ""
+        self.q, self.feature, self.priority, self.turn, self.group, self.empty = "", "", "", "", "", ""
         self.collapsed, self.card = [], ""
         self.__dict__.update(kw)
 
     def hash(self):
-        """#kanban?q=..&feature=..&priority=..&group=..&empty=hide&collapsed=a,b&card=0005,
+        """#kanban?q=..&feature=..&priority=..&turn=you&group=..&empty=hide&collapsed=a,b&card=0005,
         keys in that order, the defaults left out."""
         parts = []
         for key in HASH_KEYS:
@@ -162,7 +184,8 @@ BOARD_JS = """() => {
   const q = document.querySelector('input#kanban-q');
   const val = (n) => { const s = document.querySelector('main select[name=' + n + ']'); return s ? s.value : null; };
   const active = document.activeElement;
-  return {cols, lanes: [...document.querySelectorAll('.lane[data-lane]')].map((l) => l.dataset.lane),
+  const mine = document.querySelector('button#only-mine');
+  return {only_mine: mine ? mine.getAttribute('aria-pressed') : null, cols, lanes: [...document.querySelectorAll('.lane[data-lane]')].map((l) => l.dataset.lane),
     drawer: drawer ? drawer.dataset.id : null, hash: location.hash, history: history.length,
     controls: {q: q ? q.value : null, feature: val('feature'), priority: val('priority'), group: val('group'), empty: val('empty')},
     active: active ? {tag: active.tagName, id: active.id, card: active.dataset ? active.dataset.id || null : null,
@@ -196,13 +219,16 @@ def shown(board):
     return {card: col["state"] for col in board["cols"] for card in col["cards"]}
 
 
-def matches(ticket, q="", feature="", priority=""):
-    """Whether the card of TICKET shows under the search Q and the two filters:
+def matches(ticket, q="", feature="", priority="", turn="", you=()):
+    """Whether the card of TICKET shows under the search Q and the filters:
     the search is over the id, the title and the perimeter, a path matching a
-    card when one of its globs matches it (`*` crosses `/`) or contains it."""
+    card when one of its globs matches it (`*` crosses `/`) or contains it;
+    TURN "you" keeps the tickets of YOU, the ids whose turn is a person's."""
     if feature and ticket.get("feature") != feature:
         return False
     if priority and ticket.get("priority") != priority:
+        return False
+    if turn == "you" and ticket["id"] not in you:
         return False
     if not q:
         return True
@@ -369,6 +395,7 @@ class Kanban:
         self.tickets = golden["tickets"]
         self.col_of = {c: col["state"] for col in golden["kanban"] for c in col["tickets"]}
         self.order = {col["state"]: col["tickets"] for col in golden["kanban"]}
+        self.you = {i for i, e in turns_of(golden).items() if e["turn"] == "you"}
         self.view = View()
 
     def board(self):
@@ -377,7 +404,7 @@ class Kanban:
     def expect(self, what, **kw):
         """Wait until the cards shown are the ones the rule gives, then check the board and the hash."""
         want = {t["id"] for t in self.tickets if matches(t, kw.get("q", self.view.q), kw.get("feature", self.view.feature),
-                                                         kw.get("priority", self.view.priority))}
+                                                         kw.get("priority", self.view.priority), kw.get("turn", self.view.turn), self.you)}
         got = {}
         for _ in range(60):
             b = self.board()
@@ -416,6 +443,14 @@ class Kanban:
         if loose:
             self.page.wait_for_timeout(200)
             return self.check(what)
+        return self.expect(what)
+
+    def only_mine(self, on, what):
+        """Press or release button#only-mine; its aria-pressed must say which."""
+        self.view.turn = "you" if on else ""
+        self.page.click("button#only-mine")
+        self.tab.wait("want => { const b = document.querySelector('button#only-mine'); return !!b && b.getAttribute('aria-pressed') === want; }",
+                      "true" if on else "false", f"kanban, {what}: button#only-mine never became aria-pressed={'true' if on else 'false'}")
         return self.expect(what)
 
     def options(self, name):
@@ -1044,11 +1079,30 @@ def derive(golden, tmp):
     two["outcome"] = {"verdict": "GO", "judge": "verify", "line": "GO: launchpad — held at 25%"}
     holders = json.loads(json.dumps(golden))
     next(t for t in holders["tickets"] if t["id"] == "0005")["wait"]["holders"] = ["0003"]
+    # faces (ADR 0068 §2): a feature whose name holds an astral character (two UTF-16 code
+    # units) and one with an accent, a priority on a ticket that had none, a ticket whose last
+    # history entry is not its state (no time in state) and one with no attempt (no pips).
+    faces = json.loads(json.dumps(golden))
+    by_id = {t["id"]: t for t in faces["tickets"]}
+    by_id["0005"]["feature"], by_id["0005"]["priority"] = "launch-\U0001F600", "P3"
+    by_id["0004"]["feature"] = "été"
+    by_id["0003"]["priority"] = "P2"
+    by_id["0003"]["history"][-1]["state"] = "pr-opened"
+    by_id["0007"]["attempt"] = None
+    # long (§4): twenty more tickets in ci-failed, copies of 0003 under new ids.
+    long = json.loads(json.dumps(golden))
+    proto = next(t for t in long["tickets"] if t["id"] == "0003")
+    column = next(c for c in long["kanban"] if c["state"] == "ci-failed")
+    for n in range(20):
+        copy = json.loads(json.dumps(proto))
+        copy["id"] = f"{100 + n:04d}"
+        long["tickets"].append(copy)
+        column["tickets"].append(copy["id"])
     paths = {}
-    for name, book in (("held", held), ("holders", holders)):
+    for name, book in (("held", held), ("holders", holders), ("faces", faces), ("long", long)):
         paths[name] = tmp / f"{name}.json"
         paths[name].write_text(json.dumps(book), encoding="utf-8")
-    return {"held": held, "holders": holders}, paths
+    return {"held": held, "holders": holders, "faces": faces, "long": long}, paths
 
 
 def expected_now(t, launch, max_attempts, who=None):
@@ -1429,6 +1483,792 @@ def k_editor(browser, bases):
     ctx.close()
 
 
+# --- ADR 0068: the kanban that is looked at ------------------------------------------------
+# Written from docs/adr/0068, its acceptance criteria in docs/PLAN.md and the DOM contract
+# the task names, not from console/index.html.
+
+ACTORS = ("product", "spec", "dev", "gates", "reviewer", "tower", "canary")
+# §2: the actor of each step of core/tower.py's PRECONDITION.
+ACTOR_OF_STEP = {"clarify": "product", "answer": "product", "spec": "spec", "assign": "dev", "rework": "dev",
+                 "ci": "gates", "review": "reviewer", "merge": "tower", "mainline": "tower", "release": "canary"}
+MOVED_ID, MOVED_FROM, MOVED_TO = "0005", "opened", "pr-opened"
+# Live, the age counts to the console's read_at: days after the golden's newest entry, so that it
+# differs from the snapshot's reference.
+READ_AT = "2026-11-12T08:10:07Z"
+# Provenance, external: WCAG 2.1 SC 1.4.3 and 1.4.11 (ADR 0068 §6).
+MIN_TEXT, MIN_LARGE, MIN_FOCUS = 4.5, 3.0, 3.0
+
+
+def norm(text):
+    return " ".join(str(text).split())
+
+
+def actor_of(t, exp):
+    """The badge of ticket T whose now line is EXP (§2): the table's actor of the step the tower
+    requests when it is the tower's turn, else the turn itself; None for a state with no step."""
+    if exp["turn"] != "tower":
+        return exp["turn"]
+    questions = t.get("questions") or []
+    if t["state"] == "questions" and questions and questions[-1].get("answer"):
+        step = "answer"
+    else:
+        step = tower.NEXT.get(t["state"])
+    return ACTOR_OF_STEP[step] if step else None
+
+
+def hue_of(name):
+    """The sum of the UTF-16 code units of NAME, modulo 6 (§2)."""
+    raw = name.encode("utf-16-le")
+    return sum(int.from_bytes(raw[i:i + 2], "little") for i in range(0, len(raw), 2)) % 6
+
+
+def parse_at(text):
+    return datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def age_text(seconds):
+    """Floor minutes below 60, else floor hours below 24, else floor days (§2)."""
+    seconds = max(0, int(seconds))
+    if seconds // 60 < 60:
+        return f"{seconds // 60}m"
+    if seconds // 3600 < 24:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 86400}d"
+
+
+def snapshot_ref(book):
+    """The newest history `at` of every ticket: the snapshot's "now" (§2)."""
+    return max(h["at"] for t in book["tickets"] for h in t["history"])
+
+
+def expected_age(t, ref):
+    """(datetime, text) of ticket T measured to REF, or None when the last history entry is not its state."""
+    history = t.get("history") or []
+    if not history or history[-1].get("state") != t["state"]:
+        return None
+    i = len(history)
+    while i > 0 and history[i - 1].get("state") == t["state"]:
+        i -= 1
+    at = history[i]["at"]
+    return at, age_text((parse_at(ref) - parse_at(at)).total_seconds())
+
+
+def expected_pips(t, book):
+    """(max, filled) from the thresholds' REWORK_MAX_ATTEMPTS and the ticket's attempt, or None."""
+    try:
+        top = int(next(x["value"] for x in book["thresholds"] if x["key"] == "REWORK_MAX_ATTEMPTS"))
+        filled = t.get("attempt")
+        if filled is None or isinstance(filled, bool):
+            return None
+        filled = int(filled)
+    except (StopIteration, KeyError, TypeError, ValueError):
+        return None
+    return (top, filled) if top > 0 and filled >= 0 else None
+
+
+def face_problems(face, t, exp, book, ref):
+    """Why the card FACE (what the page drew) is not what ADR 0068 §2 says for ticket T, or []."""
+    bad = []
+    kinds = sorted(l["kind"] for l in face["labels"])
+    want_kinds = sorted(k for k, v in (("priority", t.get("priority")), ("feature", t.get("feature"))) if v)
+    if kinds != want_kinds:
+        bad.append(f"the labels are {kinds}, the ticket has {want_kinds}")
+    for label in face["labels"]:
+        if label["kind"] == "priority" and label["text"] != t.get("priority"):
+            bad.append(f"the priority label says {label['text']!r}, the ticket's is {t.get('priority')!r}")
+        if label["kind"] == "feature":
+            if label["text"] != t.get("feature"):
+                bad.append(f"the feature label says {label['text']!r}, the ticket's is {t.get('feature')!r}")
+            elif label["hue"] != str(hue_of(t["feature"])):
+                bad.append(f"the feature {t['feature']!r} has data-hue {label['hue']!r}, the sum of its UTF-16 units mod 6 is {hue_of(t['feature'])}")
+    if face["title"] is None or norm(t.get("title") or "") not in face["title"]:
+        bad.append(f"the .title is {face['title']!r}, the ticket's name is {t.get('title')!r}")
+    if face["nows"] != 1:
+        bad.append(f"{face['nows']} .now lines, want one")
+    want_actor = actor_of(t, exp)
+    if face["who"] != ([want_actor] if want_actor else []):
+        bad.append(f"the .who badges are {face['who']}, want {[want_actor] if want_actor else 'none'} (turn {exp['turn']}, state {t['state']})")
+    age = expected_age(t, ref)
+    if face["age"] != ([{"datetime": age[0], "text": age[1]}] if age else []):
+        bad.append(f"the time.age is {face['age']}, want {[{'datetime': age[0], 'text': age[1]}] if age else 'none'}")
+    pips = expected_pips(t, book)
+    want_pips = [{"max": str(pips[0]), "filled": str(pips[1]), "pip": pips[0], "on": pips[1]}] if pips else []
+    if face["pips"] != want_pips:
+        bad.append(f"the .pips are {face['pips']}, want {want_pips or 'none'}")
+    return bad
+
+
+def mark_problems(face, t, q):
+    """Why the <mark>s in the title of a card shown under the search Q are wrong: each is the match,
+    case ignored, as many as the title holds; none for a card the perimeter or the id alone matched."""
+    title, low = norm(t.get("title") or ""), q.lower()
+    n = title.lower().count(low)
+    if len(face["marks"]) != n:
+        return f"the title {title!r} holds {n} match(es) of {q!r}, the page marks {len(face['marks'])}"
+    if any(m.lower() != low for m in face["marks"]):
+        return f"a <mark> says {face['marks']}, want only {q!r}, whatever the case"
+    return None
+
+
+FACE_JS = """() => [...document.querySelectorAll('.card[data-id]')].map((c) => {
+  const title = c.querySelector('.title');
+  return {id: c.dataset.id,
+    labels: [...c.querySelectorAll('.label')].map((l) => ({kind: l.dataset.kind || null, hue: l.dataset.hue === undefined ? null : l.dataset.hue, text: l.textContent.trim()})),
+    title: title ? title.textContent.replace(/\\s+/g, ' ').trim() : null,
+    marks: title ? [...title.querySelectorAll('mark')].map((m) => m.textContent) : [],
+    nows: c.querySelectorAll('.now').length,
+    who: [...c.querySelectorAll('.who')].map((w) => (w.dataset.actor === undefined ? null : w.dataset.actor)),
+    age: [...c.querySelectorAll('time.age')].map((a) => ({datetime: a.getAttribute('datetime'), text: a.textContent.trim()})),
+    pips: [...c.querySelectorAll('.pips')].map((p) => ({max: p.dataset.max === undefined ? null : p.dataset.max,
+      filled: p.dataset.filled === undefined ? null : p.dataset.filled,
+      pip: p.querySelectorAll('.pip').length, on: p.querySelectorAll('.pip.on').length}))};
+})"""
+
+
+def check_faces(tab, book, what, ref=None):
+    """Every card of BOOK has the face the ADR gives it, the age measured to REF (the snapshot's by default)."""
+    turns, ref = turns_of(book), ref or snapshot_ref(book)
+    faces = {f["id"]: f for f in tab.page.evaluate(FACE_JS)}
+    need(sorted(faces) == sorted(t["id"] for t in book["tickets"]), f"{what}: the cards are {sorted(faces)}")
+    for t in book["tickets"]:
+        bad = face_problems(faces[t["id"]], t, turns[t["id"]], book, ref)
+        need(not bad, f"{what}, card {t['id']}: {bad[0] if bad else ''}", *bad)
+    return faces
+
+
+def l_face(browser, bases, golden, books):
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        draw_kanban(tab, f"l ({scheme})")
+        tab.page.wait_for_timeout(300)
+        check_faces(tab, golden, f"l, the golden, {scheme}")
+        tab.audit(f"l, the golden, {scheme}")
+        ctx.close()
+    # A logbook with an astral feature, an accent, a priority and no time in state or pips on some tickets.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["faces"])
+    draw_kanban(tab, "l, faces")
+    tab.page.wait_for_timeout(300)
+    faces = check_faces(tab, books["faces"], "l, the derived logbook")
+    need(faces["0003"]["age"] == [], "l: card 0003's last history entry is not its state, but it shows a time in state")
+    need(faces["0007"]["pips"] == [], "l: card 0007 has no attempt, but it shows pips")
+    tab.audit("l, the derived logbook")
+    ctx.close()
+    # The search wraps the match in <mark> inside the title, case ignored; a card the perimeter alone matched has none.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "l, search")
+    k = Kanban(tab, golden)
+    marked = plain = False
+    for q in ("waitlist", "WAITLIST", "app/backend/geocoder/cache.py", "readme", "0009"):
+        tab.page.fill("input#kanban-q", q)
+        want = {t["id"] for t in golden["tickets"] if matches(t, q)}
+        for _ in range(60):
+            if set(shown(k.board())) == want:
+                break
+            tab.page.wait_for_timeout(50)
+        need(set(shown(k.board())) == want, f"l, search {q!r}: the cards shown are {sorted(shown(k.board()))}, want {sorted(want)}")
+        tab.page.wait_for_timeout(150)
+        for f in tab.page.evaluate(FACE_JS):
+            t = next(t for t in golden["tickets"] if t["id"] == f["id"])
+            if f["id"] not in want:
+                continue
+            problem = mark_problems(f, t, q)
+            need(problem is None, f"l, search {q!r}, card {f['id']}: {problem}")
+            marked, plain = marked or bool(f["marks"]), plain or not f["marks"]
+    need(marked and plain, "l: the searches never gave both a marked title and a card shown with no mark")
+    tab.audit("l, search")
+    ctx.close()
+
+
+# --- m. the back of a card ----------------------------------------------------------------------
+
+OPEN_JS = "() => { const d = document.querySelector('dialog#card-back'); return !!d && d.open; }"
+CLOSED_JS = "() => { const d = document.querySelector('dialog#card-back'); return (!d || !d.open) && !document.querySelector('aside#drawer'); }"
+BACK_JS = """(id) => {
+  const d = document.querySelector('dialog#card-back');
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const r = d ? d.getBoundingClientRect() : null;
+  const board = document.querySelector('.board');
+  const a = document.activeElement;
+  return {exists: !!d, open: !!d && d.open, modal: !!d && d.matches(':modal'),
+    drawers: document.querySelectorAll('aside#drawer').length,
+    drawer: d && d.querySelector('aside#drawer') ? d.querySelector('aside#drawer').dataset.id : null,
+    inside: !!d && d.contains(a),
+    nows: d ? [...d.querySelectorAll('.nowbox .now')].map(txt) : [],
+    acts: d ? [...d.querySelectorAll('.nowbox a.act')].map((x) => ({href: x.getAttribute('href'), primary: x.classList.contains('primary')})) : [],
+    stage_lists: d ? d.querySelectorAll('ol.stages').length : 0,
+    stages: d ? [...d.querySelectorAll('ol.stages li[data-band][data-mark]')].map((l) => ({band: l.dataset.band, mark: l.dataset.mark})) : [],
+    phases: d ? [...d.querySelectorAll('ol.compact li[data-phase]')].map((l) => l.dataset.phase) : [],
+    questions: d ? [...d.querySelectorAll('.question')].map(txt) : [],
+    link: d ? d.querySelectorAll("a[href='#ticket/" + id + "']").length : 0,
+    rect: r ? {w: r.width, h: r.height} : null, hash: location.hash, history: history.length,
+    active: a ? {card: a.closest('.card[data-id]') ? a.closest('.card[data-id]').dataset.id : null, inBoard: !!(board && board.contains(a))} : null};
+}"""
+# The first card other than ID whose centre is on screen, and what is on top of that point.
+INERT_JS = """(id) => {
+  for (const c of document.querySelectorAll('.card[data-id]')) {
+    if (c.dataset.id === id) continue;
+    const b = c.getBoundingClientRect();
+    const x = b.left + b.width / 2, y = b.top + b.height / 2;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+    const top = document.elementFromPoint(x, y);
+    const hit = top && top.closest('.card[data-id]');
+    return {found: true, other: c.dataset.id, card: hit ? hit.dataset.id : null};
+  }
+  return {found: false};
+}"""
+
+
+def back_problems(info, ident, now_text, stages, phases, exp, question):
+    """Why the open back INFO of ticket IDENT is not ADR 0068 §3's: its card's now line NOW_TEXT, the
+    timeline's STAGES and PHASES, EXP the rule's now line, QUESTION the open question's text or None."""
+    bad = []
+    if not info["exists"] or not info["open"]:
+        return ["dialog#card-back is not open"]
+    if not info["modal"]:
+        bad.append("the dialog is open but not modal (it was not opened with showModal())")
+    if info["drawers"] != 1 or info["drawer"] != ident:
+        bad.append(f"{info['drawers']} aside#drawer in the page, the one in the dialog is for {info['drawer']!r}, want exactly one for {ident}")
+    if not info["inside"]:
+        bad.append("the focus is not inside the dialog")
+    if len(info["nows"]) != 1 or info["nows"][0] != now_text:
+        bad.append(f"the back's .nowbox .now is {info['nows']}, the card's is {now_text!r}")
+    if info["stage_lists"] != 1 or info["stages"] != stages:
+        bad.append(f"the back's strip is {info['stages']}, the timeline's ol#stages is {stages}")
+    if info["phases"] != phases:
+        bad.append(f"the compact rows are {info['phases']}, the logbook's timeline order is {phases}")
+    if exp["href"]:
+        if len(info["acts"]) != 1 or not info["acts"][0]["primary"] or info["acts"][0]["href"] != exp["href"]:
+            bad.append(f"the nowbox's actions are {info['acts']}, want exactly one a.act.primary to {exp['href']!r}")
+    elif len(info["acts"]) > 1:
+        bad.append(f"the nowbox has {len(info['acts'])} actions, want at most one")
+    if question and not any(question in q for q in info["questions"]):
+        bad.append(f"no .question holds {question!r}: {info['questions']}")
+    if info["link"] < 1:
+        bad.append(f"no a[href='#ticket/{ident}'] in the back")
+    return bad
+
+
+def closed_problems(info, ident):
+    """Why the board after the back of IDENT was closed is wrong: still open, a drawer left, a card= in
+    the hash, the focus not on the card."""
+    bad = []
+    if info["open"]:
+        bad.append("the dialog is still open")
+    if info["drawers"]:
+        bad.append("an aside#drawer is still in the DOM")
+    if "card=" in info["hash"]:
+        bad.append(f"the hash {info['hash']!r} still has card=")
+    if not info["active"] or info["active"]["card"] != ident:
+        bad.append(f"the focus is on {info['active']}, want the card {ident}")
+    return bad
+
+
+def open_back(tab, ident, how="click"):
+    page = tab.page
+    if how == "click":
+        page.locator(f".card[data-id='{ident}'] .title").first.click()
+    else:
+        page.focus(f".card[data-id='{ident}']")
+        page.keyboard.press("Enter")
+    tab.wait(OPEN_JS, None, f"m, {ident}: dialog#card-back never opened ({how})")
+    page.wait_for_timeout(500)  # the back scales in; a box is measured once it has
+    return page.evaluate(BACK_JS, ident)
+
+
+def close_back(tab, ident, how):
+    if how == "Escape":
+        tab.page.keyboard.press("Escape")
+    else:
+        tab.page.mouse.click(5, 5)  # outside the box: the back is at most 720 px wide at 1440
+    tab.wait(CLOSED_JS, None, f"m, {ident}: the back never closed ({how})")
+    tab.page.wait_for_timeout(150)
+    info = tab.page.evaluate(BACK_JS, ident)
+    bad = closed_problems(info, ident)
+    need(not bad, f"m, {ident}, closed by {how}: {bad[0] if bad else ''}", *bad)
+    return info
+
+
+def m_back(browser, bases, golden):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab, tl = Tab(ctx, bases["golden"]), Tab(ctx, bases["golden"])
+    turns = turns_of(golden)
+    stages_of = {}
+    for t in golden["tickets"]:
+        tl.page.goto("about:blank")
+        tl.load(f"#ticket/{t['id']}")
+        wait_for(tl, "ol#stages li", f"m, the timeline of {t['id']}")
+        stages_of[t["id"]] = [{"band": s["band"], "mark": s["mark"]} for s in tl.page.evaluate(TIMELINE_JS)["stages"]]
+    draw_kanban(tab, "m")
+    tab.page.wait_for_timeout(300)
+    closed = tab.page.evaluate(BACK_JS, "0009")
+    need(not closed["open"] and closed["drawers"] == 0, f"m: with no card opened, the dialog is open={closed['open']} and {closed['drawers']} aside#drawer are in the DOM")
+    sensitive = tab.page.evaluate(INERT_JS, "0009")
+    need(sensitive["found"] and sensitive["card"] == sensitive["other"],
+         f"m: with the back closed, the point on card {sensitive.get('other')} does not hit a card: the inert probe proves nothing: {sensitive}")
+    for t in golden["tickets"]:
+        ident, exp = t["id"], turns[t["id"]]
+        now_text = one_now(tab, f".card[data-id='{ident}'] .now", f"m, card {ident}")["text"]
+        phases = [row["phase"] for row in t["timeline"]]
+        qs = t.get("questions") or []
+        question = qs[-1]["question"] if t["state"] == "questions" and qs and not qs[-1].get("answer") else None
+        info = open_back(tab, ident)
+        bad = back_problems(info, ident, now_text, stages_of[ident], phases, exp, question)
+        need(not bad, f"m, the back of {ident}: {bad[0] if bad else ''}", *bad)
+        need(info["hash"] == View(card=ident).hash(), f"m, the back of {ident}: the hash is {info['hash']!r}, want {View(card=ident).hash()!r}")
+        w = info["rect"]["w"]
+        need(w <= 720 + 1, f"m, the back of {ident} is {w:.0f} px wide at 1440, at most 720")
+        inert = tab.page.evaluate(INERT_JS, ident)
+        need(inert["found"] and inert["card"] is None, f"m, the back of {ident}: a point on card {inert.get('other')} still hits a card ({inert}): the board is not inert")
+        close_back(tab, ident, "Escape")
+        tab.audit(f"m, {ident}")
+    # Enter on the focused card opens it; a click on the backdrop closes it.
+    nine = next(t for t in golden["tickets"] if t["id"] == "0009")
+    now_nine = one_now(tab, ".card[data-id='0009'] .now", "m, card 0009")["text"]
+    info = open_back(tab, "0009", "Enter")
+    bad = back_problems(info, "0009", now_nine, stages_of["0009"], [r["phase"] for r in nine["timeline"]], turns["0009"], nine["questions"][-1]["question"])
+    need(not bad, f"m, Enter on 0009: {bad[0] if bad else ''}", *bad)
+    close_back(tab, "0009", "backdrop")
+    # The focus stays in the back: Tab never reaches the board.
+    open_back(tab, "0009")
+    for n in range(12):
+        tab.page.keyboard.press("Tab")
+        now = tab.page.evaluate(BACK_JS, "0009")
+        need(now["active"] and not now["active"]["inBoard"], f"m: Tab number {n + 1} moved the focus into the board behind the back: {now['active']}")
+    tab.page.keyboard.press("Escape")
+    tab.wait(CLOSED_JS, None, "m: the back never closed after Tab")
+    tab.audit("m, the back at 1440")
+    ctx.close()
+    # The phone: the back is the screen.
+    ctx = browser.new_context(viewport=PHONE)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "m, 390x844")
+    info = open_back(tab, "0009")
+    r = info["rect"]
+    need(r["w"] >= PHONE["width"] - 1 and r["h"] >= PHONE["height"] - 1,
+         f"m: at 390x844 the back is {r['w']:.0f}x{r['h']:.0f}, want the whole viewport {PHONE['width']}x{PHONE['height']}")
+    tab.audit("m, 390x844")
+    ctx.close()
+
+
+# --- n. Your turn only ---------------------------------------------------------------------------
+
+def n_only_mine(browser, bases, golden):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    k = Kanban(tab, golden)
+    tab.load("#kanban")
+    wait_for(tab, ".card[data-id]", "n")
+    need(k.board()["only_mine"] == "false", f"n: button#only-mine has aria-pressed {k.board()['only_mine']!r} at the start, want 'false'")
+    k.expect("n, the default view")
+    h0 = k.board()["history"]
+    b = k.only_mine(True, "Your turn only pressed")
+    need(sorted(shown(b)) == sorted(YOUR_TURN_GOLDEN), f"n: pressed, the cards are {sorted(shown(b))}, want {sorted(YOUR_TURN_GOLDEN)}")
+    need(b["hash"] == "#kanban?turn=you", f"n: pressed, the hash is {b['hash']!r}, want '#kanban?turn=you'")
+    raw = b["hash"]
+    # A page opened on that link shows the same, the button pressed.
+    again = Tab(ctx, bases["golden"])
+    again.load(raw)
+    second = Kanban(again, golden)
+    again.wait("() => { const b = document.querySelector('button#only-mine'); return !!b && b.getAttribute('aria-pressed') === 'true'; }", None,
+               "n: a page opened on turn=you never showed button#only-mine pressed")
+    for _ in range(40):
+        if set(shown(second.board())) == set(YOUR_TURN_GOLDEN):
+            break
+        again.page.wait_for_timeout(50)
+    need(sorted(shown(second.board())) == sorted(YOUR_TURN_GOLDEN), f"n: a page opened on {raw!r} shows {sorted(shown(second.board()))}")
+    again.audit("n, the page opened on the link")
+    # With the other keys, the order is q, feature, priority, turn, group, empty, collapsed, card.
+    k.select("priority", "P0", "Your turn only and priority P0")
+    k.select("group", "feature", "Your turn only, P0, grouped")
+    k.select("empty", "hide", "Your turn only, P0, grouped, empties hidden")
+    k.open_card("0009", "Your turn only, and a card open")
+    need(k.board()["hash"] == "#kanban?priority=P0&turn=you&group=feature&empty=hide&card=0009",
+         f"n: the combined hash is {k.board()['hash']!r}, want '#kanban?priority=P0&turn=you&group=feature&empty=hide&card=0009'")
+    k.view.card = ""
+    k.key("Escape", "Escape closes the back")
+    k.select("empty", "", "empties shown")
+    k.select("group", "", "ungrouped")
+    k.select("priority", "", "priority cleared")
+    b = k.only_mine(False, "Your turn only released")
+    need(sorted(shown(b)) == sorted(t["id"] for t in golden["tickets"]), f"n: released, the cards are {sorted(shown(b))}, want every ticket")
+    need("turn" not in b["hash"], f"n: released, the hash is still {b['hash']!r}")
+    need(b["history"] == h0, f"n: the toggle added {b['history'] - h0} history entries; it must replaceState")
+    tab.audit("n, the whole sequence")
+    ctx.close()
+
+
+# --- o. the flight and the announcement ---------------------------------------------------------
+
+RECORD_ANIMATE = """(() => { window.__animated = []; const orig = Element.prototype.animate;
+  Element.prototype.animate = function (...args) { window.__animated.push({id: this.dataset ? this.dataset.id : null}); return orig.apply(this, args); }; })();"""
+MOVED_JS = """(id) => {
+  const c = document.querySelector(".card[data-id='" + id + "']");
+  const col = c ? c.closest('.col[data-state]') : null;
+  const a = document.getElementById('announce');
+  return {moved: !!c && c.classList.contains('moved'), from: c && c.dataset.from !== undefined ? c.dataset.from : null,
+    col: col ? col.dataset.state : null, live: a ? a.getAttribute('aria-live') : null,
+    announce: a ? a.textContent.replace(/\\s+/g, ' ').trim() : null,
+    animated: (window.__animated || []).filter((x) => x.id === id).length};
+}"""
+
+
+def moved_logbook(golden):
+    """The golden with one card moved by the tower: MOVED_ID from MOVED_FROM to MOVED_TO."""
+    book = json.loads(json.dumps(golden))
+    next(t for t in book["tickets"] if t["id"] == MOVED_ID)["state"] = MOVED_TO
+    for col in book["kanban"]:
+        if MOVED_ID in col["tickets"]:
+            col["tickets"].remove(MOVED_ID)
+        if col["state"] == MOVED_TO:
+            col["tickets"].append(MOVED_ID)
+    return book
+
+
+def flight_problems(info, reduced):
+    """Why the board after the move is wrong: the card is not marked, from the old state, in the new
+    column; the region is not polite or does not say the move; it animated (or not) against REDUCED."""
+    bad = []
+    if not info["moved"]:
+        bad.append(f"card {MOVED_ID} is not .moved")
+    if info["from"] != MOVED_FROM:
+        bad.append(f"data-from is {info['from']!r}, want {MOVED_FROM!r}")
+    if info["col"] != MOVED_TO:
+        bad.append(f"the card sits in {info['col']!r}, want {MOVED_TO!r}")
+    if info["live"] != "polite":
+        bad.append(f"#announce has aria-live {info['live']!r}, want 'polite'")
+    bad += announce_problems(info["announce"] or "")
+    if reduced and info["animated"]:
+        bad.append(f"with reduced motion the card ran {info['animated']} animation(s), want none")
+    if not reduced and not info["animated"]:
+        bad.append("without reduced motion the card ran no animation (Element.animate was never called on it)")
+    return bad
+
+
+def announce_problems(text):
+    """The announcement names the id, the old state, then the new (ADR 0068 §4: "<id> moved from <old> to <new>")."""
+    bad = []
+    if MOVED_ID not in text or MOVED_FROM not in text or MOVED_TO not in text:
+        bad.append(f"#announce says {text!r}, want {MOVED_ID}, {MOVED_FROM} and {MOVED_TO}")
+    elif not text.find(MOVED_FROM) < text.find(MOVED_TO):
+        bad.append(f"#announce says {text!r}: the old state {MOVED_FROM} does not come before the new {MOVED_TO}")
+    return bad
+
+
+def o_flight(browser, bases, golden):
+    """A LIVE console, SIMULATED in the browser: page.route answers /v1/console.json with the real answer
+    turned live (a mode and a read_at) and /v1/logbook.json with the golden, then with one card moved; the
+    page polls every 2 s in live mode (ADR 0047 §4). The server is the snapshot server and is never asked."""
+    real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+    live = {**real, "mode": "live", "read_at": READ_AT}
+    moved = moved_logbook(golden)
+    # The recorder can see a call: a probe page that animates an element.
+    ctx = browser.new_context()
+    ctx.add_init_script(RECORD_ANIMATE)
+    probe = ctx.new_page()
+    probe.goto(bases["golden"] + "/v1/console.json")
+    probe.evaluate("() => { const d = document.createElement('div'); d.dataset.id = 'probe'; document.body.append(d); d.animate([{opacity: 0}, {opacity: 1}], 10); }")
+    need(probe.evaluate("window.__animated") == [{"id": "probe"}], f"o: the animation recorder did not see a call: {probe.evaluate('window.__animated')}")
+    ctx.close()
+    for reduced in (False, True):
+        what = "o, reduced motion" if reduced else "o, motion"
+        ctx = browser.new_context(viewport=DESKTOP, reduced_motion="reduce" if reduced else "no-preference")
+        ctx.add_init_script(RECORD_ANIMATE)
+        tab = Tab(ctx, bases["golden"])
+        phase = {"moved": False}
+
+        def console_route(route):
+            route.fulfill(status=200, content_type="application/json", headers={"Cache-Control": "no-store"}, body=json.dumps(live))
+
+        def logbook_route(route):
+            route.fulfill(status=200, content_type="application/json",
+                          headers={"Cache-Control": "no-store", "ETag": '"moved"' if phase["moved"] else '"golden"'},
+                          body=json.dumps(moved if phase["moved"] else golden))
+
+        tab.page.route("**/v1/console.json", console_route)
+        tab.page.route("**/v1/logbook.json", logbook_route)
+        draw_kanban(tab, what)
+        tab.page.wait_for_timeout(600)
+        need(tab.page.evaluate(MOVED_JS, MOVED_ID)["col"] == MOVED_FROM, f"{what}: card {MOVED_ID} did not start in {MOVED_FROM}")
+        if not reduced:
+            check_faces(tab, golden, f"{what}, ages in live mode", ref=READ_AT)
+        phase["moved"] = True
+        tab.wait("id => { const c = document.querySelector(\".card[data-id='\" + id + \"']\"); const a = document.getElementById('announce');"
+                 " return !!c && c.classList.contains('moved') && !!a && a.textContent.trim() !== ''; }",
+                 MOVED_ID, f"{what}: the moved card was never marked and announced within the polls", timeout=9000)
+        tab.page.wait_for_timeout(100)
+        info = tab.page.evaluate(MOVED_JS, MOVED_ID)
+        bad = flight_problems(info, reduced)
+        need(not bad, f"{what}: {bad[0] if bad else ''}", *bad)
+        tab.audit(what)
+        ctx.close()
+
+
+# --- p. a long column -----------------------------------------------------------------------------
+
+LONG_JS = """() => {
+  const col = document.querySelector(".col[data-state='ci-failed']");
+  const h3 = col ? col.querySelector('h3') : null;
+  if (!col || !h3) return null;
+  const before = {sh: col.scrollHeight, ch: col.clientHeight, overflow: getComputedStyle(col).overflowY};
+  col.scrollTop = 400;
+  const c = col.getBoundingClientRect(), h = h3.getBoundingClientRect();
+  return {...before, top: col.scrollTop, gap: h.top - c.top, h3_top: h.top, vh: innerHeight, sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth};
+}"""
+
+
+def long_problems(info):
+    """Why the long column INFO does not scroll inside itself with its header in view."""
+    if info is None:
+        return ["there is no .col[data-state=ci-failed] with an h3"]
+    bad = []
+    if not info["sh"] > info["ch"]:
+        bad.append(f"the column is not taller inside than out: scrollHeight {info['sh']}, clientHeight {info['ch']}")
+    if info["overflow"] not in ("auto", "scroll"):
+        bad.append(f"the column's overflow-y is {info['overflow']!r}, want auto or scroll")
+    if not info["top"] > 0:
+        bad.append(f"scrollTop stayed {info['top']} after being set to 400")
+    if abs(info["gap"]) > 2:
+        bad.append(f"after scrolling, the h3 is {info['gap']:.1f} px from the column's top, want within 2")
+    if not 0 <= info["h3_top"] < info["vh"]:
+        bad.append(f"after scrolling, the h3's top is at {info['h3_top']:.0f}, outside the {info['vh']} px viewport")
+    if info["sw"] > info["cw"]:
+        bad.append(f"the page scrolls sideways: {info['sw']} > {info['cw']}")
+    return bad
+
+
+def p_long(browser, bases):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["long"])
+    draw_kanban(tab, "p")
+    tab.page.wait_for_timeout(300)
+    info = tab.page.evaluate(LONG_JS)
+    bad = long_problems(info)
+    need(not bad, f"p, a column of 22 cards at 1440x900: {bad[0] if bad else ''}", *bad)
+    tab.audit("p")
+    ctx.close()
+
+
+# --- q. contrast and focus ------------------------------------------------------------------------
+
+def lum(rgb):
+    """WCAG 2.1 relative luminance of an sRGB colour of three 0-255 channels."""
+    def channel(c):
+        c = c / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = rgb
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def contrast(a, b):
+    la, lb = lum(a), lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def is_large(px, weight):
+    """WCAG's large text: 24 px, or 18.66 px (14 pt) bold."""
+    return px >= 24 or (px >= 18.66 and weight >= 700)
+
+
+def contrast_problems(items, where):
+    """Why the measured texts ITEMS (fg and bg composited to opaque, size, weight, a background-image flag) fail AA."""
+    bad = []
+    for it in items:
+        label = f"{where}: {it['tag']}.{it['cls']} {it['text']!r}"
+        if it["image"]:
+            bad.append(f"{label} sits over a background-image; the ADR wants solid backgrounds")
+            continue
+        need_ = MIN_LARGE if is_large(it["px"], it["weight"]) else MIN_TEXT
+        ratio = contrast(it["fg"], it["bg"])
+        if ratio + 1e-9 < need_:
+            bad.append(f"{label} has contrast {ratio:.2f}:1, want {need_}:1 ({it['px']}px, weight {it['weight']}, "
+                       f"rgb{tuple(round(c) for c in it['fg'])} on rgb{tuple(round(c) for c in it['bg'])})")
+    return bad
+
+
+def focus_problems(info):
+    """Why the outline of a focused card INFO is not a visible one at 3:1 against the column's background."""
+    if info is None:
+        return ["the Tab key never reached a .card"]
+    bad = []
+    if info["style"] == "none":
+        bad.append("the focused card has outline-style none")
+    if info["width"] < 2:
+        bad.append(f"the focused card's outline is {info['width']}px wide, want at least 2px")
+    ratio = contrast(info["color"], info["bg"])
+    if ratio + 1e-9 < MIN_FOCUS:
+        bad.append(f"the focused card's outline has contrast {ratio:.2f}:1 against its column, want {MIN_FOCUS}:1")
+    return bad
+
+
+# Colour helpers shared by the two measures: any CSS colour to [r, g, b, a] (a canvas reads those that are
+# not rgb()), the first opaque background up the chain with the translucent ones composited over it.
+COLOR_JS = """
+const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+const g2 = cv.getContext('2d', {willReadFrequently: true});
+const parse = (c) => {
+  const m = /^rgba?\\(\\s*([\\d.]+)[\\s,]+([\\d.]+)[\\s,]+([\\d.]+)(?:\\s*[,/]\\s*([\\d.]+)(%?))?\\s*\\)$/.exec(c);
+  if (m) { let a = m[4] === undefined ? 1 : parseFloat(m[4]); if (m[5]) a /= 100; return [+m[1], +m[2], +m[3], a]; }
+  g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1);
+  const d = g2.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255];
+};
+const over = (f, b) => [0, 1, 2].map((i) => f[i] * f[3] + b[i] * (1 - f[3]));
+const bgOf = (el) => {
+  const layers = []; let image = false;
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    const s = getComputedStyle(n);
+    if (s.backgroundImage !== 'none') image = true;
+    const c = parse(s.backgroundColor);
+    if (c[3] > 0) layers.push(c);
+    if (c[3] >= 1) break;
+  }
+  let base = [255, 255, 255];
+  if (layers.length && layers[layers.length - 1][3] >= 1) base = layers.pop().slice(0, 3);
+  for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base);
+  return {rgb: base, image};
+};
+"""
+MEASURE_JS = "(sel) => {" + COLOR_JS + """
+  const root = document.querySelector(sel);
+  if (!root) return null;
+  const out = [];
+  for (const el of [root, ...root.querySelectorAll('*')]) {
+    if (!['SCRIPT', 'STYLE'].includes(el.tagName) && ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '')) continue;
+    const s = getComputedStyle(el), r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || s.visibility !== 'visible') continue;
+    if (r.width < 2 && r.height < 2) continue;  // a visually hidden label
+    if (el.closest('button:disabled, input:disabled, select:disabled, textarea:disabled, fieldset:disabled')) continue;
+    let opacity = 1;
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) opacity *= parseFloat(getComputedStyle(n).opacity);
+    const bg = bgOf(el), fg = parse(s.color);
+    out.push({tag: el.tagName.toLowerCase(), cls: String(el.getAttribute('class') || ''),
+      text: [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(' ').slice(0, 40),
+      fg: over([fg[0], fg[1], fg[2], fg[3] * opacity], bg.rgb), bg: bg.rgb, image: bg.image,
+      px: parseFloat(s.fontSize), weight: parseInt(s.fontWeight, 10) || 400});
+  }
+  return out;
+}"""
+FOCUS_JS = "() => {" + COLOR_JS + """
+  const a = document.activeElement;
+  const card = a && a.closest ? a.closest('.card[data-id]') : null;
+  if (!card || a !== card) return null;
+  const s = getComputedStyle(card), col = card.closest('.col') || card.parentElement;
+  const bg = bgOf(col).rgb, c = parse(s.outlineColor);
+  return {id: card.dataset.id, style: s.outlineStyle, width: parseFloat(s.outlineWidth), color: over(c, bg), bg};
+}"""
+
+
+def q_contrast(browser, bases):
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        draw_kanban(tab, f"q ({scheme})")
+        tab.page.wait_for_timeout(500)
+        items = tab.page.evaluate(MEASURE_JS, ".board")
+        need(items and len(items) >= 20, f"q ({scheme}): the walker found {len(items or [])} texts in .board, want a board's worth")
+        bad = contrast_problems(items, f"q ({scheme}), the board")
+        need(not bad, bad[0] if bad else "", *bad[:20])
+        # The keyboard reaches a card, and the card says so.
+        tab.page.focus("#kanban-q")
+        info = None
+        for _ in range(40):
+            tab.page.keyboard.press("Tab")
+            info = tab.page.evaluate(FOCUS_JS)
+            if info:
+                break
+        bad = focus_problems(info)
+        need(not bad, f"q ({scheme}): {bad[0] if bad else ''}", *bad)
+        # The open back.
+        open_back(tab, "0009")
+        items = tab.page.evaluate(MEASURE_JS, "dialog#card-back")
+        need(items and len(items) >= 10, f"q ({scheme}): the walker found {len(items or [])} texts in the back, want the back's worth")
+        bad = contrast_problems(items, f"q ({scheme}), the back of 0009")
+        need(not bad, bad[0] if bad else "", *bad[:20])
+        tab.audit(f"q ({scheme})")
+        ctx.close()
+
+
+# --- r. the phone's band bar --------------------------------------------------------------------
+
+BAND_TOP_JS = "(b) => { const e = document.querySelector(\".band[data-band='\" + b + \"']\"); return e ? e.getBoundingClientRect().top : null; }"
+
+
+def r_bands(browser, bases, golden):
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "r, 1440")
+    shown_bar = tab.page.evaluate("() => [...document.querySelectorAll('.band-jump')].some((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; })")
+    need(not shown_bar, "r: the band bar is drawn at 1440, it belongs below 720 px")
+    ctx.close()
+    ctx = browser.new_context(viewport=PHONE)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "r, 390x844")
+    tab.page.wait_for_timeout(300)
+    want = sorted({BAND_OF.get(t["state"], "other") for t in golden["tickets"]})
+    got = tab.page.evaluate("() => [...document.querySelectorAll('.band-jump button[data-band]')].map((b) => b.dataset.band)")
+    need(sorted(got) == want and len(got) == len(set(got)), f"r: the band bar has {got}, want one button for each band that holds a card: {want}")
+    tab.page.evaluate("() => window.scrollTo(0, 0)")
+    before = tab.page.evaluate(BAND_TOP_JS, "release")
+    need(before is not None and before >= PHONE["height"], f"r: the Release band is at {before} before the click, already in the viewport: the jump proves nothing")
+    hash0, hist0 = tab.page.evaluate("[location.hash, history.length]")
+    tab.page.click(".band-jump button[data-band='release']")
+    top, last = None, None
+    for _ in range(40):  # smooth scrolling: until two reads agree
+        tab.page.wait_for_timeout(100)
+        top = tab.page.evaluate(BAND_TOP_JS, "release")
+        if top == last:
+            break
+        last = top
+    need(top is not None and 0 <= top < PHONE["height"], f"r: after the click the Release band's top is at {top}, want inside [0, {PHONE['height']})")
+    hash1, hist1 = tab.page.evaluate("[location.hash, history.length]")
+    need((hash1, hist1) == (hash0, hist0), f"r: the jump changed the hash {hash0!r} -> {hash1!r} or the history {hist0} -> {hist1}")
+    tab.audit("r")
+    ctx.close()
+
+
+# --- s. no drag -----------------------------------------------------------------------------------
+
+RECORD_EVENTS = """(() => { window.__events = []; const orig = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, ...rest) { window.__events.push(String(type)); return orig.call(this, type, ...rest); }; })();"""
+
+
+def drag_problems(events, draggable):
+    """Why a session's registered event types and its [draggable=true] count mean a card can be dragged."""
+    bad = [f"a listener for {t!r} was registered" for t in sorted(set(events)) if t == "drop" or t.startswith("drag")]
+    if draggable:
+        bad.append(f"{draggable} element(s) are draggable=true")
+    return bad
+
+
+def s_nodrag(browser, bases):
+    ctx = browser.new_context(viewport=DESKTOP)
+    ctx.add_init_script(RECORD_EVENTS)
+    probe = ctx.new_page()
+    probe.goto(bases["golden"] + "/v1/console.json")
+    probe.evaluate("() => { document.addEventListener('dragstart', () => {}); document.addEventListener('drop', () => {}); }")
+    seen = probe.evaluate("window.__events")
+    need("dragstart" in seen and "drop" in seen, f"s: the listener recorder did not see a dragstart and a drop registered: {seen}")
+    need(drag_problems(seen, 0), "s: a session that registered dragstart and drop is accepted")
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "s")
+    tab.page.wait_for_timeout(300)
+    open_back(tab, "0009")
+    tab.page.keyboard.press("Escape")
+    tab.wait(CLOSED_JS, None, "s: the back never closed")
+    tab.page.click("button#only-mine")
+    tab.page.wait_for_timeout(200)
+    tab.page.click("button#only-mine")
+    tab.page.wait_for_timeout(200)
+    events = tab.page.evaluate("window.__events")
+    need(len(events) > 5, f"s: the recorder saw {len(events)} registrations in a whole session: it is not recording")
+    bad = drag_problems(events, tab.page.evaluate("document.querySelectorAll('[draggable=true]').length"))
+    need(not bad, f"s: {bad[0] if bad else ''}", *bad)
+    tab.audit("s")
+    ctx.close()
+
+
 # --- the checks that the checks themselves can fail ------------------------------------
 
 def self_checks():
@@ -1502,6 +2342,150 @@ def self_checks():
     box = {"top": 700, "left": 10, "bottom": 740, "right": 300, "h": 40}
     need(inside(box, 1440, 900) and not inside({**box, "top": 880, "bottom": 920}, 1440, 900) and not inside({**box, "h": 0}, 1440, 900)
          and not inside(None, 1440, 900) and not inside({**box, "right": 500}, 390, 844), "the viewport test does not tell inside from outside")
+    self_checks_0068(book)
+
+
+def self_checks_0068(book):
+    """ADR 0068's rules and comparisons (l-s), each shown to fail on a wrong input."""
+    # The view: `turn` sits between priority and group.
+    v = View(q="a", feature="f", priority="P0", turn="you", group="feature", empty="hide", collapsed=["held"], card="0009")
+    need(v.hash() == "#kanban?q=a&feature=f&priority=P0&turn=you&group=feature&empty=hide&collapsed=held&card=0009", f"the hash writer is wrong with turn: {v.hash()}")
+    need(view_problems(v.hash(), v) is None, "a hash with turn is not accepted for its own view")
+    need(view_problems("#kanban?turn=you&priority=P0", View(priority="P0", turn="you")), "turn before priority is accepted")
+    need(view_problems("#kanban?group=feature&turn=you", View(group="feature", turn="you")), "turn after group is accepted")
+    need(view_problems("#kanban", View(turn="you")), "a hash with no turn is accepted for a view with it")
+    need(view_problems("#kanban?turn=you", View()), "a hash with turn is accepted for a view without it")
+    need(matches({"id": "0009", "title": "x"}, turn="you", you=("0009",)) and not matches({"id": "0003", "title": "x"}, turn="you", you=("0009",)),
+         "the turn filter does not tell a person's ticket from the tower's")
+    need(matches({"id": "0003", "title": "x"}, turn="", you=("0009",)), "no turn filter still hides a ticket")
+    # The actor table and the badge's rule.
+    need(set(ACTOR_OF_STEP) == set(tower.PRECONDITION) and set(ACTOR_OF_STEP.values()) <= set(ACTORS), "the actor table of this suite is not core/tower.py's steps")
+    by_id = {t["id"]: t for t in book["tickets"]}
+    turns = turns_of(book)
+    want = {"0001": "done", "0002": "done", "0003": "dev", "0004": "you", "0005": "you", "0007": "you", "0008": "dev", "0009": "you"}
+    need({i: actor_of(by_id[i], turns[i]) for i in by_id} == want, f"the badge rule gives {({i: actor_of(by_id[i], turns[i]) for i in by_id})}, want {want}")
+    answered = {"id": "9", "state": "questions", "questions": [{"question": "q", "answer": "a"}]}
+    need(actor_of(answered, {"turn": "tower"}) == "product", "an answered question is not the product role's turn")
+    need(actor_of({"id": "9", "state": "pr-opened"}, {"turn": "tower"}) == "gates" and actor_of({"id": "9", "state": "merged"}, {"turn": "tower"}) == "tower"
+         and actor_of({"id": "9", "state": "main-green"}, {"turn": "tower"}) == "canary" and actor_of({"id": "9", "state": "review"}, {"turn": "tower"}) == "reviewer"
+         and actor_of({"id": "9", "state": "spec-ready"}, {"turn": "tower"}) == "spec" and actor_of({"id": "9", "state": "requested"}, {"turn": "tower"}) == "product",
+         "the badge of a tower step is wrong")
+    need(actor_of({"id": "9", "state": "held"}, {"turn": "tower"}) is None, "a state with no step has a badge")
+    need(actor_of({"id": "9", "state": "assigned"}, {"turn": "stopped"}) == "stopped", "a stopped ticket's badge is not stopped")
+    # The hue: UTF-16 code units, not code points.
+    need(hue_of("abc") == 0 and hue_of("a") == 1 and hue_of("") == 0, "the hue of a plain name is wrong")
+    need(hue_of("\U0001F600") == 1 and ord("\U0001F600") % 6 == 4, "the hue of an astral character is not its two code units' sum")
+    # The age: the boundaries, the run, the reference.
+    need([age_text(s) for s in (0, 59, 3599, 3600, 86399, 86400, 3 * 86400 + 85000)] == ["0m", "0m", "59m", "1h", "23h", "1d", "3d"], "the age's units are wrong")
+    ref = snapshot_ref(book)
+    need(ref == "2026-11-07T08:10:07Z", f"the snapshot's reference is {ref}")
+    need(expected_age(by_id["0004"], ref) == ("2026-11-03T09:01:00Z", "3d"), f"the age of 0004 is {expected_age(by_id['0004'], ref)}: the run of assigned starts at 09:01")
+    need(expected_age(by_id["0009"], ref) == ("2026-11-07T08:10:07Z", "0m"), f"the age of 0009 is {expected_age(by_id['0009'], ref)}")
+    stale = json.loads(json.dumps(by_id["0003"]))
+    stale["history"][-1]["state"] = "pr-opened"
+    need(expected_age(stale, ref) is None, "a ticket whose last history entry is not its state has an age")
+    need(expected_age(by_id["0009"], READ_AT)[1] == "5d", f"the live age is {expected_age(by_id['0009'], READ_AT)}")
+    need(expected_pips(by_id["0007"], book) == (4, 4) and expected_pips(by_id["0001"], book) == (4, 1) and expected_pips(by_id["0003"], book) is None,
+         "the pips are wrong: 0007 (4, 4), 0001 (4, 1), 0003 none")
+    need(expected_pips(by_id["0001"], {"thresholds": []}) is None and expected_pips({**by_id["0001"], "attempt": "x"}, book) is None, "unreadable pips are not left out")
+    # The face: every ticket's good face is accepted; each wrong one is refused.
+
+    def good_face(t, exp, ref):
+        labels = ([{"kind": "priority", "hue": None, "text": t["priority"]}] if t.get("priority") else []) + \
+                 ([{"kind": "feature", "hue": str(hue_of(t["feature"])), "text": t["feature"]}] if t.get("feature") else [])
+        age, pips, who = expected_age(t, ref), expected_pips(t, book), actor_of(t, exp)
+        return {"id": t["id"], "labels": labels, "title": norm(t["title"]), "marks": [], "nows": 1, "who": [who] if who else [],
+                "age": [{"datetime": age[0], "text": age[1]}] if age else [],
+                "pips": [{"max": str(pips[0]), "filled": str(pips[1]), "pip": pips[0], "on": pips[1]}] if pips else []}
+    for t in book["tickets"]:
+        bad = face_problems(good_face(t, turns[t["id"]], ref), t, turns[t["id"]], book, ref)
+        need(bad == [], f"a good face of {t['id']} is refused: {bad}")
+    nine, seven, two = by_id["0009"], by_id["0007"], by_id["0002"]
+    face9, face7, face2 = good_face(nine, turns["0009"], ref), good_face(seven, turns["0007"], ref), good_face(two, turns["0002"], ref)
+    for what, face, t in (("a priority label missing", {**face9, "labels": face9["labels"][1:]}, nine),
+                          ("a label of another kind", {**face9, "labels": face9["labels"] + [{"kind": "owner", "hue": None, "text": "x"}]}, nine),
+                          ("a wrong hue", {**face9, "labels": [face9["labels"][0], {**face9["labels"][1], "hue": str((hue_of("waiting-list") + 1) % 6)}]}, nine),
+                          ("a wrong priority text", {**face9, "labels": [{**face9["labels"][0], "text": "P1"}, face9["labels"][1]]}, nine),
+                          ("a title that is not the name", {**face9, "title": "other"}, nine),
+                          ("two now lines", {**face9, "nows": 2}, nine),
+                          ("a wrong actor", {**face9, "who": ["tower"]}, nine),
+                          ("no actor", {**face9, "who": []}, nine),
+                          ("a badge for a state with no step", {**face2, "who": ["tower"]}, two),
+                          ("a wrong time", {**face9, "age": [{"datetime": "2026-11-07T08:10:07Z", "text": "1h"}]}, nine),
+                          ("a time on a ticket that has none", {**face9, "age": []}, nine),
+                          ("pips of another size", {**face7, "pips": [{**face7["pips"][0], "pip": 3}]}, seven),
+                          ("pips filled wrong", {**face7, "pips": [{**face7["pips"][0], "on": 2}]}, seven),
+                          ("pips where there is no attempt", {**face9, "pips": face7["pips"]}, nine)):
+        need(face_problems(face, t, turns[t["id"]], book, ref), f"face: {what} is accepted")
+    need(mark_problems({"marks": ["Wait"]}, {"title": "Add a waitlist"}, "wait") is None, "a mark of the match is refused")
+    need(mark_problems({"marks": []}, {"title": "Add a waitlist"}, "wait"), "a title that holds the match and shows no mark is accepted")
+    need(mark_problems({"marks": ["wait"]}, {"title": "Tidy the README"}, "wait"), "a mark on a title that does not hold the match is accepted")
+    need(mark_problems({"marks": ["waitl"]}, {"title": "Add a waitlist"}, "wait"), "a mark wider than the match is accepted")
+    # The back.
+    exp9 = turns["0009"]
+    stages = [{"band": b, "mark": "done"} for b in STAGES]
+    good = {"exists": True, "open": True, "modal": True, "drawers": 1, "drawer": "0009", "inside": True, "nows": ["Your turn"], "acts": [{"href": "#ticket/0009", "primary": True}],
+            "stage_lists": 1, "stages": stages, "phases": ["a", "b"], "questions": ["no ## Perimeter section"], "link": 1,
+            "rect": {"w": 700, "h": 800}, "hash": "#kanban?card=0009", "history": 1, "active": {"card": None, "inBoard": False}}
+    args = ("0009", "Your turn", stages, ["a", "b"], exp9, "no ## Perimeter section")
+    need(back_problems(good, *args) == [], f"a good back is refused: {back_problems(good, *args)}")
+    for what, bad in (("a closed dialog", {**good, "open": False}), ("a dialog that is not modal", {**good, "modal": False}),
+                      ("a drawer of another ticket", {**good, "drawer": "0007"}), ("two drawers", {**good, "drawers": 2}),
+                      ("the focus outside", {**good, "inside": False}), ("another now line", {**good, "nows": ["The tower"]}),
+                      ("two now lines", {**good, "nows": ["Your turn", "Your turn"]}), ("another strip", {**good, "stages": stages[::-1]}),
+                      ("other rows", {**good, "phases": ["b", "a"]}), ("no action", {**good, "acts": []}),
+                      ("an action that is not primary", {**good, "acts": [{"href": "#ticket/0009", "primary": False}]}),
+                      ("an action to elsewhere", {**good, "acts": [{"href": "#launch", "primary": True}]}),
+                      ("two actions", {**good, "acts": good["acts"] * 2}), ("no question text", {**good, "questions": []}),
+                      ("no link to the timeline", {**good, "link": 0})):
+        need(back_problems(bad, *args), f"back: {what} is accepted")
+    closed = {"open": False, "drawers": 0, "hash": "#kanban", "active": {"card": "0009"}}
+    need(closed_problems(closed, "0009") == [], f"a closed back is refused: {closed_problems(closed, '0009')}")
+    for what, bad in (("still open", {**closed, "open": True}), ("a drawer left", {**closed, "drawers": 1}), ("card= left", {**closed, "hash": "#kanban?card=0009"}),
+                      ("the focus on another card", {**closed, "active": {"card": "0003"}}), ("the focus nowhere", {**closed, "active": None})):
+        need(closed_problems(bad, "0009"), f"closed: {what} is accepted")
+    # The flight and the announcement.
+    moved = {"moved": True, "from": MOVED_FROM, "col": MOVED_TO, "live": "polite", "announce": f"{MOVED_ID} moved from {MOVED_FROM} to {MOVED_TO}", "animated": 2}
+    need(flight_problems(moved, False) == [] and flight_problems({**moved, "animated": 0}, True) == [], "a good flight is refused")
+    for what, bad, reduced in (("a card not marked", {**moved, "moved": False}, False), ("a wrong data-from", {**moved, "from": "review"}, False),
+                               ("the card in the old column", {**moved, "col": MOVED_FROM}, False), ("a region that is not polite", {**moved, "live": "assertive"}, False),
+                               ("an empty announcement", {**moved, "announce": ""}, False),
+                               ("an announcement that swaps the states", {**moved, "announce": f"{MOVED_ID} moved from {MOVED_TO} to {MOVED_FROM}"}, False),
+                               ("an announcement with no id", {**moved, "announce": f"moved from {MOVED_FROM} to {MOVED_TO}"}, False),
+                               ("no animation without reduced motion", {**moved, "animated": 0}, False),
+                               ("an animation with reduced motion", moved, True)):
+        need(flight_problems(bad, reduced), f"flight: {what} is accepted")
+    mv = moved_logbook(book)
+    need(next(c for c in mv["kanban"] if c["state"] == MOVED_TO)["tickets"] == [MOVED_ID] and MOVED_ID not in next(c for c in mv["kanban"] if c["state"] == MOVED_FROM)["tickets"]
+         and next(t for t in mv["tickets"] if t["id"] == MOVED_ID)["state"] == MOVED_TO, "the moved logbook does not move the card")
+    # The long column.
+    okcol = {"sh": 2000, "ch": 800, "overflow": "auto", "top": 400, "gap": 0, "h3_top": 60, "vh": 900, "sw": 1440, "cw": 1440}
+    need(long_problems(okcol) == [], f"a good long column is refused: {long_problems(okcol)}")
+    for what, bad in (("a column that does not overflow", {**okcol, "sh": 800}), ("overflow visible", {**okcol, "overflow": "visible"}),
+                      ("a column that does not scroll", {**okcol, "top": 0}), ("a header that scrolled away", {**okcol, "gap": -400, "h3_top": -340}),
+                      ("a header below the viewport", {**okcol, "h3_top": 950, "gap": 0}), ("a page that scrolls sideways", {**okcol, "sw": 1500}), ("no column", None)):
+        need(long_problems(bad), f"long column: {what} is accepted")
+    # Contrast: the formula on known pairs, and each way to fail.
+    need(abs(contrast((0, 0, 0), (255, 255, 255)) - 21) < 1e-9, "black on white is not 21:1")
+    need(abs(contrast((255, 255, 255), (0, 0, 0)) - 21) < 1e-9, "the contrast depends on the order")
+    need(abs(contrast((0x76, 0x76, 0x76), (255, 255, 255)) - 4.54) < 0.01, f"#767676 on white is {contrast((0x76, 0x76, 0x76), (255, 255, 255)):.3f}, want about 4.54")
+    need(contrast((0x77, 0x77, 0x77), (255, 255, 255)) < 4.5, "#777777 on white reaches 4.5:1")
+    need(is_large(24, 400) and is_large(18.66, 700) and not is_large(18.66, 400) and not is_large(18, 700) and not is_large(14, 700), "the large-text rule is wrong")
+    ink = {"tag": "p", "cls": "x", "text": "t", "image": False, "px": 14, "weight": 400}
+    need(contrast_problems([{**ink, "fg": (0x76, 0x76, 0x76), "bg": (255, 255, 255)}], "w") == [], "text at 4.54:1 is refused")
+    need(contrast_problems([{**ink, "fg": (0x80, 0x80, 0x80), "bg": (255, 255, 255)}], "w"), "grey 14px text at 3.95:1 is accepted")
+    need(contrast_problems([{**ink, "fg": (0x80, 0x80, 0x80), "bg": (255, 255, 255), "px": 24}], "w") == [], "large text at 3.95:1 is refused")
+    need(contrast_problems([{**ink, "fg": (0x95, 0x95, 0x95), "bg": (255, 255, 255), "px": 24}], "w"), "large text at 2.9:1 is accepted")
+    need(contrast_problems([{**ink, "fg": (0, 0, 0), "bg": (255, 255, 255), "image": True}], "w"), "a text over a background-image is accepted")
+    outline = {"style": "solid", "width": 2.0, "color": (0, 0, 0), "bg": (255, 255, 255)}
+    need(focus_problems(outline) == [], f"a good focus ring is refused: {focus_problems(outline)}")
+    for what, bad in (("no outline", {**outline, "style": "none"}), ("a 1px outline", {**outline, "width": 1.0}),
+                      ("a pale outline", {**outline, "color": (0xcc, 0xcc, 0xcc)}), ("no card reached", None)):
+        need(focus_problems(bad), f"focus: {what} is accepted")
+    # No drag.
+    need(drag_problems(["click", "keydown"], 0) == [], "a session with no drag listener is refused")
+    for what, events, draggable in (("dragstart", ["click", "dragstart"], 0), ("dragover", ["dragover"], 0), ("drop", ["drop"], 0), ("draggable", ["click"], 1)):
+        need(drag_problems(events, draggable), f"no drag: {what} is accepted")
 
 
 def main():
@@ -1530,6 +2514,16 @@ def main():
                     books, paths = derive(golden, pathlib.Path(tmp))
                     with Console(GOLDEN) as plain, Console(paths["held"]) as held, Console(paths["holders"]) as waiting:
                         bases = {"golden": plain.base, "held": held.base, "holders": waiting.base}
+                        with Console(paths["faces"]) as faces, Console(paths["long"]) as long:
+                            bases.update({"faces": faces.base, "long": long.base})
+                            l_face(browser, bases, golden, books)
+                            m_back(browser, bases, golden)
+                            n_only_mine(browser, bases, golden)
+                            o_flight(browser, bases, golden)
+                            p_long(browser, bases)
+                            q_contrast(browser, bases)
+                            r_bands(browser, bases, golden)
+                            s_nodrag(browser, bases)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)

@@ -515,7 +515,7 @@ fields above, through the tower's table it embeds
 `core/tower.py`'s `NEXT`, `who` with one sentence for every step of its
 `PRECONDITION` and no other, and the four `bands` holding
 `core/logbook.py`'s `COLUMNS` in order; `ci/logbook.sh` proves all three).
-The line is the same on the card, in the drawer and at the head of the
+The line is the same on the card, in the drawer (the card's back since ADR 0068) and at the head of the
 timeline. The first rule that applies wins:
 
 | When | The now line | Whose turn |
@@ -545,3 +545,29 @@ marks the bands before the ticket's state done (Spec skipped for a ticket
 opened directly, which passed no spec gate), its band now, or stopped for a
 ticket rolled back, rejected or at `needs-human`, done for one promoted to
 100%, and the rest ahead.
+
+## The same 1.2, drawn like Trello (ADR 0068, 2026-11-10)
+
+No logbook field changes. What a card shows, each read from the fields
+above:
+
+| Part | From | Left out when |
+|---|---|---|
+| a priority label, P0 to P3, one colour each | `priority` | the ticket has none |
+| a feature label, one of six colours: the sum of the name's UTF-16 code units, modulo 6 | `feature` | the ticket has none |
+| the title, the search's match marked | `id`, `title` | never |
+| the now line, unchanged | as above | never |
+| who has the ball, as an icon | the now line's turn: `you`, `stopped`, `done`; for the tower's turn, the embedded table's `actor` of `next[state]` (of `answer` for an answered `questions`), which `ci/logbook.sh` proves names every step of `PRECONDITION` | the tower's turn at a state with no step |
+| how long in this state, in minutes, hours or days | the `at` of the first entry of the trailing run of `history` entries carrying `state`, to the console's `read_at` live, or to the newest `at` in the logbook in a snapshot | the last history entry's state is not `state` |
+| the rework attempts as pips | `attempt` out of `REWORK_MAX_ATTEMPTS` in `thresholds` | either cannot be read |
+| the outcome chip | `outcome.verdict` | `pending` |
+
+The drawer is now **the card's back**: the same `aside#drawer`, inside a
+modal `<dialog>` over the board (at most 720 px wide, full screen below
+720 px), with the now line's one action drawn as the primary link, the open
+question's text, the four-band strip, the timeline's rows in a compact
+list in the logbook's order, the perimeter, the wait, the ADRs and the link
+to the whole timeline. It holds no answer box: the kanban writes nothing.
+`turn=you` in the hash is "Your turn only". When a refresh moves a card it
+flies for 400 ms from where it was (none with `prefers-reduced-motion`),
+and `#announce`, a polite live region, says which card moved where.

@@ -29,6 +29,14 @@
   --wait: #8a5a00; --wait-bg: #fdf3dc; --none: #5b6673; --none-bg: #eef0f3; --accent: #1d4ed8;
   --focus: #1d4ed8; --moved: #fff3b0; --shadow: rgba(23, 32, 42, .18);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* The kanban (docs/adr/0068 §1, §6): a tinted board, lists, white cards;
+     the bands' rules avoid the GO, waiting and NO-GO hues; six feature
+     label colours and four priority ones, each pair at least 4.5:1. */
+  --board: #e4e9f2; --list: #f1f3f6; --card: #ffffff; --card-shadow: rgba(9, 30, 66, .22); --mark: #ffe58a; --mark-ink: #17202a;
+  --band-spec: #7c5cff; --band-build: #2f6fde; --band-test: #0e8f8f; --band-release: #c2378a; --band-other: #8792a0;
+  --hue0: #d3f1df; --hue0-ink: #0f5132; --hue1: #fbefb5; --hue1-ink: #5c4400; --hue2: #fde2c8; --hue2-ink: #7a3500;
+  --hue3: #fbd5d2; --hue3-ink: #8a1c12; --hue4: #e7dcfb; --hue4-ink: #4b2a8a; --hue5: #d6e4ff; --hue5-ink: #1a3f8f;
+  --scrim: rgba(9, 15, 25, .5);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -36,7 +44,12 @@
     --bg: #0f1419; --panel: #171e26; --ink: #e6ebf0; --muted: #9aa6b2; --line: #2a3440;
     --go: #4cc38a; --go-bg: #12301f; --nogo: #ff7b72; --nogo-bg: #3a1513;
     --wait: #e3b341; --wait-bg: #33280e; --none: #9aa6b2; --none-bg: #222b35; --accent: #79a8ff;
-    --focus: #79a8ff; --moved: #4a3f0e; --shadow: rgba(0, 0, 0, .5);
+    --focus: #79a8ff; --moved: #3a320b; --shadow: rgba(0, 0, 0, .5);
+    --board: #121922; --list: #19212b; --card: #232d39; --card-shadow: rgba(0, 0, 0, .55); --mark: #ffe58a; --mark-ink: #17202a;
+    --band-spec: #a58bff; --band-build: #6b9bff; --band-test: #3fc1c1; --band-release: #f06fbd; --band-other: #6b7684;
+    --hue0: #12452b; --hue0-ink: #b6f0cd; --hue1: #4a3a06; --hue1-ink: #fbe7a1; --hue2: #4f2a0b; --hue2-ink: #fdd2a8;
+    --hue3: #5a1d18; --hue3-ink: #ffc9c3; --hue4: #3b2766; --hue4-ink: #ddd0fb; --hue5: #1c3566; --hue5-ink: #c9dbff;
+    --scrim: rgba(0, 0, 0, .65);
   }
 }
 :root[data-theme="dark"] {
@@ -44,7 +57,12 @@
   --bg: #0f1419; --panel: #171e26; --ink: #e6ebf0; --muted: #9aa6b2; --line: #2a3440;
   --go: #4cc38a; --go-bg: #12301f; --nogo: #ff7b72; --nogo-bg: #3a1513;
   --wait: #e3b341; --wait-bg: #33280e; --none: #9aa6b2; --none-bg: #222b35; --accent: #79a8ff;
-  --focus: #79a8ff; --moved: #4a3f0e; --shadow: rgba(0, 0, 0, .5);
+  --focus: #79a8ff; --moved: #3a320b; --shadow: rgba(0, 0, 0, .5);
+  --board: #121922; --list: #19212b; --card: #232d39; --card-shadow: rgba(0, 0, 0, .55); --mark: #ffe58a; --mark-ink: #17202a;
+  --band-spec: #a58bff; --band-build: #6b9bff; --band-test: #3fc1c1; --band-release: #f06fbd; --band-other: #6b7684;
+  --hue0: #12452b; --hue0-ink: #b6f0cd; --hue1: #4a3a06; --hue1-ink: #fbe7a1; --hue2: #4f2a0b; --hue2-ink: #fdd2a8;
+  --hue3: #5a1d18; --hue3-ink: #ffc9c3; --hue4: #3b2766; --hue4-ink: #ddd0fb; --hue5: #1c3566; --hue5-ink: #c9dbff;
+  --scrim: rgba(0, 0, 0, .65);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -99,15 +117,31 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
    id, a two-line title and its now line; together they fit the golden's
    board in the site's 1440 px desktop capture (site/render.py). */
 .board { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; align-items: stretch; }
-.band { display: flex; flex-direction: column; flex: 0 0 auto; }
+/* Trello's look (docs/adr/0068 §1): lists on a tinted board, white cards
+   with a soft shadow, a thin coloured rule over each band's name. The
+   widths are ADR 0063's: nothing here widens a column. */
+.board-wrap { background: var(--board); border-color: transparent; }
+.band { display: flex; flex-direction: column; flex: 0 0 auto; border-top: 3px solid var(--band-other); padding-top: 6px; border-radius: 2px; }
+.band[data-band="spec"] { border-top-color: var(--band-spec); }
+.band[data-band="build"] { border-top-color: var(--band-build); }
+.band[data-band="test"] { border-top-color: var(--band-test); }
+.band[data-band="release"] { border-top-color: var(--band-release); }
 .band.wide { flex: 1 1 0; }
 /* width 0, min-width 100%: a band's name never widens its columns. */
-.band-name { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 0 6px; padding-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 0; min-width: 100%; }
+.band-name { font-size: 12px; font-weight: 700; color: var(--ink); margin: 0 0 6px; padding-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 0; min-width: 100%; }
 .band-cols { display: flex; gap: 6px; flex: 1; }
-.col { flex: 1 1 140px; min-width: 140px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
-.col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; display: flex; align-items: center; gap: 6px; }
+.col { flex: 1 1 140px; min-width: 140px; background: var(--list); border: 1px solid transparent; border-radius: 10px; padding: 0 8px 8px; }
+.col h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 -8px 4px; padding: 8px; display: flex; align-items: center; gap: 6px;
+  background: var(--list); border-radius: 10px 10px 0 0; }
+/* A column taller than the window scrolls inside itself and keeps its
+   header in view (docs/adr/0068 §4): the board scrolls sideways, so a
+   header cannot stick to the page. From the 720 px breakpoint up only. */
+@media (min-width: 721px) {
+  .col:not(.empty):not(.collapsed) { max-height: calc(100vh - 24px); overflow-y: auto; }
+  .col h3 { position: sticky; top: 0; z-index: 1; }
+}
 .col.collapsed, .col.empty { flex: 0 0 40px; min-width: 40px; padding: 8px 4px; }
-.col.collapsed h3, .col.empty h3 { margin: 0; writing-mode: vertical-rl; }
+.col.collapsed h3, .col.empty h3 { margin: 0; padding: 0; writing-mode: vertical-rl; position: static; }
 .col.collapsed .col-toggle { writing-mode: horizontal-tb; }
 .col.empty .col-toggle { display: none; }
 .now { display: block; margin: 4px 0 2px; font-size: 13px; color: var(--muted); }
@@ -142,21 +176,85 @@ td.at { white-space: nowrap; }
   .col, .col.collapsed, .col.empty { flex: none; min-width: 0; width: auto; }
   .col.collapsed h3, .col.empty h3 { writing-mode: horizontal-tb; }
   #kanban-q, #adr-q { min-width: 0; width: 100%; }
+  /* The band bar (docs/adr/0068 §5): one button per band, held at the top. */
+  .band-jump { display: flex; position: sticky; top: 0; z-index: 4; gap: 6px; overflow-x: auto; padding: 8px 0; margin: 0 0 8px; background: var(--bg); }
+  .band { scroll-margin-top: 56px; }
 }
 .col-toggle { padding: 0 6px; font-size: 12px; line-height: 18px; border-radius: 4px; font-weight: 700; }
-.card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin: 0 0 8px; color: var(--ink); text-decoration: none; font-size: 13px; cursor: pointer; }
-.card:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
-.card.selected { border-color: var(--focus); }
-.card.moved { background: var(--moved); animation: arrive .6s ease-out; }
-@keyframes arrive { from { transform: translateX(-24px); opacity: .3; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .card.moved { animation: none; } }
+.card { display: block; background: var(--card); border: 0; border-radius: 8px; padding: 8px; margin: 0 0 8px; color: var(--ink); text-decoration: none; font-size: 13px; cursor: pointer;
+  box-shadow: 0 1px 1px var(--card-shadow), 0 0 1px var(--card-shadow); transition: transform .12s ease-out, box-shadow .12s ease-out; }
+.card:hover { transform: translateY(-1px); box-shadow: 0 4px 10px var(--card-shadow), 0 0 1px var(--card-shadow); }
+.card:focus, .card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card.selected { box-shadow: 0 0 0 2px var(--focus); }
+.card.moved { background: var(--moved); }
+/* A person's turn reads at a glance: a bar of the waiting hue on the card's edge. */
+.card[data-turn="you"] { box-shadow: inset 4px 0 0 var(--wait), 0 1px 1px var(--card-shadow), 0 0 1px var(--card-shadow); padding-left: 12px; }
+.card[data-turn="you"]:hover { box-shadow: inset 4px 0 0 var(--wait), 0 4px 10px var(--card-shadow), 0 0 1px var(--card-shadow); }
+.card .title { font-weight: 700; display: block; }
+.card .now { font-size: 12px; }
+mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; padding: 0 1px; }
+.labels { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.labels:empty { display: none; }
+.label { display: inline-block; padding: 0 8px; border-radius: 4px; font-size: 11px; font-weight: 700; line-height: 18px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--hue-bg); color: var(--hue-ink); }
+.label[data-hue="0"] { --hue-bg: var(--hue0); --hue-ink: var(--hue0-ink); }
+.label[data-hue="1"], .label.p-P2 { --hue-bg: var(--hue1); --hue-ink: var(--hue1-ink); }
+.label[data-hue="2"], .label.p-P1 { --hue-bg: var(--hue2); --hue-ink: var(--hue2-ink); }
+.label[data-hue="3"], .label.p-P0 { --hue-bg: var(--hue3); --hue-ink: var(--hue3-ink); }
+.label[data-hue="4"] { --hue-bg: var(--hue4); --hue-ink: var(--hue4-ink); }
+.label[data-hue="5"] { --hue-bg: var(--hue5); --hue-ink: var(--hue5-ink); }
+.label.p-P3 { --hue-bg: var(--hue5); --hue-ink: var(--hue5-ink); }
+.badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.who { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--none-bg); color: var(--muted); flex: none; }
+.who[data-actor="you"] { background: var(--wait-bg); color: var(--wait); }
+.who[data-actor="stopped"] { background: var(--nogo-bg); color: var(--nogo); }
+.who[data-actor="done"] { background: var(--go-bg); color: var(--go); }
+.who svg, .age svg { width: 14px; height: 14px; }
+.age { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.pips { display: inline-flex; gap: 3px; align-items: center; }
+.pip { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--muted); }
+.pip.on { background: var(--muted); }
+.badges .chip { margin-left: auto; }
+.only-mine { font-size: 14px; padding: 5px 12px; border-radius: 999px; font-weight: 600; }
+.only-mine[aria-pressed="true"] { background: var(--wait-bg); color: var(--wait); border-color: var(--wait); }
+.band-jump { display: none; }
+@media (max-width: 720px) { .band-jump { display: flex; } }
+.band-jump button { padding: 5px 12px; font-size: 13px; border-radius: 999px; white-space: nowrap; }
+#announce { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The card's back (docs/adr/0068 §3): a modal over the dimmed board, at
+   most 720 px wide (ADR 0063's breakpoint), full screen below it. */
+dialog#card-back { padding: 0; border: 0; border-radius: 12px; width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--panel); color: var(--ink);
+  box-shadow: 0 12px 40px var(--shadow); overflow-y: auto; }
+dialog#card-back::backdrop { background: var(--scrim); }
+dialog#card-back[open] { animation: back-in .16s ease-out; }
+@keyframes back-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@media (max-width: 720px) {
+  dialog#card-back { width: 100%; height: 100%; max-width: 100%; max-height: 100%; margin: 0; border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .card:hover { transition: none; transform: none; }
+  dialog#card-back[open] { animation: none; }
+}
+.back-top { display: flex; align-items: flex-start; gap: 10px; }
+.back-top .labels { flex: 1; margin: 4px 0 0; }
+.question { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--wait-bg); color: var(--ink); }
+.question b { color: var(--ink); }
+a.act.primary { display: inline-block; margin: 8px 0 0; padding: 7px 14px; border-radius: 8px; background: var(--accent); color: var(--panel); text-decoration: none; }
+ol.compact { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+ol.compact li { display: grid; grid-template-columns: 7em max-content 1fr max-content; gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--line); }
+ol.compact li:last-child { border-bottom: 0; }
+ol.compact .line { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+ol.compact .at { color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+@media (max-width: 720px) { ol.compact li { grid-template-columns: max-content 1fr; } ol.compact .line { grid-column: 1 / -1; white-space: normal; word-break: break-word; } }
 .lane { margin: 0 0 14px; }
 .lane h2 { margin-top: 6px; }
 .controls { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 0 0 12px; color: var(--muted); font-size: 14px; }
 input[type=search], input[type=text] { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 #kanban-q, #adr-q { min-width: 260px; }
-aside#drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100vw); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px var(--shadow); padding: 16px; overflow-y: auto; z-index: 10; }
-aside#drawer h2 { margin-top: 0; }
+aside#drawer { padding: 18px 20px 20px; }
+aside#drawer h2 { margin: 8px 0 10px; font-size: 18px; }
+aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 6px; }
 .theme { margin-left: auto; }
 .editor label { display: block; font-weight: 600; font-size: 13px; margin: 10px 0 4px; }
 .editor input[type=text], .editor textarea { width: 100%; }
@@ -200,10 +298,15 @@ aside#drawer h2 { margin-top: 0; }
   </nav>
 </header>
 <main id="main"><p class="muted">Reading the logbook…</p></main>
+<!-- The card's back (docs/adr/0068 §3), opened with showModal() over the
+     board; and the region that announces a card the tower moved (§4). -->
+<dialog id="card-back" aria-label="A card's back"></dialog>
+<div id="announce" aria-live="polite"></div>
 <!-- The tower's transition table, as board/index.html embeds it (docs/adr/
      0035), with who runs each step and the bands the columns sit under
      (docs/adr/0063 §2). ./go ci proves next equal to core/tower.py's,
-     who naming every step of its PRECONDITION and no other, and the bands
+     who naming every step of its PRECONDITION and no other, actor doing
+     the same with the card's badge (docs/adr/0068 §2), and the bands
      holding core/logbook.py's COLUMNS in their order. The page reads no
      other copy, and no sentence carries a number of its own. -->
 <script type="application/json" id="tower-machine">
@@ -218,6 +321,8 @@ aside#drawer h2 { margin-top: 0; }
          "mainline": "Main's check runs after the merge",
          "release": "The canary goes out, each stage verified before the next",
          "rework": "The dev-worker reworks it with the verdict"},
+ "actor": {"clarify": "product", "answer": "product", "spec": "spec", "assign": "dev", "ci": "gates", "review": "reviewer",
+           "merge": "tower", "mainline": "tower", "release": "canary", "rework": "dev"},
  "bands": [{"band": "spec", "name": "Spec", "states": ["requested", "questions", "spec-ready"]},
            {"band": "build", "name": "Build", "states": ["opened", "pr-opened"]},
            {"band": "test", "name": "Test and review", "states": ["review", "ci-passed", "ci-failed", "needs-human"]},
@@ -314,10 +419,109 @@ function now(t) {
   if ((step === "ci" || step === "review") && n) return {turn: "tower", text: MACHINE.who[step] + ", attempt " + n};
   return {turn: "tower", text: MACHINE.who[step]};
 }
-function nowLine(t) {
+// The now line; on the card's back its one action is drawn as the primary
+// link (docs/adr/0068 §3). The words are the same everywhere.
+function nowLine(t, primary) {
   const w = now(t);
   return h("span", {cls: "now", "data-turn": w.turn}, w.text, w.code ? [" ", h("code", {}, w.code)] : null,
-    w.href ? h("a", {cls: "act", href: w.href, onclick: (e) => e.stopPropagation()}, w.act + " →") : null);
+    w.href ? [primary ? h("br") : null, h("a", {cls: "act" + (primary ? " primary" : ""), href: w.href, onclick: (e) => e.stopPropagation()}, w.act + " →")] : null);
+}
+
+// --- the card's face (docs/adr/0068 §2) -------------------------------------
+// Who has the ball, as an icon: the actor of the step the tower requests
+// next when the turn is the tower's (the embedded table's `actor`, checked
+// by ./go ci), otherwise the turn itself. No step, no badge.
+function actorOf(t) {
+  const w = now(t);
+  if (w.turn !== "tower") return w.turn;
+  const step = t.state === "questions" ? "answer" : MACHINE.next[t.state];
+  return step && MACHINE.actor[step] ? MACHINE.actor[step] : null;
+}
+const ACTOR_NAME = {product: "the product role", spec: "the spec gate", dev: "the dev-worker", gates: "the gates", reviewer: "the reviewer",
+  tower: "the tower", canary: "the canary", you: "you", stopped: "nobody: it is stopped", done: "nobody: it is done"};
+// Inline icons, 16x16, drawn with the text's colour; no asset from the network.
+const ICONS = {
+  product: "M3 3h10v7H8l-3 3v-3H3z",
+  spec: "M4 2h8v12H4zM6 5h4M6 8h4M6 11h2",
+  dev: "M6 4L2 8l4 4M10 4l4 4-4 4",
+  gates: "M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4zM5.5 8l2 2 3-3.5",
+  reviewer: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 6a2 2 0 100 4 2 2 0 000-4z",
+  tower: "M5 3v10M5 6c0 3 6 2 6 5M5 3a1 1 0 100 .1M11 13a1 1 0 100 .1",
+  canary: "M3 13l3-4 3 2 4-6M10 5h3v3",
+  you: "M8 8a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM3 14c0-3 2.2-4.5 5-4.5s5 1.5 5 4.5",
+  stopped: "M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM6.5 5.5v5M9.5 5.5v5",
+  done: "M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM5 8.2l2 2 4-4.2",
+  clock: "M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM8 4.5V8l2.5 1.5"};
+function icon(name) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute("d", ICONS[name]); path.setAttribute("fill", "none"); path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "1.5"); path.setAttribute("stroke-linecap", "round"); path.setAttribute("stroke-linejoin", "round");
+  svg.append(path);
+  return svg;
+}
+function whoBadge(t) {
+  const a = actorOf(t);
+  return a ? h("span", {cls: "who", "data-actor": a, role: "img", "aria-label": "Has the ball: " + ACTOR_NAME[a], title: "Has the ball: " + ACTOR_NAME[a]}, icon(a)) : null;
+}
+// A feature's colour: the sum of its name's UTF-16 code units, modulo six
+// (docs/adr/0068 §2): the same on every board, no table to edit.
+function hueOf(name) { let n = 0; for (let i = 0; i < name.length; i++) n += name.charCodeAt(i); return n % 6; }
+function labels(t) {
+  return h("div", {cls: "labels"},
+    t.priority ? h("span", {cls: "label p-" + t.priority, "data-kind": "priority", title: "Priority " + t.priority}, t.priority) : null,
+    t.feature ? h("span", {cls: "label", "data-kind": "feature", "data-hue": String(hueOf(String(t.feature))), title: "Feature " + t.feature}, t.feature) : null);
+}
+// How long the ticket has been in its state: from the first entry of the
+// trailing run of history entries that carry it, to the console's read_at
+// when live, to the newest `at` in the logbook in a snapshot; never the
+// viewer's clock. Left out when the last entry is not in the ticket's state.
+let refBook = null, refAt = null;
+function referenceAt() {
+  if (con && con.mode === "live" && con.read_at) return con.read_at;
+  if (refBook !== book) {
+    refBook = book; refAt = null;
+    for (const t of ticketsList()) for (const e of (Array.isArray(t.history) ? t.history : []))
+      if (e && e.at && (!refAt || Date.parse(e.at) > Date.parse(refAt))) refAt = e.at;
+  }
+  return refAt;
+}
+function since(t) {
+  const hist = Array.isArray(t.history) ? t.history : [];
+  let i = hist.length - 1;
+  if (i < 0 || hist[i].state !== t.state) return null;
+  while (i > 0 && hist[i - 1].state === t.state) i--;
+  return hist[i].at || null;
+}
+function span(from, to) {
+  const ms = Date.parse(to) - Date.parse(from);
+  if (!(ms >= 0)) return null;
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return m + "m";
+  const hrs = Math.floor(m / 60);
+  return hrs < 24 ? hrs + "h" : Math.floor(hrs / 24) + "d";
+}
+function age(t) {
+  const from = since(t), to = referenceAt();
+  const text = from && to ? span(from, to) : null;
+  return text ? h("time", {cls: "age", datetime: from, title: "In " + t.state + " since " + from + ", as of " + to}, icon("clock"), text) : null;
+}
+// The rework attempts as pips, out of REWORK_MAX_ATTEMPTS; left out when
+// either cannot be read, never defaulted.
+function pips(t) {
+  const max = reworkMax(), n = t.attempt;
+  if (max === null || n === null || n === undefined || !/^[0-9]+$/.test(String(n))) return null;
+  const on = Math.min(Number(n), max);
+  return h("span", {cls: "pips", "data-max": String(max), "data-filled": String(Number(n)), role: "img", "aria-label": "Attempt " + n + " of " + max, title: "Attempt " + n + " of " + max},
+    Array.from({length: max}, (_, i) => h("span", {cls: "pip" + (i < on ? " on" : "")})));
+}
+// The search's match in the title, marked; the text is the same.
+function titled(t, q) {
+  const name = named(t);
+  const at = q ? name.toLowerCase().indexOf(q.toLowerCase()) : -1;
+  return h("span", {cls: "title"}, at < 0 ? name : [name.slice(0, at), h("mark", {}, name.slice(at, at + q.length)), name.slice(at + q.length)]);
 }
 
 // --- overview (docs/adr/0055 §6) --------------------------------------
@@ -386,7 +590,8 @@ function route() {
   const slash = path.indexOf("/");
   return {screen: slash < 0 ? path : path.slice(0, slash), arg: slash < 0 ? "" : path.slice(slash + 1), query};
 }
-const VIEW_KEYS = ["q", "feature", "priority", "group", "empty", "collapsed", "card"];
+// `turn=you` is "Your turn only" (docs/adr/0068 §5).
+const VIEW_KEYS = ["q", "feature", "priority", "turn", "group", "empty", "collapsed", "card"];
 function kanbanView() {
   const q = route().query;
   const v = {};
@@ -412,18 +617,43 @@ function setView(patch) {
 
 // --- kanban (docs/adr/0055 §7, docs/adr/0059 §1) -------------------------
 // The columns and the order inside them are the logbook's (`kanban`): the
-// page filters, groups, searches, collapses and opens a drawer, and never
+// page filters, groups, searches, collapses and turns a card over, and never
 // moves a card. No drag-and-drop, no button that moves one: a card moves
 // when the tower moves its ticket, and then it shows where it came from.
 // Provenance, decision: docs/adr/0059 §1, two beats of the console's 2 s poll.
 const MOVED_MS = 4000;
-let moved = {};  // id -> {from, until}: cards the last logbook moved
+// A moved card flies from where it was to where it is (docs/adr/0068 §4).
+// Provenance, decision: 400 ms ends inside one 2 s poll, so two flights
+// never overlap, and inside the 4 s mark.
+const FLIGHT_MS = 400;
+let moved = {};  // id -> {from, until, rect, flown}: cards the last logbook moved
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function noteMoves(before, after) {
   if (!before || !Array.isArray(before.kanban) || !Array.isArray(after.kanban)) return;
   const col = (b) => Object.fromEntries(b.kanban.flatMap((c) => c.tickets.map((id) => [id, c.state])));
   const was = col(before), now = col(after), until = Date.now() + MOVED_MS;
-  for (const [id, st] of Object.entries(now)) if (was[id] && was[id] !== st) moved[id] = {from: was[id], until};
+  const said = [];
+  for (const [id, st] of Object.entries(now)) if (was[id] && was[id] !== st) {
+    // Where the card is drawn now, before the redraw puts it elsewhere.
+    const el = document.querySelector('.card[data-id="' + CSS.escape(id) + '"]');
+    moved[id] = {from: was[id], until, rect: el ? el.getBoundingClientRect() : null, flown: false};
+    said.push(id + " moved from " + was[id] + " to " + st);
+  }
+  // Said to a screen reader too (WCAG 2.1 SC 4.1.3): a polite live region.
+  if (said.length) document.getElementById("announce").textContent = said.join(". ") + ".";
   setTimeout(drawBoard, MOVED_MS + 50);
+}
+function fly() {
+  for (const [id, m] of Object.entries(moved)) {
+    if (m.flown || m.until <= Date.now()) continue;
+    m.flown = true;
+    const el = document.querySelector('.card[data-id="' + CSS.escape(id) + '"]');
+    if (!el || !m.rect || still()) continue;
+    const r = el.getBoundingClientRect();
+    const dx = m.rect.left - r.left, dy = m.rect.top - r.top;
+    if (dx || dy) el.animate([{transform: "translate(" + dx + "px, " + dy + "px)"}, {transform: "none"}],
+      {duration: FLIGHT_MS, easing: "cubic-bezier(.2, .8, .2, 1)"});
+  }
 }
 // A path matches a perimeter glob as core/perimeter.sh matches it (`*`
 // crosses `/`), or the glob contains the text typed.
@@ -438,16 +668,18 @@ function searched(t, q) {
   if (t.id.includes(q) || String(t.title).toLowerCase().includes(low)) return true;
   return Array.isArray(t.perimeter) && t.perimeter.some((g) => globMatches(g, q));
 }
+// A card's face (docs/adr/0068 §2): labels, the title, the now line, and a
+// badge row: who has the ball, how long in this state, the attempts, the outcome.
 function card(t, v) {
   const m = moved[t.id] && moved[t.id].until > Date.now() ? moved[t.id] : null;
   const open = () => setView({card: t.id});
-  return h("div", {cls: "card" + (m ? " moved" : "") + (v.card === t.id ? " selected" : ""), "data-id": t.id,
+  return h("div", {cls: "card" + (m ? " moved" : "") + (v.card === t.id ? " selected" : ""), "data-id": t.id, "data-turn": now(t).turn,
     "data-from": m ? m.from : null, tabindex: "0", role: "button", "aria-label": named(t), onclick: open},
-    h("div", {}, h("b", {}, named(t))),
+    labels(t),
+    titled(t, v.q),
     nowLine(t),
-    h("div", {cls: "muted"}, h("span", {cls: "chip " + (t.priority ? "pending" : "none")}, t.priority || "unprioritised"), " ",
-      t.feature || "no feature"),
-    t.outcome && t.outcome.verdict !== "pending" ? h("div", {}, chip(t.outcome.verdict)) : null,
+    h("div", {cls: "badges"}, whoBadge(t), age(t), pips(t),
+      t.outcome && t.outcome.verdict !== "pending" ? chip(t.outcome.verdict) : null),
     m ? h("div", {cls: "muted"}, "moved here from " + m.from) : null);
 }
 function adrName(n) {
@@ -459,29 +691,39 @@ function adrLinks(nums) {
   return nums && nums.length ? h("ul", {}, nums.map((n) => h("li", {}, h("a", {href: "#adr/" + n}, adrName(n)))))
     : h("p", {cls: "muted"}, unread(book.adrs) ? "No project map: " + book.adrs.error : "No ADR cites a file of its perimeter.");
 }
+// The card's back (docs/adr/0068 §3): what the docked drawer showed, inside
+// a modal dialog over the board, with the now line's one action drawn as the
+// primary link, the open question's text, the band strip and a compact
+// timeline. No answer box: the kanban writes nothing (ADR 0059 §1).
+function closeBack(id) { setView({card: ""}); focusCard(id); }
 function drawer(t) {
   const rows = t.timeline || [];
-  const last = rows[rows.length - 1];
-  const close = () => { setView({card: ""}); focusCard(t.id); };
+  const q = openQuestion(t);
   return h("aside", {id: "drawer", "data-id": t.id, "aria-label": "Ticket " + t.id},
-    h("div", {cls: "buttons", style: "margin: 0 0 8px; justify-content: flex-end"}, h("button", {onclick: close}, "Close (Esc)")),
+    h("div", {cls: "back-top"}, labels(t), h("button", {cls: "close", onclick: () => closeBack(t.id)}, "Close (Esc)")),
     h("h2", {}, named(t)),
-    h("div", {cls: "nowbox", "data-turn": now(t).turn}, nowLine(t)),
+    h("div", {cls: "nowbox", "data-turn": now(t).turn}, nowLine(t, true)),
+    q ? h("blockquote", {cls: "question"}, h("b", {}, q.from === "spec" ? "The spec gate asks: " : "The product role asks: "), q.question) : null,
+    stageStrip(t),
+    h("div", {cls: "badges"}, whoBadge(t), age(t), pips(t)),
     // No verdict yet: the now line says what is awaited, and no empty row stands in.
     dl([["State", t.state + " · " + bandName(bandOf(t.state))],
       t.outcome.verdict !== "pending" ? ["Outcome", h("span", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge))] : null,
       t.outcome.verdict !== "pending" ? ["Line", h("span", {cls: "mono"}, shown(t.outcome.line))] : null,
-      ["Last row", last ? h("span", {}, last.phase + " · ", last.verdict ? chip(verdictOf(last)) : "—", " ",
-        h("span", {cls: "mono"}, shown(last.line)), " ", h("span", {cls: "muted"}, shown(last.at))) : null],
       ["Perimeter", unread(t.perimeter) ? err(t.perimeter) : h("span", {cls: "mono"}, (t.perimeter || []).join("  ·  ") || "—")],
       ["Waits", t.wait ? waitLine(t.wait) : "no"]]),
-    h("h2", {}, "ADRs that govern its perimeter"), adrLinks(t.adrs),
+    h("h3", {}, "Timeline"),
+    rows.length ? h("ol", {cls: "compact"}, rows.map((r) => h("li", {"data-phase": r.phase},
+      h("span", {}, r.phase), r.verdict ? chip(verdictOf(r)) : h("span", {cls: "muted"}, "—"),
+      h("span", {cls: "line", title: r.line || ""}, shown(r.line)), h("span", {cls: "at"}, shown(r.at)))))
+      : h("p", {cls: "muted"}, "This logbook has no timeline (written before 1.1)."),
+    h("h3", {}, "ADRs that govern its perimeter"), adrLinks(t.adrs),
     h("p", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, "The whole timeline →")));
 }
 function screenKanban() {
   const out = [h("h1", {}, "Kanban"),
-    h("p", {cls: "lede"}, "One column per tower state. A card moves only when the tower moves its ticket; feature and priority change by editing the ticket. ",
-      h("span", {cls: "muted"}, "Arrows move between cards, Enter opens one, Esc closes it, / searches; the link keeps the view."))];
+    h("p", {cls: "lede"}, "One list per tower state, under the four bands of the flow. A card moves only when the tower moves its ticket: there is no drag. ",
+      h("span", {cls: "muted"}, "Click a card, or press Enter on it, to turn it over; the arrows move between cards, Esc closes, / searches; the link keeps the view."))];
   if (unread(book.kanban) || unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(unread(book.kanban) ? book.kanban : book.tickets)));
   if (!Array.isArray(book.kanban)) return out.concat(h("div", {cls: "panel"}, h("p", {cls: "muted"}, "This logbook has no kanban (written before 1.1).")));
   const v = kanbanView();
@@ -494,7 +736,9 @@ function screenKanban() {
     h("span", {}, "Feature ", sel("feature", v.feature, [["", "all"]].concat(features.map((f) => [f || "-", f || "no feature"])))),
     h("span", {}, "Priority ", sel("priority", v.priority, [["", "all"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"], ["-", "unprioritised"]])),
     h("span", {}, "Group by ", sel("group", v.group, [["", "nothing"], ["feature", "feature"], ["priority", "priority"]])),
-    h("span", {}, "Empty columns ", sel("empty", v.empty, [["", "shown"], ["hide", "hidden"]]))),
+    h("span", {}, "Empty columns ", sel("empty", v.empty, [["", "shown"], ["hide", "hidden"]])),
+    h("button", {id: "only-mine", cls: "only-mine", "aria-pressed": v.turn === "you" ? "true" : "false",
+      onclick: () => setView({turn: kanbanView().turn === "you" ? "" : "you"})}, "Your turn only")),
     h("div", {id: "board-area"}));
   return out;
 }
@@ -504,12 +748,15 @@ function drawBoard() {
   if (!area || !book || !Array.isArray(book.kanban)) return;
   const v = kanbanView();
   const byId = Object.fromEntries(ticketsList().map((t) => [t.id, t]));
-  const keep = (t) => (!v.feature || (t.feature || "-") === v.feature) && (!v.priority || (t.priority || "-") === v.priority) && searched(t, v.q);
+  const keep = (t) => (!v.feature || (t.feature || "-") === v.feature) && (!v.priority || (t.priority || "-") === v.priority) && searched(t, v.q)
+    && (v.turn !== "you" || now(t).turn === "you");
+  const mine = document.getElementById("only-mine");
+  if (mine) mine.setAttribute("aria-pressed", v.turn === "you" ? "true" : "false");
   const group = v.group === "feature" || v.group === "priority" ? v.group : "";
   const lanes = group ? [...new Set(ticketsList().filter(keep).map((t) => t[group] || ""))]
     .sort((a, b) => (a || "~").localeCompare(b || "~")) : [null];
   const focused = document.activeElement && document.activeElement.classList.contains("card") ? document.activeElement.dataset.id : null;
-  const kids = [];
+  const kids = [], held = new Set();
   for (const lane of lanes) {
     const inLane = (t) => keep(t) && (lane === null || (t[group] || "") === lane);
     // Hiding the empty columns is a view, like the filters: the order of
@@ -531,6 +778,7 @@ function drawBoard() {
     const runs = [];
     for (const c of cols) {
       const b = bandOf(c[0]);
+      if (c[1].length) held.add(b);
       if (!runs.length || runs[runs.length - 1].band !== b) runs.push({band: b, cols: []});
       runs[runs.length - 1].cols.push(c);
     }
@@ -542,13 +790,42 @@ function drawBoard() {
     }));
     kids.push(h("div", {cls: "lane", "data-lane": lane === null ? "" : lane},
       lane === null ? null : h("h2", {}, lane || (group === "priority" ? "unprioritised" : "no feature")),
-      h("div", {cls: "panel"}, board)));
+      h("div", {cls: "panel board-wrap"}, board)));
   }
-  const t = v.card ? byId[v.card] : null;
-  if (t) kids.push(drawer(t));
+  // On a phone the stack is long: a bar of the bands that hold a card, each
+  // button scrolling to its band; no hash, no history entry (docs/adr/0068 §5).
+  const jump = BANDS.concat([{band: "other", name: "Other"}]).filter((b) => held.has(b.band));
+  kids.unshift(h("div", {cls: "band-jump", role: "navigation", "aria-label": "Jump to a band"}, jump.map((b) =>
+    h("button", {"data-band": b.band, onclick: () => {
+      const el = area.querySelector('.band[data-band="' + b.band + '"]');
+      if (el) el.scrollIntoView({block: "start", behavior: still() ? "auto" : "smooth"});
+    }}, b.name))));
   area.replaceChildren(...kids);
-  if (focused) focusCard(focused);
+  fly();
+  showBack(v.card ? byId[v.card] : null);
+  if (focused && !v.card) focusCard(focused);
 }
+// The back is one dialog, outside the board, opened modal: the board behind
+// it is inert, and Esc or the backdrop closes it, giving the focus back to
+// the card.
+function showBack(t) {
+  const d = document.getElementById("card-back");
+  if (!t) {
+    if (d.open) d.close();
+    d.replaceChildren();
+    return;
+  }
+  const inside = d.open && d.contains(document.activeElement);
+  d.replaceChildren(drawer(t));
+  if (!d.open) d.showModal();
+  else if (inside || !d.contains(document.activeElement)) { const c = d.querySelector("button.close"); if (c) c.focus(); }
+}
+(function () {
+  const d = document.getElementById("card-back");
+  d.addEventListener("cancel", (e) => { e.preventDefault(); const id = kanbanView().card; if (id) closeBack(id); });
+  // A click on the backdrop lands on the dialog itself: its content fills it.
+  d.addEventListener("click", (e) => { if (e.target === d) { const id = kanbanView().card; if (id) closeBack(id); } });
+})();
 function focusCard(id) {
   const el = document.querySelector('.card[data-id="' + CSS.escape(id) + '"]');
   if (el) el.focus();
@@ -576,11 +853,13 @@ document.addEventListener("keydown", (e) => {
   const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
   if (e.key === "Escape" && kanbanView().card) {
     const id = kanbanView().card;
-    e.preventDefault(); setView({card: ""}); focusCard(id);
+    e.preventDefault(); closeBack(id);
+  } else if (kanbanView().card) {
+    return;  // the back is open: its own controls take the keys
   } else if (e.key === "/" && !typing) {
     e.preventDefault(); const q = document.getElementById("kanban-q"); if (q) q.focus();
   } else if (el && el.classList && el.classList.contains("card")) {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setView({card: el.dataset.id}); focusCard(el.dataset.id); }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setView({card: el.dataset.id}); }
     else if (e.key.startsWith("Arrow")) { e.preventDefault(); moveFocus(el, e.key); }
   }
 });
@@ -677,13 +956,14 @@ const ROW_BAND = {request: "spec", product: "spec", question: "spec", answer: "s
   merge: "release", mainline: "release", canary: "release", release: "release", "sign-off": "release"};
 // The four bands as a strip: done, now, stopped (the band a NO-GO ending
 // stopped in), or ahead.
-function stageStrip(t) {
+// `id` only on the timeline screen: the back draws the same strip without it.
+function stageStrip(t, id) {
   const here = BANDS.findIndex((b) => b.states.includes(t.state));
   const out = t.outcome || {};
   const ended = ["rolled-back", "needs-human"].includes(t.state) || (t.state === "held" && out.judge === "human" && out.verdict === "NO-GO");
   const finished = t.state === "held" && out.judge === "human" && out.verdict === "GO";
   const direct = (t.history || []).some((e) => e.step === "open");
-  return h("ol", {cls: "stages", id: "stages", "aria-label": "Where ticket " + t.id + " is"}, BANDS.map((b, i) => {
+  return h("ol", {cls: "stages", id: id || null, "aria-label": "Where ticket " + t.id + " is"}, BANDS.map((b, i) => {
     let mark = here < 0 ? "ahead" : i < here || (i === here && finished) ? "done" : i === here ? (ended ? "stopped" : "now") : "ahead";
     // Opened directly: no request and no spec gate, so Spec was skipped, not passed.
     if (b.band === "spec" && direct) mark = "skipped";
@@ -718,7 +998,7 @@ function screenTicket(id) {
   return [back, h("h1", {}, named(t)),
     h("div", {cls: "panel", id: "ticket-now"},
       h("div", {cls: "nowbox", "data-turn": w.turn}, nowLine(t)),
-      stageStrip(t),
+      stageStrip(t, "stages"),
       h("p", {cls: "muted", style: "margin: 0"}, "Last verdict: ", chip(t.outcome.verdict), " ", shown(t.outcome.judge), ": ", h("span", {cls: "mono"}, shown(t.outcome.line)))),
     answerPanel(t),
     h("p", {cls: "lede"}, "Every phase from the request to the release, one row each, each from its record, under the band it belongs to. Check it against the code host: ",
@@ -1096,6 +1376,7 @@ function render() {
   if (con.read_error) banners.push(h("div", {cls: "banner err"}, "Stale: the last read failed (" + con.read_error + "); showing the last good logbook."));
   const mark = focusMark();
   main.classList.toggle("wide", screen === "kanban");
+  if (screen !== "kanban") showBack(null);
   main.replaceChildren(...banners, ...body.filter(Boolean));
   if (screen === "kanban") drawBoard();
   if (screen === "adrs") drawAdrs();
