@@ -3,7 +3,9 @@
 - Status: proposed
 - Date: 2026-11-11
 - Amends: ADR 0057 §4 (`id-token: write` on a second job, `pypi`) and §7
-  (the Action repositories are refreshed by the workflow, not by hand)
+  (the Action repositories are refreshed by the workflow, not by hand);
+  ADR 0065 §1 (`package.yml`'s release jobs are not gated on `plan`, as
+  `publish` is not)
 
 ## Context
 
@@ -52,6 +54,11 @@ lived in the owner's keychain because no workflow uploaded.
    `!(github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))`,
    because ADR 0039's guard check (`ci/package.sh`) admits no `||` outside
    `publish`. The workflow has only two triggers, push and dispatch.
+   The four new jobs are not gated on the `plan` job, and neither is
+   `publish`. ADR 0065 §1 gates every other job on `plan`, but `plan`
+   skips a commit that is already green on a branch, and a tag is always
+   on such a commit. `ci/plan.sh` exempts these four jobs by name, in
+   `package.yml` only.
 
 2. **PyPI by trusted publishing (OIDC).** The `pypi` job asks GitHub for
    an OIDC token. PyPI trusts it for one triple: repository
