@@ -68,14 +68,18 @@ def netbook():
     ci["gates"] = rows(src["ci"]["lines"])
     rework = {k: v for k, v in src["rework"][0].items() if k != "lines"}
     rework["gates"] = rows(src["rework"][0]["lines"])
-    t10 = dict(base, id="0010", title="Notify the waitlist", state="held", attempt=2, adrs=["0002"],
-               perimeter=["app/backend/notify/*", "tests/test_notify.py"], updated_at="2026-11-02T07:30:00Z",
+    # The stub's own globs and paths, from its tower document: no workload
+    # path is spelt in core/ (ci/app-free.sh).
+    globs = [m["perimeter"][0] for m in src["tasks"][0]["members"]]
+    send, test = (f["path"] for f in src["tasks"][0]["files"])
+    t10 = dict(base, id="0010", title="Notify the queue", state="held", attempt=2, adrs=["0002"],
+               perimeter=globs, updated_at="2026-11-02T07:30:00Z",
                opened_at="2026-11-02T06:00:00Z", tasks=copy.deepcopy(src["tasks"]), task=src["task"], ci=ci,
                rework=[rework], review=src["review"], release=src["release"], merge=src["merge"], pr=src["pr"],
                outcome={"judge": "human", "line": "promoted by bob via cli", "verdict": "GO"},
-               files=[{"path": "app/backend/notify/send.py", "glob": "app/backend/notify/*", "member": "impl",
-                       "attempts": [1, 2], "tests": ["tests/test_notify.py"], "adrs": ["0002"], "held_by": []},
-                      {"path": "tests/test_notify.py", "glob": "tests/test_notify.py", "member": "tests",
+               files=[{"path": send, "glob": globs[0], "member": "impl",
+                       "attempts": [1, 2], "tests": [test], "adrs": ["0002"], "held_by": []},
+                      {"path": test, "glob": globs[1], "member": "tests",
                        "attempts": [1], "tests": [], "adrs": [], "held_by": []}])
     book["tickets"].append(t10)
     book["releases"].append({
@@ -85,10 +89,11 @@ def netbook():
         "ticket": "0010", "verdict": "held", "version": "0.2.5-n"})
     t4 = [t for t in book["tickets"] if t["id"] == "0004"][0]
     t4["attempt"] = 1
+    renamed = t4["perimeter"][0].replace("*", "0002_rename.py")
     t4["tasks"] = [{"role": "dev-worker", "harness": "replay", "model": "stub-model", "attempt": 1, "members": None,
                     "patch": {"ok": False, "error": WITHHELD_1},
-                    "files": [{"path": "app/backend/migrations/0002_rename.py", "added": 1, "removed": 0, "member": None}]}]
-    t4["files"] = [{"path": "app/backend/migrations/0002_rename.py", "glob": "app/backend/migrations/*", "member": None,
+                    "files": [{"path": renamed, "added": 1, "removed": 0, "member": None}]}]
+    t4["files"] = [{"path": renamed, "glob": t4["perimeter"][0], "member": None,
                     "attempts": [1], "tests": None, "adrs": [], "held_by": []}]
     return book
 
@@ -204,14 +209,14 @@ class Defaults(Case):
         book = netbook()
         ticket_of(book, "0009")["updated_at"] = "2020-01-01T00:00:00Z"
         out = self.ok(book, "--ticket", "0010")
-        self.assertEqual(parse(out)["first"], "ticket 0010 — Notify the waitlist · attempt 2")
+        self.assertEqual(parse(out)["first"], "ticket 0010 — Notify the queue · attempt 2")
 
     def test_ticket_and_attempt_pick_what_they_name(self):
         book = netbook()
         self.assertEqual(parse(self.ok(book, "--ticket", "0010", "--attempt", "1"))["first"],
-                         "ticket 0010 — Notify the waitlist · attempt 1")
+                         "ticket 0010 — Notify the queue · attempt 1")
         self.assertEqual(parse(self.ok(book, "--ticket", "0010", "--attempt", "2"))["first"],
-                         "ticket 0010 — Notify the waitlist · attempt 2")
+                         "ticket 0010 — Notify the queue · attempt 2")
         self.assertEqual(parse(self.ok(book, "--ticket", "0004"))["first"], "ticket 0004 — Rename a column · attempt 1")
 
     def test_headings_are_at_column_zero_and_in_order(self):
@@ -365,11 +370,13 @@ class Stream(Case):
         self.assertLess(newest, oldest, "attempt 2 is listed before attempt 1")
 
     def test_the_stream_names_each_attempt_s_files(self):
-        stream = "\n".join(parse(self.ok(netbook(), "--ticket", "0010"))["stream"])
-        self.assertIn("app/backend/notify/send.py", stream)
-        self.assertIn("tests/test_notify.py", stream)
+        book = netbook()
+        send, test = (f["path"] for f in ticket_of(book, "0010")["files"])
+        stream = "\n".join(parse(self.ok(book, "--ticket", "0010"))["stream"])
+        self.assertIn(send, stream)
+        self.assertIn(test, stream)
         # attempt 1 touched both files, attempt 2 send.py alone: send.py is listed under both
-        self.assertGreaterEqual(stream.count("app/backend/notify/send.py"), 2)
+        self.assertGreaterEqual(stream.count(send), 2)
 
     def test_the_patch_of_the_default_attempt_sits_between_the_markers_verbatim(self):
         book = netbook()
@@ -433,7 +440,8 @@ class Files(Case):
 
     def test_the_perimeter_and_each_file_show(self):
         text = "\n".join(self.files())
-        for want in ("app/backend/notify/*", "app/backend/notify/send.py", "tests/test_notify.py", "0002"):
+        t10 = ticket_of(netbook(), "0010")
+        for want in (t10["perimeter"][0], t10["files"][0]["path"], t10["files"][1]["path"], "0002"):
             self.assertIn(want, text)
 
     def test_the_tests_that_cover_a_file_show(self):
@@ -755,8 +763,9 @@ class OldLogbook(Case):
         self.assertNotIn("GO: mutation — score 92%", out)
 
     def test_the_perimeter_still_shows(self):
-        p = parse(self.ok(oldbook(), "--ticket", "0010"))
-        self.assertIn("app/backend/notify/*", "\n".join(p["files"]))
+        book = oldbook()
+        p = parse(self.ok(book, "--ticket", "0010"))
+        self.assertIn(ticket_of(book, "0010")["perimeter"][0], "\n".join(p["files"]))
 
     def test_the_workers_come_from_the_tasks_one_each(self):
         graph = parse(self.ok(oldbook(), "--ticket", "0010"))["graph"]

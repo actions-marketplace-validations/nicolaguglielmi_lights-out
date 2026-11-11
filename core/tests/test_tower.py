@@ -803,7 +803,7 @@ class Members(TowerCase):
 
     def test_a_network_attempt_gains_its_members_in_order(self):
         run = {"harness": "network", "members": [
-            self.member("impl", ["app/*"], {"harness": "replay", "recorded": self.RECORDED}),
+            self.member("impl", ["src/*"], {"harness": "replay", "recorded": self.RECORDED}),
             self.member("tests", ["tests/*"], {"harness": "replay", "recorded": {"hand_written": True}})]}
         code, got = self.run_json(run)
         self.assertEqual(code, 0)
@@ -812,12 +812,12 @@ class Members(TowerCase):
 
     def test_each_member_goes_through_the_task_rule(self):
         run = {"harness": "network", "members": [
-            self.member("a", ["app/*"], {"harness": "replay", "recorded": self.RECORDED}),
+            self.member("a", ["src/*"], {"harness": "replay", "recorded": self.RECORDED}),
             self.member("b", ["docs/*"], {"harness": "gemini-cli", "model": "live", "provider": "g", "thinking": "low",
                                           "turns": 7, "tokens": {"total": 70}, "duration_s": 3, "input_sha256": "cc"})]}
         _, got = self.run_json(run)
         self.assertEqual(got["members"][0], {
-            "id": "a", "perimeter": ["app/*"], "hand_written": None, "harness": "replay", "replayed": True,
+            "id": "a", "perimeter": ["src/*"], "hand_written": None, "harness": "replay", "replayed": True,
             "model": "m", "provider": "p", "thinking": "high", "turns": 2, "tokens": {"total": 9},
             "duration_s": 31, "input_sha256": "bb"})
         self.assertEqual(got["members"][1], {
@@ -879,7 +879,7 @@ class PatchFields(unittest.TestCase):
     """docs/adr/0071 §1: patch_fields(bytes, members) gives the patch capped
     at 65,536 bytes, cut at a newline, and the files counted on the whole."""
 
-    MEMBERS = [{"id": "impl", "perimeter": ["app/backend/notify/*"]}, {"id": "tests", "perimeter": ["tests/test_notify.py"]}]
+    MEMBERS = [{"id": "impl", "perimeter": ["src/backend/notify/*"]}, {"id": "tests", "perimeter": ["tests/test_notify.py"]}]
 
     def test_the_cap_is_65536_bytes(self):
         self.assertEqual(tower.PATCH_CAP, 65536)
@@ -943,7 +943,7 @@ class PatchFields(unittest.TestCase):
 
     def test_files_are_counted_on_the_whole_patch_not_the_cut_text(self):
         filler = ["+filler " + "f" * 80 for _ in range(900)]
-        patch = commit(diff("app/backend/notify/a.py", [[" k", "-old"] + filler]),
+        patch = commit(diff("src/backend/notify/a.py", [[" k", "-old"] + filler]),
                        diff("tests/test_notify.py", [[" k", "+a", "+b", "-c"]]))
         data = patch.encode()
         self.assertGreater(len(data), tower.PATCH_CAP)
@@ -951,7 +951,7 @@ class PatchFields(unittest.TestCase):
         self.assertTrue(got["patch"]["truncated"])
         self.assertNotIn("tests/test_notify.py", got["patch"]["text"])
         self.assertEqual(got["files"], [
-            {"path": "app/backend/notify/a.py", "added": 900, "removed": 1, "member": "impl"},
+            {"path": "src/backend/notify/a.py", "added": 900, "removed": 1, "member": "impl"},
             {"path": "tests/test_notify.py", "added": 2, "removed": 1, "member": "tests"}])
 
     def test_added_and_removed_count_hunk_lines_not_headers(self):
@@ -986,15 +986,15 @@ class PatchFields(unittest.TestCase):
         self.assertEqual(files, [{"path": "x.bin", "added": None, "removed": None, "member": None}])
 
     def test_member_is_the_one_whose_perimeter_matches_and_star_crosses_slash(self):
-        patch = commit(diff("app/backend/notify/deep/er/send.py", [["+x"]]), diff("tests/test_notify.py", [["+y"]]),
+        patch = commit(diff("src/backend/notify/deep/er/send.py", [["+x"]]), diff("tests/test_notify.py", [["+y"]]),
                        diff("README.md", [["+z"]]))
         files = tower.patch_fields(patch.encode(), self.MEMBERS)["files"]
         self.assertEqual([f["member"] for f in files], ["impl", "tests", None])
 
     def test_a_glob_matches_the_whole_path_and_with_case(self):
-        members = [{"id": "m", "perimeter": ["app/*.py"]}]
-        patch = commit(diff("app/a.py", [["+x"]]), diff("app/a.txt", [["+x"]]), diff("APP/a.py", [["+x"]]),
-                       diff("xapp/a.py", [["+x"]]))
+        members = [{"id": "m", "perimeter": ["src/*.py"]}]
+        patch = commit(diff("src/a.py", [["+x"]]), diff("src/a.txt", [["+x"]]), diff("SRC/a.py", [["+x"]]),
+                       diff("xsrc/a.py", [["+x"]]))
         files = tower.patch_fields(patch.encode(), members)["files"]
         self.assertEqual([f["member"] for f in files], ["m", None, None, None])
 
@@ -1004,13 +1004,13 @@ class PatchFields(unittest.TestCase):
         self.assertEqual([f["member"] for f in tower.patch_fields(patch.encode(), members)["files"]], ["m", "m"])
 
     def test_a_single_worker_has_no_member(self):
-        patch = commit(diff("app/backend/notify/send.py", [["+x"]]))
+        patch = commit(diff("src/backend/notify/send.py", [["+x"]]))
         self.assertIsNone(tower.patch_fields(patch.encode(), [])["files"][0]["member"])
 
     def test_the_stub_patches_of_ticket_0010_give_the_files_the_tower_recorded(self):
         doc = json.loads((ROOT / "fixtures/logbook/stub/state/tickets.0010.json").read_text(encoding="utf-8"))
         for task in doc["tasks"]:
-            got = tower.patch_fields(task["patch"]["text"].encode(), self.MEMBERS)
+            got = tower.patch_fields(task["patch"]["text"].encode(), task["members"])
             self.assertEqual(got["files"], task["files"], f"attempt {task['attempt']}")
             self.assertEqual(got["patch"], task["patch"])
 
@@ -1058,16 +1058,16 @@ class TaskPatch(TowerCase):
 
     def test_the_members_of_the_run_attribute_the_files_by_perimeter(self):
         run = {"harness": "network", "members": [
-            {"id": "impl", "perimeter": ["app/backend/notify/*"], "run": {"harness": "replay"}},
+            {"id": "impl", "perimeter": ["src/backend/notify/*"], "run": {"harness": "replay"}},
             {"id": "tests", "perimeter": ["tests/test_notify.py"],
              "run": {"harness": "replay", "recorded": {"hand_written": True}}}]}
-        patch = (commit(diff("app/backend/notify/send.py", [["+x"]]), n=1, of=2)
+        patch = (commit(diff("src/backend/notify/send.py", [["+x"]]), n=1, of=2)
                  + commit(diff("tests/test_notify.py", [["+y"]]), n=2, of=2))
         self.write(run, patch.encode())
         code, got, _ = self.task("--patch")
         self.assertEqual(code, 0)
         self.assertEqual([(f["path"], f["member"]) for f in got["files"]],
-                         [("app/backend/notify/send.py", "impl"), ("tests/test_notify.py", "tests")])
+                         [("src/backend/notify/send.py", "impl"), ("tests/test_notify.py", "tests")])
         self.assertEqual([m["id"] for m in got["members"]], ["impl", "tests"])
         self.assertIs(got["members"][1]["hand_written"], True)
 

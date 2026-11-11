@@ -399,86 +399,86 @@ class TicketFiles(unittest.TestCase):
     def task(self, attempt, *files):
         return {"attempt": attempt, "files": [{"path": p, "added": 1, "removed": 0, "member": m} for p, m in files]}
 
-    def ticket(self, tasks, perimeter=("app/*", "tests/test_notify.py")):
+    def ticket(self, tasks, perimeter=("src/*", "tests/test_notify.py")):
         return {"id": "0010", "perimeter": list(perimeter), "tasks": tasks}
 
     def rows(self, ticket, adrs=(), holds=(), tests_of=None):
         return logbook.ticket_files(ticket, list(adrs), list(holds), {} if tests_of is None else tests_of)
 
     def test_the_union_of_the_attempts_sorted_by_path(self):
-        t = self.ticket([self.task(1, ("tests/test_notify.py", "tests"), ("app/send.py", "impl")),
-                         self.task(2, ("app/send.py", "impl"), ("app/extra.py", "impl"))])
+        t = self.ticket([self.task(1, ("tests/test_notify.py", "tests"), ("src/send.py", "impl")),
+                         self.task(2, ("src/send.py", "impl"), ("src/extra.py", "impl"))])
         rows = self.rows(t)
-        self.assertEqual([r["path"] for r in rows], ["app/extra.py", "app/send.py", "tests/test_notify.py"])
+        self.assertEqual([r["path"] for r in rows], ["src/extra.py", "src/send.py", "tests/test_notify.py"])
         self.assertEqual({r["path"]: r["attempts"] for r in rows},
-                         {"app/extra.py": [2], "app/send.py": [1, 2], "tests/test_notify.py": [1]})
+                         {"src/extra.py": [2], "src/send.py": [1, 2], "tests/test_notify.py": [1]})
 
     def test_a_row_has_exactly_the_seven_keys(self):
-        row = self.rows(self.ticket([self.task(1, ("app/a.py", None))]))[0]
+        row = self.rows(self.ticket([self.task(1, ("src/a.py", None))]))[0]
         self.assertEqual(set(row), {"path", "glob", "member", "attempts", "tests", "adrs", "held_by"})
 
     def test_attempts_are_ascending_whatever_the_order_of_the_tasks(self):
-        t = self.ticket([self.task(3, ("app/a.py", None)), self.task(1, ("app/a.py", None))])
+        t = self.ticket([self.task(3, ("src/a.py", None)), self.task(1, ("src/a.py", None))])
         self.assertEqual(self.rows(t)[0]["attempts"], [1, 3])
 
     def test_glob_is_the_first_perimeter_glob_that_matches_and_star_crosses_slash(self):
-        t = self.ticket([self.task(1, ("app/deep/er/a.py", None), ("app/a.py", None), ("docs/a.md", None))],
-                        perimeter=["docs/b.md", "app/a.py", "app/*"])
+        t = self.ticket([self.task(1, ("src/deep/er/a.py", None), ("src/a.py", None), ("docs/a.md", None))],
+                        perimeter=["docs/b.md", "src/a.py", "src/*"])
         got = {r["path"]: r["glob"] for r in self.rows(t)}
-        self.assertEqual(got, {"app/a.py": "app/a.py", "app/deep/er/a.py": "app/*", "docs/a.md": None})
+        self.assertEqual(got, {"src/a.py": "src/a.py", "src/deep/er/a.py": "src/*", "docs/a.md": None})
 
     def test_member_comes_from_the_latest_attempt_that_touched_the_path(self):
-        t = self.ticket([self.task(1, ("app/a.py", "old")), self.task(2, ("app/a.py", "new"))])
+        t = self.ticket([self.task(1, ("src/a.py", "old")), self.task(2, ("src/a.py", "new"))])
         self.assertEqual(self.rows(t)[0]["member"], "new")
-        t = self.ticket([self.task(2, ("app/a.py", "new")), self.task(1, ("app/a.py", "old"))])
+        t = self.ticket([self.task(2, ("src/a.py", "new")), self.task(1, ("src/a.py", "old"))])
         self.assertEqual(self.rows(t)[0]["member"], "new")
-        t = self.ticket([self.task(1, ("app/a.py", "m")), self.task(2, ("app/b.py", "n"))])
-        self.assertEqual({r["path"]: r["member"] for r in self.rows(t)}, {"app/a.py": "m", "app/b.py": "n"})
+        t = self.ticket([self.task(1, ("src/a.py", "m")), self.task(2, ("src/b.py", "n"))])
+        self.assertEqual({r["path"]: r["member"] for r in self.rows(t)}, {"src/a.py": "m", "src/b.py": "n"})
 
     def test_a_single_worker_has_no_member(self):
-        self.assertIsNone(self.rows(self.ticket([self.task(1, ("app/a.py", None))]))[0]["member"])
+        self.assertIsNone(self.rows(self.ticket([self.task(1, ("src/a.py", None))]))[0]["member"])
 
     def test_tests_empty_when_the_map_knows_the_file_and_nothing_covers_it(self):
-        t = self.ticket([self.task(1, ("app/a.py", None), ("app/b.py", None), ("app/c.py", None))])
-        rows = {r["path"]: r["tests"] for r in self.rows(t, tests_of={"app/a.py": ["tests/test_a.py", "tests/test_a2.py"],
-                                                                      "app/b.py": []})}
-        self.assertEqual(rows, {"app/a.py": ["tests/test_a.py", "tests/test_a2.py"], "app/b.py": [], "app/c.py": None})
+        t = self.ticket([self.task(1, ("src/a.py", None), ("src/b.py", None), ("src/c.py", None))])
+        rows = {r["path"]: r["tests"] for r in self.rows(t, tests_of={"src/a.py": ["tests/test_a.py", "tests/test_a2.py"],
+                                                                      "src/b.py": []})}
+        self.assertEqual(rows, {"src/a.py": ["tests/test_a.py", "tests/test_a2.py"], "src/b.py": [], "src/c.py": None})
 
     def test_tests_null_for_every_file_when_the_map_is_unread(self):
-        t = self.ticket([self.task(1, ("app/a.py", None), ("app/b.py", None))])
+        t = self.ticket([self.task(1, ("src/a.py", None), ("src/b.py", None))])
         self.assertEqual([r["tests"] for r in logbook.ticket_files(t, [], [], None)], [None, None])
 
     def test_adrs_are_the_numbers_of_the_adrs_that_cite_the_path_sorted(self):
-        t = self.ticket([self.task(1, ("app/a.py", None), ("app/b.py", None))])
-        items = [{"number": "0007", "files": ["app/a.py", "x"]}, {"number": "0002", "files": ["app/a.py"]},
-                 {"number": "0003", "files": ["app/other.py"]}]
+        t = self.ticket([self.task(1, ("src/a.py", None), ("src/b.py", None))])
+        items = [{"number": "0007", "files": ["src/a.py", "x"]}, {"number": "0002", "files": ["src/a.py"]},
+                 {"number": "0003", "files": ["src/other.py"]}]
         got = {r["path"]: r["adrs"] for r in self.rows(t, adrs=items)}
-        self.assertEqual(got, {"app/a.py": ["0002", "0007"], "app/b.py": []})
+        self.assertEqual(got, {"src/a.py": ["0002", "0007"], "src/b.py": []})
 
     def test_adrs_null_when_the_adrs_are_unread(self):
-        t = self.ticket([self.task(1, ("app/a.py", None))])
+        t = self.ticket([self.task(1, ("src/a.py", None))])
         for unread in (None, self.UNREAD):
             with self.subTest(unread=unread):
                 self.assertIsNone(logbook.ticket_files(t, unread, [], {})[0]["adrs"])
 
     def test_held_by_lists_the_holding_tickets_whose_globs_match_sorted(self):
-        t = self.ticket([self.task(1, ("app/a.py", None), ("docs/a.md", None))])
-        holds = [{"ticket": "0008", "globs": ["app/*"], "state": "pr-opened", "holding": True},
-                 {"ticket": "0003", "globs": ["README.md", "app/a.py"], "state": "ci-failed", "holding": True},
-                 {"ticket": "0001", "globs": ["app/*"], "state": "rolled-back", "holding": False},
+        t = self.ticket([self.task(1, ("src/a.py", None), ("docs/a.md", None))])
+        holds = [{"ticket": "0008", "globs": ["src/*"], "state": "pr-opened", "holding": True},
+                 {"ticket": "0003", "globs": ["README.md", "src/a.py"], "state": "ci-failed", "holding": True},
+                 {"ticket": "0001", "globs": ["src/*"], "state": "rolled-back", "holding": False},
                  {"ticket": "0005", "globs": ["lib/*"], "state": "opened", "holding": True}]
         got = {r["path"]: r["held_by"] for r in self.rows(t, holds=holds)}
-        self.assertEqual(got, {"app/a.py": ["0003", "0008"], "docs/a.md": []})
+        self.assertEqual(got, {"src/a.py": ["0003", "0008"], "docs/a.md": []})
 
     def test_held_by_null_when_the_holders_are_unread(self):
-        t = self.ticket([self.task(1, ("app/a.py", None))])
+        t = self.ticket([self.task(1, ("src/a.py", None))])
         for unread in (None, self.UNREAD):
             with self.subTest(unread=unread):
                 self.assertIsNone(logbook.ticket_files(t, [], unread, {})[0]["held_by"])
 
     def test_one_unread_source_does_not_null_the_others(self):
-        t = self.ticket([self.task(1, ("app/a.py", None))])
-        row = logbook.ticket_files(t, [{"number": "0002", "files": ["app/a.py"]}], self.UNREAD, {"app/a.py": ["tests/t.py"]})[0]
+        t = self.ticket([self.task(1, ("src/a.py", None))])
+        row = logbook.ticket_files(t, [{"number": "0002", "files": ["src/a.py"]}], self.UNREAD, {"src/a.py": ["tests/t.py"]})[0]
         self.assertEqual((row["tests"], row["adrs"], row["held_by"]), (["tests/t.py"], ["0002"], None))
 
     def test_no_tasks_no_files(self):
@@ -618,7 +618,7 @@ class Reader(unittest.TestCase):
 
     def test_secrets_not_run_withholds_the_patch(self):
         def change(doc):
-            doc["rework"][0]["lines"] = ["NO-GO: perimeter — app/other.py is outside the ticket's perimeter"]
+            doc["rework"][0]["lines"] = ["NO-GO: perimeter — src/other.py is outside the ticket's perimeter"]
         t = self.ticket(self.read(self.edit("0010", change)))
         self.assertEqual(t["tasks"][0]["patch"]["ok"], False)
         self.assertIn("attempt 1", t["tasks"][0]["patch"]["error"])
@@ -650,9 +650,13 @@ class Reader(unittest.TestCase):
 
     def test_files_rows_of_the_network_ticket_without_a_map(self):
         rows = self.ticket(self.base())["files"]
-        self.assertEqual([r["path"] for r in rows], ["app/backend/notify/send.py", "tests/test_notify.py"])
+        # The stub's own paths and globs, read from its tower document: no
+        # workload path is spelt in core/ (ci/app-free.sh).
+        source = self.source()
+        globs = [m["perimeter"][0] for m in source["tasks"][0]["members"]]
+        self.assertEqual([r["path"] for r in rows], sorted({f["path"] for t in source["tasks"] for f in t["files"]}))
         self.assertEqual([(r["glob"], r["member"], r["attempts"]) for r in rows],
-                         [("app/backend/notify/*", "impl", [1, 2]), ("tests/test_notify.py", "tests", [1])])
+                         [(globs[0], "impl", [1, 2]), (globs[1], "tests", [1])])
         # no project map was given: tests and adrs are unread, not empty
         self.assertEqual([(r["tests"], r["adrs"]) for r in rows], [(None, None), (None, None)])
         self.assertEqual([r["held_by"] for r in rows], [[], []])
@@ -661,7 +665,7 @@ class Reader(unittest.TestCase):
         def change(root):
             path = root / "state" / "perimeters.held.json"
             held = json.loads(path.read_text(encoding="utf-8"))
-            held["tickets"]["0003"] = ["app/backend/notify/*"]
+            held["tickets"]["0003"] = [self.source()["tasks"][0]["members"][0]["perimeter"][0]]
             held["tickets"]["0001"] = ["tests/*"]
             path.write_text(json.dumps(held))
         rows = self.ticket(self.read(change))["files"]
