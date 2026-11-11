@@ -2440,9 +2440,8 @@ def expect_net(book, tid, attempt, table_gates, roles):
             # The graph lights the attempt shown (docs/adr/0071 §2, `attempt`):
             # the record's review belongs to the latest; an earlier attempt was
             # sent back by the reviewer, or never reached it.
-            "review": (t.get("review") or {}).get("verdict") if n == latest else
-                      ("changes-requested" if any(r.get("attempt") == n and r.get("judge") == "review" for r in t.get("rework") or [])
-                       else "not-reached"),
+            "review": "changes-requested" if any(r.get("attempt") == n and r.get("judge") == "review" for r in t.get("rework") or [])
+                      else ((t.get("review") or {}).get("verdict") if n == latest else "not-reached"),
             "rework": {"count": str(len(t["rework"])), "max": None if top is None else str(top)} if t.get("rework") else None,
             "stages": [(str(s["pct"]), stage_verdict(s["verdict"])) for s in (rel or {}).get("stages") or []],
             "human": human, "stream": stream, "files": t.get("files"), "perimeter": t.get("perimeter")}

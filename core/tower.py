@@ -90,7 +90,7 @@ RUN_KEYS = ("model", "provider", "thinking", "turns", "tokens", "duration_s", "i
 # the largest recorded patch (5,244 bytes, fixtures/0001), and five copies
 # stay under a third of Firestore's 1 MiB document (external).
 PATCH_CAP = 65536
-_HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+_MBOX = re.compile(r"^From [0-9a-f]{40} ")
 
 
 def task(run):
@@ -130,32 +130,28 @@ def patch_fields(data, members):
     patch file (docs/adr/0071 §1): the text cut at the last newline within
     PATCH_CAP, the files counted on the whole patch."""
     cut = data if len(data) <= PATCH_CAP else data[:data.rfind(b"\n", 0, PATCH_CAP + 1) + 1]
-    files, order, current, old, new = {}, [], None, 0, 0
-    for raw in data.decode("utf-8", errors="replace").splitlines():
-        if old > 0 or new > 0:  # inside a hunk: its header says how many lines are left
-            f = files[current]
-            if raw.startswith("+"):
-                new -= 1
-                f["added"] = None if f["added"] is None else f["added"] + 1
-            elif raw.startswith("-"):
-                old -= 1
-                f["removed"] = None if f["removed"] is None else f["removed"] + 1
-            elif not raw.startswith("\\"):
-                old, new = old - 1, new - 1
-            continue
+    files, order, current, hunk = {}, [], None, False
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    for i, raw in enumerate(lines):
+        after = lines[i + 1] if i + 1 < len(lines) else ""
         if raw.startswith("diff --git "):
             parts = raw.split(" b/", 1)
-            current = parts[1] if len(parts) == 2 else raw[len("diff --git "):]
+            current, hunk = (parts[1] if len(parts) == 2 else raw[len("diff --git "):]), False
             if current not in files:
                 files[current] = {"path": current, "added": 0, "removed": 0, "member": owner(current, members)}
                 order.append(current)
-        elif current is not None and (raw.startswith("Binary files ") or raw == "GIT binary patch"):
+        elif _MBOX.match(raw) or (raw in ("--", "-- ") and not after.startswith((" ", "+", "-", "\\", "@@", "diff --git "))):
+            # A commit's mbox header, or the `-- ` signature format-patch ends
+            # it with (the line after it is git's version, never a hunk line).
+            current, hunk = None, False
+        elif current is None:
+            continue
+        elif raw.startswith("@@ "):
+            hunk = True
+        elif not hunk and (raw.startswith("Binary files ") or raw == "GIT binary patch"):
             files[current]["added"] = files[current]["removed"] = None
-        elif current is not None and raw.startswith("@@ "):
-            m = _HUNK.match(raw)
-            if m:
-                old = int(m.group(2)) if m.group(2) is not None else 1
-                new = int(m.group(4)) if m.group(4) is not None else 1
+        elif hunk and files[current]["added"] is not None and raw[:1] in ("+", "-"):
+            files[current]["added" if raw[0] == "+" else "removed"] += 1
     return {"patch": {"text": cut.decode("utf-8", errors="replace"), "bytes": len(data), "truncated": len(data) > PATCH_CAP},
             "files": [files[p] for p in order]}
 

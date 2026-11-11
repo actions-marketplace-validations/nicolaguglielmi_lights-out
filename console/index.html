@@ -415,7 +415,7 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
     "hand_written": ", hand-written: no model ran",
     "heading": "ticket {id} — {title} · attempt {attempt}",
     "heading_none": "ticket {id} — {title} · no attempt yet",
-    "human": "human gate: {line} via {via}",
+    "human": "human gate: {answer} by {by} via {via}",
     "human_none": "human gate: not reached",
     "human_rolled_back": "human gate: not reached, the canary rolled back",
     "human_waiting": "human gate: waiting for go-for-launch",
@@ -445,7 +445,7 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
     "role_idle": "role {role}: did not run for this ticket",
     "role_ran": "role {role}: ran for this ticket",
     "single": "the single worker",
-    "stage": "canary {pct}%: {line}",
+    "stage": "canary {pct}%: {verdict}",
     "stage_none": "canary: not reached",
     "tower": "tower: the ticket is at {state}",
     "unknown_to_map": "not in the project map",
@@ -1325,18 +1325,24 @@ function netRolesRan(t) {
   if (t.product && t.product.consulted === true) s.add("product");
   return s;
 }
-function netHuman(t) {
-  const signed = (t.timeline || []).filter((r) => r && r.phase === "sign-off");
-  if (signed.length) { const r = signed[signed.length - 1]; return {verdict: r.verdict, who: r.line + " · " + r.via, text: nw("human", {line: r.line, via: r.via})}; }
-  if (t.state === "held") return {verdict: "waiting", text: nw("human_waiting", {})};
-  if (t.state === "rolled-back") return {verdict: "not-reached", text: nw("human_rolled_back", {})};
+// The ticket's release in the release log: its ticket and its version, the last one.
+function netRelease(b, t) {
+  const version = t.release && typeof t.release === "object" ? t.release.version : null;
+  const mine = (Array.isArray(b.releases) ? b.releases : []).filter((r) => r && r.ticket === t.id && version && r.version === version);
+  return mine.length ? mine[mine.length - 1] : null;
+}
+function netHuman(rel) {
+  const a = rel && rel.answer;
+  if (a && typeof a === "object" && a.answer) return {verdict: a.answer, who: a.by + " · " + a.via, text: nw("human", {answer: a.answer, by: a.by, via: a.via})};
+  if (rel && rel.verdict === "held") return {verdict: "waiting", text: nw("human_waiting", {})};
+  if (rel && rel.verdict === "rolled-back") return {verdict: "not-reached", text: nw("human_rolled_back", {})};
   return {verdict: "not-reached", text: nw("human_none", {})};
 }
 function netReview(t, n) {
-  const r = t.review;
-  if (n === t.attempt && r && typeof r === "object" && r.verdict) return {verdict: r.verdict, text: nw("review", {verdict: r.verdict, role: r.role || "the reviewer"})};
   const back = netRework(t, n);
   if (back && back.judge === "review") return {verdict: "changes-requested", text: nw("review_back", {attempt: n})};
+  const r = t.review;
+  if (n === t.attempt && r && typeof r === "object" && r.verdict) return {verdict: r.verdict, text: nw("review", {verdict: r.verdict, role: r.role || "the reviewer"})};
   return {verdict: "not-reached", text: n !== null ? nw("review_none", {attempt: n}) : nw("review_none_yet", {})};
 }
 const netJoined = (v) => v === null || v === undefined ? null : (v.length ? v.join(", ") : nw("none", {}));
@@ -1367,10 +1373,12 @@ function netView(b, tid, n) {
     g.push({kind: "rework", key: "rework", count: rework.length, max: mx,
       text: mx !== null ? nw("rework", {count: rework.length, max: mx}) : nw("rework_nomax", {count: rework.length})});
   }
-  const stages = (t.timeline || []).filter((r) => r && r.phase === "canary");
-  stages.forEach((s, i) => g.push({kind: "stage", key: "stage:" + i, pct: s.pct, verdict: s.verdict, text: nw("stage", {pct: s.pct, line: s.line})}));
+  const rel = netRelease(b, t);
+  const stages = ((rel && rel.stages) || []).filter((s) => s && typeof s === "object");
+  stages.forEach((s, i) => g.push({kind: "stage", key: "stage:" + i, pct: s.pct, verdict: String(s.verdict || "").startsWith("GO") ? "GO" : "NO-GO",
+    text: nw("stage", {pct: s.pct, verdict: s.verdict})}));
   if (!stages.length) g.push({kind: "stage", key: "stage:none", pct: null, verdict: null, text: nw("stage_none", {})});
-  g.push(Object.assign({kind: "human", key: "human"}, netHuman(t)));
+  g.push(Object.assign({kind: "human", key: "human"}, netHuman(rel)));
   v.graph = g;
 
   const stream = [];
