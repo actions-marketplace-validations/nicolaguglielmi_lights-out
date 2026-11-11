@@ -6,7 +6,8 @@
 # `lights_out` is the directory core/ (package-dir: no file moves), its tests
 # not shipped; the platform policy rides along as lights_out.platform_policy.
 # workbench/pyproject.toml is the workbench's own pin and stays apart.
-# Publishing to PyPI is the owner's act (docs/launch/checklist.md).
+# A v* tag uploads it to PyPI by trusted publishing, package.yml's pypi job
+# (docs/adr/0075); the tag is the owner's act (docs/launch/checklist.md).
 
 [build-system]
 requires = ["setuptools>=77"]
