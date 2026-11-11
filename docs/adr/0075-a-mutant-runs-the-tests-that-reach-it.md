@@ -85,7 +85,25 @@ that should not have been, never a GO that should not have been.
 
 ## Measured
 
-(filled in by the measurement commit)
+Measurement, 2026-11-11, on this machine: the image
+`localhost/lights-out:judge-653d29f` (Python 3.13.5, cosmic-ray 8.7.0),
+the podman VM's 4 processors, `MUTATION_SHARDS=4`, `core/` at bf618fa
+(781 tests, 22.3 s clean), this ADR's runner as committed in 9699c75, `MUTATION_LINES` the
+whole of `core/mcp.py`, `core/__main__.py` and `core/risk.py` (the two
+files of the range that took 162 min of mutation in ADR 0074, and one
+judged in process), the test command `.lights-out/workload.env`'s. One run
+of each, one after the other:
+
+| runner | wall clock | score line | survivors |
+|---|---|---|---|
+| bf618fa (whole suite per mutant) | 3,467 s | 558 total, 409 killed, 149 survived, 0.7330 | 149 |
+| this ADR | 251 s | the same | the same 149, line for line |
+
+13.8 times faster, the score and the survivors unchanged. Of the 558
+mutants, 38 ran no test, 509 a selection, 11 the whole suite. The
+instrumented clean run took 50.5 s against 22.3 s, so the timeout grew in
+proportion. Noise, both ways: another session's `./go ci` shared the VM
+for 5 min 48 s of the first run, and unrelated containers ran during both.
 
 ## Tests, from the spec
 
