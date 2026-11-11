@@ -264,6 +264,54 @@ aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .0
 .adr:last-child { border-bottom: 0; }
 .links { font-size: 13px; color: var(--muted); }
 .links code { margin-right: 6px; }
+/* The governed network (docs/adr/0071 §2): the graph and its facts beside
+   the stream of attempts, the files by perimeter below; stacked under ADR
+   0063's 720 px breakpoint. The graph is inline SVG drawn with the tokens. */
+#net .net-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 12px; }
+#net .net-top h1 { margin: 0; flex: 1 1 auto; }
+#net-replay-label { display: none; padding: 4px 10px; border-radius: 999px; background: var(--wait-bg); color: var(--ink); font-size: 13px; font-weight: 600; }
+#net[data-replay="on"] #net-replay-label, #net[data-replay="done"] #net-replay-label { display: inline-block; }
+.net-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 720px) { .net-cols { grid-template-columns: minmax(0, 1fr); } }
+.net-graph svg { display: block; width: 100%; height: auto; }
+.net-graph svg text { font: 600 12px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink); }
+.net-graph svg .sub { font-weight: 400; font-size: 11px; fill: var(--muted); }
+.net-graph svg .node { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+.net-graph svg .wire { stroke: var(--line); stroke-width: 1.5; fill: none; }
+.net-graph svg .spoke { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; fill: none; }
+.net-graph svg #net-tower .node { fill: var(--none-bg); stroke: var(--ink); stroke-width: 2; }
+.net-graph svg .net-role[data-ran="true"] .node, .net-graph svg .net-worker .node { stroke: var(--accent); stroke-width: 2; }
+.net-graph svg .net-role[data-ran="false"] text { fill: var(--muted); }
+.net-graph svg [data-verdict="GO"] .dot, .net-graph svg [data-verdict="approved"] .node, .net-graph svg #net-human[data-verdict="GO"] .node { fill: var(--go); stroke: var(--go); }
+.net-graph svg [data-verdict="NO-GO"] .dot, .net-graph svg [data-verdict="changes-requested"] .node, .net-graph svg #net-human[data-verdict="NO-GO"] .node { fill: var(--nogo); stroke: var(--nogo); }
+.net-graph svg [data-verdict="not-run"] .dot, .net-graph svg [data-verdict="not-reached"] .node { fill: var(--panel); stroke: var(--muted); stroke-dasharray: 2 2; }
+.net-graph svg #net-human[data-verdict="waiting"] .node { fill: var(--wait-bg); stroke: var(--wait); }
+.net-graph svg [data-verdict="GO"] .seg { stroke: var(--go); stroke-width: 3; }
+.net-graph svg [data-verdict="NO-GO"] .seg { stroke: var(--nogo); stroke-width: 3; }
+.net-graph svg #net-rework path { stroke: var(--nogo); stroke-width: 2; fill: none; stroke-dasharray: 6 4; }
+.net-graph svg [data-verdict="GO"] text.v, .net-graph svg [data-verdict="NO-GO"] text.v, .net-graph svg [data-verdict="approved"] text.v, .net-graph svg [data-verdict="changes-requested"] text.v { fill: var(--panel); }
+.net-graph svg [data-pending] { opacity: .18; }
+.net-graph svg .net-new .node, .net-graph svg .net-new .dot { animation: net-pulse 1s ease-out 2; }
+@keyframes net-pulse { from { stroke-width: 7; } to { stroke-width: 2; } }
+ul.net-facts, ol#net-stream, ol#net-stream ul { list-style: none; margin: 0; padding: 0; }
+ul.net-facts { columns: 2 260px; column-gap: 18px; font-size: 13px; margin-top: 10px; }
+ul.net-facts li { break-inside: avoid; padding: 2px 0; }
+.net-fact[data-pending] { opacity: .35; }
+.net-new { background: var(--moved); border-radius: 4px; animation: net-flash 1s ease-out; }
+@keyframes net-flash { from { background: var(--mark); } to { background: var(--moved); } }
+@media (prefers-reduced-motion: reduce) {
+  .net-new, .net-graph svg .net-new .node, .net-graph svg .net-new .dot { animation: none; }
+}
+ol#net-stream > li.net-attempt { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; }
+ol#net-stream .net-attempt > .net-fact { font-weight: 700; margin: 0 0 4px; }
+ol#net-stream ul li { font-size: 13px; padding: 1px 0; }
+ol#net-stream li.net-line { font-family: var(--mono); font-size: 12px; word-break: break-word; }
+ol#net-stream li.net-line[data-verdict="GO"] { color: var(--go); }
+ol#net-stream li.net-line[data-verdict="NO-GO"] { color: var(--nogo); }
+details.net-patch summary { cursor: pointer; font-size: 13px; color: var(--accent); margin-top: 4px; }
+details.net-patch pre { max-height: 360px; overflow: auto; white-space: pre; word-break: normal; }
+table.net-files td { font-size: 13px; }
+table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; background: var(--bg); }
 </style>
 <script>
 // The theme before the first paint (docs/adr/0059 §2): the browser's choice,
@@ -288,6 +336,7 @@ aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .0
   <nav id="nav">
     <a href="#overview" data-s="overview">Overview</a>
     <a href="#kanban" data-s="kanban">Kanban</a>
+    <a href="#network" data-s="network">Network</a>
     <a href="#tickets" data-s="tickets">This week's tickets</a>
     <a href="#specs" data-s="specs">Specs</a>
     <a href="#request" data-s="request">New request</a>
@@ -327,6 +376,82 @@ aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .0
            {"band": "build", "name": "Build", "states": ["opened", "pr-opened"]},
            {"band": "test", "name": "Test and review", "states": ["review", "ci-passed", "ci-failed", "needs-human"]},
            {"band": "release", "name": "Release", "states": ["merged", "main-green", "held", "rolled-back"]}]}
+</script>
+<!-- The network's words (docs/adr/0071 §5): the table core/network.py
+     prints with --table, so `./go network` and this screen say every fact
+     in the same words; ./go ci proves this copy equal to it, its roles the
+     roles/ directories and its gates the Makefile's GATES. -->
+<script type="application/json" id="network-words">
+{
+  "gates": [
+    "risk",
+    "secrets",
+    "test-weakening",
+    "deps",
+    "sast",
+    "test",
+    "mutation",
+    "test-proof"
+  ],
+  "roles": [
+    "architect",
+    "dev-worker",
+    "ops-triage",
+    "product",
+    "release",
+    "test-reviewer"
+  ],
+  "words": {
+    "attempt": "attempt {attempt}, by {who}",
+    "attempt_sent_back": "sent back: {line}",
+    "file": "{path} +{added} −{removed}",
+    "file_binary": "{path}, binary",
+    "file_by": ", by {member}",
+    "file_row": "{path}: by {member}, attempts {attempts}, tests {tests}, ADRs {adrs}, held by {held}",
+    "gate": "gate {gate}: {verdict}",
+    "gate_off": "gate line off the contract: {line}",
+    "gates_summary": "gate gates: {line}",
+    "hand_written": ", hand-written: no model ran",
+    "heading": "ticket {id} — {title} · attempt {attempt}",
+    "heading_none": "ticket {id} — {title} · no attempt yet",
+    "human": "human gate: {line} via {via}",
+    "human_none": "human gate: not reached",
+    "human_rolled_back": "human gate: not reached, the canary rolled back",
+    "human_waiting": "human gate: waiting for go-for-launch",
+    "no_attempt": "no attempt yet",
+    "no_model": "no model",
+    "no_worker": "worker: none recorded for attempt {attempt}",
+    "none": "none",
+    "not_run": "gate {gate}: not run, an earlier gate said NO-GO",
+    "not_run_yet": "gate {gate}: not run yet",
+    "old_logbook": "this logbook ({version}) records no patches or gate lines",
+    "outside": "outside the perimeter",
+    "patch": "patch: {bytes} bytes",
+    "patch_begin": "--- patch of attempt {attempt} ---",
+    "patch_cut": "patch: {bytes} bytes, cut at {shown} bytes",
+    "patch_end": "--- end of patch ---",
+    "patch_none": "patch: not recorded",
+    "perimeter": "perimeter {glob}",
+    "perimeter_adrs": "ADRs governing the perimeter: {adrs}",
+    "perimeter_empty": "perimeter {glob}: no file touched",
+    "replayed": ", replayed",
+    "review": "review: {verdict} by {role}",
+    "review_back": "review: sent attempt {attempt} back",
+    "review_none": "review: not reached on attempt {attempt}",
+    "rework": "rework: {count} sent back to the dev-worker, at most {max} attempts",
+    "rework_nomax": "rework: {count} sent back to the dev-worker",
+    "role_idle": "role {role}: did not run for this ticket",
+    "role_ran": "role {role}: ran for this ticket",
+    "single": "the single worker",
+    "stage": "canary {pct}%: {line}",
+    "stage_none": "canary: not reached",
+    "tower": "tower: the ticket is at {state}",
+    "unknown_to_map": "not in the project map",
+    "unread": "could not read {what}: {error}",
+    "who_unknown": "a worker the logbook does not record",
+    "worker": "worker {id}: {harness}, {model}"
+  }
+}
 </script>
 <script>
 "use strict";
@@ -1116,6 +1241,391 @@ function screenThresholds() {
   return out;
 }
 
+// --- the governed network (docs/adr/0071 §2-§5) -----------------------------
+// One ticket's network from the logbook alone: the tower, the six roles, the
+// attempt's workers, each gate's verdict, the review, the rework loop, the
+// canary stages and the human gate; beside it the stream of attempts with
+// their gate lines and patches; below, the files by perimeter. Every fact is
+// a sentence of #network-words, the table core/network.py prints with
+// --table: `./go network` prints the same facts in the same words, and ./go
+// ci proves the copy equal. Nothing here writes, and no node moves by hand.
+const NET = JSON.parse(document.getElementById("network-words").textContent);
+const nw = (key, kw) => NET.words[key].replace(/\{(\w+)\}/g, (m, k) => String(kw[k] === null || kw[k] === undefined ? "None" : kw[k]));
+const NET_KEYS = ["attempt", "replay"];
+// Provenance, decision: one live poll (docs/adr/0047 §4), so the 400 ms
+// flight and the 4 s mark keep their meaning (docs/adr/0071 §3).
+const REPLAY_BEAT_MS = 2000;
+// Provenance, decision: docs/adr/0059 §1, two beats of the 2 s poll.
+const NET_MARK_MS = 4000;
+let replay = null;  // {ticket, row, timer} while a replay runs
+let netMarks = {};  // fact text -> until, for the ticket shown
+let netShown = null;  // {ticket, facts} the screen last drew
+
+function netMinor(b) { const m = /\.(\d+)$/.exec(String(b.schema || "")); return m ? Number(m[1]) : 0; }
+function netDefault(b) {
+  let best = null;
+  for (const t of Array.isArray(b.tickets) ? b.tickets : []) {
+    const key = [t.updated_at !== null && t.updated_at !== undefined, t.updated_at || "", t.id];
+    if (!best || key[0] > best.key[0] || (key[0] === best.key[0] && (key[1] > best.key[1] || (key[1] === best.key[1] && key[2] > best.key[2])))) best = {key, id: t.id};
+  }
+  return best ? best.id : null;
+}
+function netAttempts(t) {
+  const s = new Set();
+  for (const x of t.tasks || []) if (x && Number.isInteger(x.attempt)) s.add(x.attempt);
+  for (const r of t.rework || []) if (r && Number.isInteger(r.attempt)) s.add(r.attempt);
+  if (Number.isInteger(t.attempt)) s.add(t.attempt);
+  return [...s].sort((a, b) => a - b);
+}
+function netTask(t, n) {
+  const x = (t.tasks || []).find((y) => y && y.attempt === n);
+  if (x) return x;
+  return n !== null && n === t.attempt && t.task && typeof t.task === "object" ? t.task : null;
+}
+const netRework = (t, n) => (t.rework || []).find((r) => r && r.attempt === n) || null;
+function netJudge(t, n) {
+  const r = netRework(t, n);
+  if (r) return r;
+  return t.ci && typeof t.ci === "object" && n === t.attempt ? t.ci : null;
+}
+function netWorkers(task) {
+  if (!task || typeof task !== "object") return [];
+  if (Array.isArray(task.members)) return task.members.map((m) => ({id: m.id, harness: m.harness, model: m.model, replayed: m.replayed === true, hand_written: m.hand_written === true}));
+  return [{id: task.role || "dev-worker", harness: task.harness, model: task.model, replayed: task.replayed === true, hand_written: task.hand_written === true}];
+}
+function netWorkerFact(m) {
+  return nw("worker", {id: m.id, harness: m.harness || "unknown", model: m.model || nw("no_model", {})}) +
+    (m.replayed ? nw("replayed", {}) : "") + (m.hand_written ? nw("hand_written", {}) : "");
+}
+function netGates(t, n) {
+  const judge = netJudge(t, n);
+  const rows = judge && Array.isArray(judge.gates) ? judge.gates : null;
+  if (rows === null && judge) {
+    const back = netRework(t, n);
+    if (back && back.judge !== "gates") return [{gate: "gates", verdict: "GO", text: nw("gates_summary", {line: "GO"})}];
+    const v = back ? "NO-GO" : judge.verdict;
+    return [{gate: "gates", verdict: v === "GO" || v === "NO-GO" ? v : "not-run", text: nw("gates_summary", {line: judge.line || "—"})}];
+  }
+  const out = [];
+  let failed = false;
+  for (const g of rows || []) {
+    if (g.gate === null || g.gate === undefined) { out.push({gate: null, verdict: null, text: nw("gate_off", {line: g.line})}); continue; }
+    failed = failed || g.verdict === "NO-GO";
+    out.push({gate: g.gate, verdict: g.verdict, text: nw("gate", {gate: g.gate, verdict: g.verdict})});
+  }
+  const ran = new Set(out.map((g) => g.gate));
+  for (const g of NET.gates) if (!ran.has(g)) out.push({gate: g, verdict: "not-run", text: nw(failed ? "not_run" : "not_run_yet", {gate: g})});
+  return out;
+}
+function netRolesRan(t) {
+  const s = new Set((t.tasks || []).map((x) => x && x.role));
+  for (const k of ["task", "review"]) if (t[k] && typeof t[k] === "object") s.add(t[k].role);
+  if (t.product && t.product.consulted === true) s.add("product");
+  return s;
+}
+function netHuman(t) {
+  const signed = (t.timeline || []).filter((r) => r && r.phase === "sign-off");
+  if (signed.length) { const r = signed[signed.length - 1]; return {verdict: r.verdict, text: nw("human", {line: r.line, via: r.via})}; }
+  if (t.state === "held") return {verdict: "waiting", text: nw("human_waiting", {})};
+  if (t.state === "rolled-back") return {verdict: "not-reached", text: nw("human_rolled_back", {})};
+  return {verdict: "not-reached", text: nw("human_none", {})};
+}
+function netReview(t, n) {
+  const r = t.review;
+  if (n === t.attempt && r && typeof r === "object" && r.verdict) return {verdict: r.verdict, text: nw("review", {verdict: r.verdict, role: r.role || "the reviewer"})};
+  const back = netRework(t, n);
+  if (back && back.judge === "review") return {verdict: "changes-requested", text: nw("review_back", {attempt: n})};
+  return {verdict: "not-reached", text: nw("review_none", {attempt: n})};
+}
+const netJoined = (v) => v === null || v === undefined ? null : (v.length ? v.join(", ") : nw("none", {}));
+// The same facts as core/network.py's view(), in the same order.
+function netView(b, tid, n) {
+  const t = (Array.isArray(b.tickets) ? b.tickets : []).find((x) => x.id === tid);
+  const ns = netAttempts(t);
+  if (n === null) n = ns.length ? ns[ns.length - 1] : null;
+  const old = netMinor(b) < 3;
+  let title = t.title || tid;
+  if (String(title).startsWith(tid)) title = String(title).slice(tid.length).replace(/^[ —]+/, "");
+  const v = {ticket: tid, attempt: n, old, t,
+    heading: n !== null ? nw("heading", {id: tid, title, attempt: n}) : nw("heading_none", {id: tid, title})};
+  const g = [{kind: "tower", key: "tower", text: nw("tower", {state: t.state})}];
+  const ran = netRolesRan(t);
+  for (const r of NET.roles) g.push({kind: "role", key: "role:" + r, role: r, ran: ran.has(r), text: nw(ran.has(r) ? "role_ran" : "role_idle", {role: r})});
+  if (n !== null) {
+    const ws = netWorkers(netTask(t, n));
+    if (ws.length) for (const m of ws) g.push(Object.assign({kind: "worker", key: "worker:" + n + ":" + m.id, text: netWorkerFact(m)}, m));
+    else g.push({kind: "worker", key: "worker:" + n, id: null, text: nw("no_worker", {attempt: n})});
+    for (const e of netGates(t, n)) g.push(Object.assign({kind: "gate", key: "gate:" + n + ":" + e.gate, attempt: n}, e));
+    g.push(Object.assign({kind: "review", key: "review"}, netReview(t, n)));
+  }
+  const rework = (t.rework || []).filter((r) => r && typeof r === "object");
+  if (rework.length) {
+    const mx = reworkMax();
+    g.push({kind: "rework", key: "rework", count: rework.length, max: mx,
+      text: mx !== null ? nw("rework", {count: rework.length, max: mx}) : nw("rework_nomax", {count: rework.length})});
+  }
+  const stages = (t.timeline || []).filter((r) => r && r.phase === "canary");
+  stages.forEach((s, i) => g.push({kind: "stage", key: "stage:" + i, pct: s.pct, verdict: s.verdict, text: nw("stage", {pct: s.pct, line: s.line})}));
+  if (!stages.length) g.push({kind: "stage", key: "stage:none", pct: null, verdict: null, text: nw("stage_none", {})});
+  g.push(Object.assign({kind: "human", key: "human"}, netHuman(t)));
+  v.graph = g;
+
+  const stream = [];
+  if (old) stream.push({kind: "old", key: "old", text: nw("old_logbook", {version: b.schema})});
+  for (const k of ns.slice().reverse()) {
+    const task = netTask(t, k);
+    const who = netWorkers(task).map((m) => m.id).join(", ") || nw("who_unknown", {});
+    const e = {kind: "attempt", key: "attempt:" + k, attempt: k, text: nw("attempt", {attempt: k, who}), items: []};
+    for (const f of (task && task.files) || []) {
+      const text = f.added === null || f.added === undefined ? nw("file_binary", {path: f.path}) : nw("file", {path: f.path, added: f.added, removed: f.removed});
+      e.items.push({kind: "file", key: "attempt:" + k, path: f.path, text: text + (f.member ? nw("file_by", {member: f.member}) : "")});
+    }
+    const judge = netJudge(t, k);
+    for (const r of (judge && judge.gates) || []) e.items.push({kind: "line", key: "gate:" + k + ":" + r.gate, gate: r.gate, verdict: r.verdict, text: r.line});
+    const back = netRework(t, k);
+    if (back) e.items.push({kind: "sent-back", key: "rework", text: nw("attempt_sent_back", {line: back.line})});
+    const p = !old && task ? task.patch : null;
+    if (p && unread(p)) e.items.push({kind: "patch", key: "attempt:" + k, text: p.error});
+    else if (p && typeof p === "object") e.items.push({kind: "patch", key: "attempt:" + k,
+      text: p.truncated ? nw("patch_cut", {bytes: p.bytes, shown: new TextEncoder().encode(p.text).length}) : nw("patch", {bytes: p.bytes})});
+    else if (!old) e.items.push({kind: "patch", key: "attempt:" + k, text: nw("patch_none", {})});
+    e.patch = p && typeof p === "object" && !unread(p) ? p : null;
+    e.withheld = p && unread(p) ? p.error : null;
+    stream.push(e);
+  }
+  if (!ns.length) stream.push({kind: "none", key: "none", text: nw("no_attempt", {})});
+  v.stream = stream;
+
+  const files = [];
+  if (unread(b.adrs)) files.push({kind: "unread", text: nw("unread", {what: "the project map", error: b.adrs.error})});
+  if (unread(b.perimeters_held)) files.push({kind: "unread", text: nw("unread", {what: "who holds which files", error: b.perimeters_held.error})});
+  let globs = t.perimeter;
+  const rows = Array.isArray(t.files) ? t.files : [];
+  if (unread(globs)) { files.push({kind: "unread", text: nw("unread", {what: "the perimeter", error: globs.error})}); globs = []; }
+  const all = (globs || []).concat(rows.some((r) => r.glob === null) ? [null] : []);
+  for (const glob of all) {
+    const mine = rows.filter((r) => r.glob === glob);
+    const label = glob !== null ? glob : nw("outside", {});
+    if (!mine.length) { files.push({kind: "glob", glob, text: nw(old ? "perimeter" : "perimeter_empty", {glob: label})}); continue; }
+    files.push({kind: "glob", glob, text: nw("perimeter", {glob: label})});
+    for (const r of mine) {
+      const first = r.attempts && r.attempts.length ? r.attempts[0] : null;
+      files.push({kind: "file", row: r, key: "attempt:" + first, parts: {
+        path: r.path, member: r.member || nw("single", {}), attempts: netJoined(r.attempts),
+        tests: netJoined(r.tests) !== null ? netJoined(r.tests) : nw("unknown_to_map", {}),
+        adrs: r.adrs !== null && r.adrs !== undefined ? netJoined(r.adrs) : nw("unknown_to_map", {}),
+        held: r.held_by !== null && r.held_by !== undefined ? netJoined(r.held_by) : nw("none", {})}});
+      const f = files[files.length - 1];
+      f.text = nw("file_row", f.parts);
+    }
+  }
+  if (Array.isArray(t.adrs)) files.push({kind: "adrs", text: nw("perimeter_adrs", {adrs: netJoined(t.adrs)})});
+  v.files = files;
+  return v;
+}
+
+// The row of the ticket's timeline that reveals each key in a replay.
+function netReveal(t) {
+  const rows = Array.isArray(t.timeline) ? t.timeline : [];
+  const at = {tower: 0}, canary = [];
+  const first = (key, i) => { if (!(key in at)) at[key] = i; };
+  let attemptNow = null;
+  rows.forEach((r, i) => {
+    if (!r) return;
+    if (Number.isInteger(r.attempt)) attemptNow = r.attempt;
+    if (r.phase === "assign" || r.phase === "attempt" || r.phase === "rework") {
+      first("role:dev-worker", i);
+      const n = Number.isInteger(r.attempt) ? r.attempt : (attemptNow || 1);
+      first("attempt:" + n, i);
+      first("worker:" + n, i);
+      if (r.phase === "rework") first("rework", i);
+    }
+    if (r.phase === "gates") { const n = Number.isInteger(r.attempt) ? r.attempt : attemptNow; first("gates:" + n, i); }
+    if (r.phase === "review") { first("review", i); first("role:test-reviewer", i); }
+    if (r.phase === "product") first("role:product", i);
+    if (r.phase === "canary") canary.push(i);
+    if (r.phase === "release") first("release", i);
+    if (r.phase === "sign-off") first("human", i);
+  });
+  canary.forEach((i, k) => { at["stage:" + k] = i; });
+  return (key) => {
+    if (!key) return 0;
+    if (key in at) return at[key];
+    const m = /^(worker|gate):(\d+)(?::|$)/.exec(key);
+    if (m) { const k = (m[1] === "gate" ? "gates:" : "worker:") + m[2]; if (k in at) return at[k]; }
+    if (key === "human" && "release" in at) return at.release;
+    if (key.startsWith("role:")) return 0;
+    return rows.length;
+  };
+}
+
+function svg(tag, attrs, ...kids) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v !== null && v !== undefined && v !== false) el.setAttribute(k === "cls" ? "class" : k, v === true ? "" : v);
+  for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined && kid !== false) el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+const netLabel = (x, y, s, cls, anchor) => svg("text", {x, y, "text-anchor": anchor || "middle", cls}, s);
+// The graph: fixed slots in a 760 x 340 drawing; the tower at the centre,
+// the six roles above it, the lane the change runs along below it.
+function netGraph(v) {
+  const roles = v.graph.filter((f) => f.kind === "role"), workers = v.graph.filter((f) => f.kind === "worker" && f.id !== null);
+  const gates = v.graph.filter((f) => f.kind === "gate"), stages = v.graph.filter((f) => f.kind === "stage" && f.pct !== null);
+  const review = v.graph.find((f) => f.kind === "review"), rework = v.graph.find((f) => f.kind === "rework"), human = v.graph.find((f) => f.kind === "human");
+  const lane = 270, out = [];
+  const tower = svg("g", {id: "net-tower", "data-key": "tower"}, svg("circle", {cls: "node", cx: 380, cy: 150, r: 38}), netLabel(380, 147, "tower"), netLabel(380, 163, v.t.state, "sub"));
+  // Spokes: the tower requests every step (docs/adr/0019).
+  roles.forEach((r, i) => out.push(svg("line", {cls: "spoke", x1: 380, y1: 112, x2: 68 + i * 125, y2: 52})));
+  for (const x of [70, 300, 520, 610, 712]) out.push(svg("line", {cls: "spoke", x1: 380, y1: 188, x2: x, y2: lane - 20}));
+  roles.forEach((r, i) => out.push(svg("g", {cls: "net-role", "data-role": r.role, "data-ran": String(r.ran), "data-key": r.key},
+    svg("rect", {cls: "node", x: 10 + i * 125, y: 22, width: 116, height: 30, rx: 6}), netLabel(68 + i * 125, 41, r.role))));
+  // Workers, at most four (docs/adr/0036): stacked at the lane's start.
+  const top = lane - (workers.length - 1) * 17;
+  workers.forEach((m, i) => out.push(svg("g", {cls: "net-worker", "data-worker": m.id, "data-harness": m.harness || "", "data-model": m.model || "",
+    "data-replayed": String(m.replayed), "data-hand-written": String(m.hand_written), "data-key": m.key},
+    svg("rect", {cls: "node", x: 6, y: top + i * 34 - 14, width: 150, height: 28, rx: 6}),
+    netLabel(14, top + i * 34 - 2, m.id, null, "start"), netLabel(14, top + i * 34 + 10, (m.harness || "unknown") + " · " + (m.model || nw("no_model", {})), "sub", "start"))));
+  // The gates along the lane, in the order they ran, then those that did not.
+  const x0 = 182, step = gates.length > 1 ? 270 / (gates.length - 1) : 0;
+  out.push(svg("line", {cls: "wire", x1: 156, y1: lane, x2: 712, y2: lane}));
+  gates.forEach((g, i) => {
+    const x = x0 + i * step;
+    out.push(svg("g", {cls: "net-gate", "data-gate": g.gate || "", "data-verdict": g.verdict || "", "data-attempt": String(g.attempt), "data-key": g.key},
+      svg("line", {cls: "seg", x1: i ? x - step : 156, y1: lane, x2: x, y2: lane}),
+      svg("circle", {cls: "dot", cx: x, cy: lane, r: 8}),
+      svg("text", {x, y: lane + 22, "text-anchor": "end", transform: "rotate(-35 " + x + " " + (lane + 22) + ")", cls: "sub"}, g.gate || "?")));
+  });
+  if (review) out.push(svg("g", {id: "net-review", "data-verdict": review.verdict, "data-key": "review"},
+    svg("rect", {cls: "node", x: 482, y: lane - 15, width: 76, height: 30, rx: 6}), netLabel(520, lane + 4, "review", "v")));
+  stages.forEach((s, i) => {
+    const x = 590 + i * (stages.length > 1 ? 60 / (stages.length - 1) : 0);
+    out.push(svg("g", {cls: "net-stage", "data-pct": String(s.pct), "data-verdict": s.verdict || "", "data-key": s.key},
+      svg("circle", {cls: "dot", cx: x, cy: lane, r: 15}), svg("text", {x, y: lane + 4, "text-anchor": "middle", cls: "v"}, s.pct + "%")));
+  });
+  if (human) out.push(svg("g", {id: "net-human", "data-verdict": human.verdict, "data-key": "human"},
+    svg("rect", {cls: "node", x: 682, y: lane - 16, width: 64, height: 32, rx: 16}), svg("text", {x: 714, y: lane + 4, "text-anchor": "middle", cls: "v"}, "human")));
+  if (rework) out.push(svg("g", {id: "net-rework", "data-count": String(rework.count), "data-max": rework.max === null ? null : String(rework.max), "data-key": "rework"},
+    svg("path", {d: "M " + (x0 + 150) + " " + (lane - 12) + " C " + (x0 + 120) + " " + (lane - 100) + ", 110 " + (lane - 100) + ", 80 " + (top - 18)}),
+    netLabel(x0 + 12, lane - 86, "rework " + rework.count + (rework.max !== null ? " of " + rework.max : ""))));
+  return svg("svg", {viewBox: "0 0 760 340", role: "img", "aria-labelledby": "net-facts-title"}, out, tower);
+}
+// A sentence of the table with some of its values drawn as elements: the
+// text stays the sentence, letter for letter.
+function netSentence(key, parts, render) {
+  const marks = {}, kw = {};
+  for (const [k, val] of Object.entries(parts)) { if (render[k]) { marks["\u0000" + k + "\u0000"] = k; kw[k] = "\u0000" + k + "\u0000"; } else kw[k] = val; }
+  return nw(key, kw).split(/(\u0000\w+\u0000)/).filter(Boolean).map((piece) => marks[piece] ? render[marks[piece]](parts[marks[piece]]) : piece);
+}
+function netFact(tag, f, attrs, ...kids) {
+  return h(tag, Object.assign({cls: "net-fact", "data-key": f.key || null}, attrs || {}), kids.length ? kids : f.text);
+}
+function screenNetwork(arg) {
+  const tickets = ticketsList();
+  const q = route().query;
+  if (!tickets.length) return [h("h1", {}, "Network"), h("div", {cls: "panel"}, unread(book.tickets) ? err(book.tickets) : "No ticket in the logbook yet.")];
+  const tid = arg || netDefault(book);
+  const t = tickets.find((x) => x.id === tid);
+  if (!t) return [h("h1", {}, "Network"), h("div", {cls: "panel"}, "The logbook holds no ticket " + tid + ".")];
+  // `replay=1` in the link starts the replay once the screen is drawn.
+  if (q.replay === "1" && !(replay && replay.ticket === tid)) setTimeout(() => { if (!(replay && replay.ticket === tid)) startReplay(tid); }, 0);
+  const ns = netAttempts(t);
+  const n = q.attempt && ns.includes(Number(q.attempt)) ? Number(q.attempt) : null;
+  const v = netView(book, tid, n);
+  const playing = replay && replay.ticket === tid;
+  const reveal = netReveal(t), row = playing ? replay.row : null;
+  const pending = (key) => row !== null && !replay.done && reveal(key) >= row ? true : null;
+  const select = h("select", {id: "net-ticket", "aria-label": "Ticket",
+    onchange: (e) => { location.hash = "#network/" + encodeURIComponent(e.target.value); }},
+    tickets.map((x) => h("option", Object.assign({value: x.id}, x.id === tid ? {selected: true} : {}), named(x))));
+  const graph = netGraph(v);
+  for (const el of graph.querySelectorAll("[data-key]")) if (pending(el.getAttribute("data-key"))) el.setAttribute("data-pending", "");
+  const facts = h("ul", {cls: "net-facts", id: "net-facts"}, v.graph.map((f) => netFact("li", f, {"data-pending": pending(f.key)})));
+  const stream = h("ol", {id: "net-stream"}, v.stream.map((e) => e.kind !== "attempt"
+    ? h("li", {cls: "net-note"}, netFact("p", e, {"data-pending": pending(e.key)}))
+    : h("li", {cls: "net-attempt", "data-attempt": String(e.attempt)},
+      netFact("div", e, {"data-pending": pending(e.key)}),
+      h("ul", {}, e.items.map((i) => i.kind === "line"
+        ? netFact("li", i, {cls: "net-fact net-line", "data-gate": i.gate || "", "data-verdict": i.verdict || "", "data-pending": pending(i.key)})
+        : netFact("li", i, {"data-pending": pending(i.key)}))),
+      e.patch || e.withheld ? h("details", Object.assign({cls: "net-patch", "data-truncated": e.patch ? String(e.patch.truncated === true) : "false"},
+        e.attempt === v.attempt && e.patch ? {open: true} : {}),
+        h("summary", {}, "The patch of attempt " + e.attempt), h("pre", {}, e.patch ? e.patch.text : e.withheld)) : null)));
+  const rows = [];
+  for (const f of v.files) {
+    if (f.kind === "file") {
+      const r = f.row;
+      rows.push(h("tr", {cls: "net-file", "data-path": r.path, "data-glob": r.glob === null ? "" : r.glob, "data-member": r.member || "",
+        "data-held-by": (r.held_by || []).join(",")},
+        h("td", {cls: "net-fact", "data-key": f.key, "data-pending": pending(f.key)}, netSentence("file_row", f.parts, {
+          tests: (s) => h("span", {cls: "net-tests mono"}, s),
+          adrs: (s) => h("span", {cls: "net-adrs"}, (r.adrs || []).length ? r.adrs.flatMap((a, i) => [i ? ", " : null, h("a", {href: "#adr/" + a}, a)]) : s)}))));
+    } else rows.push(h("tr", {cls: f.kind === "glob" ? "net-glob" : "net-note"}, h("td", {cls: "net-fact"}, f.text)));
+  }
+  const live = con.mode === "live";
+  const state = replay && replay.ticket === tid ? (replay.done ? "done" : "on") : "off";
+  const sec = h("section", {id: "net", "data-ticket": tid, "data-schema": String(book.schema || ""), "data-replay": state,
+      "data-row": playing ? String(replay.row) : null},
+    h("div", {cls: "net-top"}, h("h1", {}, v.heading),
+      h("label", {cls: "meta"}, "Ticket ", select),
+      h("button", {type: "button", id: "net-replay", onclick: () => startReplay(tid)}, playing && !replay.done ? "Replaying…" : "Replay"),
+      h("span", {id: "net-replay-label", role: "status"}, "Replay of the recorded logbook: nothing is running")),
+    h("p", {cls: "lede"}, "The agent network of one ticket, from the logbook alone: the tower, the six roles, the attempt's workers, each gate's verdict, the rework loop, the canary and the one human gate; beside it every attempt with the lines that judged it and its patch; below, the files by perimeter. ",
+      live ? "Live: a node lights up when the logbook moves it." : "A snapshot: press Replay to watch the record unfold.", " The same facts in text: ", h("code", {}, "./go network TICKET=" + tid)),
+    h("div", {cls: "net-cols"},
+      h("div", {cls: "panel net-graph"}, h("h2", {id: "net-facts-title"}, "The governed network, attempt " + (v.attempt === null ? "—" : v.attempt)),
+        ns.length > 1 ? h("p", {cls: "meta"}, "Attempts: ", ns.flatMap((k, i) => [i ? " · " : null, k === v.attempt ? h("b", {}, String(k))
+          : h("a", {href: "#network/" + encodeURIComponent(tid) + (k === ns[ns.length - 1] ? "" : "?attempt=" + k)}, String(k))])) : null,
+        graph, facts),
+      h("div", {cls: "panel"}, h("h2", {}, "Attempts, newest first"), stream)),
+    h("div", {cls: "panel"}, h("h2", {}, "Files by perimeter"), h("table", {cls: "net-files"}, rows)));
+  // The live mark (docs/adr/0071 §3): a fact the last logbook added.
+  const now = Date.now();
+  for (const el of sec.querySelectorAll(".net-fact")) {
+    const until = netMarks[el.textContent.replace(/\s+/g, " ").trim()];
+    if (until && until > now) {
+      el.classList.add("net-new");
+      const k = el.getAttribute("data-key");
+      const node = k ? graph.querySelector('[data-key="' + CSS.escape(k) + '"]') : null;
+      if (node) node.classList.add("net-new");
+    }
+  }
+  netShown = {ticket: tid, facts: netFactsOf(v)};
+  return [sec];
+}
+function netFactsOf(v) {
+  return v.graph.map((f) => f.text).concat(v.stream.flatMap((e) => [e.text].concat((e.items || []).map((i) => i.text))), v.files.map((f) => f.text));
+}
+// A new logbook in live mode: the facts of the ticket shown that it adds are
+// marked for 4 s and said in #announce.
+function noteNet(after) {
+  if (!netShown || route().screen !== "network") return;
+  const t = (Array.isArray(after.tickets) ? after.tickets : []).find((x) => x.id === netShown.ticket);
+  if (!t) return;
+  let v;
+  try { v = netView(after, netShown.ticket, null); } catch (e) { return; }
+  const before = new Set(netShown.facts), until = Date.now() + NET_MARK_MS;
+  const added = netFactsOf(v).filter((f) => !before.has(f));
+  if (!added.length) return;
+  for (const f of added) netMarks[f] = until;
+  document.getElementById("announce").textContent = netShown.ticket + ": " + added.slice(0, 3).join("; ") + (added.length > 3 ? "; and " + (added.length - 3) + " more" : "") + ".";
+  setTimeout(() => { if (route().screen === "network") render(); }, NET_MARK_MS + 50);
+}
+// The replay (docs/adr/0071 §3): the final record revealed one timeline row
+// at a time on the 2 s beat, labelled, with no request until it ends.
+function startReplay(tid) {
+  if (replay && replay.timer) clearInterval(replay.timer);
+  const t = ticketsList().find((x) => x.id === tid);
+  const total = t && Array.isArray(t.timeline) ? t.timeline.length : 0;
+  replay = {ticket: tid, row: 0, total, done: false, timer: null};
+  render();
+  replay.timer = setInterval(() => {
+    replay.row += 1;
+    if (replay.row >= replay.total) { replay.row = replay.total; replay.done = true; clearInterval(replay.timer); replay.timer = null; }
+    if (route().screen === "network") render();
+  }, REPLAY_BEAT_MS);
+}
+const replaying = () => replay !== null && !replay.done;
+
 // --- the specs (docs/adr/0059 §4) ----------------------------------------
 function screenSpecs() {
   const out = [h("h1", {}, "Specs"),
@@ -1367,6 +1877,7 @@ function render() {
   else if (screen === "thresholds") body = screenThresholds();
   else if (screen === "overview") body = screenOverview();
   else if (screen === "kanban") body = screenKanban();
+  else if (screen === "network") body = screenNetwork(arg);
   else if (screen === "specs") body = screenSpecs();
   else if (screen === "request") body = screenRequest();
   else if (screen === "adrs") body = screenAdrs();
@@ -1375,7 +1886,7 @@ function render() {
   const banners = [];
   if (con.read_error) banners.push(h("div", {cls: "banner err"}, "Stale: the last read failed (" + con.read_error + "); showing the last good logbook."));
   const mark = focusMark();
-  main.classList.toggle("wide", screen === "kanban");
+  main.classList.toggle("wide", screen === "kanban" || screen === "network");
   if (screen !== "kanban") showBack(null);
   main.replaceChildren(...banners, ...body.filter(Boolean));
   if (screen === "kanban") drawBoard();
@@ -1395,7 +1906,7 @@ async function load() {
     if (r.status === 200) {
       const b = await r.json();
       etag = r.headers.get("ETag");
-      if (book) noteMoves(book, b);
+      if (book) { noteMoves(book, b); noteNet(b); }
       book = b; changed = true;
     }
   } catch (e) { /* keep what is shown; the header says when it was read */ }
@@ -1412,7 +1923,8 @@ async function tick() {
 }
 window.addEventListener("hashchange", () => { render(); });
 load().then(() => render());
-setInterval(() => { if (con && con.mode === "live") tick(); }, 2000);
+// A replay holds the poll: it sends no request until it ends (docs/adr/0071 §3).
+setInterval(() => { if (con && con.mode === "live" && !replaying()) tick(); }, 2000);
 </script>
 </body>
 </html>

@@ -34,10 +34,10 @@ judged=$(jq -r '.pr.head_sha // empty' "$DOC_FILE")
 
 entry=$(jq -c --argjson n "$attempt" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
   if .mainline.verdict == "NO-GO" or .ci.verdict == "NO-GO" then (if .mainline.verdict == "NO-GO" then .mainline else .ci + {judge: "gates"} end) as $v |
-    {attempt: $n, judge: $v.judge, head_sha: .pr.head_sha, line: $v.line, details: ($v.details // []), at: $at}
+    {attempt: $n, judge: $v.judge, head_sha: .pr.head_sha, line: $v.line, details: ($v.details // []), lines: .ci.lines, at: $at}
   elif .review.verdict == "changes-requested" then
     {attempt: $n, judge: "review", head_sha: .pr.head_sha,
-     line: "CHANGES-REQUESTED — \(.review.role)", details: (.review.reason // "" | split("\n")), at: $at}
+     line: "CHANGES-REQUESTED — \(.review.role)", details: (.review.reason // "" | split("\n")), lines: .ci.lines, at: $at}
   else empty end' "$DOC_FILE")
 [ -n "$entry" ] || {
   printf 'step-rework: ticket %s is at ci-failed with neither a gates NO-GO nor a changes-requested review\n' "$TICKET" >&2
@@ -74,7 +74,7 @@ TICKET="$TICKET" ROLE="$ROLE" ATTEMPT="$next" REWORK_FILE="$verdict" REWORK_HEAD
 # shellcheck disable=SC1090,SC1091 # written by crew.sh just now
 . "$crew_dir/pr-opened.env"
 # Who ran it and what it cost (docs/adr/0047 §2, P1), from run.json.
-task=$(python3 core/tower.py task "$crew_dir/out/run.json")
+task=$(python3 core/tower.py task --patch "$crew_dir/out/run.json")
 
 jq -cn --argjson next "$next" --argjson rework "$rework" --arg n "$PR_NUMBER" --arg url "$PR_URL" \
   --arg base "$BASE_SHA" --arg head "$HEAD_SHA" --arg role "$ROLE" --argjson task "$task" \

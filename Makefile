@@ -303,6 +303,17 @@ board: ## The flight readiness board on localhost:8099: the pipeline explained, 
 logbook: ## Write the logbook, the record a client's console reads: [LOGBOOK_FILE=.crew/logbook.json] (docs/adr/0047 §2)
 	@sh core/logbook.sh
 
+# The governed network in text (docs/adr/0071 §4): the facts the console's
+# #network screen draws, in the same words, from the same logbook. Without
+# NETWORK_LOGBOOK it writes the logbook first, its line on stderr. A view,
+# not a gate: exit 1 when the logbook cannot be read, 2 for a TICKET or an
+# ATTEMPT it does not hold.
+.PHONY: network
+network: ## The agent network of one ticket in text: the graph, every attempt with its gate lines and patch, the files by perimeter: [TICKET=] [ATTEMPT=] [NETWORK_LOGBOOK=<file>] (docs/adr/0071)
+	@book="$(NETWORK_LOGBOOK)"; \
+	if [ -z "$$book" ]; then sh core/logbook.sh >&2 || exit 1; book="$${LOGBOOK_FILE:-.crew/logbook.json}"; fi; \
+	python3 core/network.py --logbook "$$book" --ticket "$(TICKET)" --attempt "$(ATTEMPT)"
+
 # The console (docs/adr/0047, 0055, 0059): the client's ten screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the
 # answer to a ticket's open question through `make answer` and a new

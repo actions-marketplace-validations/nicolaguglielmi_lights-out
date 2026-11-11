@@ -24,7 +24,7 @@ TICKET="$TICKET" ROLE="$ROLE" sh core/crew.sh >&2
 # shellcheck disable=SC1090,SC1091 # written by crew.sh just now
 . "$crew_dir/pr-opened.env"
 # Who ran it and what it cost (docs/adr/0047 §2, P1), from run.json.
-task=$(python3 core/tower.py task "$crew_dir/out/run.json")
+task=$(python3 core/tower.py task --patch "$crew_dir/out/run.json")
 spec_sha=$(sha256sum "$crew_dir/ticket.md" | cut -d' ' -f1)
 spec_title=$(head -n1 "$crew_dir/ticket.md" | sed 's/^# *//')
 
