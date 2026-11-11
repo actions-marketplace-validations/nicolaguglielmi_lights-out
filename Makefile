@@ -312,7 +312,7 @@ logbook: ## Write the logbook, the record a client's console reads: [LOGBOOK_FIL
 network: ## The agent network of one ticket in text: the graph, every attempt with its gate lines and patch, the files by perimeter: [TICKET=] [ATTEMPT=] [NETWORK_LOGBOOK=<file>] (docs/adr/0071)
 	@book="$(NETWORK_LOGBOOK)"; \
 	if [ -z "$$book" ]; then sh core/logbook.sh >&2 || exit 1; book="$${LOGBOOK_FILE:-.crew/logbook.json}"; fi; \
-	python3 core/network.py --logbook "$$book" --ticket "$(TICKET)" --attempt "$(ATTEMPT)"
+	python3 core/network.py --logbook "$$book" --ticket "$(if $(filter file,$(origin TICKET)),,$(TICKET))" --attempt "$(ATTEMPT)"
 
 # The console (docs/adr/0047, 0055, 0059, 0071): the client's eleven screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the

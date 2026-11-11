@@ -1471,7 +1471,9 @@ chk words console/index.html "$repo" >"$tmp/chk.out" || nogo "console/index.html
 # reader and prints on stdout what core/network.py prints, the view and nothing
 # else; TICKET and ATTEMPT reach the view. The check can fail: the view of
 # another ticket is not the default's.
-net_make() { make --no-print-directory network NETWORK_LOGBOOK="$golden" "$@" 2>"$tmp/net-make.err"; }
+# Without the TICKET a calling make exports (its `TICKET ?= 0001`): the recipe
+# passes on only a ticket its caller gave, and the default is the view's own.
+net_make() { env -u TICKET -u ATTEMPT make --no-print-directory network NETWORK_LOGBOOK="$golden" "$@" 2>"$tmp/net-make.err"; }
 net_make > "$tmp/net-make.out" || nogo "make network NETWORK_LOGBOOK=<golden> failed" "$(cat "$tmp/net-make.err")"
 python3 core/network.py --logbook "$golden" > "$tmp/net-py.out" 2>"$tmp/net-py.err" || nogo "core/network.py --logbook <golden> failed" "$(cat "$tmp/net-py.err")"
 [ -s "$tmp/net-py.out" ] || nogo "core/network.py printed nothing over the golden"
