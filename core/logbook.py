@@ -7,7 +7,9 @@ tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
 project map's ADRs (MAP_FILE, docs/adr/0059 §3) and what the contract
-gives the agents (core/agents.py, docs/adr/0073 §10). Every rule
+gives the agents (core/agents.py, docs/adr/0073 §10), and per ticket what
+its last run used: the task's `mcp` and the review's `instructions`
+(§10, the ticket's back). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -328,11 +330,11 @@ def tickets(rels):
             "updated_at": history[-1].get("at") if history else None,
             "outcome": outcome(doc, tid, rels),
             "spec": spec,
-            "task": pick(doc.get("task"), TASK_KEYS),
+            "task": pick(doc.get("task"), TASK_KEYS + ("mcp",)),
             "rework": doc.get("rework") or [],
             "pr": pick(doc.get("pr"), ("number", "url", "base_sha", "head_sha")),
             "ci": pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha")),
-            "review": pick(doc.get("review"), ("role", "verdict", "reason", "harness", "model")),
+            "review": pick(doc.get("review"), ("role", "verdict", "reason", "harness", "model", "instructions")),
             "merge": pick(doc.get("merge"), ("sha", "head_sha")),
             "map": pick(doc.get("map"), ("sha", "docs_ticket")),
             "release": pick(doc.get("release"), ("version", "image", "verdict", "numbers")),

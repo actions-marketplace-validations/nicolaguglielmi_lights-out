@@ -494,7 +494,18 @@
         "verdict": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
         "version": "0.2.0-a"
       },
-      "review": null,
+      "review": {
+        "harness": "replay",
+        "instructions": {
+          "base": "1a2b3c4d5e6f",
+          "file": ".lights-out/roles/test-reviewer.md",
+          "sha256": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        },
+        "model": "stub-model",
+        "reason": "the venue check is covered",
+        "role": "test-reviewer",
+        "verdict": "approved"
+      },
       "rework": [],
       "spec": {
         "at": null,
@@ -510,6 +521,27 @@
         "duration_s": 12.5,
         "harness": "replay",
         "input_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "mcp": {
+          "calls": [
+            {
+              "count": 1,
+              "server": "notes",
+              "tool": "search_notes"
+            }
+          ],
+          "denied": [],
+          "servers": [
+            {
+              "name": "notes",
+              "tools": [
+                "search_notes"
+              ],
+              "transport": "stdio"
+            }
+          ],
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "unlisted": "visible-denied"
+        },
         "model": "stub-model",
         "provider": "stub-provider",
         "replayed": true,
@@ -873,6 +905,7 @@
         "duration_s": null,
         "harness": "replay",
         "input_sha256": null,
+        "mcp": null,
         "model": "stub-model",
         "provider": null,
         "replayed": null,
@@ -1056,6 +1089,7 @@
       "release": null,
       "review": {
         "harness": "replay",
+        "instructions": null,
         "model": "stub-model",
         "reason": "too broad\nsecond line",
         "role": "reviewer",
@@ -1173,6 +1207,7 @@
       "release": null,
       "review": {
         "harness": "replay",
+        "instructions": null,
         "model": "stub-model",
         "reason": "first line\nsecond line",
         "role": "reviewer",

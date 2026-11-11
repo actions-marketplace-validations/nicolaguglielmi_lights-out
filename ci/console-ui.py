@@ -65,7 +65,10 @@ fixtures/logbook/golden-1.3.json, and drives it with Playwright:
      open back against the first opaque background behind it (WCAG 2.1 AA), a
      focused card's outline at 3:1;
   r. the phone's band bar (§5);
-  s. no drag: no draggable attribute, no drag or drop listener registered.
+  s. no drag: no draggable attribute, no drag or drop listener registered;
+  t. the agents (docs/adr/0073 §10): the Thresholds screen's Agents panel
+     prints the logbook's lines, and each card's back shows its task's MCP
+     calls and its review's instructions, and no such row when they are null.
 
 Every comparison is shown first to fail on a wrong input (self_checks, and
 the probes in a_board and a_posts): a gate that cannot fail is not a gate.
@@ -2279,12 +2282,48 @@ def t_agents(browser, bases, golden):
     tab.page.wait_for_selector("h2:text-is('Agents')", timeout=5000)
     shown_text = tab.page.evaluate("() => { const h = [...document.querySelectorAll('h2')].find((x) => x.textContent === 'Agents'); const pre = h && h.nextElementSibling && h.nextElementSibling.querySelector('pre'); return pre ? pre.textContent : null; }")
     need(shown_text == "\n".join(lines), f"t: the Agents panel shows {shown_text!r}, the logbook's lines are {lines!r}")
+    # The ticket's back shows the review's instructions and run.json's mcp.calls; nothing when null.
+    both = [t for t in golden["tickets"] if len(expected_agent_rows(t)) == 2]
+    need(both, "t: no golden ticket has both a task's mcp and a review's instructions: the back's check proves nothing")
+    draw_kanban(tab, "t")
+    for t in golden["tickets"]:
+        open_back(tab, t["id"])
+        got = tab.page.evaluate(BACK_ROWS_JS)
+        want = expected_agent_rows(t)
+        seen = {k: v for k, v in got.items() if k in AGENT_ROWS}
+        need(seen == want, f"t, the back of {t['id']}: its agent rows are {seen}, want {want}")
+        close_back(tab, t["id"], "Escape")
     ctx.close()
+
+
+AGENT_ROWS = ("MCP", "Reviewer instructions")
+BACK_ROWS_JS = """() => Object.fromEntries([...document.querySelectorAll('dialog#card-back aside#drawer dl > dt')]
+  .map((dt) => [dt.textContent.trim(), dt.nextElementSibling ? dt.nextElementSibling.textContent.replace(/\\s+/g, ' ').trim() : null]))"""
+
+
+def expected_agent_rows(t):
+    """ADR 0073 §10, the back's rows from ticket T: `MCP` lists the dev-worker's calls as
+    `server.tool ×count`, and `Reviewer instructions` names the file, its sha256's first 12 hex and
+    the base's first 7; a null `mcp` or `instructions` gives no row."""
+    out = {}
+    mcp = (t.get("task") or {}).get("mcp")
+    if mcp:
+        out["MCP"] = ", ".join(f"{c['server']}.{c['tool']} ×{c['count']}" for c in mcp.get("calls") or []) or "declared, no calls"
+    ins = (t.get("review") or {}).get("instructions")
+    if ins:
+        out["Reviewer instructions"] = f"{ins['file']} (sha256 {ins['sha256'][:12]}, from base {ins['base'][:7]})"
+    return out
 
 
 # --- the checks that the checks themselves can fail ------------------------------------
 
 def self_checks():
+    agent = {"task": {"mcp": {"calls": [{"server": "notes", "tool": "search_notes", "count": 1}]}},
+             "review": {"instructions": {"file": ".lights-out/roles/test-reviewer.md", "sha256": "abcdef1234567890", "base": "1a2b3c4d5e"}}}
+    need(expected_agent_rows(agent) == {"MCP": "notes.search_notes ×1",
+                                        "Reviewer instructions": ".lights-out/roles/test-reviewer.md (sha256 abcdef123456, from base 1a2b3c4)"},
+         f"the back's agent rows are wrong: {expected_agent_rows(agent)}")
+    need(expected_agent_rows({"task": {"mcp": None}, "review": {"instructions": None}}) == {}, "a null mcp or instructions gives a row")
     v = View(q="a/b c", feature="venues", collapsed=["ci-failed", "held"], card="0005")
     need(v.hash() == "#kanban?q=a%2Fb%20c&feature=venues&collapsed=ci-failed,held&card=0005", f"the hash writer is wrong: {v.hash()}")
     need(View().hash() == "#kanban", "the default view is not the bare #kanban")

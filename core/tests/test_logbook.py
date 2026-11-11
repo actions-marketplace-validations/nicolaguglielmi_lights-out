@@ -4,7 +4,11 @@ one row per phase in the history's order, each naming its record, and no
 row for a phase with no record. ci/logbook.sh proves the whole document
 against its golden; these pin each rule on its own."""
 
+import json
+import os
+import tempfile
 import unittest
+from unittest import mock
 
 from core import logbook
 
@@ -259,6 +263,37 @@ class Wait(unittest.TestCase):
                    {"id": "0014", "state": "requested", "map": None}]
         self.assertEqual(logbook.docs_to_realign(tickets),
                          [{"ticket": "0001", "merge_sha": "m1", "docs_ticket": "0014", "docs_ticket_state": "requested"}])
+
+
+class Agents(unittest.TestCase):
+    """docs/adr/0073 §10: a ticket's entry carries what its runs used, the
+    task's `mcp` and the review's `instructions`, for the card's back."""
+
+    def test_the_ticket_carries_the_task_s_mcp_and_the_review_s_instructions(self):
+        mcp = {"sha256": "cd", "servers": [], "unlisted": "hidden",
+               "calls": [{"server": "notes", "tool": "search_notes", "count": 1}], "denied": []}
+        instructions = {"file": ".lights-out/roles/test-reviewer.md", "sha256": "ef", "base": "b1"}
+        doc = {"state": "review", "history": [H("open", "opened", "t0")],
+               "task": {"role": "dev-worker", "harness": "codex", "mcp": mcp},
+               "review": {"role": "test-reviewer", "verdict": "approved", "instructions": instructions}}
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "adapters", "s"))
+            os.makedirs(os.path.join(root, "tickets"))
+            with open(os.path.join(root, "adapters", "s", "get.sh"), "w", encoding="utf-8") as fh:
+                fh.write('cat "state/$1.$2.json"\n')
+            with open(os.path.join(root, "tickets", "0001.md"), "w", encoding="utf-8") as fh:
+                fh.write("# A ticket\n\n## Perimeter\n- a/*\n")
+            os.makedirs(os.path.join(root, "state"))
+            with open(os.path.join(root, "state", "tickets.0001.json"), "w", encoding="utf-8") as fh:
+                json.dump(doc, fh)
+            here = os.getcwd()
+            os.chdir(root)
+            try:
+                with mock.patch.dict(os.environ, {"STATE_STORE": "s", "TICKETS_DIR": "tickets"}):
+                    (ticket,) = logbook.tickets([])
+            finally:
+                os.chdir(here)
+        self.assertEqual((ticket["task"]["mcp"], ticket["review"]["instructions"]), (mcp, instructions))
 
 
 class Run(unittest.TestCase):

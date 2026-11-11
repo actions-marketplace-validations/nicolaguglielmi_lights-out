@@ -696,6 +696,14 @@ function adrLinks(nums) {
 // primary link, the open question's text, the band strip and a compact
 // timeline. No answer box: the kanban writes nothing (ADR 0059 §1).
 function closeBack(id) { setView({card: ""}); focusCard(id); }
+// What the last run used (docs/adr/0073 §10): the dev-worker's MCP calls and
+// the reviewer's instructions from the base; no row when the run had none.
+function agentRows(t) {
+  const mcp = t.task && t.task.mcp, ins = t.review && t.review.instructions;
+  const calls = mcp ? (mcp.calls || []).map((c) => c.server + "." + c.tool + " ×" + c.count).join(", ") : "";
+  return [mcp ? ["MCP", calls || "declared, no calls"] : null,
+    ins ? ["Reviewer instructions", ins.file + " (sha256 " + String(ins.sha256).slice(0, 12) + ", from base " + String(ins.base).slice(0, 7) + ")"] : null];
+}
 function drawer(t) {
   const rows = t.timeline || [];
   const q = openQuestion(t);
@@ -711,7 +719,8 @@ function drawer(t) {
       t.outcome.verdict !== "pending" ? ["Outcome", h("span", {}, chip(t.outcome.verdict), " ", shown(t.outcome.judge))] : null,
       t.outcome.verdict !== "pending" ? ["Line", h("span", {cls: "mono"}, shown(t.outcome.line))] : null,
       ["Perimeter", unread(t.perimeter) ? err(t.perimeter) : h("span", {cls: "mono"}, (t.perimeter || []).join("  ·  ") || "—")],
-      ["Waits", t.wait ? waitLine(t.wait) : "no"]]),
+      ["Waits", t.wait ? waitLine(t.wait) : "no"],
+      ...agentRows(t)]),
     h("h3", {}, "Timeline"),
     rows.length ? h("ol", {cls: "compact"}, rows.map((r) => h("li", {"data-phase": r.phase},
       h("span", {}, r.phase), r.verdict ? chip(verdictOf(r)) : h("span", {cls: "muted"}, "—"),

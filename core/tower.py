@@ -81,8 +81,9 @@ BLOCKED_BY_RED_MAIN = ("assign", "rework", "release")
 # The task fields copied from a role's run.json (docs/adr/0047 §2, P1):
 # who ran it and what it cost, as the harness reported it, or under replay
 # as the recorded run did -- the rule `model` follows. A key the harness
-# does not report is null, never a guess.
-RUN_KEYS = ("model", "provider", "thinking", "turns", "tokens", "duration_s", "input_sha256")
+# does not report is null, never a guess. `mcp` is the dev-worker's MCP
+# servers and calls (docs/adr/0073 §9), null when none were declared.
+RUN_KEYS = ("model", "provider", "thinking", "turns", "tokens", "duration_s", "input_sha256", "mcp")
 
 
 def task(run):
