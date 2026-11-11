@@ -30,9 +30,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
+# lights-out's own copy in its contract is not listed: `self` runs this with
+# the base's contract in the working tree (docs/adr/0033), and that copy is
+# held to the stack's, as committed, by ci/init.sh case (g) (docs/adr/0049).
 SCORERS = [
     ROOT / "stacks" / "python" / "runners" / "score.py",
-    ROOT / ".lights-out" / "runners" / "score.py",
     ROOT / "workloads" / "minimal" / "tests" / "mutation" / "score.py",
     ROOT / "app" / "backend" / "tests" / "mutation" / "score.py",
 ]
