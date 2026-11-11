@@ -60,6 +60,21 @@ class Record(ReleasesCase):
         self.call("record", "held", "25", "[]", "img@sha", "")
         self.assertIsNone(self.record()["sbom"])
 
+    def test_in_progress_is_recorded_and_never_logged(self):
+        self.call("record", "in-progress", "", "[]", "")
+        self.assertEqual(self.record()["verdict"], "in-progress")
+        self.assertIsNone(self.record()["held_at"])
+        self.assertEqual(self.log(), [])
+
+    def test_every_final_record_is_appended_with_time_and_ticket(self):
+        self.call("record", "rolled-back", "", "[]", "")
+        self.env["RELEASE_TICKET"] = "0001"
+        self.call("record", "held", "25", "[]", "")
+        first, second = self.log()
+        self.assertEqual((first["kind"], first["ticket"], first["record"]["verdict"]), ("release", None, "rolled-back"))
+        self.assertEqual((second["ticket"], second["record"]), ("0001", self.record()))
+        self.assertRegex(second["at"], STAMP)
+
 
 class Brief(ReleasesCase):
     def test_the_l0_brief_names_the_version_and_every_stage_with_its_numbers(self):
