@@ -65,7 +65,8 @@ its test command. It does not. cosmic-ray 8.7.0 runs it as `Popen(shlex.split(co
 
 - Before: `./go gates BASE=01db331 HEAD=origin/ref-06 GATES=mutation` → `GO: mutation — in workbench`,
   `score: 1781 mutant(s) excluded`.
-- `core/tests/test_python_score.py`, written from cosmic-ray 8.7.0's two incompetent sources and ADR 0042 §1,
+- `stacks/python/tests/test_score.py` (first written as `core/tests/test_python_score.py`; moved because
+  `ci/app-free.sh` keeps core/ from naming the contract directory), written from cosmic-ray 8.7.0's two incompetent sources and ADR 0042 §1,
   black box over the four python copies of the scorer: 8 failures before the fix, OK after.
 - The fix: a result `incompetent` with worker outcome `normal` makes the scorer print no score and exit 1,
   naming the cause. A result `incompetent` with `exception` (the mutation could not be applied) stays out of the
@@ -181,16 +182,18 @@ produce a mergeable PR without a human touching the code.
 
 - Clone `/Users/nicola/Dev/m24/tenacity`, branch `lights-out` at 4831978 (71933b5 tickets, eb254b1 contract,
   five merges). Scratch clone with the reference fixes: `/Users/nicola/Dev/m24/tenacity-c`, local only.
-- Checkouts of this branch under `.crew/`:
+- Checkouts of this branch, moved after the runs from this clone's `.crew/` to `/Users/nicola/Dev/m24/m24c-crew/`
+  (inside the clone their caches and the plane's cosign key made `./go ci`'s working-tree secret scan NO-GO):
   - `proof`, attached to the scratch clone.
-  - `full`, tenacity attached. The tower state is in `.crew/full/.crew/state.sqlite`, and each ticket's last `run.json` is in `.crew/full/.crew/<id>/out/`.
+  - `full`, tenacity attached. The tower state is in `full/.crew/state.sqlite`, and each ticket's last `run.json` is in `full/.crew/<id>/out/`.
   - `plane`, the plane's.
 - Logs: `/tmp/m24c/` (run logs, gate outputs, the docs ticket after each merge). Temporary.
 - The plane: down since 17:53 UTC on 2026-11-11, both podman connections empty.
 
 ## Proofs
 
-- `python3 -m unittest core.tests.test_python_score`: 8 failures before 093b858, OK after.
+- The scorer test: 8 failures before 093b858, OK after; now `python3 -m unittest discover -s
+  stacks/python/tests`, run by `ci/core-tests.sh`.
 - The gates on the references and the scorer before and after the fix: sections 1 and 2.
 - The runs: section 3, from the tower documents and `./go network TICKET=<id>`.
 - `./go ci` and the six workflows: recorded in the commit after this handoff's.

@@ -314,7 +314,8 @@ outcome `normal` (`cosmic_ray/testing.py`, `run_tests`). `cosmic-ray baseline` f
   1 when any result is `incompetent` with the worker outcome `normal`: no test ran, so the tool failed
   (§1, "non-zero only if the tool failed"). The gate reads that as a failed run, NO-GO. `incompetent`
   with the worker outcome `exception` (`cosmic_ray/mutating.py`: applying the mutation raised) stays
-  out of the population, as before. `core/tests/test_python_score.py`.
+  out of the population, as before. `stacks/python/tests/test_score.py`, run by `ci/core-tests.sh`
+  (not under `core/tests/`: core/ never names the contract directory or a bundled workload, `ci/app-free.sh`).
 - A variable the test command needs goes before the runner (`VAR=value sh .lights-out/runners/
   mutation.sh …`), where the `sh -c` line exports it to cosmic-ray and every test run;
   `docs/use-on-your-repo.md` says so.

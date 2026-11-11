@@ -16,7 +16,9 @@ the installed package, never from the scorer:
 Found in M24 phase C (2026-11-11): on tenacity, every mutant of a real
 production change came back `incompetent` from the first source, the
 scorer printed `{"total": 0}`, and the mutation gate answered GO by absence
-of subject. Black box: each case pipes a dump into `python3 <scorer>` and
+of subject. Here, beside the runners and outside them (`./go init` copies
+runners/ only), because core/ never names the contract directory or a
+bundled workload (ci/app-free.sh). Black box: each case pipes a dump into `python3 <scorer>` and
 judges stdout, stderr and the exit code. Every python copy of the scorer
 is held to the same cases.
 """
@@ -27,7 +29,7 @@ import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 SCORERS = [
     ROOT / "stacks" / "python" / "runners" / "score.py",
     ROOT / ".lights-out" / "runners" / "score.py",
