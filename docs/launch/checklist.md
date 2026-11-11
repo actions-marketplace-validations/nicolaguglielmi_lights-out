@@ -270,9 +270,10 @@ again the day you list.
 - [ ] **Release the package with the plugin.** The published 0.3.1 has no
   `spec`, `map` or `mcp` command, and the plugin runs `lights-out-gates` at
   its own version. In the release commit, move `version` in
-  `pyproject.toml`, in `plugins/lights-out/.claude-plugin/plugin.json`
-  (`ci/plugin.sh` checks they are equal) and the wrapper's `version=`
-  together; upload to PyPI right after the tag (section "The Python
+  `pyproject.toml`, in `plugins/lights-out/.claude-plugin/plugin.json`,
+  `plugins/lights-out-codex/.codex-plugin/plugin.json` and
+  `plugins/lights-out-gemini/gemini-extension.json` (`ci/plugin.sh` checks
+  they are equal) and the wrapper's `version=` together; upload to PyPI right after the tag (section "The Python
   package on PyPI"). Until the upload, a plugin install from `main` that
   falls back to `uvx` answers `NO-GO: lights-out — lights-out-gates
   <version> not found`.
@@ -312,11 +313,25 @@ again the day you list.
   `mcp-publisher login github`, `mcp-publisher validate`, `mcp-publisher
   publish`. Read the registry's PyPI guide that day: these steps come from
   its quickstart, which shows npm.
-- [ ] **Codex and Gemini CLI**: not built (ADR 0069). Codex distributes
-  skills through plugins and the page read describes no public directory;
-  Gemini CLI's gallery is geminicli.com/extensions/browse, and the
-  reference page does not name the `gemini-cli-extension` topic. Both wait
-  for M39's next slice.
+- [ ] **Codex's directory**: the plugin bundles no hook, so it is
+  eligible ("Plugins with hooks aren't eligible for the public plugin
+  directory", Codex's plugin build page, 2026-11-10). After the merge,
+  check `codex plugin marketplace add nicolaguglielmi/lights-out` and
+  `codex plugin add lights-out@lights-out` on a clean machine, then submit
+  through the plugin submission portal that page links; read its review
+  requirements that day. The release moves `version` in
+  `plugins/lights-out-codex/.codex-plugin/plugin.json` with the others
+  (`ci/plugin.sh` checks it).
+- [ ] **Gemini CLI's gallery** (geminicli.com/extensions/browse): it crawls
+  public repositories with the topic `gemini-cli-extension` daily, and
+  wants `gemini-extension.json` at the repository's root (the releasing
+  page, updated 2026-05-08). Create a public repository named
+  `lights-out-gemini` (the extension's name is its directory's), copy
+  `plugins/lights-out-gemini/` into its root at each release, tag it with
+  the release, add the topic. No check here sees that copy: refresh it at
+  every release, as the two standalone Actions' repositories. Then
+  `gemini extensions install https://github.com/nicolaguglielmi/lights-out-gemini`
+  on a clean machine.
 
 ### The README's front page
 

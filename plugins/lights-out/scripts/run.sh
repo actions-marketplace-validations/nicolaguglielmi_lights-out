@@ -8,7 +8,12 @@
 # on stderr for `mcp`, whose stdout is the protocol, on stdout otherwise.
 set -u
 here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-version=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$here/../.claude-plugin/plugin.json" | head -n 1)
+# The version of the root this copy sits in: Claude's manifest, or Gemini's
+# (docs/adr/0069, amendment 2026-11-11 §6).
+for manifest in "$here/../.claude-plugin/plugin.json" "$here/../gemini-extension.json"; do
+  [ -f "$manifest" ] && break
+done
+version=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)
 
 if command -v lights-out-gates >/dev/null 2>&1 \
   && [ "$(lights-out-gates version 2>/dev/null </dev/null | awk '{print $2; exit}')" = "$version" ]; then
