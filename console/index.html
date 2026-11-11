@@ -1521,8 +1521,11 @@ function netGraph(v) {
   if (human) out.push(svg("g", {id: "net-human", "data-verdict": human.verdict, "data-key": "human"},
     svg("rect", {cls: "node", x: 682, y: lane - 16, width: 64, height: 32, rx: 16}), svg("text", {x: 714, y: lane + 4, "text-anchor": "middle", cls: "v"}, "human"),
     human.who ? netLabel(714, lane + 34, human.who, "sub") : null));
+  const failed = gates.findIndex((g) => g.verdict === "NO-GO");
+  const loopFrom = failed >= 0 ? x0 + failed * step : x0 + 150;
   if (rework) out.push(svg("g", {id: "net-rework", "data-count": String(v.reworkSoFar === undefined ? rework.count : v.reworkSoFar), "data-max": rework.max === null ? null : String(rework.max), "data-key": "rework"},
-    svg("path", {d: "M " + (x0 + 150) + " " + (lane - 12) + " C " + (x0 + 120) + " " + (lane - 100) + ", 110 " + (lane - 100) + ", 80 " + (top - 18)}),
+    // From the gate that said NO-GO on this attempt, when one did.
+    svg("path", {d: "M " + loopFrom + " " + (lane - 12) + " C " + (loopFrom - 30) + " " + (lane - 100) + ", 110 " + (lane - 100) + ", 80 " + (top - 18)}),
     netLabel(x0 + 12, lane - 86, "rework " + rework.count + (rework.max !== null ? " of " + rework.max : ""))));
   return svg("svg", {viewBox: "0 0 760 340", role: "img", "aria-labelledby": "net-facts-title"}, out, tower);
 }
@@ -1555,8 +1558,17 @@ function screenNetwork(arg) {
     onchange: (e) => { location.hash = "#network/" + encodeURIComponent(e.target.value); }},
     tickets.map((x) => h("option", Object.assign({value: x.id}, x.id === tid ? {selected: true} : {}), named(x))));
   // The rework count of a replay counts only the rework rows revealed so far.
-  if (playing && !replay.done) v.reworkSoFar = (t.timeline || []).slice(0, replay.row).filter((r) => r && r.phase === "rework").length;
-  const graph = netGraph(v);
+  // The graph of a replay draws the attempt of the last row revealed, so
+  // an attempt the gates sent back lights its NO-GO before the next one
+  // runs; its facts are the final drawing's, revealed row by row.
+  let drawn = v;
+  if (playing && !replay.done) {
+    const seen = (t.timeline || []).slice(0, replay.row).filter((r) => r && Number.isInteger(r.attempt));
+    const at = seen.length ? seen[seen.length - 1].attempt : (ns.length ? ns[0] : null);
+    if (at !== v.attempt && ns.includes(at)) drawn = netView(book, tid, at);
+    drawn.reworkSoFar = (t.timeline || []).slice(0, replay.row).filter((r) => r && r.phase === "rework").length;
+  }
+  const graph = netGraph(drawn);
   for (const el of graph.querySelectorAll("[data-key]")) if (pending(el.getAttribute("data-key"))) el.setAttribute("data-pending", "");
   // In a replay a fact is drawn once its row is revealed; the graph's
   // nodes stay in place, dimmed until then (docs/adr/0071 §3).
@@ -1588,14 +1600,14 @@ function screenNetwork(arg) {
   const state = replay && replay.ticket === tid ? (replay.done ? "done" : "on") : "off";
   const sec = h("section", {id: "net", "data-ticket": tid, "data-schema": String(book.schema || ""), "data-replay": state,
       "data-row": playing ? String(replay.row) : null},
-    h("div", {cls: "net-top"}, h("h1", {}, v.heading),
+    h("div", {cls: "net-top"}, h("h1", {}, drawn.heading),
       h("label", {cls: "meta"}, "Ticket ", select),
       h("button", {type: "button", id: "net-replay", onclick: () => startReplay(tid)}, playing && !replay.done ? "Replaying…" : "Replay"),
       h("span", {id: "net-replay-label", role: "status"}, "Replay of the recorded logbook: nothing is running")),
     h("p", {cls: "lede"}, "The agent network of one ticket, from the logbook alone: the tower, the six roles, the attempt's workers, each gate's verdict, the rework loop, the canary and the one human gate; beside it every attempt with the lines that judged it and its patch; below, the files by perimeter. ",
       live ? "Live: a node lights up when the logbook moves it." : "A snapshot: press Replay to watch the record unfold.", " The same facts in text: ", h("code", {}, "./go network TICKET=" + tid)),
     h("div", {cls: "net-cols"},
-      h("div", {cls: "panel net-graph"}, h("h2", {id: "net-facts-title"}, "The governed network, attempt " + (v.attempt === null ? "—" : v.attempt)),
+      h("div", {cls: "panel net-graph"}, h("h2", {id: "net-facts-title"}, "The governed network, attempt " + (drawn.attempt === null ? "—" : drawn.attempt)),
         ns.length > 1 ? h("p", {cls: "meta"}, "Attempts: ", ns.flatMap((k, i) => [i ? " · " : null, k === v.attempt ? h("b", {}, String(k))
           : h("a", {href: "#network/" + encodeURIComponent(tid) + (k === ns[ns.length - 1] ? "" : "?attempt=" + k)}, String(k))])) : null,
         graph, facts),
