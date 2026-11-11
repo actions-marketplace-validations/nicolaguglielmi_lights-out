@@ -15,6 +15,9 @@ encodes the takes with ffmpeg into <site dir>/media/:
     scenarios.json               id, name, blurb and seconds of each clip
     console-<screen>.jpg         stills of the console's screens (CONSOLE below), the
                                  ADR search over a logbook built from this repository's map
+    network.mp4, network.jpg     the console's #network screen replaying the golden
+                                 logbook's network ticket (docs/adr/0071 §7), every
+                                 frame captioned as a replay
 
 Every frame says what it shows: the board's scripted walks, the real code
 paths with example versions and numbers. With SHOTS=<dir> it also takes
@@ -507,6 +510,59 @@ async def stills(site):
             await browser.close()
 
 
+# The network's replay (docs/adr/0071 §3, §7): the console in snapshot mode
+# over the golden, its #network screen on the ticket the golden built by a
+# network of workers, revealed one timeline row per 2 s by the page itself.
+# The clip lasts that ticket's rows x 2 s, measured here, not fixed; the
+# frame is this file's W x H. The render stops if the page does not say it
+# is a replay, or if that ticket has no workers to show.
+NETWORK_TICKET = "0010"
+REPLAY_CAPTION = "Replay of a recorded logbook · nothing is running"
+NETWORK_CSS = """
+#vcap{position:fixed;left:0;right:0;bottom:0;height:46px;z-index:50;display:flex;align-items:center;gap:16px;padding:0 24px;
+  background:#05080c;color:#e8eef4;font:600 18px/1.2 'DejaVu Sans',system-ui,sans-serif}
+#vcap .w{font:700 16px/1 'DejaVu Sans Mono',monospace;color:#3fb950}
+body{padding-bottom:46px}
+"""
+
+
+async def network_clip(site):
+    media = site / "media"
+    golden = json.loads((ROOT / GOLDEN).read_text(encoding="utf-8"))
+    ticket = next((t for t in golden["tickets"] if t["id"] == NETWORK_TICKET), None)
+    if ticket is None or not any(isinstance(x.get("members"), list) and x["members"] for x in ticket.get("tasks") or []):
+        sys.exit(f"render: {GOLDEN} has no ticket {NETWORK_TICKET} with a network's workers; the replay would show none")
+    rows = len(ticket.get("timeline") or [])
+    raw = tempfile.mkdtemp()
+    proc, base = console(GOLDEN)
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            ctx = await browser.new_context(viewport={"width": W, "height": H}, color_scheme="dark", bypass_csp=True,
+                                            record_video_dir=raw, record_video_size={"width": W, "height": H})
+            t0 = time.monotonic()
+            page = await ctx.new_page()
+            await page.goto(f"{base}/#network/{NETWORK_TICKET}?replay=1")
+            await page.wait_for_selector("#net[data-replay=on]")
+            lead = time.monotonic() - t0
+            await page.add_style_tag(content=NETWORK_CSS)
+            await page.evaluate("""c => { const d = document.createElement('div'); d.id = 'vcap';
+              d.innerHTML = '<span class="w">lights-out</span>'; d.append(document.createTextNode(c)); document.body.append(d); }""", REPLAY_CAPTION)
+            if not await page.locator("#net-replay-label").is_visible():
+                sys.exit("render: the network screen does not show its replay label; a replay must say it is one")
+            await page.wait_for_selector("#net[data-replay=done]", timeout=(rows * 2 + 20) * 1000)
+            await asyncio.sleep(3.0)
+            poster = await page.screenshot(type="png")
+            await ctx.close()
+            video = pathlib.Path(await page.video.path())
+            await browser.close()
+    finally:
+        proc.kill()
+    mp4(video, lead, media / "network.mp4", crf=24)
+    jpg(poster, media / "network.jpg", 1280)
+    log(f"network.mp4: replay of ticket {NETWORK_TICKET}, {rows} rows, {seconds(media / 'network.mp4')} s")
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: python3 site/render.py <site dir>")
@@ -515,6 +571,7 @@ def main():
         sys.exit(f"render: {site}/index.html not found; build the site directory first")
     asyncio.run(render(site))
     asyncio.run(stills(site))
+    asyncio.run(network_clip(site))
     if os.environ.get("SHOTS"):
         asyncio.run(shots(site, pathlib.Path(os.environ["SHOTS"]).resolve()))
 

@@ -1,0 +1,1379 @@
+{
+  "adrs": {
+    "items": [
+      {
+        "adrs": [
+          "0002",
+          "0003"
+        ],
+        "files": [
+          "app/backend/meetups/views.py",
+          "docs/venues.md"
+        ],
+        "number": "0001",
+        "path": "docs/adr/0001-venues-are-checked.md",
+        "status": "accepted",
+        "text": "# ADR 0001 — Venues are checked at the edge\n\n- Status: accepted\n- Date: 2026-11-01\n\nAn unknown venue answers 404, not 500. The check is in\n`app/backend/meetups/views.py` and the page `docs/venues.md` says so;\n`app/backend/ghost.py` was removed. It sits beside ADR 0002, ADR 0999 is\nreserved and held nowhere, and ticket 0007 asked for the cache.\n",
+        "tickets": [
+          "0001",
+          "0007"
+        ],
+        "title": "ADR 0001 — Venues are checked at the edge"
+      },
+      {
+        "adrs": [
+          "0001"
+        ],
+        "files": [
+          "app/backend/router.py",
+          "app/backend/waitlist/queue.py"
+        ],
+        "number": "0002",
+        "path": "docs/adr/0002-waitlist-order.md",
+        "status": "proposed — supersedes nothing",
+        "text": "# ADR 0002 — The waitlist is first in, first out\n\n- Status:   proposed — supersedes nothing  \n- Status: accepted\n\nThe queue is `app/backend/waitlist/queue.py`, routed by\n`app/backend/router.py`. Ticket 0002 builds it and tickets 0004 and 0008\ntouch the router. It follows ADR 0001.\n",
+        "tickets": [
+          "0002",
+          "0004",
+          "0008"
+        ],
+        "title": "ADR 0002 — The waitlist is first in, first out"
+      },
+      {
+        "adrs": [
+          "0001"
+        ],
+        "files": [
+          "README.md"
+        ],
+        "number": "0003",
+        "path": "docs/adr/0003-keep-the-readme-short.md",
+        "status": "",
+        "text": "# ADR 0003 — Keep the README short\n\nThe [README](../../README.md) names the demo command and nothing more.\nThis is ADR 0003 and it records no status. It builds on ADR 0001 and was\nasked for by ticket 0006, which never ran.\n",
+        "tickets": [
+          "0003",
+          "0006"
+        ],
+        "title": "ADR 0003 — Keep the README short"
+      }
+    ],
+    "map_sha": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4"
+  },
+  "docs_to_realign": [
+    {
+      "docs_ticket": "0009",
+      "docs_ticket_state": "questions",
+      "merge_sha": "m1",
+      "ticket": "0001"
+    }
+  ],
+  "kanban": [
+    {
+      "state": "requested",
+      "tickets": []
+    },
+    {
+      "state": "questions",
+      "tickets": [
+        "0009"
+      ]
+    },
+    {
+      "state": "spec-ready",
+      "tickets": []
+    },
+    {
+      "state": "opened",
+      "tickets": [
+        "0005"
+      ]
+    },
+    {
+      "state": "pr-opened",
+      "tickets": []
+    },
+    {
+      "state": "review",
+      "tickets": []
+    },
+    {
+      "state": "ci-passed",
+      "tickets": []
+    },
+    {
+      "state": "ci-failed",
+      "tickets": [
+        "0003",
+        "0008"
+      ]
+    },
+    {
+      "state": "needs-human",
+      "tickets": [
+        "0007"
+      ]
+    },
+    {
+      "state": "merged",
+      "tickets": []
+    },
+    {
+      "state": "main-green",
+      "tickets": []
+    },
+    {
+      "state": "held",
+      "tickets": [
+        "0002"
+      ]
+    },
+    {
+      "state": "rolled-back",
+      "tickets": [
+        "0001"
+      ]
+    },
+    {
+      "state": "assigned",
+      "tickets": [
+        "0004"
+      ]
+    }
+  ],
+  "launch": {
+    "brief": {
+      "author": "the release role, stub-harness",
+      "sha256": "7e5fee07a4416c33e5f0e8c0c609bec7c8882cb25f80d2387e16854d5944716b",
+      "text": "# Promotion brief: 0.5.0-d\n\nPromote `0.5.0-d` (`img-d`), replacing stable `0.3.0-b`.\n\n- 5%: GO\n- 25%: GO\n\nRecommendation: GO.\n"
+    },
+    "disabled_reason": null,
+    "plane": {
+      "canary": "0.5.0-d",
+      "stable": "0.3.0-b",
+      "weight": 25
+    },
+    "preparable": false,
+    "pressable": true,
+    "record": {
+      "held_at": 25,
+      "image": "img-d",
+      "stable": "0.3.0-b",
+      "stages": [
+        {
+          "numbers": [
+            "slo: error_rate canary(0.5.0-d)=0.000 stable(0.3.0-b)=0.000"
+          ],
+          "pct": 5,
+          "verdict": "GO"
+        },
+        {
+          "numbers": [
+            "slo: error_rate canary(0.5.0-d)=0.001 stable(0.3.0-b)=0.000"
+          ],
+          "pct": 25,
+          "verdict": "GO"
+        }
+      ],
+      "verdict": "held",
+      "version": "0.5.0-d"
+    }
+  },
+  "perimeters_held": [
+    {
+      "globs": [
+        "app/backend/meetups/*"
+      ],
+      "holding": false,
+      "state": "rolled-back",
+      "ticket": "0001"
+    },
+    {
+      "globs": [
+        "README.md"
+      ],
+      "holding": true,
+      "state": "ci-failed",
+      "ticket": "0003"
+    },
+    {
+      "globs": [
+        "app/backend/router.py"
+      ],
+      "holding": true,
+      "state": "ci-failed",
+      "ticket": "0008"
+    }
+  ],
+  "postmortems": [
+    {
+      "actions": [
+        {
+          "n": 1,
+          "ticket": "0005",
+          "title": "Gate the waitlist flag"
+        }
+      ],
+      "causes": [
+        {
+          "cause": "the waitlist flag was on for the canary",
+          "evidence": [
+            "flags/flags.json targets 0.2.0-a"
+          ]
+        }
+      ],
+      "chain": null,
+      "name": "demo-rollback",
+      "release": {
+        "image": "img-a",
+        "stable": "0.1.0",
+        "verdict": "rolled-back",
+        "version": "0.2.0-a"
+      },
+      "run": {
+        "model": "stub-model",
+        "provider": "stub-provider",
+        "replayed": true
+      },
+      "timeline": [
+        {
+          "anchor": "release:0.2.0-a",
+          "event": "canary opened at 5%",
+          "evidence": [
+            "slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"
+          ]
+        }
+      ],
+      "title": "Canary 0.2.0-a rolled back at 5%",
+      "window": {
+        "from": "2026-11-01T09:20:00Z",
+        "to": "2026-11-01T09:30:00Z"
+      }
+    }
+  ],
+  "releases": [
+    {
+      "answer": null,
+      "at": "2026-11-01T09:29:00Z",
+      "from": "releases.jsonl",
+      "held_at": null,
+      "image": "img-a",
+      "stable": "0.1.0",
+      "stages": [
+        {
+          "numbers": [
+            "slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 5,
+          "verdict": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back"
+        }
+      ],
+      "ticket": "0001",
+      "verdict": "rolled-back",
+      "version": "0.2.0-a"
+    },
+    {
+      "answer": {
+        "answer": "GO",
+        "at": "2026-11-02T10:30:00Z",
+        "by": "alice",
+        "via": "console"
+      },
+      "at": "2026-11-02T09:59:00Z",
+      "from": "releases.jsonl",
+      "held_at": 25,
+      "image": "img-b",
+      "stable": "0.1.0",
+      "stages": [
+        {
+          "numbers": [
+            "slo: error_rate canary(0.3.0-b)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 5,
+          "verdict": "GO"
+        },
+        {
+          "numbers": [
+            "slo: error_rate canary(0.3.0-b)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 25,
+          "verdict": "GO"
+        }
+      ],
+      "ticket": "0002",
+      "verdict": "held",
+      "version": "0.3.0-b"
+    },
+    {
+      "answer": {
+        "answer": "NO-GO",
+        "at": "2026-11-03T12:20:00Z",
+        "by": "carol",
+        "via": "cli"
+      },
+      "at": "2026-11-03T12:00:00Z",
+      "from": "releases.jsonl",
+      "held_at": 5,
+      "image": "img-c",
+      "stable": "0.3.0-b",
+      "stages": [
+        {
+          "numbers": [
+            "slo: traffic canary(0.4.0-c)=0.208 stable(0.3.0-b)=4.018"
+          ],
+          "pct": 5,
+          "verdict": "GO"
+        }
+      ],
+      "ticket": null,
+      "verdict": "held",
+      "version": "0.4.0-c"
+    },
+    {
+      "answer": null,
+      "at": null,
+      "from": "release.json",
+      "held_at": 25,
+      "image": "img-d",
+      "stable": "0.3.0-b",
+      "stages": [
+        {
+          "numbers": [
+            "slo: error_rate canary(0.5.0-d)=0.000 stable(0.3.0-b)=0.000"
+          ],
+          "pct": 5,
+          "verdict": "GO"
+        },
+        {
+          "numbers": [
+            "slo: error_rate canary(0.5.0-d)=0.001 stable(0.3.0-b)=0.000"
+          ],
+          "pct": 25,
+          "verdict": "GO"
+        }
+      ],
+      "ticket": null,
+      "verdict": "held",
+      "version": "0.5.0-d"
+    }
+  ],
+  "schema": "lights-out/logbook/1.2",
+  "source": {
+    "code_host": "gitea",
+    "commit": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4",
+    "level": "l0",
+    "workload": "app"
+  },
+  "thresholds": [
+    {
+      "file": "policy/merge.env",
+      "judge": "gates",
+      "key": "RISK_SIZE_MEDIUM_LINES",
+      "overridden": false,
+      "provenance": {
+        "kind": "external",
+        "text": "the low end of a review-size guidance."
+      },
+      "value": "200"
+    },
+    {
+      "file": "contract/policy.env",
+      "judge": "gates",
+      "key": "MUTATION_MARGIN",
+      "overridden": true,
+      "provenance": {
+        "kind": "decision",
+        "text": "this workload's mutation margin is tighter, set by the client."
+      },
+      "value": "0.05"
+    },
+    {
+      "file": "policy/merge.env",
+      "judge": "verify",
+      "key": "ERROR_RATE_MAX_DELTA",
+      "overridden": false,
+      "provenance": null,
+      "value": "0.01"
+    },
+    {
+      "file": "contract/workload.env",
+      "judge": "gates",
+      "key": "MUTATION_BASELINE",
+      "overridden": false,
+      "provenance": {
+        "kind": "measurement",
+        "text": "./go mutation-baseline, 205 mutants, 157 killed."
+      },
+      "value": "0.7658536585365854"
+    },
+    {
+      "file": "policy/rework.env",
+      "judge": "rework",
+      "key": "REWORK_MAX_ATTEMPTS",
+      "overridden": false,
+      "provenance": {
+        "kind": "decision",
+        "text": "the owner's, four attempts a day."
+      },
+      "value": "4"
+    }
+  ],
+  "tickets": [
+    {
+      "adrs": [
+        "0001"
+      ],
+      "attempt": 1,
+      "ci": {
+        "decision": "auto-merge",
+        "details": [],
+        "failed": null,
+        "head_sha": "h1",
+        "line": "GO: ci",
+        "risk_level": "low",
+        "verdict": "GO"
+      },
+      "feature": "venues",
+      "history": [
+        {
+          "at": "2026-11-01T09:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-01T09:01:00Z",
+          "attempt": 1,
+          "state": "assigned",
+          "step": "assign"
+        },
+        {
+          "at": "2026-11-01T09:30:00Z",
+          "attempt": 1,
+          "state": "rolled-back",
+          "step": "release"
+        }
+      ],
+      "id": "0001",
+      "map": {
+        "docs_ticket": "0009",
+        "sha": "m1"
+      },
+      "merge": {
+        "head_sha": "h1",
+        "sha": "m1"
+      },
+      "opened_at": "2026-11-01T09:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "verify",
+        "line": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
+        "verdict": "NO-GO"
+      },
+      "perimeter": [
+        "app/backend/meetups/*",
+        "docs/venues.md"
+      ],
+      "pr": {
+        "base_sha": "b1",
+        "head_sha": "h1",
+        "number": 1,
+        "url": "http://codehost.invalid/o/r/pulls/1"
+      },
+      "priority": "P1",
+      "product": null,
+      "questions": [],
+      "release": {
+        "image": "img-a",
+        "numbers": [
+          "slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"
+        ],
+        "verdict": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
+        "version": "0.2.0-a"
+      },
+      "review": null,
+      "rework": [],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "title": "Unknown venue answers 500",
+        "verdict": null
+      },
+      "state": "rolled-back",
+      "task": {
+        "duration_s": 12.5,
+        "harness": "replay",
+        "input_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "model": "stub-model",
+        "provider": "stub-provider",
+        "replayed": true,
+        "role": "dev-worker",
+        "thinking": "low",
+        "tokens": {
+          "input": 100,
+          "output": 50,
+          "total": 150
+        },
+        "turns": 7
+      },
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-01T09:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-01T09:01:00Z",
+          "line": "PR #1",
+          "perimeter": [
+            "app/backend/meetups/*",
+            "docs/venues.md"
+          ],
+          "phase": "assign",
+          "record": "tower history",
+          "verdict": null,
+          "wait": null
+        },
+        {
+          "at": "2026-11-01T09:01:00Z",
+          "attempt": 1,
+          "duration_s": 12.5,
+          "harness": "replay",
+          "line": null,
+          "model": "stub-model",
+          "phase": "attempt",
+          "record": "tower task",
+          "replayed": true,
+          "tokens": {
+            "input": 100,
+            "output": 50,
+            "total": 150
+          },
+          "turns": 7,
+          "verdict": null
+        },
+        {
+          "at": "2026-11-01T09:29:00Z",
+          "line": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
+          "numbers": [
+            "slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 5,
+          "phase": "canary",
+          "record": "release log",
+          "verdict": "NO-GO"
+        },
+        {
+          "at": "2026-11-01T09:30:00Z",
+          "line": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
+          "phase": "release",
+          "record": "tower release",
+          "verdict": "rolled-back"
+        },
+        {
+          "at": null,
+          "line": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
+          "phase": "outcome",
+          "record": "outcome, judged by verify",
+          "verdict": "NO-GO"
+        }
+      ],
+      "title": "Unknown venue answers 500",
+      "updated_at": "2026-11-01T09:30:00Z",
+      "wait": null
+    },
+    {
+      "adrs": [
+        "0002"
+      ],
+      "attempt": 2,
+      "ci": null,
+      "feature": null,
+      "history": [
+        {
+          "at": "2026-11-02T08:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-02T10:00:00Z",
+          "attempt": 2,
+          "state": "held",
+          "step": "release"
+        }
+      ],
+      "id": "0002",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-02T08:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "human",
+        "line": "promoted by alice via console",
+        "verdict": "GO"
+      },
+      "perimeter": [
+        "app/backend/waitlist/*"
+      ],
+      "pr": null,
+      "priority": "P2",
+      "product": null,
+      "questions": [],
+      "release": {
+        "image": "img-b",
+        "numbers": [
+          "slo: error_rate canary(0.3.0-b)=0.000 stable(0.1.0)=0.000"
+        ],
+        "verdict": "GO: launchpad — held at 25%",
+        "version": "0.3.0-b"
+      },
+      "review": null,
+      "rework": [
+        {
+          "at": "2026-11-02T08:30:00Z",
+          "attempt": 1,
+          "details": [
+            "FAILED tests/test_w.py::test_join"
+          ],
+          "head_sha": "h0",
+          "judge": "gates",
+          "line": "NO-GO: tests — 1 failed"
+        }
+      ],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+        "title": "Add a waitlist",
+        "verdict": null
+      },
+      "state": "held",
+      "task": null,
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-02T08:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-02T09:59:00Z",
+          "line": "GO",
+          "numbers": [
+            "slo: error_rate canary(0.3.0-b)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 5,
+          "phase": "canary",
+          "record": "release log",
+          "verdict": "GO"
+        },
+        {
+          "at": "2026-11-02T09:59:00Z",
+          "line": "GO",
+          "numbers": [
+            "slo: error_rate canary(0.3.0-b)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 25,
+          "phase": "canary",
+          "record": "release log",
+          "verdict": "GO"
+        },
+        {
+          "at": "2026-11-02T10:00:00Z",
+          "line": "GO: launchpad — held at 25%",
+          "phase": "release",
+          "record": "tower release",
+          "verdict": "held"
+        },
+        {
+          "at": "2026-11-02T10:30:00Z",
+          "line": "GO by alice",
+          "phase": "sign-off",
+          "record": "release log",
+          "verdict": "GO",
+          "via": "console"
+        },
+        {
+          "at": null,
+          "line": "promoted by alice via console",
+          "phase": "outcome",
+          "record": "outcome, judged by human",
+          "verdict": "GO"
+        }
+      ],
+      "title": "Add a waitlist",
+      "updated_at": "2026-11-02T10:00:00Z",
+      "wait": null
+    },
+    {
+      "adrs": [
+        "0003"
+      ],
+      "attempt": null,
+      "ci": {
+        "decision": null,
+        "details": [
+          "FAILED tests/a.py::one",
+          "FAILED tests/a.py::two"
+        ],
+        "failed": "tests",
+        "head_sha": "h3",
+        "line": "NO-GO: tests — 2 failed",
+        "risk_level": "low",
+        "verdict": "NO-GO"
+      },
+      "feature": null,
+      "history": [
+        {
+          "at": "2026-11-03T08:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-03T08:20:00Z",
+          "state": "ci-failed",
+          "step": "ci"
+        }
+      ],
+      "id": "0003",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-03T08:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "gates",
+        "line": "NO-GO: tests — 2 failed",
+        "verdict": "NO-GO"
+      },
+      "perimeter": [
+        "README.md"
+      ],
+      "pr": null,
+      "priority": null,
+      "product": null,
+      "questions": [],
+      "release": null,
+      "review": null,
+      "rework": [],
+      "spec": null,
+      "state": "ci-failed",
+      "task": null,
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-03T08:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-03T08:20:00Z",
+          "attempt": null,
+          "line": "NO-GO: tests — 2 failed",
+          "phase": "gates",
+          "record": "tower ci",
+          "verdict": "ci-failed"
+        },
+        {
+          "at": "2026-11-03T08:20:00Z",
+          "line": "FAILED tests/a.py::one",
+          "phase": "gate",
+          "record": "tower ci details",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-03T08:20:00Z",
+          "line": "FAILED tests/a.py::two",
+          "phase": "gate",
+          "record": "tower ci details",
+          "verdict": null
+        },
+        {
+          "at": null,
+          "line": "NO-GO: tests — 2 failed",
+          "phase": "outcome",
+          "record": "outcome, judged by gates",
+          "verdict": "NO-GO"
+        }
+      ],
+      "title": "0003 — Tidy the README",
+      "updated_at": "2026-11-03T08:20:00Z",
+      "wait": null
+    },
+    {
+      "adrs": [],
+      "attempt": 1,
+      "ci": null,
+      "feature": null,
+      "history": [
+        {
+          "at": "2026-11-03T09:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-03T09:01:00Z",
+          "attempt": 1,
+          "state": "assigned",
+          "step": "assign"
+        },
+        {
+          "at": "2026-11-03T09:05:00Z",
+          "attempt": 1,
+          "error": "ci step failed: the gates did not run",
+          "state": "assigned",
+          "step": "ci"
+        }
+      ],
+      "id": "0004",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-03T09:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "step",
+        "line": "ci step failed: the gates did not run",
+        "verdict": "stranded"
+      },
+      "perimeter": [
+        "app/backend/migrations/*"
+      ],
+      "pr": null,
+      "priority": null,
+      "product": null,
+      "questions": [],
+      "release": null,
+      "review": null,
+      "rework": [],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+        "title": "Rename a column",
+        "verdict": null
+      },
+      "state": "assigned",
+      "task": {
+        "duration_s": null,
+        "harness": "replay",
+        "input_sha256": null,
+        "model": "stub-model",
+        "provider": null,
+        "replayed": null,
+        "role": "dev-worker",
+        "thinking": null,
+        "tokens": null,
+        "turns": null
+      },
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-03T09:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-03T09:01:00Z",
+          "line": "assigned",
+          "perimeter": [
+            "app/backend/migrations/*"
+          ],
+          "phase": "assign",
+          "record": "tower history",
+          "verdict": null,
+          "wait": null
+        },
+        {
+          "at": "2026-11-03T09:01:00Z",
+          "attempt": 1,
+          "duration_s": null,
+          "harness": "replay",
+          "line": null,
+          "model": "stub-model",
+          "phase": "attempt",
+          "record": "tower task",
+          "replayed": null,
+          "tokens": null,
+          "turns": null,
+          "verdict": null
+        },
+        {
+          "at": "2026-11-03T09:05:00Z",
+          "attempt": 1,
+          "line": "ci step failed: the gates did not run",
+          "phase": "ci",
+          "record": "tower history",
+          "verdict": "failed"
+        },
+        {
+          "at": null,
+          "line": "ci step failed: the gates did not run",
+          "phase": "outcome",
+          "record": "outcome, judged by step",
+          "verdict": "stranded"
+        }
+      ],
+      "title": "Rename a column",
+      "updated_at": "2026-11-03T09:05:00Z",
+      "wait": null
+    },
+    {
+      "adrs": [],
+      "attempt": null,
+      "ci": null,
+      "feature": null,
+      "history": [
+        {
+          "at": "2026-11-04T07:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-04T07:01:00Z",
+          "error": "step exited 1",
+          "state": "opened",
+          "step": "assign"
+        }
+      ],
+      "id": "0005",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-04T07:00:00Z",
+      "origin": "postmortem demo-rollback action 1",
+      "outcome": {
+        "judge": "step",
+        "line": "step exited 1",
+        "verdict": "stranded"
+      },
+      "perimeter": {
+        "error": "ticket tickets/0005.md has no ## Perimeter section",
+        "ok": false
+      },
+      "pr": null,
+      "priority": null,
+      "product": null,
+      "questions": [],
+      "release": null,
+      "review": null,
+      "rework": [],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+        "title": "Gate the waitlist flag",
+        "verdict": null
+      },
+      "state": "opened",
+      "task": null,
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-04T07:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-04T07:01:00Z",
+          "line": "assign refused (step exited 1): the ticket waits at opened for ./go resume (docs/adr/0053 §5-§6)",
+          "phase": "wait",
+          "record": "tower history",
+          "verdict": "waiting"
+        },
+        {
+          "at": null,
+          "line": "step exited 1",
+          "phase": "outcome",
+          "record": "outcome, judged by step",
+          "verdict": "stranded"
+        }
+      ],
+      "title": "Gate the waitlist flag",
+      "updated_at": "2026-11-04T07:01:00Z",
+      "wait": {
+        "holders": [],
+        "record": "tower history, perimeters/held",
+        "refusals": 1,
+        "since": "2026-11-04T07:01:00Z"
+      }
+    },
+    {
+      "adrs": [],
+      "attempt": 4,
+      "ci": null,
+      "feature": null,
+      "history": [
+        {
+          "at": "2026-11-04T06:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-04T06:50:00Z",
+          "attempt": 4,
+          "state": "needs-human",
+          "step": "rework"
+        }
+      ],
+      "id": "0007",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-04T06:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "review",
+        "line": "CHANGES-REQUESTED — reviewer",
+        "verdict": "needs-human"
+      },
+      "perimeter": [
+        "app/backend/geocoder/*"
+      ],
+      "pr": null,
+      "priority": null,
+      "product": null,
+      "questions": [],
+      "release": null,
+      "review": {
+        "harness": "replay",
+        "model": "stub-model",
+        "reason": "too broad\nsecond line",
+        "role": "reviewer",
+        "verdict": "changes-requested"
+      },
+      "rework": [
+        {
+          "at": "2026-11-04T06:30:00Z",
+          "attempt": 3,
+          "details": [
+            "x"
+          ],
+          "head_sha": "h6",
+          "judge": "gates",
+          "line": "NO-GO: tests — 1 failed"
+        },
+        {
+          "at": "2026-11-04T06:50:00Z",
+          "attempt": 4,
+          "details": [
+            "too broad",
+            "second line"
+          ],
+          "head_sha": "h7",
+          "judge": "review",
+          "line": "CHANGES-REQUESTED — reviewer"
+        }
+      ],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+        "title": "Cache geocoder answers",
+        "verdict": null
+      },
+      "state": "needs-human",
+      "task": null,
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-04T06:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-04T06:50:00Z",
+          "attempt": 4,
+          "judge": null,
+          "line": null,
+          "phase": "rework",
+          "record": "tower rework",
+          "verdict": null
+        },
+        {
+          "at": null,
+          "line": "CHANGES-REQUESTED — reviewer",
+          "phase": "outcome",
+          "record": "outcome, judged by review",
+          "verdict": "needs-human"
+        }
+      ],
+      "title": "Cache geocoder answers",
+      "updated_at": "2026-11-04T06:50:00Z",
+      "wait": null
+    },
+    {
+      "adrs": [
+        "0002"
+      ],
+      "attempt": 1,
+      "ci": {
+        "decision": "review",
+        "details": [],
+        "failed": null,
+        "head_sha": "h8",
+        "line": "GO: ci",
+        "risk_level": "medium",
+        "verdict": "GO"
+      },
+      "feature": null,
+      "history": [
+        {
+          "at": "2026-11-04T05:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-04T05:40:00Z",
+          "attempt": 1,
+          "state": "ci-failed",
+          "step": "review"
+        }
+      ],
+      "id": "0008",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-04T05:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "review",
+        "line": "first line",
+        "verdict": "NO-GO"
+      },
+      "perimeter": [
+        "app/backend/router.py"
+      ],
+      "pr": null,
+      "priority": null,
+      "product": null,
+      "questions": [],
+      "release": null,
+      "review": {
+        "harness": "replay",
+        "model": "stub-model",
+        "reason": "first line\nsecond line",
+        "role": "reviewer",
+        "verdict": "changes-requested"
+      },
+      "rework": [],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+        "title": "Split the router",
+        "verdict": null
+      },
+      "state": "ci-failed",
+      "task": null,
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-04T05:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-04T05:40:00Z",
+          "line": "first line",
+          "phase": "review",
+          "record": "tower review",
+          "verdict": "changes-requested"
+        },
+        {
+          "at": null,
+          "line": "first line",
+          "phase": "outcome",
+          "record": "outcome, judged by review",
+          "verdict": "NO-GO"
+        }
+      ],
+      "title": "Split the router",
+      "updated_at": "2026-11-04T05:40:00Z",
+      "wait": null
+    },
+    {
+      "adrs": [],
+      "attempt": null,
+      "ci": null,
+      "feature": "waiting-list",
+      "history": [
+        {
+          "at": "2026-11-07T08:00:00Z",
+          "state": "requested",
+          "step": "request"
+        },
+        {
+          "at": "2026-11-07T08:00:05Z",
+          "state": "questions",
+          "step": "clarify"
+        },
+        {
+          "at": "2026-11-07T08:10:00Z",
+          "by": "alice",
+          "state": "questions",
+          "step": "answered",
+          "via": "console"
+        },
+        {
+          "at": "2026-11-07T08:10:06Z",
+          "state": "spec-ready",
+          "step": "answer"
+        },
+        {
+          "at": "2026-11-07T08:10:07Z",
+          "state": "questions",
+          "step": "spec"
+        }
+      ],
+      "id": "0009",
+      "map": null,
+      "merge": null,
+      "opened_at": "2026-11-07T08:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": null,
+        "line": null,
+        "verdict": "pending"
+      },
+      "perimeter": {
+        "error": "ticket tickets/0009.md has no ## Perimeter section",
+        "ok": false
+      },
+      "pr": null,
+      "priority": "P0",
+      "product": {
+        "consulted": true,
+        "duration_s": 3.1,
+        "harness": "adk",
+        "input_sha256": null,
+        "model": "stub-model",
+        "provider": "stub-provider",
+        "replayed": true,
+        "thinking": "medium",
+        "tokens": {
+          "input": 900,
+          "output": 120,
+          "total": 1020
+        },
+        "turns": 4,
+        "why": null
+      },
+      "questions": [
+        {
+          "answer": "Yes, and they are told.",
+          "answered_at": "2026-11-07T08:10:00Z",
+          "answered_by": "alice",
+          "answered_via": "console",
+          "asked_at": "2026-11-07T08:00:05Z",
+          "from": "product",
+          "question": "Is the first person on the list promoted when a seat frees up?"
+        },
+        {
+          "asked_at": "2026-11-07T08:10:07Z",
+          "from": "spec",
+          "question": "no ## Perimeter section"
+        }
+      ],
+      "release": null,
+      "review": null,
+      "rework": [],
+      "spec": {
+        "at": "2026-11-07T08:10:07Z",
+        "by": "product",
+        "criteria": [
+          "Given a meetup at capacity, when a member signs up, then they join the waiting list instead of getting a 409"
+        ],
+        "line": "NO-GO: spec — no ## Perimeter section",
+        "sha256": null,
+        "title": null,
+        "verdict": "NO-GO"
+      },
+      "state": "questions",
+      "task": null,
+      "tasks": [],
+      "timeline": [
+        {
+          "at": "2026-11-07T08:00:00Z",
+          "line": "requested",
+          "phase": "request",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-07T08:00:05Z",
+          "line": "asked a question",
+          "phase": "product",
+          "record": "tower product",
+          "verdict": "questions"
+        },
+        {
+          "at": "2026-11-07T08:00:05Z",
+          "by": "product",
+          "line": "Is the first person on the list promoted when a seat frees up?",
+          "phase": "question",
+          "record": "tower questions",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-07T08:10:00Z",
+          "by": "alice",
+          "line": "Yes, and they are told.",
+          "phase": "answer",
+          "record": "tower questions",
+          "verdict": null,
+          "via": "console"
+        },
+        {
+          "at": "2026-11-07T08:10:06Z",
+          "attempt": null,
+          "duration_s": 3.1,
+          "harness": "adk",
+          "line": "confirmed 1 criteria",
+          "model": "stub-model",
+          "phase": "product",
+          "record": "tower product",
+          "replayed": true,
+          "tokens": {
+            "input": 900,
+            "output": 120,
+            "total": 1020
+          },
+          "turns": 4,
+          "verdict": "spec-ready"
+        },
+        {
+          "at": "2026-11-07T08:10:07Z",
+          "line": "NO-GO: spec — no ## Perimeter section",
+          "phase": "spec",
+          "record": "tower spec",
+          "verdict": "NO-GO"
+        }
+      ],
+      "title": "0009 — A waiting list when a meetup is full",
+      "updated_at": "2026-11-07T08:10:07Z",
+      "wait": null
+    }
+  ]
+}
