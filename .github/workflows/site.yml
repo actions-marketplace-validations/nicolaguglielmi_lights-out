@@ -19,7 +19,8 @@ on:
       - board/index.html
       - console/index.html
       - console/serve.py
-      - fixtures/logbook/golden-1.2.json
+      - fixtures/logbook/golden-1.3.json
+      - core/network.py
       - core/map.py
       - core/logbook.py
       - core/spec.py
@@ -81,6 +82,8 @@ jobs:
             _site/media/hero.jpg
             _site/media/overview.jpg
             _site/media/console-*.jpg
+            _site/media/network.jpg
+            _site/media/network.mp4
           retention-days: 14
 
   deploy:
