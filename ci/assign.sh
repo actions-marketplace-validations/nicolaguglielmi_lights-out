@@ -19,7 +19,12 @@
 #   (g) on an attached repository a red base refuses the ticket, judged by
 #       `sast` and `test` on the empty range at the code host's HEAD,
 #       isolated, and nothing is cached; a green one lets it through and
-#       is cached, so the next ticket on that commit runs no gates.
+#       is cached, so the next ticket on that commit runs no gates;
+#   (h) on an attached repository whose code host does not hold it yet (a
+#       fresh plane), the code host is bootstrapped before the base check,
+#       so the commit judged is the one the worker will clone, and the
+#       ticket goes through (found by M24 on 2026-11-11: the first assign
+#       on a fresh plane failed at "could not fetch the base").
 set -eu
 name=assign
 . ci/lib.sh
@@ -60,6 +65,13 @@ STUB
 cat > "$root/adapters/stub-codehost/clone-url.sh" <<'STUB'
 set -eu
 printf '%s\n' "$(pwd)/origin"
+STUB
+# Bootstrap, the CodeHost verb (docs/adr/0043 §3): afterwards the host holds
+# the workload's commit. It records how many make runs came before it.
+cat > "$root/adapters/stub-codehost/bootstrap.sh" <<'STUB'
+set -eu
+printf 'bootstrap after %s make run(s)\n' "$(wc -l < "$ROOT/make.log" | tr -d ' ')" >> "$ROOT/bootstrap.log"
+[ -e origin ] || git clone -q --bare "$WORKLOAD" origin
 STUB
 # The worker: what core/steps/assign.sh reads back from core/crew.sh.
 cat > "$root/core/crew.sh" <<'STUB'
@@ -171,6 +183,19 @@ runs=$(wc -l < "$root/make.log")
 ticket 0006 src/b.py
 assigned 0006 || fail "g(a second ticket on a green base was refused)"
 [ "$(wc -l < "$root/make.log")" -eq "$runs" ] || fail "g(the cached base was judged again)"
+
+# (h)
+rm -rf "$root/origin"
+git init -q "$root/fresh"
+git -C "$root/fresh" -c user.name=ci -c user.email=ci@lights-out.invalid commit -q --allow-empty -m fresh
+fresh=$(git -C "$root/fresh" rev-parse HEAD)
+WORKLOAD="$root/fresh"
+: > "$root/make.log"
+ticket 0007 src/c.py
+assigned 0007 || fail "h(a fresh code host refused the ticket: $(cat "$root/err"))"
+[ "$(tail -n 1 "$root/bootstrap.log" 2>/dev/null)" = "bootstrap after 0 make run(s)" ] \
+  || fail "h(the code host was not bootstrapped before the base check: $(cat "$root/bootstrap.log" 2>/dev/null))"
+grep -q "BASE=$fresh" "$root/make.log" || fail "h(the base judged is not the workload's commit $fresh: $(cat "$root/make.log"))"
 
 [ -z "$mismatch" ] || nogo "$mismatch"
 go
