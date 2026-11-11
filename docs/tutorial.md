@@ -224,20 +224,22 @@ The demo shows the gates saying GO. `./go demo-gates` judges eleven committed
 fixture patches, and shows the test-weakening, test, mutation, SAST, test-proof
 and deps gates saying NO-GO, and risk sending a change to review:
 
-<!-- source: GitHub Actions run 42421450841 (commit 2a0427c), job gates (128550543246), step "./go demo-gates"; only the [demo-gates] lines and the last line; run 42421450841 predates ADR 0072 §1, so the sast-finding line is edited by hand to the new text and the lines of sast-inherited and sast-added-on-red-base are not shown; replace this block from the next run -->
+<!-- source: GitHub Actions run 43003750178 (commit 19be6c3), job gates (130466613265), step "./go demo-gates"; only the [demo-gates] lines and the last line -->
 ```
 [demo-gates] assertion-removed: NO-GO: gates — test-weakening: NO-GO: test-weakening — 1 test file finding that no ## Removes tests in the ticket declares: app/backend/tests/test_meetups.py: loses 1 assertion; details on stderr
 [demo-gates] failing-test: NO-GO: gates — test: NO-GO: test — in compose:backend-test: the test command failed (exit 1), see stderr
 [demo-gates] fake-test: NO-GO: gates — mutation: NO-GO: mutation — in compose:backend-test: 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr
 [demo-gates] honest-fix: GO: gates — risk low, auto-merge, in compose:backend-test
 [demo-gates] migration: GO: gates — risk high, review, in compose:backend-test
+[demo-gates] sast-added-on-red-base: NO-GO: gates — sast: NO-GO: sast — in compose:backend-test: this diff introduces 1 finding(s); list on stderr
 [demo-gates] sast-finding: NO-GO: gates — sast: NO-GO: sast — in compose:backend-test: this diff introduces 1 finding(s); list on stderr
+[demo-gates] sast-inherited: GO: gates — risk low, auto-merge, in compose:backend-test
 [demo-gates] test-edited: GO: gates — risk low, auto-merge, in compose:backend-test
-[demo-gates] test-passes-on-base: NO-GO: gates — test-proof: NO-GO: test-proof — in compose:backend-test: the changed tests pass on the base 2a0427c too, so they do not prove the change
+[demo-gates] test-passes-on-base: NO-GO: gates — test-proof: NO-GO: test-proof — in compose:backend-test: the changed tests pass on the base 19be6c3 too, so they do not prove the change
 [demo-gates] vulnerable-dep: NO-GO: gates — deps: NO-GO: deps — this diff introduces 4 advisory finding(s); list on stderr
 GO: demo-gates
 ```
-*GitHub Actions run 42421450841, job gates: the `[demo-gates]` lines and
+*GitHub Actions run 43003750178, job gates: the `[demo-gates]` lines and
 the last line.*
 
 `fake-test` is the same fix as `honest-fix` with a test that does not
