@@ -39,8 +39,13 @@ whose name ends with the step's tool name, this server's first, called by that n
 (and, on OpenAI, in the namespace that declared it); when no declared tool ends with
 it, the call goes to the name the vendor would give it (mcp__<server>__<tool>, or
 mcp_<server>_<tool> on Gemini), and the CLI answers that it has no such tool.
-Codex's MCP surface under code mode is not established: the requests' `declared`
-says what each one offered. `hang` never answers.
+OpenAI's code mode is the exception (docs/adr/0073, amendment 2026-11-11, seen
+running codex 0.166.0 natively): there an MCP tool is deferred, named in no
+request, and reachable only from `exec`'s JavaScript as tools.mcp__<server>__<tool>
+(every character outside [A-Za-z0-9_] an `_`) and listed in `ALL_TOOLS`. So the
+step is an `exec` whose JavaScript first prints `ALL_TOOLS: <names>`, the catalog
+the model could call, then calls that name if the catalog has it; the call is a
+nested tool call, and the PreToolUse hook sees it. `hang` never answers.
 
 The step a request gets is the number of tool results already in it. One
 exception, Antigravity's: a command still running after 10 s comes back as "Tool is
@@ -355,6 +360,24 @@ def mcp_target(proto, body, server, tool):
     return None, ("mcp_%s_%s" if proto == "gemini" else "mcp__%s__%s") % (server, tool), False
 
 
+CODE_MODE_MCP_JS = """\
+text("ALL_TOOLS: " + ALL_TOOLS.map((t) => t.name).join(" "));
+const name = %s;
+if (typeof tools[name] !== "function") {
+  text("no tool " + name);
+} else {
+  try { text(JSON.stringify(await tools[name](%s))); } catch (e) { text("error: " + e); }
+}
+"""
+
+
+def code_mode_mcp_source(server, tool, args):
+    """JavaScript that shows the catalog code mode offers (ALL_TOOLS: a deferred MCP
+    tool is in no request) and calls the MCP tool by codex's name for it."""
+    name = re.sub(r"[^A-Za-z0-9_]", "_", "mcp__%s__%s" % (server, tool))
+    return CODE_MODE_MCP_JS % (json.dumps(name), json.dumps(args))
+
+
 def pick_openai_surface(tools):
     kinds = {}
     for t in tools or []:
@@ -377,6 +400,10 @@ def render(proto, step, cwd, body):
         server, tool, args = step.get("server"), step.get("tool"), step.get("args") or {}
         if not isinstance(server, str) or not isinstance(tool, str) or not isinstance(args, dict):
             raise Fault(503, "case.json: an mcp step needs server and tool, strings, and args, an object")
+        if proto == "openai" and any(t.get("name") == "exec" and t.get("type") == "custom"
+                                     for t in request_tools(body)):
+            # Whether the catalog holds it is known only inside the isolate: hooked unknown.
+            return op, None, ("code", code_mode_mcp_source(server, tool, args))
         ns, name, offered = mcp_target(proto, body, server, tool)
         return op, offered, ("tool", name, args, ns)
     if op not in ("shell", "read", "write", "jsread", "grep"):

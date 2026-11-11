@@ -665,6 +665,13 @@ servers, one on stdio and one remote:
   an unnamed tool of a declared server. The model sees it, and every call is
   denied twice, by Claude's permission check and by the guard.
   `run.json` says `visible-denied`. Codex and Gemini hide it.
+- **Codex reaches MCP tools from code.** At the pinned version and with the
+  models it ships for code mode, no MCP tool is in the model's tool list:
+  the model calls `tools.mcp__<server>__<tool>(…)` from inside its `exec`
+  JavaScript, and finds the names in `ALL_TOOLS`. The guard still sees every
+  such call, and an unnamed tool is not there at all. A model that never
+  looks in `ALL_TOOLS` never calls the tool, and `run.json` shows no calls
+  (ADR 0073, amendment of 2026-11-11).
 
 ### See what is declared
 

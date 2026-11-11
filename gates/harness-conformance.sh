@@ -871,21 +871,35 @@ EOF
     run_case "$role_max_turns" "$role_token_budget" "$role_timeout_s"
     check_valid_pr
     declared=$(rq --arg m "$model" '[.[] | select(.kind == "generate" and .tools == true and .requested == $m)] | .[0].declared // [] | join(" ")')
+    # The catalog the model can call. Codex's code mode (a request that offers
+    # functions.exec; docs/adr/0073, amendment 2026-11-11) names no MCP tool in
+    # any request: they are deferred, reachable only from exec's JavaScript and
+    # listed in its ALL_TOOLS, which the stub's mcp step prints before calling.
+    # There the catalog is that list, from the first tool result carrying it.
     case " $declared " in
+      *" functions.exec "*)
+        catalog=$(rq '[.[] | .last_result // "" | select(test("(^|\n)ALL_TOOLS: "))] | first // ""
+                      | (capture("(^|\n)ALL_TOOLS: (?<n>[^\n]*)").n) // ""')
+        [ -n "$catalog" ] || fail "the requests offer code mode's exec and no tool result lists exec's ALL_TOOLS: the stub's mcp step never ran in the isolate"
+        where="exec's ALL_TOOLS" verb=lists verb1=list
+        ;;
+      *) catalog=$declared where="the first request" verb=declares verb1=declare ;;
+    esac
+    case " $catalog " in
       *"search_notes "*) ;;
-      *) fail "the first request declares no tool ending with search_notes, the one mcp.json names: it declares $declared" ;;
+      *) fail "$where $verb no tool ending with search_notes, the one mcp.json names: it $verb $catalog" ;;
     esac
     unlisted=$(jq -r '.mcp.unlisted // "absent"' "$out/run.json")
     case "$unlisted" in
       hidden)
-        case " $declared " in
-          *"count_notes "*) fail "run.json says the unnamed tools are hidden, and the first request declares count_notes: $declared" ;;
+        case " $catalog " in
+          *"count_notes "*) fail "run.json says the unnamed tools are hidden, and $where $verb count_notes: $catalog" ;;
         esac
         ;;
       visible-denied)
-        case " $declared " in
+        case " $catalog " in
           *"count_notes "*) ;;
-          *) fail "run.json says the unnamed tools are visible and denied, and the first request does not declare count_notes: $declared" ;;
+          *) fail "run.json says the unnamed tools are visible and denied, and $where does not $verb1 count_notes: $catalog" ;;
         esac
         grep -qE '^DENY [^ ]*count_notes ' "$out/hooks.log" || fail "hooks.log has no DENY for count_notes, the tool mcp.json does not name"
         ;;

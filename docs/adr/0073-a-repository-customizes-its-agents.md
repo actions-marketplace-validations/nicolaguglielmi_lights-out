@@ -37,8 +37,9 @@ The pins are claude-code 2.1.311, codex 0.166.0 and gemini-cli
 - for Gemini CLI, the source at tag `v0.61.0-preview.0`, checked against
   the published bundle.
 
-Nothing was executed and nothing was seen live. Every fact below carries
-its file:line or URL in the record,
+Nothing was executed and nothing was seen live, except where a bullet
+points to the Amendment 2026-11-11 (Codex, run natively once). Every fact
+below carries its file:line or URL in the record,
 `scratchpad/cli-mcp-facts.md` (the parent session's; not in the repo).
 
 - **Declaring servers.**
@@ -58,7 +59,9 @@ its file:line or URL in the record,
     fail.
 - **Per-tool allow list. Not uniform.**
   - Codex `enabled_tools` and Gemini `includeTools` match raw tool names
-    and **remove** the other tools from what the model sees.
+    and **remove** the other tools from what the model sees. On Codex under
+    code mode, what the model sees is `exec`'s `ALL_TOOLS`, not the request
+    (Amendment 2026-11-11, seen running).
   - **Claude Code has no way to hide an unnamed MCP tool.** `--tools`
     ignores MCP tools, and `--allowedTools mcp__s__t` only pre-approves
     calls. In `-p` without a permission mode, a call that is not
@@ -75,7 +78,8 @@ its file:line or URL in the record,
   source.
   - Claude: `tool_name` is `mcp__<server>__<tool>`.
   - Codex: also `mcp__<server>__<tool>`, with every character outside
-    `[A-Za-z0-9_]` turned into `_`.
+    `[A-Za-z0-9_]` turned into `_`. Seen running for a call made from code
+    mode's JavaScript (Amendment 2026-11-11).
   - Gemini: `mcp_<server>_<tool>`, single underscores, cut to 63
     characters.
   - `tool_input` is the call's arguments, so `guard.sh` already reads them.
@@ -580,6 +584,73 @@ from `agents.py mcp` at the base. The ticket asked for one
 
 The scripted-model proof of all three CLIs is case 10 of the suite, on
 Actions.
+
+## Amendment 2026-11-11: Codex's MCP surface
+
+Case 10b found it on Actions (run 43007583308): codex's first request named
+no MCP tool. The facts below come from two sources. One is the source at
+`rust-v0.166.0` (paths under `codex-rs/`). The other is one native run of
+the pinned binary on the owner's Mac (the darwin-arm64 package, integrity
+equal to `package-lock.json`'s). It ran against the suite's stub on
+127.0.0.1, with a fake key, and is marked "seen".
+
+- **Why.** `gpt-6.1-sol`'s bundled metadata sets `tool_mode:
+  code_mode_only` (`models-manager/models.json:193`). Eleven of the twelve
+  bundled models do. That metadata wins over the `code_mode` and
+  `code_mode_only` features (`core/src/tools/mod.rs:66-76`), so `--disable
+  code_mode_only --disable code_mode` changed nothing in the request
+  (seen).
+- **Where the tools are.** Under code mode only, for a model with
+  `supports_search_tool`, an MCP tool is *deferred*
+  (`core/src/tools/spec_plan.rs:267-287`). It is not a direct tool. The
+  `exec` description never renders deferred tools
+  (`code-mode-protocol/src/description.rs:279-281`, where
+  `_deferred_tools` is unused). The model reaches the tool only from
+  `exec`'s JavaScript, as `tools.mcp__notes__search_notes(…)`, and finds
+  it in `ALL_TOOLS`, which carries its name and TypeScript declaration.
+  Seen: `ALL_TOOLS` listed `mcp__notes__search_notes` and no `count_notes`.
+- **`enabled_tools` still hides.** `tools.mcp__notes__count_notes` is not
+  a function in the isolate (seen: `TypeError`). `unlisted` stays
+  `hidden`.
+- **The hook fires.** The nested call runs PreToolUse with `tool_name`
+  `mcp__notes__search_notes` and `tool_input` `{"q": …}` (seen; the
+  dispatch is `core/src/tools/code_mode/mod.rs:399-407`). `guard.sh`
+  logged `ALLOW mcp__notes__search_notes`, and `agents.py calls` counted
+  1. With `CREW_MCP_ALLOW` empty, the guard denied the call, the script
+  failed with "Tool call blocked by PreToolUse hook", and no
+  `mcp_tool_call` item was emitted (seen). So on Codex the second layer of
+  §9 holds, and so does counting from `hooks.log`. The `exec` call itself
+  fires no hook, as ADR 0041's case 3 already says.
+- **No documented way to make the tools direct.** The per-server
+  `omit_tools_from` would do it (`protocol/src/config_types.rs:400`).
+  Seen: `["deferred", "code_mode"]` put `mcp__notes.search_notes` in the
+  request. It was rejected for three reasons:
+  - Codex's MCP docs (fetched 2026-11-11) do not mention it.
+  - It shows a direct function to a model whose metadata asks for code
+    mode only.
+  - `code_mode_only_strict_3p_tools` ignores it (`spec_plan.rs:243-252`).
+
+What changes:
+
+- **§8, codex, gains a line.** Under code mode, the named tools reach the
+  model only through `exec`. They are deferred, named in no request,
+  listed in `ALL_TOOLS` and called as `tools.mcp__<s>__<t>`. The hook sees
+  every call. `mcp.sh` and its translation are unchanged.
+- **The stub.** Its `mcp` op, on a request that offers code mode's `exec`,
+  becomes an `exec`. Its JavaScript prints `ALL_TOOLS: <names>`, then
+  calls `tools.mcp__<s>__<t>(args)`.
+- **Case 10b.** On such a request it checks that list instead of the first
+  request: the named tool must be in it, and `count_notes` must not. This
+  replaces the stub bullet and the codex line of Tests (b), and it closes
+  the Consequences bullet on Codex's surface.
+- **Unchanged.** ADR 0041's case 3 still holds: `jsread` reads with no
+  hook, under the same configuration. So do `run.json`'s `unlisted:
+  hidden` and the `calls` from `hooks.log`.
+
+A new consequence: on Codex, the model sees a declared MCP tool only when it
+runs JavaScript that looks in `ALL_TOOLS`. A model that never looks never
+calls the tool, and `calls` shows 0. The live proof against the real
+OpenAI API has not run.
 
 ## Golden-rule check
 
