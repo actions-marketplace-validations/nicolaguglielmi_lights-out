@@ -1,0 +1,14 @@
+description = "Check a spec draft with the lights-out spec gate and report its one GO or NO-GO line."
+prompt = """
+The spec gate of lights-out (docs/adr/0055: every acceptance criterion has
+Given, When and Then with an observable outcome, and the perimeter
+declares a path) read the draft and answered:
+
+!{lights-out-gates spec {{args}} 2>&1 || true}
+
+Report the GO or NO-GO line above to the user exactly as it is, on a line
+of its own, and nothing before it. If there is no such line because the
+command was not found, tell the user to install it with
+`uv tool install lights-out-gates`. On a NO-GO, offer to fix the draft and
+change it only if the user asks.
+"""

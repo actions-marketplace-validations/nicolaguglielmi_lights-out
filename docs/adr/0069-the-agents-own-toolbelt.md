@@ -377,20 +377,49 @@ relied on):
    Planted: a differing copy, a Codex manifest with `hooks`, an implicit
    skill, a Gemini timeout of 30, a `hook.sh` that appends twice.
 
-**Proof, once each, to be filled.** Codex 0.166.0: `codex plugin
-marketplace add` on a local clone and `codex plugin add
-lights-out@lights-out` (syntax as observed); which marketplace file Codex
-reads when both exist (if the Claude one, stop: §1 fails); the invocation
-name of the skills (`$gates` or namespaced); the GO line reaching the model
-through `gates`; `hook` writing `.codex/hooks.json` under the sandbox (or
-the approval it needed); a weakening commit stopped, with the project layer
-trusted and `--dangerously-bypass-hook-trust` (the `/hooks` trust step
-stays unverified, as in the recipe). Gemini 0.61.0-preview.0: `gemini
-extensions validate`, install `--consent` from the directory; whether `-p`
-runs `/lights-out:gates` and its `!{…}` under `--approval-mode yolo`; the
-injected line; the extension hook stopping a weakening commit, passing a
-clean one, silent without a contract. The scripted model shows the
-mechanism, not that a real model follows the skill's text.
+**Proof, 2026-11-11, once each.** The pinned CLIs installed with `npm ci`
+from the adapters' lockfiles into host directories and run in the
+workbench image (the VM's disk again), the scripted model
+(`gates/harness-conformance/stub.py`), the package from a wheel of this
+branch on PATH, a local copy of this repository's marketplace files and
+three plugin roots, a scratch repository with a contract. The scripted
+model shows the mechanism, not that a real model follows the skill's text.
+
+- **Codex 0.166.0.** `codex plugin marketplace add <dir>` read
+  `.agents/plugins/marketplace.json` (it listed that file as the
+  marketplace, and `lights-out@lights-out` from
+  `plugins/lights-out-codex`), not the Claude one: §1 holds. `codex plugin
+  add lights-out@lights-out` installed it into
+  `~/.codex/plugins/cache/lights-out/lights-out/0.3.1/`. The skills are
+  namespaced: `$lights-out:gates` injected the SKILL.md as a `<skill>`
+  message (a bare `$gates` injected nothing), and the model's run of
+  `lights-out-gates --light STAGED=1` returned `GO: gates-light — …`.
+  `$lights-out:hook install` ran `hook.sh` from the cache with no approval
+  (sandbox `danger-full-access`) and wrote the recipe into
+  `.codex/hooks.json`. With the project trusted in `config.toml` and
+  `--dangerously-bypass-hook-trust`, a commit that removed an assertion was
+  stopped: `Command blocked by PreToolUse hook: … NO-GO: gates-light —
+  test-weakening: …`. Without the flag the same commit landed: an
+  untrusted hook is skipped, as the hooks page says; the `/hooks` trust
+  step itself stays unverified. `codex features list` shows
+  `plugin_hooks` as `removed` in 0.166.0: a bundled hook would not have
+  run in the CLI either.
+- **Gemini CLI 0.61.0-preview.0.** `gemini extensions validate` passed;
+  `gemini extensions install <dir> --consent` asked once more, whether to
+  trust the source folder (answered `y`), and installed
+  `lights-out-gemini` 0.3.1. `-p '/lights-out:gates'` with
+  `--approval-mode yolo` ran the `!{…}` and put the light tier's stderr
+  lines and `GO: gates-light — …` in front of the model (`2>&1`). A spike
+  before the build confirmed §4: `${extensionPath}` in a command TOML is
+  not substituted (the shell saw an empty variable), `{{args}}` arrives as
+  one shell-escaped word, and the extension's `hooks/hooks.json` runs with
+  `${extensionPath}` substituted. The hook stopped a commit that removed
+  an assertion (`Tool execution blocked: NO-GO: gates-light —
+  test-weakening: …`), let a clean one through, and with the contract
+  removed from HEAD let a weakening through in silence.
+- Not run: `/lights-out:spec` and `$lights-out:spec` in the CLIs (their
+  command is `lights-out-gates spec`, proven in `ci/contract.sh`), the
+  trust steps a person takes (`/hooks`, the folder prompt).
 
 **Alternatives rejected.** Copying `skill.sh`/`run.sh` into the Codex root
 (§2: no `!`, nothing to shape). `${extensionPath}` in TOML (undocumented).
