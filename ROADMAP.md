@@ -73,7 +73,7 @@ demo-loop`, the toolbelt, then the launch), is
   ticket, attempt, worker and threshold you changed. The console (M29)
   already shows the tickets, their timelines and the thresholds; its
   first slice (ADR 0063) says on each ticket whose turn it is.
-- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), deferred by the owner on 2026-11-11, nothing built): SAST judged on the diff as dependencies already are, a signed SBOM with every release, and a passive DAST scan of the canary before it takes traffic.
+- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M42): the first slice is built, SAST judged on the diff as dependencies already are; a signed SBOM with every release and a passive DAST scan of the canary before it takes traffic are next, not built.
 
 ## When someone needs it
 
