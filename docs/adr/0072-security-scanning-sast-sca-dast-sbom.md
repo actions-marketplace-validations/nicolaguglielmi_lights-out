@@ -1,6 +1,6 @@
 # ADR 0072 — Security scanning: SAST judges the diff, a signed SBOM per release, a passive DAST at staging
 
-- Status: proposed, deferred: the owner put it later in the roadmap on 2026-11-11; nothing is built
+- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices; 2026-11-11, decision 1 (SAST on the diff) built, see "Built" below; decisions 2-4 not yet
 - Date: 2026-11-11
 - Would amend: ADR 0015 §4 and ADR 0030 §3 (the SAST verdict and the runner's output), ADR 0053 §6 (`sast` leaves the green-base check), ADR 0024 and 0026 (an optional fifth Delivery verb), ADR 0013 §4 (a check at staging), ADR 0025 §1 (`publish.sh` also attests)
 
@@ -152,3 +152,42 @@ zaproxy (v2.17.0, Apache-2.0), nuclei, syft, opengrep, cosign (v3.1.4,
 scan-image); PyPI bandit and semgrep; eslint.org/docs/latest/use/suppressions;
 argoproj.github.io/argo-rollouts/features/canary; Cloud Run tag URLs
 (cloud.google.com blog on gradual rollouts).
+
+## Built
+
+### Decision 1, 2026-11-11 (M42, first slice)
+
+Built as decided, with four precisions found writing it. None changes the
+verdict.
+
+- **`file` is relative to the directory the runner runs from**, the
+  contract's `$WORKLOAD/$WORKLOAD_TEST_ROOT`, not to the repository root:
+  a runner inside `backend-test` or an image cannot know where it sits in
+  the repository. The gate prefixes the run directory's path from the root
+  (`git rev-parse --show-prefix` plus the test root), the mapping
+  `gates/mutation.sh` already uses. Fingerprints and `sast.json` carry
+  repository paths.
+- **The flagged line is read from the tree the runner scanned**, HEAD's
+  checkout and the base's worktree, which are those revisions' files: the
+  line number refers to what was scanned, and the comparison needs no
+  process. The logic is `core/sastdiff.py` (ADR 0052 §2), stdlib, no
+  process; `gates/sast.sh` is the glue.
+- **A HEAD with no finding is GO without scanning the base**: nothing can
+  be new, and nothing is inherited. The second scan costs only where HEAD
+  has findings, so `./go demo`'s PR (a clean HEAD) runs one scan as before.
+- **Each side runs the runner its checkout carries.** In the tower's CI
+  step HEAD's `.lights-out/runners/` are the base's (ADR 0033), and the
+  merge-base's are the base's by definition. An in-tree runner such as
+  `tests/sast/run.sh` stays the PR's own (ADR 0033's amendment).
+
+The mainline step (ADR 0056 §3) still runs `sast test` on the range from
+the last green main: its `sast` now judges what the group adds. Runners
+changed: `app/` and `workloads/minimal` (bandit, `-f json`), both stack
+runners and their copies (bandit, eslint with paths made relative). Tests,
+written from this ADR without the implementation: 38 unit tests in
+`core/tests/test_sastdiff.py`, and `ci/sast-diff.sh` in `./go ci`, which
+drives the real gate on scratch repositories (renames, re-indentation,
+duplicates, the empty tree, a subdirectory workload, old runners on either
+side). `./go demo-gates` keeps the nine verdicts and has two fixtures on a
+base already red at `sast` (a `base/` directory of patches applied first):
+`sast-inherited` GO, `sast-added-on-red-base` NO-GO.
