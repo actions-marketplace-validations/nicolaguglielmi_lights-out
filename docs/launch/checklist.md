@@ -215,6 +215,27 @@ HEAD-relative fix. The light tier is unchanged: no new upload to PyPI.
   `test-integrity`. Published 2026-11-10, the owner confirming with a passkey;
   the three Marketplace pages show 0.3.1.
 
+### Release 0.4.0 (2026-11-11)
+
+The agent network in the console and `./go network` (ADR 0071), per-role
+instructions and MCP servers for the dev-worker (ADR 0073, M42), the
+agent's toolbelt (ADR 0069, M39), the Trello-style kanban (ADR 0068),
+`self` judged from its last green ancestor (ADR 0074), the podman port
+fix, M24's fixes. Security scanning (ADR 0072) ships in 0.4.1.
+
+- [ ] **The release commit**: `version=` in `lights-out`, `version` in
+  `pyproject.toml`, the three plugin manifests (`ci/plugin.sh` holds them
+  to the package's version) and the landing page at 0.4.0, every usage
+  pinned to `@v0.4.0`.
+- [ ] **Tag `v0.4.0`**, both images published and signed, signatures
+  verified.
+- [ ] **The two Actions' repositories** refreshed from `actions/` and
+  tagged `v0.4.0`.
+- [ ] **Publish the three draft releases** with the Marketplace box
+  ticked (owner, passkey).
+- [ ] **PyPI**: `lights-out-gates` 0.4.0, which adds `lights-out-gates mcp`
+  and `spec` (owner, the token in the keychain).
+
 ### The Python package on PyPI (M35)
 
 The light tier, `lights-out-gates --light`, is a Python package built from

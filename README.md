@@ -24,7 +24,9 @@ What is proven and what is not yet is said plainly below, in [What is real and w
 <p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-kanban.jpg" alt="The console's kanban: lists for the tower's states under four bands, Spec, Build, Test and review, Release, a card per ticket with its labels, whose turn it is and who has the ball"></p>
 <p><img src="https://nicolaguglielmi.github.io/lights-out/media/console-ticket.jpg" alt="A ticket's timeline in the console: the request, a question, the answer, the confirmed criteria and the spec gate" width="49%"> <img src="https://nicolaguglielmi.github.io/lights-out/media/console-overview.jpg" alt="The console's overview: what waits for a person first, then the tickets by band and state, perimeters held, docs to realign" width="49%"></p>
 
-The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, and the overview. Every card, card's back and timeline says whose turn it is, a role's or yours, and when it is yours, the one thing to do: answer a question, go-for-launch, or decide after the last attempt; the overview lists those first, and the kanban's "Your turn only" keeps only those. A card carries its priority and feature as labels and badges for who has the ball, how long it has sat in its state and its rework attempts; it turns over, above the board, to its timeline in a few lines. It moves only when the tower moves its ticket. A network screen draws one ticket's agents as the harness governs them: the tower, the six roles, the workers with their harness and model, each gate lighting GO or NO-GO, the rework loop and the human gate, beside every attempt's gate lines and patch and the files by perimeter; `./go network` prints the same facts in text. It also has a specs screen, an editor for a new request that the spec gate checks as you type, a search over the project's ADRs from the project map, and a light and a dark theme. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.3.json`](fixtures/logbook/golden-1.3.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
+<p><a href="https://nicolaguglielmi.github.io/lights-out/media/network.mp4"><img src="https://nicolaguglielmi.github.io/lights-out/media/network.jpg" alt="The console's network screen: the tower, the roles and the dev-worker's workers, the gates on the edges lit GO or NO-GO, each attempt's patch with the gate lines that judged it, and the files by perimeter; a replay of a recorded ticket"></a></p>
+
+The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, the overview, and the agent network (`./go network` prints the same in the terminal; the image opens a replay). Every card, card's back and timeline says whose turn it is, a role's or yours, and when it is yours, the one thing to do: answer a question, go-for-launch, or decide after the last attempt; the overview lists those first, and the kanban's "Your turn only" keeps only those. A card carries its priority and feature as labels and badges for who has the ball, how long it has sat in its state and its rework attempts; it turns over, above the board, to its timeline in a few lines. It moves only when the tower moves its ticket. A network screen draws one ticket's agents as the harness governs them: the tower, the six roles, the workers with their harness and model, each gate lighting GO or NO-GO, the rework loop and the human gate, beside every attempt's gate lines and patch and the files by perimeter; `./go network` prints the same facts in text. It also has a specs screen, an editor for a new request that the spec gate checks as you type, a search over the project's ADRs from the project map, and a light and a dark theme. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.3.json`](fixtures/logbook/golden-1.3.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
 
 ## Five ways in
 
@@ -54,22 +56,22 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.1
+  - uses: nicolaguglielmi/lights-out@v0.4.0
 ```
 
 The gates read a contract committed in your repository, `.lights-out/`: the test command, the mutation scope and baseline, the runners. A range is judged by the contract at its base, so a pull request cannot loosen what judges it. On a repository with none, the first check is NO-GO, because nothing may judge without a contract at the base ([ADR 0064](docs/adr/0064-the-first-run-drafts-the-contract.md)). After 0.3.0 that check also carries the fix: the Action drafts the contract from the base with `lights-out init`, puts its three small files in the check's summary for review, and attaches the whole draft to the run as an artifact, with the two commands that commit it. One commit, and the next check is judged. The 0.3.0 check prints the NO-GO line only; until the next release, draft the contract with the wrapper below.
 
-`gates: test-proof` or `gates: test-integrity` runs one part. Those two are also standalone Actions, `nicolaguglielmi/lights-out/actions/test-proof@v0.3.1` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.1`; each also has a repository of its own for its Marketplace page, `nicolaguglielmi/test-proof@v0.3.1` and `nicolaguglielmi/test-integrity@v0.3.1`. [The guide](docs/use-on-your-repo.md#the-action) has the details, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run the gates before a coding agent commits.
+`gates: test-proof` or `gates: test-integrity` runs one part. Those two are also standalone Actions, `nicolaguglielmi/lights-out/actions/test-proof@v0.4.0` and `nicolaguglielmi/lights-out/actions/test-integrity@v0.4.0`; each also has a repository of its own for its Marketplace page, `nicolaguglielmi/test-proof@v0.4.0` and `nicolaguglielmi/test-integrity@v0.4.0`. [The guide](docs/use-on-your-repo.md#the-action) has the details, and [the hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents) run the gates before a coding agent commits.
 
 On a pull request of a repository that is not lights-out ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)), each in a job of its own so that the first pull of the image is inside the time, the Action posted its check in 27 s, `test-proof` in 14 s and `test-integrity` in 25 s.
 
-On your machine, the `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.3.1` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is 508 MB unpacked (amd64), with no cloud toolchain in it. `lights-out init` and `gates` took 48 s on a clean runner (`./go demo-package`). The full image, `ghcr.io/nicolaguglielmi/lights-out:0.3.1` (1,246 MB, 1.77 GB before gcloud and terraform left it), is for `triage` and `postmortem` only.
+On your machine, the `lights-out` wrapper runs init and the gates from the gates image, `ghcr.io/nicolaguglielmi/lights-out-gates:0.4.0` (amd64 and arm64), inside your repository. You need podman or docker, and git. The image is 508 MB unpacked (amd64), with no cloud toolchain in it. `lights-out init` and `gates` took 48 s on a clean runner (`./go demo-package`). The full image, `ghcr.io/nicolaguglielmi/lights-out:0.4.0` (1,246 MB, 1.77 GB before gcloud and terraform left it), is for `triage` and `postmortem` only.
 
 Version 0.3.0 was published on 2026-11-09 by the tag `v0.3.0`. From a clone, `./go package-gates` builds the same image, and `LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev` points the wrapper at it.
 
 ```sh
 mkdir -p ~/.local/bin   # any directory on your PATH
-curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.3.1/lights-out
+curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.4.0/lights-out
 chmod +x ~/.local/bin/lights-out
 ```
 
@@ -87,7 +89,7 @@ lights-out test-integrity          # only: no test weakened, the changed lines' 
 Each command prints one line, named for itself. The images are signed keyless with Sigstore, through GitHub's OIDC token. There is no key to trust. To check one:
 
 ```sh
-cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.3.1 \
+cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:0.4.0 \
   --certificate-identity-regexp '^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```

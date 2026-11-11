@@ -51,4 +51,5 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/adoring-poitras-b31f86`: the podman harness-conformance port race, [handoffs/claude-adoring-poitras-b31f86.md](handoffs/claude-adoring-poitras-b31f86.md)
 - `claude/m17-network-edfb56`: M17's third slice, the agent network, ADR 0071, logbook 1.3, [handoffs/claude-m17-network-edfb56.md](handoffs/claude-m17-network-edfb56.md)
 - `claude/m24-phase-a-5dacb7`: M24 on tenacity, five tests-only tickets merged live, three fixes, [handoffs/claude-m24-phase-a-5dacb7.md](handoffs/claude-m24-phase-a-5dacb7.md)
-- Waiting: `claude/roles-and-mcp-0504cc` also wrote a logbook 1.3 of its own; its session reconciles it onto this merge before it lands
+- `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
+- Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) waits for 0.4.1
