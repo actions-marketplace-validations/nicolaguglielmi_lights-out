@@ -272,7 +272,11 @@ aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .0
 #net-replay-label { display: none; padding: 4px 10px; border-radius: 999px; background: var(--wait-bg); color: var(--ink); font-size: 13px; font-weight: 600; }
 #net[data-replay="on"] #net-replay-label, #net[data-replay="done"] #net-replay-label { display: inline-block; }
 .net-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-@media (max-width: 720px) { .net-cols { grid-template-columns: minmax(0, 1fr); } }
+/* Below the breakpoint the graph keeps a legible size and scrolls inside
+   its panel; the page itself never scrolls sideways. Provenance, decision:
+   620 px draws the 760-unit graph at about 80% of its size, chosen by eye
+   on the golden's ticket 0010 at 390 px. */
+@media (max-width: 720px) { .net-cols { grid-template-columns: minmax(0, 1fr); } .net-graph svg { min-width: 620px; } }
 .net-graph svg { display: block; width: 100%; height: auto; }
 .net-graph svg text { font: 600 12px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink); }
 .net-graph svg .sub { font-weight: 400; font-size: 11px; fill: var(--muted); }
