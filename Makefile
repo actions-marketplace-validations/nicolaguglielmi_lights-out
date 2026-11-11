@@ -44,7 +44,11 @@ export
 # values down to that recursive call.
 # A contract with the gates half only has no compose file (docs/adr/0042
 # §7), and the crew's own services must still load (ci/attach.sh case g).
-COMPOSE_FILE := compose.yaml$(if $(wildcard $(WORKLOAD_CONTRACT)/compose.yaml),:$(WORKLOAD_CONTRACT)/compose.yaml)
+# The root file alone is not a project (envoy and prometheus depend on
+# `backend`), so such a contract gets the arrangement harness-conformance
+# uses: the smallest workload fragment that defines `backend`, never
+# started, since `make up` refuses a contract without its own compose.yaml.
+COMPOSE_FILE := compose.yaml:$(if $(wildcard $(WORKLOAD_CONTRACT)/compose.yaml),$(WORKLOAD_CONTRACT)/compose.yaml,workloads/minimal/.lights-out/compose.yaml)
 export COMPOSE_FILE
 FLAGS_FILE := $(WORKLOAD_CONTRACT)/flags/flags.json
 export FLAGS_FILE

@@ -19,10 +19,11 @@
 #       2026-11-04 amendment): the real core/steps/ci.sh on a PR that
 #       rewrites the runner its base's SAST_CMD calls to report no finding.
 #   (g) a contract with the gates half only (docs/adr/0042 §7: the plane
-#       half is required only to run the plane) puts no workload compose
-#       file in COMPOSE_FILE: every path it names exists, so the crew's own
-#       compose services (egress, the harness) still load. Found by M24 on
-#       2026-11-11: every docker-compose call on an attached library failed.
+#       half is required only to run the plane) still gives docker-compose a
+#       project that loads: every path COMPOSE_FILE names exists, and
+#       `docker-compose config` accepts it (no engine needed), so the crew's
+#       own services (egress, the harness) run. Found by M24 on 2026-11-11:
+#       every docker-compose call on an attached library failed.
 # Written from the ADR, not from the scripts; ci/tower.sh case (h)'s shape.
 set -eu
 name=attach
@@ -462,6 +463,11 @@ if [ -z "$mismatch" ]; then
     [ -e "$f" ] || fail_case g "COMPOSE_FILE=$cf names $f, which does not exist: the crew's compose services would not load"
   done
   IFS=$old_ifs
+fi
+if [ -z "$mismatch" ]; then
+  as_ci env WORKLOAD="$t/gates-only-att" WORKLOAD_CONTRACT="$t/gates-only-att/.lights-out" COMPOSE_FILE="$cf" \
+    docker-compose config -q >"$log" 2>&1 \
+    || fail_case g "docker-compose does not load COMPOSE_FILE=$cf: $(tr '\n' ' ' <"$log")"
 fi
 
 [ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0037, 0033 or 0042"
