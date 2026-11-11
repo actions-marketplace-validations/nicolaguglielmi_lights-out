@@ -123,6 +123,33 @@ light gates && rc=0 || rc=$?
 shape gates "$rc"
 [ "$rc" -eq 1 ] || bad="$bad gates(the light package printed GO: gates)"
 
+# The package's other commands (docs/adr/0069 §5), each in its shapes: `spec`
+# on a testable and on a vague spec, `map` on this checkout (to a file in
+# the probe, never into the checkout's own store) and where there is no
+# repository, and a command the package does not know, which names itself
+# `lights-out`.
+# shellcheck disable=SC2016 # the backticks are the spec's markdown
+printf '%s\n' '# 0099 — a request' '' '## Acceptance criteria' '' \
+  'Given a number' 'When the caller negates it' 'Then the result is the number with its sign flipped' '' \
+  '## Perimeter' '' '- `calc.py`' > "$probe/good-spec.md"
+sed 's/Then the result is the number with its sign flipped/Then it works correctly/' "$probe/good-spec.md" > "$probe/vague-spec.md"
+light spec "$probe/good-spec.md" && rc=0 || rc=$?
+shape spec "$rc"
+[ "$rc" -eq 0 ] || bad="$bad spec(a testable spec was refused)"
+light spec "$probe/vague-spec.md" && rc=0 || rc=$?
+shape spec "$rc"
+[ "$rc" -eq 1 ] || bad="$bad spec(a vague spec passed)"
+light map --repo . --out "$probe/map.sqlite" && rc=0 || rc=$?
+shape map "$rc"
+[ "$rc" -eq 0 ] || bad="$bad map(this checkout's map was refused)"
+mkdir "$probe/no-repo"
+(export GIT_CEILING_DIRECTORIES="$probe"; light map --repo "$probe/no-repo" --out "$probe/none.sqlite") && rc=0 || rc=$?
+shape map "$rc"
+[ "$rc" -eq 1 ] || bad="$bad map(a directory that is no repository passed)"
+light not-a-command && rc=0 || rc=$?
+shape lights-out "$rc"
+[ "$rc" -eq 1 ] || bad="$bad lights-out(an unknown command passed)"
+
 # nogo with $NOGO_DETAILS (docs/adr/0038 §5). A throwaway gate sources the
 # lib under test and rejects with a reason and two detail lines. Wanted:
 # one stdout line and exit 1, the two lines in the file and still on stderr;

@@ -21,7 +21,9 @@
 # one, and init writes one (docs/adr/0042 §6), so both must know where it
 # lives. So does the light tier, core/light.py and its unit tests: it runs
 # with no make at all and finds the contract in git itself (docs/adr/0061
-# §6).
+# §6). So does the package's `map` command, core/__main__.py, and the MCP
+# server's unit tests: it reads an attached repository's tickets from
+# .lights-out/tickets with no make either (docs/adr/0069 §5).
 set -eu
 name=app-free
 . ci/lib.sh
@@ -39,7 +41,7 @@ hits=$(grep -rniE "$words" core gates verify adapters roles/dev-worker \
 contract_hits=$(grep -rnE '\.lights-out' core gates verify adapters roles/dev-worker \
   --include='*.sh' --include='*.py' --include='*.md' --include='*.promql' \
   --include='*.yaml' --include='*.yml' \
-  --exclude-dir=__pycache__ --exclude-dir=.pytest_cache | grep -Ev '^core/(attach\.sh|init\.py|init\.sh|light\.py|tests/test_init\.py|tests/test_light\.py):' || true)
+  --exclude-dir=__pycache__ --exclude-dir=.pytest_cache | grep -Ev '^core/(attach\.sh|init\.py|init\.sh|light\.py|__main__\.py|tests/test_init\.py|tests/test_light\.py|tests/test_mcp\.py):' || true)
 
 [ -z "$hits" ] || nogo "core/, gates/, verify/, adapters/ or roles/dev-worker/ names a workload" "$hits"
 [ -z "$contract_hits" ] || nogo "core/, gates/, verify/, adapters/ or roles/dev-worker/ spells the contract directory instead of WORKLOAD_CONTRACT" "$contract_hits"

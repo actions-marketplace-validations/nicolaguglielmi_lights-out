@@ -1,0 +1,13 @@
+{
+  "name": "lights-out",
+  "version": "0.3.1",
+  "description": "Numeric gates in the session: $gates and $spec answer one GO or NO-GO line, and $hook installs a pre-commit hook that stops a commit the light gates refuse.",
+  "author": {
+    "name": "Nicola Guglielmi"
+  },
+  "homepage": "https://github.com/nicolaguglielmi/lights-out/blob/main/docs/use-on-your-repo.md",
+  "repository": "https://github.com/nicolaguglielmi/lights-out",
+  "license": "Apache-2.0",
+  "keywords": ["gates", "pre-commit", "governance", "testing"],
+  "skills": "./skills/"
+}

@@ -1,0 +1,14 @@
+description = "Run the lights-out light gates on the staged changes and report their one GO or NO-GO line."
+prompt = """
+The gates of lights-out that need only git and Python (the light tier,
+docs/adr/0061) judged the staged changes of this repository and answered:
+
+!{lights-out-gates --light STAGED=1 2>&1 || true}
+
+Report the GO or NO-GO line above to the user exactly as it is, on a line
+of its own, and nothing before it. If there is no such line because the
+command was not found, tell the user to install it with
+`uv tool install lights-out-gates`. The light tier is not the judge: the
+line names the gates that did not run. Do not run the gates again and do
+not change files to turn a NO-GO into a GO unless the user asks.
+"""
