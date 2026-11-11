@@ -12,5 +12,7 @@ name=core-tests
 # import classify` resolves the same way whether this runs via `sh
 # ci/core-tests.sh`, `./go ci` or plain `python3 -m unittest`.
 python3 -m unittest discover -s core/tests -t . >&2 || nogo "unittest reported failures"
+# The python stack's runners, run for real (docs/adr/0074, amendment of 2026-11-11).
+python3 -m unittest discover -s stacks/python/tests -t stacks/python >&2 || nogo "stacks/python/tests reported failures"
 
 go
