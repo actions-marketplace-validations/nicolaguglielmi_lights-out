@@ -47,3 +47,9 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/optimistic-meitner-aed1df`: the first run on a repository with no contract drafts it, ADR 0064, ships with the next version, [handoffs/claude-optimistic-meitner-aed1df.md](handoffs/claude-optimistic-meitner-aed1df.md)
 - `claude/m17-kanban-trello-33fff3`: M17's second slice, the Trello-style kanban, ADR 0068, [handoffs/claude-m17-kanban-trello-33fff3.md](handoffs/claude-m17-kanban-trello-33fff3.md)
 - `claude/m39-toolbelt-fc9aa6`: M39, the agent's toolbelt (Claude Code plugin, Codex plugin, Gemini CLI extension, `lights-out-gates mcp`), ADR 0069, nothing listed yet, [handoffs/claude-m39-toolbelt-fc9aa6.md](handoffs/claude-m39-toolbelt-fc9aa6.md)
+- `claude/self-gate-speed-7d5654`: ADR 0074, `self` judged from the last green ancestor, mutation skips lines a sound recorded green judged; greens from before it are not records, so this round's merge is still mutated whole
+- `claude/adoring-poitras-b31f86`: the podman harness-conformance port race, [handoffs/claude-adoring-poitras-b31f86.md](handoffs/claude-adoring-poitras-b31f86.md)
+- `claude/m17-network-edfb56`: M17's third slice, the agent network, ADR 0071, logbook 1.3, [handoffs/claude-m17-network-edfb56.md](handoffs/claude-m17-network-edfb56.md)
+- `claude/m24-phase-a-5dacb7`: M24 on tenacity, five tests-only tickets merged live, three fixes, [handoffs/claude-m24-phase-a-5dacb7.md](handoffs/claude-m24-phase-a-5dacb7.md)
+- `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
+- Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) waits for 0.4.1

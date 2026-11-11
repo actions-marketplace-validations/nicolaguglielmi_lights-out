@@ -14,6 +14,17 @@
 # thing rework.sh calls that needs a harness, can be a stub. Case (h) runs
 # the real core/steps/ci.sh on a real git range: a PR is judged by the
 # base's gates, policy and perimeter, not by its own (docs/adr/0033).
+# The 1.3 sources (docs/adr/0071 §1, §8): the stub ci and crew leave what the
+# real ones leave, the lines of each gate and the patch of an attempt, and the
+# real rework.sh must copy the lines of the rejected attempt into its entry,
+# whichever judge rejected it (gates (i), review (j), main (m)), and leave
+# `lines` null where ci had none; case (h) runs the real ci.sh on a real range
+# with two planted gates, one that always says GO and one that always says
+# NO-GO, and `ci.lines` must be the gates' lines file, in order, stopping at the
+# first NO-GO, and a perimeter NO-GO its one line. assign.sh and rework.sh ask
+# tower.py for the patch, review.sh does not (static check, with its own
+# planted miss). Each new check is able to fail: a premise names what would
+# make it pass for the wrong reason.
 # Written from the ADRs, not from the scripts.
 set -eu
 name=tower
@@ -128,8 +139,10 @@ STUB
 # ci judges the head the tower hands it (HEAD_SHA, from the document), never
 # a fixed one. STUB_CI: pass | review | fail (every attempt) | fail-once
 # (NO-GO on attempt 1, GO after) | crash. A NO-GO carries the line and the
-# details array the real step records (docs/adr/0038 §5). A GO carries
-# neither, so a field left over from an earlier attempt would show.
+# details array the real step records (docs/adr/0038 §5), and every mode the
+# lines of the gates that ran (docs/adr/0071 §1): the NO-GO's last line is its
+# own, so a lines array copied from another attempt would show. A GO carries
+# no line and no details, so a field left over from an earlier attempt would show.
 cat > "$root/steps/ci.sh" <<'STUB'
 #!/bin/sh
 set -eu
@@ -141,10 +154,13 @@ if [ "$mode" = fail-once ]; then
   if [ "$(jq -r '.attempt // 1' "$DOC_FILE")" -eq 1 ]; then mode=fail; else mode=pass; fi
 fi
 case "$mode" in
-  pass) jq -cn --arg h "$HEAD_SHA" '{state: "ci-passed", ci: {verdict: "GO", risk_level: "low", decision: "auto-merge", head_sha: $h}}' ;;
-  review) jq -cn --arg h "$HEAD_SHA" '{state: "review", ci: {verdict: "GO", risk_level: "high", decision: "review", head_sha: $h}}' ;;
+  pass) jq -cn --arg h "$HEAD_SHA" '{state: "ci-passed", ci: {verdict: "GO", risk_level: "low", decision: "auto-merge", head_sha: $h,
+    lines: ["GO: risk — low, auto-merge", "GO: secrets"]}}' ;;
+  review) jq -cn --arg h "$HEAD_SHA" '{state: "review", ci: {verdict: "GO", risk_level: "high", decision: "review", head_sha: $h,
+    lines: ["GO: risk — high, review", "GO: secrets"]}}' ;;
   fail) jq -cn --arg h "$HEAD_SHA" '{state: "ci-failed", ci: {verdict: "NO-GO", failed: "mutation", risk_level: "low", decision: "auto-merge", head_sha: $h,
     line: "NO-GO: mutation — 2 mutants survived in \($h)",
+    lines: ["GO: risk — low, auto-merge", "NO-GO: mutation — 2 mutants survived in \($h)"],
     details: ["app/meetups.py:27 swap-comparison", "app/meetups.py:31 drop-return"]}}' ;;
 esac
 STUB
@@ -218,6 +234,9 @@ rm -rf "${d:?}/.crew/$TICKET"
 mkdir -p "$d/.crew/$TICKET/out"
 printf 'PR_NUMBER=1\nPR_URL=stub://pr/1\nBASE_SHA=base\nHEAD_SHA=%s\n' "$head" > "$d/.crew/$TICKET/pr-opened.env"
 printf '%s\n' '{"harness":"stub","model":null}' > "$d/.crew/$TICKET/out/run.json"
+# The patch of this attempt, as format-patch writes it, `--` signature included.
+printf 'From %s Mon Sep 17 00:00:00 2001\nSubject: [PATCH] attempt %s\n\n---\ndiff --git a/app/meetups.py b/app/meetups.py\n--- a/app/meetups.py\n+++ b/app/meetups.py\n@@ -1 +1,2 @@\n x\n+attempt %s\n--\n2.43.0\n\n' \
+  "$head" "$ATTEMPT" "$ATTEMPT" > "$d/.crew/$TICKET/out/patch"
 printf 'GO: crew\n'
 STUB
 
@@ -427,6 +446,14 @@ fi
 line1='NO-GO: mutation — 2 mutants survived in head1'
 detail1='app/meetups.py:27 swap-comparison'
 detail2='app/meetups.py:31 drop-return'
+# The lines of the gates that ran, as the stub ci records them (docs/adr/0071 §1).
+lines_pass='["GO: risk — low, auto-merge","GO: secrets"]'
+lines_review='["GO: risk — high, review","GO: secrets"]'
+lines_fail() { printf '["GO: risk — low, auto-merge","NO-GO: mutation — 2 mutants survived in head%s"]' "$1"; }
+# stub_patch N: the patch the stub crew leaves for attempt N, byte for byte.
+stub_patch() {
+  printf 'From head%s Mon Sep 17 00:00:00 2001\nSubject: [PATCH] attempt %s\n\n---\ndiff --git a/app/meetups.py b/app/meetups.py\n--- a/app/meetups.py\n+++ b/app/meetups.py\n@@ -1 +1,2 @@\n x\n+attempt %s\n--\n2.43.0\n\n' "$1" "$1" "$1"
+}
 has() { grep -qF -- "$2" "$1"; }  # FILE TEXT: does FILE contain TEXT
 audit_go() {  # NAME: the audit must accept the record as it stands
   out=$(audit) || true
@@ -454,6 +481,19 @@ if [ -z "$mismatch" ]; then
   [ "$(doc | jq -c '.rework[0].details')" = "[\"$detail1\",\"$detail2\"]" ] \
     || fail_case i-rework "rework[0].details: $(doc | jq -c '.rework[0].details')"
   [ -n "$(doc | jq -r '.rework[0].at // empty')" ] || fail_case i-rework "rework[0] has no time"
+  # docs/adr/0071 §1: the entry keeps the lines of the gates that rejected the
+  # attempt, which are not the lines of the attempt that passed.
+  [ "$(doc | jq -c '.rework[0].lines')" = "$(lines_fail 1)" ] || fail_case i-lines "rework[0].lines: $(doc | jq -c '.rework[0].lines')"
+  [ "$(doc | jq -c '.ci.lines')" = "$lines_pass" ] || fail_case i-lines "ci.lines after the passing attempt: $(doc | jq -c '.ci.lines')"
+  [ "$(doc | jq -c '.rework[0].lines')" != "$(doc | jq -c '.ci.lines')" ] || fail_case i-lines "the rejected attempt's lines are the passing attempt's"
+  # docs/adr/0071 §1: the patch and its files of the attempt rework.sh ran, from
+  # the crew's out/patch, on the attempt's task; the first attempt's stub task has none.
+  [ "$(doc | jq -r '.tasks[1].attempt')" = 2 ] || fail_case i-patch "tasks[1] is $(doc | jq -c '.tasks[1] | del(.patch)')"
+  [ "$(doc | jq -r '.tasks[1].patch.text')" = "$(stub_patch 2)" ] || fail_case i-patch "tasks[1].patch.text is not the crew's patch of attempt 2"
+  [ "$(doc | jq -r '.tasks[1].patch.bytes')" = "$(stub_patch 2 | wc -c | tr -d ' ')" ] || fail_case i-patch "tasks[1].patch.bytes is $(doc | jq -r '.tasks[1].patch.bytes')"
+  [ "$(doc | jq -cS '[.tasks[1].patch.truncated, .tasks[1].files]')" = '[false,[{"added":1,"member":null,"path":"app/meetups.py","removed":0}]]' ] \
+    || fail_case i-patch "tasks[1].files: $(doc | jq -cS '[.tasks[1].patch.truncated, .tasks[1].files]')"
+  [ "$(doc | jq -r '.tasks[0] | has("patch") or has("files")')" = false ] || fail_case i-patch "the first attempt's stub task grew a patch"
   # What the worker was given for attempt 2: the verdict, in the gate's words.
   for want in "$line1" "$detail1" "$detail2"; do
     has rework-input-2.md "$want" || fail_case i-input "the worker's attempt-2 input lacks: $want"
@@ -481,6 +521,10 @@ if [ -z "$mismatch" ]; then
   [ "$(doc | jq '.rework | length')" = 1 ] || fail_case j-rework "rework has $(doc | jq '.rework | length') entries, want 1"
   [ "$(doc | jq -r '.rework[0] | "\(.attempt) \(.judge) \(.head_sha)"')" = "1 review head1" ] \
     || fail_case j-rework "rework[0]: $(doc | jq -c '.rework[0]')"
+  # docs/adr/0071 §1: the reviewer rejected a head the gates passed; the entry
+  # keeps the gates' GO lines of that head (a NO-GO of the gates never reached it).
+  [ "$(doc | jq -c '.rework[0].lines')" = "$lines_review" ] || fail_case j-lines "rework[0].lines: $(doc | jq -c '.rework[0].lines')"
+  [ "$(doc | jq -c '.rework[0].lines | map(startswith("GO: ")) | all')" = true ] || fail_case j-lines "a line that is not a GO in a review's entry"
   for want in 'reviewer point one: the empty-venue branch has no test' 'reviewer point two: the loop in meetups.py never ends'; do
     has rework-input-2.md "$want" || fail_case j-input "the worker's attempt-2 input lacks the reviewer's reason: $want"
   done
@@ -510,6 +554,14 @@ if [ -z "$mismatch" ]; then
     || fail_case k-rework "rework attempts: $(doc | jq -c '[.rework[].attempt]')"
   [ "$(doc | jq -c '[.rework[].judge] | unique')" = '["gates"]' ] || fail_case k-rework "judges: $(doc | jq -c '[.rework[].judge]')"
   [ "$(doc | jq -r '.rework[-1].head_sha')" = "head$max" ] || fail_case k-rework "the last rejected head is $(doc | jq -r '.rework[-1].head_sha')"
+  # docs/adr/0071 §1: each entry, the one that stops the ticket too, has the
+  # lines of its own attempt (its head is named in the NO-GO line).
+  n=1
+  while [ "$n" -le "$max" ]; do
+    [ "$(doc | jq -c ".rework[$((n - 1))].lines")" = "$(lines_fail "$n")" ] \
+      || fail_case k-lines "rework[$((n - 1))].lines: $(doc | jq -c ".rework[$((n - 1))].lines"), want attempt $n's"
+    n=$((n + 1))
+  done
   [ "$(queue)" = 0 ] || fail_case k-queue "an event was published after needs-human"
   [ "$(count '^merge|^release')" = 0 ] || fail_case k-merge "a capped ticket was merged or released: $(effects)"
   [ "$(jq -r .merged world/pr-1.json)" = false ] || fail_case k-merge "the code host says the PR is merged"
@@ -539,6 +591,7 @@ if [ -z "$mismatch" ]; then
   [ "$(count '^crew ')" = "$((max - 1))" ] || fail_case "k'-crew" "crew ran $(count '^crew ') times, want $((max - 1))"
   [ "$(doc | jq '.rework | length')" = "$max" ] || fail_case "k'-rework" "rework has $(doc | jq '.rework | length') entries, want $max"
   [ "$(doc | jq -c '[.rework[].judge] | unique')" = '["review"]' ] || fail_case "k'-rework" "judges: $(doc | jq -c '[.rework[].judge]')"
+  [ "$(doc | jq -c '[.rework[].lines] | unique')" = "[$lines_review]" ] || fail_case "k'-lines" "rework lines: $(doc | jq -c '[.rework[].lines]')"
   [ "$(queue)" = 0 ] || fail_case "k'-queue" "an event was published after needs-human"
   [ "$(count '^merge|^release')" = 0 ] || fail_case "k'-merge" "a capped ticket was merged or released: $(effects)"
   n=2
@@ -597,7 +650,62 @@ if [ -z "$mismatch" ]; then
   [ "$(jq -r .head_sha world/pr-1.json)" = moved ] || fail_case "l'" "the refused rework pushed a head"
 fi
 
+# (m) the third judge and a record with no lines (docs/adr/0071 §1): the entry
+# copies `ci.lines` whoever rejected, and says null where ci had none. The
+# document is written by hand at ci-failed, as the tower leaves it after the
+# check of main (docs/adr/0056 §6) or after gates that left no lines file.
+seed_failed() {  # CI_JSON MAINLINE_JSON: a ticket at ci-failed on attempt 1, head1
+  jq -cn --argjson ci "$1" --argjson main "$2" '{id: "0001", state: "ci-failed", attempt: 1, history: [],
+    pr: {number: 1, url: "stub://pr/1", base_sha: "base", head_sha: "head1"}, ci: $ci, mainline: $main}' \
+    | sh adapters/stub-state/put.sh tickets 0001
+}
+if [ -z "$mismatch" ]; then
+  reset
+  seed_failed '{"verdict":"GO","decision":"auto-merge","head_sha":"head1","lines":["GO: risk — low, auto-merge","GO: secrets"]}' \
+    '{"verdict":"NO-GO","judge":"main","line":"NO-GO: gates — main is red after the merge","details":["main broke"]}' \
+    || fail_case m-seed "could not seed the document"
+  sh core/tower.sh step 0001 rework 2>"$log" || fail_case m-main "rework of a main NO-GO exited $?"
+  [ "$(doc | jq -r '.rework[0] | "\(.attempt) \(.judge) \(.line)"')" = "1 main NO-GO: gates — main is red after the merge" ] \
+    || fail_case m-main "rework[0]: $(doc | jq -c '.rework[0]')"
+  [ "$(doc | jq -c '.rework[0].lines')" = "$lines_pass" ] || fail_case m-lines "rework[0].lines for the main judge: $(doc | jq -c '.rework[0].lines')"
+  [ "$(doc | jq -r '.state')" = pr-opened ] || fail_case m-main "state $(doc | jq -r .state), want pr-opened"
+fi
+if [ -z "$mismatch" ]; then
+  reset
+  seed_failed '{"verdict":"NO-GO","failed":"perimeter","decision":"unknown","head_sha":"head1","line":"NO-GO: perimeter — app/x.py is outside","details":[]}' null \
+    || fail_case m-seed "could not seed the document"
+  sh core/tower.sh step 0001 rework 2>"$log" || fail_case m-null "rework of a ci with no lines exited $?"
+  [ "$(doc | jq -r '.rework[0] | "\(.judge) \(has("lines")) \(.lines)"')" = "gates true null" ] \
+    || fail_case m-null "rework[0] of a ci with no lines: $(doc | jq -c '.rework[0]')"
+fi
+if [ -z "$mismatch" ]; then
+  reset
+  seed_failed '{"verdict":"NO-GO","failed":"perimeter","decision":"unknown","head_sha":"head1","line":"NO-GO: perimeter — app/x.py is outside","lines":["NO-GO: perimeter — app/x.py is outside"],"details":[]}' null \
+    || fail_case m-seed "could not seed the document"
+  sh core/tower.sh step 0001 rework 2>"$log" || fail_case m-perimeter "rework of a perimeter NO-GO exited $?"
+  [ "$(doc | jq -c '.rework[0].lines')" = '["NO-GO: perimeter — app/x.py is outside"]' ] \
+    || fail_case m-perimeter "rework[0].lines of a perimeter NO-GO: $(doc | jq -c '.rework[0].lines')"
+fi
+
 cd "$repo"
+
+# The patch is stored for a worker's attempt, never for a reviewer's run
+# (docs/adr/0071 §1): assign.sh and rework.sh call `tower.py task --patch`,
+# review.sh calls `tower.py task` without it. Read with awk; the matcher is
+# tried first on a planted line each way, so it can say no and can say yes.
+asks_for_patch() { awk '/tower\.py task/ && /--patch/ { found = 1 } END { exit found ? 0 : 1 }'; }
+calls_task() { awk '/tower\.py task/ { found = 1 } END { exit found ? 0 : 1 }'; }
+# shellcheck disable=SC2016 # the planted lines are text, not expansions
+printf 'task=$(python3 core/tower.py task --patch "$d/run.json")\n' | asks_for_patch || fail_case patch-matcher "the matcher misses a call with --patch"
+# shellcheck disable=SC2016 # the planted lines are text, not expansions
+! printf 'task=$(python3 core/tower.py task "$d/run.json")\n' | asks_for_patch || fail_case patch-matcher "the matcher sees --patch in a call without it"
+! printf '# --patch is for workers\n' | asks_for_patch || fail_case patch-matcher "the matcher sees --patch away from a tower.py task call"
+for step in assign rework; do
+  calls_task < "$repo/core/steps/$step.sh" || fail_case "patch-$step" "core/steps/$step.sh does not call tower.py task at all; this check proves nothing"
+  asks_for_patch < "$repo/core/steps/$step.sh" || fail_case "patch-$step" "core/steps/$step.sh does not ask tower.py task for the patch (--patch)"
+done
+calls_task < "$repo/core/steps/review.sh" || fail_case patch-review "core/steps/review.sh does not call tower.py task at all; this check proves nothing"
+! asks_for_patch < "$repo/core/steps/review.sh" || fail_case patch-review "core/steps/review.sh asks tower.py task for a patch: a reviewer's run must store none"
 
 # (h) docs/adr/0033, ticket 0007: the real core/steps/ci.sh on a real git
 # range, a stub CodeHost and a stub Tracker. The base is this checkout's
@@ -612,10 +720,16 @@ cd "$repo"
 if [ -z "$mismatch" ]; then
   g="$root/g"
   mkdir -p "$g/host/gates" "$g/host/ci" "$g/host/core/steps" "$g/host/policy" "$g/host/app" "$g/tickets"
-  sed 's/^GATES := .*/GATES := risk/' Makefile > "$g/host/Makefile"
+  # EXTRA_GATES (the environment, empty unless a case sets it) adds the planted gates below.
+  # shellcheck disable=SC2016 # $(EXTRA_GATES) is make's, not the shell's
+  sed 's/^GATES := .*/GATES := risk $(EXTRA_GATES)/' Makefile > "$g/host/Makefile"
   cp -R profiles "$g/host/profiles"
   cp app/workload.env "$g/host/app/workload.env"
   cp gates/risk.sh "$g/host/gates/"
+  # Two planted gates, one that always says GO with a detail and one that always
+  # says NO-GO with a detail line (h3, h4): what `ci.lines` must hold is known.
+  printf '#!/bin/sh\nname=go-demo\n. ci/lib.sh\ngo_with "planted, always GO"\n' > "$g/host/gates/go-demo.sh"
+  printf '#!/bin/sh\nname=nogo-demo\n. ci/lib.sh\nnogo "planted, always NO-GO" "a detail line"\n' > "$g/host/gates/nogo-demo.sh"
   cp ci/lib.sh "$g/host/ci/"
   cp core/risk.py core/policy.py core/perimeter.sh "$g/host/core/"
   cp core/steps/ci.sh "$g/host/core/steps/"
@@ -684,6 +798,11 @@ TICKET
   [ "$(printf '%s' "$got" | jq -r '.state + " " + .ci.verdict + " " + .ci.risk_level + " " + .ci.decision')" = "review GO high review" ] \
     || fail_case h1 "a PR loosening policy/merge.env: $got (want review GO high review)"
   [ "$(cat "$g/status.log")" = "$head_sha success" ] || fail_case h1 "status posted: $(cat "$g/status.log")"
+  # docs/adr/0071 §1: ci.lines is the gates' own lines file, and the one gate
+  # that ran says plain `GO: risk`; the summary line is another thing.
+  [ "$(printf '%s' "$got" | jq -c '.ci.lines')" = '["GO: risk"]' ] || fail_case h1-lines "ci.lines: $(printf '%s' "$got" | jq -c '.ci.lines')"
+  [ "$(printf '%s' "$got" | jq -r '.ci.line')" != "$(printf '%s' "$got" | jq -r '.ci.lines[0]')" ] \
+    || fail_case h1-lines "ci.lines[0] is the summary line, so it proves nothing about the lines file"
 fi
 if [ -z "$mismatch" ]; then
   rm -f "$g/status.log"
@@ -696,6 +815,33 @@ if [ -z "$mismatch" ]; then
   esac
   ! grep -q '^risk: ' "$log" || fail_case h2 "a gate ran on a diff outside the perimeter"
   [ "$(cat "$g/status.log")" = "$head_sha failure" ] || fail_case h2 "status posted: $(cat "$g/status.log")"
+  # docs/adr/0071 §1: the step's own re-check of the perimeter records its one line.
+  [ "$(printf '%s' "$got" | jq -c '.ci.lines | length')" = 1 ] || fail_case h2-lines "ci.lines: $(printf '%s' "$got" | jq -c '.ci.lines')"
+  [ "$(printf '%s' "$got" | jq -r '.ci.lines[0]')" = "$(printf '%s' "$got" | jq -r '.ci.line')" ] \
+    || fail_case h2-lines "ci.lines[0] is '$(printf '%s' "$got" | jq -r '.ci.lines[0]')', not the one NO-GO line the step printed"
+  case "$(printf '%s' "$got" | jq -r '.ci.lines[0]')" in "NO-GO: perimeter — "*) : ;; *) fail_case h2-lines "the recorded line is not a perimeter NO-GO" ;; esac
+fi
+# h3 and h4 (docs/adr/0071 §1): the gates run from the base's Makefile with the
+# planted gates added through EXTRA_GATES. h3, all GO: every gate's line, in the
+# order run. h4, a NO-GO in the middle: the lines up to it and none after (`make
+# gates` stops at the first NO-GO), the failed gate named, state ci-failed.
+if [ -z "$mismatch" ]; then
+  export EXTRA_GATES=go-demo
+  got=$(step_ci 0001) || fail_case h3 "the CI step exited $?"
+  unset EXTRA_GATES
+  [ "$(printf '%s' "$got" | jq -c '.ci.lines')" = '["GO: risk","GO: go-demo — planted, always GO"]' ] \
+    || fail_case h3 "ci.lines with two gates that said GO: $(printf '%s' "$got" | jq -c '.ci.lines') (the document: $got)"
+  [ "$(printf '%s' "$got" | jq -r '.ci.verdict')" = GO ] || fail_case h3 "verdict $(printf '%s' "$got" | jq -r '.ci.verdict'), want GO"
+fi
+if [ -z "$mismatch" ]; then
+  export EXTRA_GATES="nogo-demo go-demo"
+  got=$(step_ci 0001) || fail_case h4 "the CI step exited $?"
+  unset EXTRA_GATES
+  [ "$(printf '%s' "$got" | jq -r '.state + " " + .ci.verdict + " " + .ci.failed')" = "ci-failed NO-GO nogo-demo" ] \
+    || fail_case h4 "a planted NO-GO: $got (want ci-failed NO-GO nogo-demo; if the gate did not run, the premise of h3 and h4 is gone)"
+  [ "$(printf '%s' "$got" | jq -c '.ci.lines')" = '["GO: risk","NO-GO: nogo-demo — planted, always NO-GO"]' ] \
+    || fail_case h4 "ci.lines of a NO-GO: $(printf '%s' "$got" | jq -c '.ci.lines'); want the gates up to the NO-GO and none after"
+  [ "$(printf '%s' "$got" | jq -c '.ci.details')" = '["a detail line"]' ] || fail_case h4 "ci.details: $(printf '%s' "$got" | jq -c '.ci.details')"
 fi
 
 [ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0019, 0033, 0034 or 0038"

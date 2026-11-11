@@ -652,6 +652,19 @@ runs JavaScript that looks in `ALL_TOOLS`. A model that never looks never
 calls the tool, and `calls` shows 0. The live proof against the real
 OpenAI API has not run.
 
+## Amendment 2026-11-11: logbook 1.3 is shared with ADR 0071
+
+ADR 0071 (the governed network) also took the logbook to 1.3, on its own
+branch. Neither 1.3 was released, so there is one 1.3, not a 1.4. It
+carries both slices' fields, all optional: ADR 0071's (each attempt's
+`members`, `patch` and `files`; `ci.gates` and each rework entry's
+`gates`; each ticket's `files`) and this ADR's (top-level `agents:
+{lines}`; each ticket's `task.mcp` and `review.instructions`). There is one
+schema, `core/logbook/1.3.schema.json`, and one golden,
+`fixtures/logbook/golden-1.3.json`, written by the reader over the stub
+sources that now hold both slices' facts. `golden-1.2.json` stays as the
+old-logbook fixture, as ADR 0071 says.
+
 ## Golden-rule check
 
 `./go demo` is unchanged. At L0 the reviewers and the worker replay, and

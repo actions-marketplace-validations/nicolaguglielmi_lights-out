@@ -25,17 +25,19 @@
           "0001"
         ],
         "files": [
+          "app/backend/notify/send.py",
           "app/backend/router.py",
           "app/backend/waitlist/queue.py"
         ],
         "number": "0002",
         "path": "docs/adr/0002-waitlist-order.md",
         "status": "proposed — supersedes nothing",
-        "text": "# ADR 0002 — The waitlist is first in, first out\n\n- Status:   proposed — supersedes nothing  \n- Status: accepted\n\nThe queue is `app/backend/waitlist/queue.py`, routed by\n`app/backend/router.py`. Ticket 0002 builds it and tickets 0004 and 0008\ntouch the router. It follows ADR 0001.\n",
+        "text": "# ADR 0002 — The waitlist is first in, first out\n\n- Status:   proposed — supersedes nothing  \n- Status: accepted\n\nThe queue is `app/backend/waitlist/queue.py`, routed by\n`app/backend/router.py`. Ticket 0002 builds it and tickets 0004 and 0008\ntouch the router. It follows ADR 0001. The waitlist is told by\n`app/backend/notify/send.py`.\n",
         "tickets": [
           "0002",
           "0004",
-          "0008"
+          "0008",
+          "0010"
         ],
         "title": "ADR 0002 — The waitlist is first in, first out"
       },
@@ -57,7 +59,7 @@
         "title": "ADR 0003 — Keep the README short"
       }
     ],
-    "map_sha": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4"
+    "map_sha": "2db9f76c0cdf3fcaecdf1f365246546eaef5cc93"
   },
   "agents": {
     "lines": [
@@ -129,6 +131,7 @@
     {
       "state": "held",
       "tickets": [
+        "0010",
         "0002"
       ]
     },
@@ -279,6 +282,38 @@
     {
       "answer": {
         "answer": "GO",
+        "at": "2026-11-02T07:45:00Z",
+        "by": "bob",
+        "via": "cli"
+      },
+      "at": "2026-11-02T07:29:00Z",
+      "from": "releases.jsonl",
+      "held_at": 25,
+      "image": "img-n",
+      "stable": "0.1.0",
+      "stages": [
+        {
+          "numbers": [
+            "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 5,
+          "verdict": "GO"
+        },
+        {
+          "numbers": [
+            "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 25,
+          "verdict": "GO"
+        }
+      ],
+      "ticket": "0010",
+      "verdict": "held",
+      "version": "0.2.5-n"
+    },
+    {
+      "answer": {
+        "answer": "GO",
         "at": "2026-11-02T10:30:00Z",
         "by": "alice",
         "via": "console"
@@ -364,7 +399,7 @@
   "schema": "lights-out/logbook/1.3",
   "source": {
     "code_host": "gitea",
-    "commit": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4",
+    "commit": "2db9f76c0cdf3fcaecdf1f365246546eaef5cc93",
     "level": "l0",
     "workload": "app"
   },
@@ -432,12 +467,14 @@
         "decision": "auto-merge",
         "details": [],
         "failed": null,
+        "gates": null,
         "head_sha": "h1",
         "line": "GO: ci",
         "risk_level": "low",
         "verdict": "GO"
       },
       "feature": "venues",
+      "files": [],
       "history": [
         {
           "at": "2026-11-01T09:00:00Z",
@@ -630,6 +667,7 @@
       "attempt": 2,
       "ci": null,
       "feature": null,
+      "files": [],
       "history": [
         {
           "at": "2026-11-02T08:00:00Z",
@@ -676,6 +714,7 @@
           "details": [
             "FAILED tests/test_w.py::test_join"
           ],
+          "gates": null,
           "head_sha": "h0",
           "judge": "gates",
           "line": "NO-GO: tests — 1 failed"
@@ -762,12 +801,14 @@
           "FAILED tests/a.py::two"
         ],
         "failed": "tests",
+        "gates": null,
         "head_sha": "h3",
         "line": "NO-GO: tests — 2 failed",
         "risk_level": "low",
         "verdict": "NO-GO"
       },
       "feature": null,
+      "files": [],
       "history": [
         {
           "at": "2026-11-03T08:00:00Z",
@@ -851,6 +892,19 @@
       "attempt": 1,
       "ci": null,
       "feature": null,
+      "files": [
+        {
+          "adrs": [],
+          "attempts": [
+            1
+          ],
+          "glob": "app/backend/migrations/*",
+          "held_by": [],
+          "member": null,
+          "path": "app/backend/migrations/0002_rename.py",
+          "tests": null
+        }
+      ],
       "history": [
         {
           "at": "2026-11-03T09:00:00Z",
@@ -914,7 +968,34 @@
         "tokens": null,
         "turns": null
       },
-      "tasks": [],
+      "tasks": [
+        {
+          "attempt": 1,
+          "duration_s": null,
+          "files": [
+            {
+              "added": 1,
+              "member": null,
+              "path": "app/backend/migrations/0002_rename.py",
+              "removed": 0
+            }
+          ],
+          "harness": "replay",
+          "input_sha256": null,
+          "members": null,
+          "model": "stub-model",
+          "patch": {
+            "error": "withheld: the secrets gate did not say GO on attempt 1",
+            "ok": false
+          },
+          "provider": null,
+          "replayed": null,
+          "role": "dev-worker",
+          "thinking": null,
+          "tokens": null,
+          "turns": null
+        }
+      ],
       "timeline": [
         {
           "at": "2026-11-03T09:00:00Z",
@@ -942,7 +1023,7 @@
           "line": null,
           "model": "stub-model",
           "phase": "attempt",
-          "record": "tower task",
+          "record": "tower tasks",
           "replayed": null,
           "tokens": null,
           "turns": null,
@@ -973,6 +1054,7 @@
       "attempt": null,
       "ci": null,
       "feature": null,
+      "files": [],
       "history": [
         {
           "at": "2026-11-04T07:00:00Z",
@@ -1056,6 +1138,7 @@
       "attempt": 4,
       "ci": null,
       "feature": null,
+      "files": [],
       "history": [
         {
           "at": "2026-11-04T06:00:00Z",
@@ -1102,6 +1185,7 @@
           "details": [
             "x"
           ],
+          "gates": null,
           "head_sha": "h6",
           "judge": "gates",
           "line": "NO-GO: tests — 1 failed"
@@ -1113,6 +1197,7 @@
             "too broad",
             "second line"
           ],
+          "gates": null,
           "head_sha": "h7",
           "judge": "review",
           "line": "CHANGES-REQUESTED — reviewer"
@@ -1168,12 +1253,14 @@
         "decision": "review",
         "details": [],
         "failed": null,
+        "gates": null,
         "head_sha": "h8",
         "line": "GO: ci",
         "risk_level": "medium",
         "verdict": "GO"
       },
       "feature": null,
+      "files": [],
       "history": [
         {
           "at": "2026-11-04T05:00:00Z",
@@ -1258,6 +1345,7 @@
       "attempt": null,
       "ci": null,
       "feature": "waiting-list",
+      "files": [],
       "history": [
         {
           "at": "2026-11-07T08:00:00Z",
@@ -1413,6 +1501,533 @@
       ],
       "title": "0009 — A waiting list when a meetup is full",
       "updated_at": "2026-11-07T08:10:07Z",
+      "wait": null
+    },
+    {
+      "adrs": [
+        "0002"
+      ],
+      "attempt": 2,
+      "ci": {
+        "decision": "review",
+        "details": [],
+        "failed": null,
+        "gates": [
+          {
+            "gate": "risk",
+            "line": "GO: risk — low, review",
+            "verdict": "GO"
+          },
+          {
+            "gate": "secrets",
+            "line": "GO: secrets",
+            "verdict": "GO"
+          },
+          {
+            "gate": "test-weakening",
+            "line": "GO: test-weakening",
+            "verdict": "GO"
+          },
+          {
+            "gate": "deps",
+            "line": "GO: deps",
+            "verdict": "GO"
+          },
+          {
+            "gate": "sast",
+            "line": "GO: sast — in the workbench",
+            "verdict": "GO"
+          },
+          {
+            "gate": "test",
+            "line": "GO: test — in the workbench",
+            "verdict": "GO"
+          },
+          {
+            "gate": "mutation",
+            "line": "GO: mutation — score 92% against a baseline of 80%",
+            "verdict": "GO"
+          },
+          {
+            "gate": "test-proof",
+            "line": "GO: test-proof — in the workbench, the changed tests fail on the base b10",
+            "verdict": "GO"
+          }
+        ],
+        "head_sha": "h10b",
+        "line": "GO: gates — risk low, review",
+        "risk_level": "low",
+        "verdict": "GO"
+      },
+      "feature": "waitlist",
+      "files": [
+        {
+          "adrs": [
+            "0002"
+          ],
+          "attempts": [
+            1,
+            2
+          ],
+          "glob": "app/backend/notify/*",
+          "held_by": [],
+          "member": "impl",
+          "path": "app/backend/notify/send.py",
+          "tests": [
+            "tests/test_notify.py"
+          ]
+        },
+        {
+          "adrs": [],
+          "attempts": [
+            1
+          ],
+          "glob": "tests/test_notify.py",
+          "held_by": [],
+          "member": "tests",
+          "path": "tests/test_notify.py",
+          "tests": []
+        }
+      ],
+      "history": [
+        {
+          "at": "2026-11-02T06:00:00Z",
+          "state": "opened",
+          "step": "open"
+        },
+        {
+          "at": "2026-11-02T06:05:00Z",
+          "attempt": 1,
+          "state": "pr-opened",
+          "step": "assign"
+        },
+        {
+          "at": "2026-11-02T06:20:00Z",
+          "attempt": 1,
+          "state": "ci-failed",
+          "step": "ci"
+        },
+        {
+          "at": "2026-11-02T06:40:00Z",
+          "attempt": 2,
+          "state": "pr-opened",
+          "step": "rework"
+        },
+        {
+          "at": "2026-11-02T06:55:00Z",
+          "attempt": 2,
+          "state": "review",
+          "step": "ci"
+        },
+        {
+          "at": "2026-11-02T07:05:00Z",
+          "attempt": 2,
+          "state": "ci-passed",
+          "step": "review"
+        },
+        {
+          "at": "2026-11-02T07:06:00Z",
+          "attempt": 2,
+          "state": "merged",
+          "step": "merge"
+        },
+        {
+          "at": "2026-11-02T07:08:00Z",
+          "attempt": 2,
+          "state": "main-green",
+          "step": "mainline"
+        },
+        {
+          "at": "2026-11-02T07:30:00Z",
+          "attempt": 2,
+          "state": "held",
+          "step": "release"
+        }
+      ],
+      "id": "0010",
+      "map": null,
+      "merge": {
+        "head_sha": "h10b",
+        "sha": "m10"
+      },
+      "opened_at": "2026-11-02T06:00:00Z",
+      "origin": null,
+      "outcome": {
+        "judge": "human",
+        "line": "promoted by bob via cli",
+        "verdict": "GO"
+      },
+      "perimeter": [
+        "app/backend/notify/*",
+        "tests/test_notify.py"
+      ],
+      "pr": {
+        "base_sha": "b10",
+        "head_sha": "h10b",
+        "number": 10,
+        "url": "http://codehost.invalid/o/r/pulls/10"
+      },
+      "priority": "P1",
+      "product": null,
+      "questions": [],
+      "release": {
+        "image": "img-n",
+        "numbers": [
+          "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
+        ],
+        "verdict": "GO: launchpad — held at 25%",
+        "version": "0.2.5-n"
+      },
+      "review": {
+        "harness": "replay",
+        "instructions": null,
+        "model": "stub-model",
+        "reason": "the tests were written from the ticket and kill the mutants",
+        "role": "test-reviewer",
+        "verdict": "approved"
+      },
+      "rework": [
+        {
+          "at": "2026-11-02T06:40:00Z",
+          "attempt": 1,
+          "details": [
+            "survived: app/backend/notify/send.py:2 `queue[0] if queue else None` -> `None`"
+          ],
+          "gates": [
+            {
+              "gate": "risk",
+              "line": "GO: risk — low, review",
+              "verdict": "GO"
+            },
+            {
+              "gate": "secrets",
+              "line": "GO: secrets",
+              "verdict": "GO"
+            },
+            {
+              "gate": "test-weakening",
+              "line": "GO: test-weakening",
+              "verdict": "GO"
+            },
+            {
+              "gate": "deps",
+              "line": "GO: deps",
+              "verdict": "GO"
+            },
+            {
+              "gate": "sast",
+              "line": "GO: sast — in the workbench",
+              "verdict": "GO"
+            },
+            {
+              "gate": "test",
+              "line": "GO: test — in the workbench",
+              "verdict": "GO"
+            },
+            {
+              "gate": "mutation",
+              "line": "NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%",
+              "verdict": "NO-GO"
+            }
+          ],
+          "head_sha": "h10a",
+          "judge": "gates",
+          "line": "NO-GO: gates — mutation: NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%"
+        }
+      ],
+      "spec": {
+        "at": null,
+        "by": null,
+        "criteria": null,
+        "line": null,
+        "sha256": "a010a010a010a010a010a010a010a010a010a010a010a010a010a010a010a010",
+        "title": "Notify the waitlist",
+        "verdict": null
+      },
+      "state": "held",
+      "task": {
+        "duration_s": null,
+        "harness": "network",
+        "input_sha256": null,
+        "mcp": null,
+        "model": null,
+        "provider": null,
+        "replayed": false,
+        "role": "dev-worker",
+        "thinking": null,
+        "tokens": null,
+        "turns": null
+      },
+      "tasks": [
+        {
+          "attempt": 1,
+          "duration_s": null,
+          "files": [
+            {
+              "added": 6,
+              "member": "impl",
+              "path": "app/backend/notify/send.py",
+              "removed": 0
+            },
+            {
+              "added": 8,
+              "member": "tests",
+              "path": "tests/test_notify.py",
+              "removed": 0
+            }
+          ],
+          "harness": "network",
+          "input_sha256": null,
+          "members": [
+            {
+              "duration_s": 48,
+              "hand_written": null,
+              "harness": "replay",
+              "id": "impl",
+              "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "model": "gemini-3.8-flash",
+              "perimeter": [
+                "app/backend/notify/*"
+              ],
+              "provider": "gemini",
+              "replayed": true,
+              "thinking": "high",
+              "tokens": {
+                "input": 41200,
+                "output": 910,
+                "total": 42110
+              },
+              "turns": 3
+            },
+            {
+              "duration_s": null,
+              "hand_written": true,
+              "harness": "replay",
+              "id": "tests",
+              "input_sha256": null,
+              "model": null,
+              "perimeter": [
+                "tests/test_notify.py"
+              ],
+              "provider": null,
+              "replayed": true,
+              "thinking": null,
+              "tokens": null,
+              "turns": null
+            }
+          ],
+          "model": null,
+          "patch": {
+            "bytes": 1129,
+            "text": "From a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 Mon Sep 17 00:00:00 2001\nFrom: impl <impl@example.invalid>\nSubject: [PATCH 1/2] notify the first person waiting\n\n---\n app/backend/notify/send.py | 6 ++++++\n 1 file changed, 6 insertions(+)\n\ndiff --git a/app/backend/notify/send.py b/app/backend/notify/send.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/backend/notify/send.py\n@@ -0,0 +1,6 @@\n+def first_waiting(queue):\n+    return queue[0] if queue else None\n+\n+\n+def notify(queue, send):\n+    return send(first_waiting(queue))\n--\nFrom b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2 Mon Sep 17 00:00:00 2001\nFrom: tests <tests@example.invalid>\nSubject: [PATCH 2/2] tests for the notifier, from the ticket alone\n\n---\n tests/test_notify.py | 8 ++++++++\n 1 file changed, 8 insertions(+)\n\ndiff --git a/tests/test_notify.py b/tests/test_notify.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_notify.py\n@@ -0,0 +1,8 @@\n+from app.backend.notify.send import notify\n+\n+\n+def test_the_first_waiting_is_told():\n+    told = []\n+    notify([\"ada\", \"bob\"], told.append)\n+    assert told == [\"ada\"]\n+    assert notify([], told.append) is None\n--\n",
+            "truncated": false
+          },
+          "provider": null,
+          "replayed": false,
+          "role": "dev-worker",
+          "thinking": null,
+          "tokens": null,
+          "turns": null
+        },
+        {
+          "attempt": 2,
+          "duration_s": null,
+          "files": [
+            {
+              "added": 2,
+              "member": "impl",
+              "path": "app/backend/notify/send.py",
+              "removed": 1
+            }
+          ],
+          "harness": "network",
+          "input_sha256": null,
+          "members": [
+            {
+              "duration_s": 31,
+              "hand_written": null,
+              "harness": "replay",
+              "id": "impl",
+              "input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "model": "gemini-3.8-flash",
+              "perimeter": [
+                "app/backend/notify/*"
+              ],
+              "provider": "gemini",
+              "replayed": true,
+              "thinking": "high",
+              "tokens": {
+                "input": 39800,
+                "output": 420,
+                "total": 40220
+              },
+              "turns": 2
+            },
+            {
+              "duration_s": null,
+              "hand_written": true,
+              "harness": "replay",
+              "id": "tests",
+              "input_sha256": null,
+              "model": null,
+              "perimeter": [
+                "tests/test_notify.py"
+              ],
+              "provider": null,
+              "replayed": true,
+              "thinking": null,
+              "tokens": null,
+              "turns": null
+            }
+          ],
+          "model": null,
+          "patch": {
+            "bytes": 577,
+            "text": "From c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3 Mon Sep 17 00:00:00 2001\nFrom: impl <impl@example.invalid>\nSubject: [PATCH] send nothing when nobody waits\n\n---\n app/backend/notify/send.py | 3 ++-\n 1 file changed, 2 insertions(+), 1 deletion(-)\n\ndiff --git a/app/backend/notify/send.py b/app/backend/notify/send.py\n--- a/app/backend/notify/send.py\n+++ b/app/backend/notify/send.py\n@@ -3,4 +3,5 @@ def first_waiting(queue):\n \n \n def notify(queue, send):\n-    return send(first_waiting(queue))\n+    first = first_waiting(queue)\n+    return None if first is None else send(first)\n--\n",
+            "truncated": false
+          },
+          "provider": null,
+          "replayed": false,
+          "role": "dev-worker",
+          "thinking": null,
+          "tokens": null,
+          "turns": null
+        }
+      ],
+      "timeline": [
+        {
+          "at": "2026-11-02T06:00:00Z",
+          "line": "opened directly: no request, no spec gate",
+          "phase": "open",
+          "record": "tower history",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-02T06:05:00Z",
+          "line": "PR #10",
+          "perimeter": [
+            "app/backend/notify/*",
+            "tests/test_notify.py"
+          ],
+          "phase": "assign",
+          "record": "tower history",
+          "verdict": null,
+          "wait": null
+        },
+        {
+          "at": "2026-11-02T06:05:00Z",
+          "attempt": 1,
+          "duration_s": null,
+          "harness": "network",
+          "line": null,
+          "model": null,
+          "phase": "attempt",
+          "record": "tower tasks",
+          "replayed": false,
+          "tokens": null,
+          "turns": null,
+          "verdict": null
+        },
+        {
+          "at": "2026-11-02T06:20:00Z",
+          "attempt": 1,
+          "line": null,
+          "phase": "gates",
+          "record": "tower ci",
+          "verdict": "ci-failed"
+        },
+        {
+          "at": "2026-11-02T06:40:00Z",
+          "attempt": 2,
+          "judge": "gates",
+          "line": "NO-GO: gates — mutation: NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%",
+          "phase": "rework",
+          "record": "tower rework",
+          "verdict": null
+        },
+        {
+          "at": "2026-11-02T06:40:00Z",
+          "attempt": 2,
+          "duration_s": null,
+          "harness": "network",
+          "line": null,
+          "model": null,
+          "phase": "attempt",
+          "record": "tower tasks",
+          "replayed": false,
+          "tokens": null,
+          "turns": null,
+          "verdict": null
+        },
+        {
+          "at": "2026-11-02T06:55:00Z",
+          "attempt": 2,
+          "line": "GO: gates — risk low, review",
+          "phase": "gates",
+          "record": "tower ci",
+          "verdict": "review"
+        },
+        {
+          "at": "2026-11-02T07:05:00Z",
+          "line": "the tests were written from the ticket and kill the mutants",
+          "phase": "review",
+          "record": "tower review",
+          "verdict": "approved"
+        },
+        {
+          "at": "2026-11-02T07:06:00Z",
+          "line": "m10",
+          "phase": "merge",
+          "record": "tower merge",
+          "verdict": "merged"
+        },
+        {
+          "at": "2026-11-02T07:29:00Z",
+          "line": "GO",
+          "numbers": [
+            "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 5,
+          "phase": "canary",
+          "record": "release log",
+          "verdict": "GO"
+        },
+        {
+          "at": "2026-11-02T07:29:00Z",
+          "line": "GO",
+          "numbers": [
+            "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
+          ],
+          "pct": 25,
+          "phase": "canary",
+          "record": "release log",
+          "verdict": "GO"
+        },
+        {
+          "at": "2026-11-02T07:30:00Z",
+          "line": "GO: launchpad — held at 25%",
+          "phase": "release",
+          "record": "tower release",
+          "verdict": "held"
+        },
+        {
+          "at": "2026-11-02T07:45:00Z",
+          "line": "GO by bob",
+          "phase": "sign-off",
+          "record": "release log",
+          "verdict": "GO",
+          "via": "cli"
+        },
+        {
+          "at": null,
+          "line": "promoted by bob via cli",
+          "phase": "outcome",
+          "record": "outcome, judged by human",
+          "verdict": "GO"
+        }
+      ],
+      "title": "Notify the waitlist",
+      "updated_at": "2026-11-02T07:30:00Z",
       "wait": null
     }
   ]

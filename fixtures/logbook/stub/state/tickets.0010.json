@@ -1,0 +1,328 @@
+{
+  "id": "0010",
+  "state": "held",
+  "attempt": 2,
+  "history": [
+    {
+      "step": "open",
+      "state": "opened",
+      "at": "2026-11-02T06:00:00Z"
+    },
+    {
+      "step": "assign",
+      "state": "pr-opened",
+      "at": "2026-11-02T06:05:00Z",
+      "attempt": 1
+    },
+    {
+      "step": "ci",
+      "state": "ci-failed",
+      "at": "2026-11-02T06:20:00Z",
+      "attempt": 1
+    },
+    {
+      "step": "rework",
+      "state": "pr-opened",
+      "at": "2026-11-02T06:40:00Z",
+      "attempt": 2
+    },
+    {
+      "step": "ci",
+      "state": "review",
+      "at": "2026-11-02T06:55:00Z",
+      "attempt": 2
+    },
+    {
+      "step": "review",
+      "state": "ci-passed",
+      "at": "2026-11-02T07:05:00Z",
+      "attempt": 2
+    },
+    {
+      "step": "merge",
+      "state": "merged",
+      "at": "2026-11-02T07:06:00Z",
+      "attempt": 2
+    },
+    {
+      "step": "mainline",
+      "state": "main-green",
+      "at": "2026-11-02T07:08:00Z",
+      "attempt": 2
+    },
+    {
+      "step": "release",
+      "state": "held",
+      "at": "2026-11-02T07:30:00Z",
+      "attempt": 2
+    }
+  ],
+  "spec": {
+    "title": "Notify the waitlist",
+    "sha256": "a010a010a010a010a010a010a010a010a010a010a010a010a010a010a010a010"
+  },
+  "task": {
+    "role": "dev-worker",
+    "harness": "network",
+    "provider": null,
+    "model": null,
+    "thinking": null,
+    "turns": null,
+    "tokens": null,
+    "duration_s": null,
+    "input_sha256": null,
+    "replayed": false,
+    "members": [
+      {
+        "id": "impl",
+        "perimeter": [
+          "app/backend/notify/*"
+        ],
+        "hand_written": null,
+        "harness": "replay",
+        "replayed": true,
+        "provider": "gemini",
+        "model": "gemini-3.8-flash",
+        "thinking": "high",
+        "turns": 2,
+        "tokens": {
+          "input": 39800,
+          "output": 420,
+          "total": 40220
+        },
+        "duration_s": 31,
+        "input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        "id": "tests",
+        "perimeter": [
+          "tests/test_notify.py"
+        ],
+        "hand_written": true,
+        "harness": "replay",
+        "replayed": true,
+        "provider": null,
+        "model": null,
+        "thinking": null,
+        "turns": null,
+        "tokens": null,
+        "duration_s": null,
+        "input_sha256": null
+      }
+    ],
+    "patch": {
+      "text": "From c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3 Mon Sep 17 00:00:00 2001\nFrom: impl <impl@example.invalid>\nSubject: [PATCH] send nothing when nobody waits\n\n---\n app/backend/notify/send.py | 3 ++-\n 1 file changed, 2 insertions(+), 1 deletion(-)\n\ndiff --git a/app/backend/notify/send.py b/app/backend/notify/send.py\n--- a/app/backend/notify/send.py\n+++ b/app/backend/notify/send.py\n@@ -3,4 +3,5 @@ def first_waiting(queue):\n \n \n def notify(queue, send):\n-    return send(first_waiting(queue))\n+    first = first_waiting(queue)\n+    return None if first is None else send(first)\n--\n",
+      "bytes": 577,
+      "truncated": false
+    },
+    "files": [
+      {
+        "path": "app/backend/notify/send.py",
+        "added": 2,
+        "removed": 1,
+        "member": "impl"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "role": "dev-worker",
+      "harness": "network",
+      "provider": null,
+      "model": null,
+      "thinking": null,
+      "turns": null,
+      "tokens": null,
+      "duration_s": null,
+      "input_sha256": null,
+      "replayed": false,
+      "attempt": 1,
+      "members": [
+        {
+          "id": "impl",
+          "perimeter": [
+            "app/backend/notify/*"
+          ],
+          "hand_written": null,
+          "harness": "replay",
+          "replayed": true,
+          "provider": "gemini",
+          "model": "gemini-3.8-flash",
+          "thinking": "high",
+          "turns": 3,
+          "tokens": {
+            "input": 41200,
+            "output": 910,
+            "total": 42110
+          },
+          "duration_s": 48,
+          "input_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "id": "tests",
+          "perimeter": [
+            "tests/test_notify.py"
+          ],
+          "hand_written": true,
+          "harness": "replay",
+          "replayed": true,
+          "provider": null,
+          "model": null,
+          "thinking": null,
+          "turns": null,
+          "tokens": null,
+          "duration_s": null,
+          "input_sha256": null
+        }
+      ],
+      "patch": {
+        "text": "From a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 Mon Sep 17 00:00:00 2001\nFrom: impl <impl@example.invalid>\nSubject: [PATCH 1/2] notify the first person waiting\n\n---\n app/backend/notify/send.py | 6 ++++++\n 1 file changed, 6 insertions(+)\n\ndiff --git a/app/backend/notify/send.py b/app/backend/notify/send.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/backend/notify/send.py\n@@ -0,0 +1,6 @@\n+def first_waiting(queue):\n+    return queue[0] if queue else None\n+\n+\n+def notify(queue, send):\n+    return send(first_waiting(queue))\n--\nFrom b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2 Mon Sep 17 00:00:00 2001\nFrom: tests <tests@example.invalid>\nSubject: [PATCH 2/2] tests for the notifier, from the ticket alone\n\n---\n tests/test_notify.py | 8 ++++++++\n 1 file changed, 8 insertions(+)\n\ndiff --git a/tests/test_notify.py b/tests/test_notify.py\nnew file mode 100644\n--- /dev/null\n+++ b/tests/test_notify.py\n@@ -0,0 +1,8 @@\n+from app.backend.notify.send import notify\n+\n+\n+def test_the_first_waiting_is_told():\n+    told = []\n+    notify([\"ada\", \"bob\"], told.append)\n+    assert told == [\"ada\"]\n+    assert notify([], told.append) is None\n--\n",
+        "bytes": 1129,
+        "truncated": false
+      },
+      "files": [
+        {
+          "path": "app/backend/notify/send.py",
+          "added": 6,
+          "removed": 0,
+          "member": "impl"
+        },
+        {
+          "path": "tests/test_notify.py",
+          "added": 8,
+          "removed": 0,
+          "member": "tests"
+        }
+      ]
+    },
+    {
+      "role": "dev-worker",
+      "harness": "network",
+      "provider": null,
+      "model": null,
+      "thinking": null,
+      "turns": null,
+      "tokens": null,
+      "duration_s": null,
+      "input_sha256": null,
+      "replayed": false,
+      "attempt": 2,
+      "members": [
+        {
+          "id": "impl",
+          "perimeter": [
+            "app/backend/notify/*"
+          ],
+          "hand_written": null,
+          "harness": "replay",
+          "replayed": true,
+          "provider": "gemini",
+          "model": "gemini-3.8-flash",
+          "thinking": "high",
+          "turns": 2,
+          "tokens": {
+            "input": 39800,
+            "output": 420,
+            "total": 40220
+          },
+          "duration_s": 31,
+          "input_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        {
+          "id": "tests",
+          "perimeter": [
+            "tests/test_notify.py"
+          ],
+          "hand_written": true,
+          "harness": "replay",
+          "replayed": true,
+          "provider": null,
+          "model": null,
+          "thinking": null,
+          "turns": null,
+          "tokens": null,
+          "duration_s": null,
+          "input_sha256": null
+        }
+      ],
+      "patch": {
+        "text": "From c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3 Mon Sep 17 00:00:00 2001\nFrom: impl <impl@example.invalid>\nSubject: [PATCH] send nothing when nobody waits\n\n---\n app/backend/notify/send.py | 3 ++-\n 1 file changed, 2 insertions(+), 1 deletion(-)\n\ndiff --git a/app/backend/notify/send.py b/app/backend/notify/send.py\n--- a/app/backend/notify/send.py\n+++ b/app/backend/notify/send.py\n@@ -3,4 +3,5 @@ def first_waiting(queue):\n \n \n def notify(queue, send):\n-    return send(first_waiting(queue))\n+    first = first_waiting(queue)\n+    return None if first is None else send(first)\n--\n",
+        "bytes": 577,
+        "truncated": false
+      },
+      "files": [
+        {
+          "path": "app/backend/notify/send.py",
+          "added": 2,
+          "removed": 1,
+          "member": "impl"
+        }
+      ]
+    }
+  ],
+  "pr": {
+    "number": 10,
+    "url": "http://codehost.invalid/o/r/pulls/10",
+    "base_sha": "b10",
+    "head_sha": "h10b"
+  },
+  "rework": [
+    {
+      "attempt": 1,
+      "judge": "gates",
+      "head_sha": "h10a",
+      "line": "NO-GO: gates — mutation: NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%",
+      "details": [
+        "survived: app/backend/notify/send.py:2 `queue[0] if queue else None` -> `None`"
+      ],
+      "lines": [
+        "GO: risk — low, review",
+        "GO: secrets",
+        "GO: test-weakening",
+        "GO: deps",
+        "GO: sast — in the workbench",
+        "GO: test — in the workbench",
+        "NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%"
+      ],
+      "at": "2026-11-02T06:40:00Z"
+    }
+  ],
+  "ci": {
+    "verdict": "GO",
+    "failed": null,
+    "risk_level": "low",
+    "decision": "review",
+    "line": "GO: gates — risk low, review",
+    "details": [],
+    "head_sha": "h10b",
+    "lines": [
+      "GO: risk — low, review",
+      "GO: secrets",
+      "GO: test-weakening",
+      "GO: deps",
+      "GO: sast — in the workbench",
+      "GO: test — in the workbench",
+      "GO: mutation — score 92% against a baseline of 80%",
+      "GO: test-proof — in the workbench, the changed tests fail on the base b10"
+    ]
+  },
+  "review": {
+    "role": "test-reviewer",
+    "verdict": "approved",
+    "reason": "the tests were written from the ticket and kill the mutants",
+    "harness": "replay",
+    "model": "stub-model"
+  },
+  "merge": {
+    "sha": "m10",
+    "head_sha": "h10b"
+  },
+  "release": {
+    "version": "0.2.5-n",
+    "image": "img-n",
+    "verdict": "GO: launchpad — held at 25%",
+    "numbers": [
+      "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
+    ]
+  }
+}

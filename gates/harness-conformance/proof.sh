@@ -49,6 +49,12 @@
 # server started in fake-cli's own directory, not the workspace, still
 # starts, and answers from the wrong place.
 #
+# The stand-ins listen on local ports the proof picks, and one picker serves
+# them all: it is proved first, under the load the proxy's own sockets put on
+# the kernel's port allocator, to hand out only ports its listeners can bind
+# (a picker that asked on 127.0.0.1 failed one podman run in twenty, the
+# stub's 60 s wait, and two docker ones, the proxy's).
+#
 # Run by `make harness-conformance` before the suite judges any real harness
 # (the judge is judged first, as ci/prompts.sh proves its checker on planted
 # files before reading roles/). Not a ci/ check: it starts the stub and
@@ -103,6 +109,19 @@ trap cleanup EXIT INT TERM
 # detached as an engine would run it (stdout and stdin closed, stderr in a file:
 # a child holding run.sh's pipe would hang the suite's `tee`).
 mkdir -p "$work/bin"
+# The one port picker, for every listener the proof starts (stub.py and
+# core/egress.py, both on 0.0.0.0). It asks the kernel for a port free on the
+# address the listener will bind, 0.0.0.0: a port picked on 127.0.0.1 can be
+# held, or in TIME_WAIT, on 127.0.0.2, where egress_wrap.py binds the proxy's
+# outgoing sockets from the same allocator, and the listener's bind then fails
+# with EADDRINUSE (the stub's 60 s wait in the suite, the proxy's 30 s in
+# core/egress.sh). A pick is only taken while no proxy runs, so nothing takes
+# the port between the pick and the bind. Proved below, under the proxy's load.
+cat > "$work/bin/freeport" <<'PICK'
+#!/bin/sh
+exec python3 -c 'import socket; s = socket.socket(); s.bind(("0.0.0.0", 0)); print(s.getsockname()[1])'
+PICK
+chmod +x "$work/bin/freeport"
 cat > "$work/bin/docker-compose" <<'SHIM'
 #!/bin/sh
 # Answers the suite's compose calls from the proof's tree (cwd), stub.py on a local port.
@@ -138,7 +157,7 @@ exec(code)' "$code" "$@" ;;
   *" up "*" egress "*)
     mkdir -p "$state" "$PWD/.crew/egress"
     alive && exit 0
-    port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    port=$("$(dirname "$0")/freeport")
     echo "$port" > "$state/egress.port"
     EGRESS_DIR="$PWD/.crew/egress" python3 proof-egress.py "$port" >/dev/null 2>>"$state/egress.err" </dev/null &
     echo $! > "$state/egress.pid" ;;
@@ -154,6 +173,8 @@ exec(code)' "$code" "$@" ;;
     [ ! -f "$PWD/.crew/conformance/stub.pid" ] || kill "$(cat "$PWD/.crew/conformance/stub.pid")" 2>/dev/null || : ;;
   *" logs "*" egress "*)
     sed 's/^/egress-1  | /' "$state/egress.err" 2>/dev/null || : ;;
+  *" logs "*" conformance-model "*)
+    sed 's/^/conformance-model-1  | /' "$PWD/.crew/conformance/stub.err" 2>/dev/null || : ;;
   *" build "*|*" logs "*) : ;;
   *)
     echo "docker-compose $*" >> "${PROOF_INVOKED:?}"
@@ -723,15 +744,57 @@ build_tree() {
   printf 'PROVIDER=anthropic\nMODEL=fake-model-1\nKEY_VAR=FAKE_KEY_VALUE\nTHINKING_PATH=.output_config.effort\nEGRESS=api.fake-provider.example:443\n' > "$t/adapters/fake-cli/conformance.env"
 }
 
+# --- the port picker, under the proxy's load -------------------------------------
+# Every port the picker hands out must bind the way its listener binds it
+# (stub.py: ThreadingHTTPServer on 0.0.0.0; core/egress.py: SO_REUSEADDR on
+# 0.0.0.0) while the proxy's outgoing sockets hold ports on 127.0.0.2. The load
+# is planted as the proxy leaves it: connections from ("127.0.0.2", 0) that close
+# first, so each stays in TIME_WAIT for the kernel's 60 s. How much and how many
+# picks (decisions, against a measurement in the workbench on 2026-11-11): a
+# quarter of the ephemeral range, which bind(0) fills on one parity first, so
+# about half of the ports a pick is offered are held; a picker that asks on
+# 127.0.0.1 then landed on a held port 95 times in 200 picks, so 20 picks miss
+# that defect with a chance near one in a million. The planting took 0.4 s.
+freeport() {
+  "$work/bin/freeport"
+}
+
+python3 -I - "$work/bin/freeport" <<'PY' || nogo "the port picker handed out a port its listener cannot bind (the proof's freeport)"
+import socket, subprocess, sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+lo, hi = map(int, open("/proc/sys/net/ipv4/ip_local_port_range").read().split())
+sink = socket.socket()
+sink.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sink.bind(("127.0.0.1", 0))
+sink.listen(128)
+held = set()
+for _ in range((hi - lo + 1) // 4):
+    c = socket.create_connection(sink.getsockname(), 5, ("127.0.0.2", 0))
+    held.add(c.getsockname()[1])
+    a, _ = sink.accept()
+    c.close()
+    a.close()
+sink.close()
+for i in range(20):
+    port = int(subprocess.run([sys.argv[1]], capture_output=True, text=True, check=True).stdout)
+    try:
+        ThreadingHTTPServer(("0.0.0.0", port), BaseHTTPRequestHandler).server_close()
+        s = socket.socket()
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("0.0.0.0", port))
+        s.close()
+    except OSError as e:
+        sys.exit("pick %d of 20: port %d, %s the %d the proxy's sockets hold: %s"
+                 % (i + 1, port, "one of" if port in held else "not one of", len(held), e))
+PY
+
 # --- the probe, one way out at a time -------------------------------------------
 # Without the suite: the real stub and the real proxy (egress_wrap.py) on local
 # ports, the probe under the stand-in network, one hole opened at a time. The
 # expected output is exact: eight lines, and nothing else, never what the probe
 # read. This is what keeps each of the probe's eight ways honest; the suite-level
 # defects further down only need one hole each.
-freeport() {
-  python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
-}
 
 probe_secret="probe-secret-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 
@@ -821,7 +884,7 @@ prove() {
   rm -f "$work/invoked"
   proved=$((proved + 1))
   errfile=$work/run-$proved.err
-  port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  port=$(freeport)
   verdict=$(cd "$t" && PATH="$work/bin:$PATH" PROOF_INVOKED="$work/invoked" CONFORMANCE=1 CONFORMANCE_PORT="$port" \
     CONFORMANCE_TIMEOUT_S=2 PROOF_COMPOSE_JSON="${compose_json:-}" WORKBENCH_IMAGE=proof COMPOSE_FILE=compose.yaml WORKLOAD=w WORKLOAD_CONTRACT=c \
     FAKE_DEFECT="$2" sh gates/harness-conformance.sh 2> "$errfile") && rc=0 || rc=$?
@@ -842,7 +905,8 @@ prove() {
       [ "$rc" -eq 1 ] || nogo "the suite accepted a harness that is wrong ($1): exit $rc" "$verdict"
       case "$verdict" in
         "NO-GO: harness-conformance — "*"$3"*) ;;
-        *) nogo "the suite refused '$1' for another reason than expected" "wanted: $3" "got: $verdict" ;;
+        *) nogo "the suite refused '$1' for another reason than expected" "wanted: $3" "got: $verdict" \
+             "--- the suite's stderr, last 30 lines" "$(tail -n 30 "$errfile")" ;;
       esac ;;
   esac
 }
