@@ -1,4 +1,4 @@
-# Handoff: M39 first slice, the agent's toolbelt (ADR 0069), 2026-11-10
+# Handoff: M39, the agent's toolbelt (ADR 0069 and its amendment of 2026-11-11), 2026-11-10/11
 
 Branch `claude/m39-toolbelt-fc9aa6`, from 85f213f (0.3.1 on `main`). Pushed, no pull request, not merged, no tag. Nothing published or listed anywhere: every listing is the owner's (`docs/launch/checklist.md`, "The agent's toolbelt (M39)").
 
@@ -21,15 +21,28 @@ Branch `claude/m39-toolbelt-fc9aa6`, from 85f213f (0.3.1 on `main`). Pushed, no 
 - **The map is not at `.crew/map.sqlite` in a user's repository** (roadmap M39 row): `lights-out-gates map` writes inside `.git` (`git rev-parse --git-path lights-out/map.sqlite`), where `git add -A` cannot commit it. From a clone, `--map .crew/map.sqlite` reads `./go map`'s file.
 - **The published 0.3.1 package has no `spec`, `map` or `mcp`.** The plugin is at 0.3.1 (it must equal `pyproject.toml`), so until the next release `/lights-out:spec` and the MCP server need `uv tool install git+https://github.com/nicolaguglielmi/lights-out`; `/lights-out:gates` and the hook work with 0.3.1. The docs say so.
 - **`main` is the plugin's release channel**: a relative marketplace source has no ref (ADR 0069, Consequences).
-- Codex: the page read describes no public directory and no skill hooks, and recommends Codex plugins. Gemini CLI: the `gemini-cli-extension` topic is not on the reference page; Antigravity CLI replaced Gemini CLI for unpaid users on 2026-06-18. Neither is built.
+- Codex and Gemini CLI: built in the second slice (below). The `gemini-cli-extension` topic is on Gemini's releasing page, not its reference page; Antigravity CLI replaced Gemini CLI for unpaid users on 2026-06-18.
 - ADR 0069 supersedes ADR 0054's "No MCP server" (and M28's line in the plan) for a read-only server the client launches.
+
+## Second slice (2026-11-11): the Codex plugin and the Gemini CLI extension
+
+Asked by the coordinating session for the owner. ADR 0069's dated amendment and the criteria in `docs/PLAN.md` came first; `ci/plugin.sh` was extended by gate-writer from the amendment without the implementation, and went GO on the implementation's first run.
+
+- **What it adds.** `plugins/lights-out-codex/` and `.agents/plugins/marketplace.json`: Codex skills `$lights-out:gates`, `$lights-out:spec` (the model runs `lights-out-gates` from PATH) and `$lights-out:hook install|remove` (writes the verified recipe into `<repo>/.codex/hooks.json`, merging, idempotent, one line); no bundled hook (directory-eligible) and no MCP server. `plugins/lights-out-gemini/`: the extension `lights-out-gemini` (the name must be its directory's), `/lights-out:gates` and `/lights-out:spec` as `!{lights-out-gates …}` commands, a native `BeforeTool` hook running byte copies of `pre-commit.sh` and `run.sh` (checked). `run.sh` now reads the version from whichever manifest its root has.
+- **Proven once each with the scripted model** (CLIs installed with `npm ci` from the adapters' lockfiles into host folders, run in the workbench image; the VM's disk again):
+  - Codex 0.166.0: `codex plugin marketplace add <dir>` read `.agents/plugins/marketplace.json`, not the Claude one; `codex plugin add lights-out@lights-out`; `$lights-out:gates` (a bare `$gates` does nothing) gave the model `GO: gates-light — …`; `$lights-out:hook install` wrote the hook; a weakening commit was stopped with the project trusted and `--dangerously-bypass-hook-trust`; without that flag the untrusted hook was skipped and the commit landed, as Codex documents. `codex features list` shows `plugin_hooks` as `removed` in 0.166.0.
+  - Gemini CLI 0.61.0-preview.0: `extensions validate` passed; `extensions install <dir> --consent` also asked to trust the folder; `/lights-out:gates` under `-p --approval-mode yolo` gave the model the line; the hook stopped a weakening commit, passed a clean one, stayed silent without a contract. A spike first showed `${extensionPath}` is not substituted in command TOML and `{{args}}` arrives as one word, so `/lights-out:gates` takes no keys.
+- **Not proven:** `$lights-out:spec` and `/lights-out:spec` in the CLIs (the command is proven in `ci/contract.sh`), the trust steps a person takes (`/hooks`, Gemini's folder prompt), a real model following the skills.
+- **./go ci** GO on 0796927 in 3:16 after one docs-drift fix: `.agents/` at the root made an older citation of agy's `.agents/hooks.json` in `docs/reference.md` resolve against it, reworded. **Actions** on 0796927: the five workflows the push triggers, green: ci 42928501213 (engine-compat `GO: demo, milestone M9, 620s to rollback`), stranger 42928501273 (605 s), self 42928503109, package 42928501224, podman 42928502442; `site` runs only when its paths change (`site.yml`), and this push changed none of them (it was green on 9662227, run 42923759404).
+- **Owner's listing steps** (checklist, "The agent's toolbelt (M39)"): Codex's directory through its submission portal; Gemini's gallery needs a public repository `lights-out-gemini` holding a copy of `plugins/lights-out-gemini/` at its root, refreshed at each release, with the topic `gemini-cli-extension` (no check here sees that copy). The release moves the three manifests' versions with `pyproject.toml`.
+- **Merge notes:** a new root directory `.agents/` (Codex's marketplace); this repository's own Codex and Antigravity sessions will see it.
 
 ## What the owner does to list each piece
 
-All in `docs/launch/checklist.md`, "The agent's toolbelt (M39)", unchecked: release the package with the plugin (move the three versions together, PyPI right after the tag); check the own marketplace from `main` on a clean machine (that day starts awesome-claude-code's 14 days); Anthropic's directory with an icon added first; skip `claude-plugins-official` without a partner contact; the MCP registry (`mcp-name` marker in the README, `server.json`, `mcp-publisher`); Codex and Gemini CLI wait for the next slice.
+All in `docs/launch/checklist.md`, "The agent's toolbelt (M39)", unchecked: release the package with the plugin (move the three versions together, PyPI right after the tag); check the own marketplace from `main` on a clean machine (that day starts awesome-claude-code's 14 days); Anthropic's directory with an icon added first; skip `claude-plugins-official` without a partner contact; the MCP registry (`mcp-name` marker in the README, `server.json`, `mcp-publisher`); Codex's directory and Gemini's gallery as in the second slice below.
 
 ## Merge notes
 
 - One-word conflict likely on the Makefile's `CI_CHECKS` (`plugin` after `gates-light`), and on `docs/PLAN.md` (the M39 entry before `### Dopo`), `docs/launch/checklist.md` (a section before "The README's front page"), `docs/reference.md` (a status row and a section before "Coding harnesses"), `docs/use-on-your-repo.md` (a status row and a section before the hook recipes).
 - `core/map.py`'s `open_map` gained a `rebuild` keyword (default `./go map`) and opens the file by a quoted absolute URI.
-- Next slice: the Codex skill or plugin and the Gemini CLI extension, the MCP registry entry, the orchestrator recipes.
+- Next: the MCP registry entry, the MCP server for Codex and Gemini CLI, the orchestrator recipes (K6).
