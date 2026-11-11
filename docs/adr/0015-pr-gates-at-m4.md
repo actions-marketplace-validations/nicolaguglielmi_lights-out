@@ -1,6 +1,6 @@
 # ADR 0015 — PR gates at M4: `make gates` judges a git range; tests run as they are; mutation is cosmic-ray on the lines the PR changed, against a measured threshold; bandit and osv-scanner; fixture PRs in worktrees prove both verdicts; gates stay out of `demo`; the runner socket is decided, and lands at M5
 
-- Status: accepted (amends ADR 0004 consequences [Testcontainers note void], ADR 0010 §6, ADR 0012 consequences [runner socket]; amended by ADR 0017 §7 [socket and first Gitea job move to M6]); amended by ADR 0019 §4 [runner socket and first Gitea job move to M8]; amended by ADR 0025 §4 [the socket lands at M8 under §7's three unchanged conditions, and the first job is the image build on `main`, not the `pull_request` gates job — that one goes to the milestone that runs the tower on GCP]
+- Status: accepted (amends ADR 0004 consequences [Testcontainers note void], ADR 0010 §6, ADR 0012 consequences [runner socket]; amended by ADR 0017 §7 [socket and first Gitea job move to M6]); amended by ADR 0019 §4 [runner socket and first Gitea job move to M8]; amended by ADR 0025 §4 [the socket lands at M8 under §7's three unchanged conditions, and the first job is the image build on `main`, not the `pull_request` gates job — that one goes to the milestone that runs the tower on GCP]; amended by ADR 0074 §3 [mutation skips the changed lines a sound recorded green already judged]
 - Date: 2026-09-14
 - Milestone: M4
 
