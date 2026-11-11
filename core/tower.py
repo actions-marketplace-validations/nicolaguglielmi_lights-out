@@ -9,7 +9,8 @@ its entry point (docs/adr/0052 §3); callers keep calling that.
     python3 core/tower.py answer <ticket>        record ANSWER on the open question, publish `answer`
     python3 core/tower.py step <ticket> <step>   apply one step: precondition, effect, write, publish next
     python3 core/tower.py resume <ticket>        request again the step whose last attempt failed
-    python3 core/tower.py task <run.json>        print the task fields a role's run leaves in the document
+    python3 core/tower.py task [--patch] <run.json>  print the task fields a role's run leaves in the document,
+                                                 with --patch also the patch beside it (docs/adr/0071 §1)
 
 The document is plain JSON, one per ticket, id = ticket id. A step's
 precondition is the state it starts from; an event whose precondition is
@@ -36,8 +37,10 @@ person's ANSWER (ANSWER_BY, default `unauthenticated`; ANSWER_VIA, default
 the document's attempt, to `tasks` (§5): every attempt's run is kept.
 """
 
+import fnmatch
 import json
 import os
+import re
 import subprocess  # nosec B404 - adapter verbs and steps are scripts (docs/adr/0052 §3)
 import sys
 import tempfile
@@ -45,7 +48,7 @@ from datetime import datetime, timezone
 
 COLLECTION = "tickets"
 USAGE = ("usage: tower.sh open <ticket> | request <ticket> | answer <ticket> | step <ticket> <step>"
-         " | resume <ticket> | task <run.json>")
+         " | resume <ticket> | task [--patch] <run.json>")
 
 # The transition table. PRECONDITION: step -> the state it starts from.
 # NEXT: state -> the step requested once the document is there; a state
@@ -83,10 +86,17 @@ BLOCKED_BY_RED_MAIN = ("assign", "rework", "release")
 # as the recorded run did -- the rule `model` follows. A key the harness
 # does not report is null, never a guess.
 RUN_KEYS = ("model", "provider", "thinking", "turns", "tokens", "duration_s", "input_sha256")
+# Provenance, decision: docs/adr/0071 §1 and open item 2: about 12.5 times
+# the largest recorded patch (5,244 bytes, fixtures/0001), and five copies
+# stay under a third of Firestore's 1 MiB document (external).
+PATCH_CAP = 65536
+_MBOX = re.compile(r"^From [0-9a-f]{40} ")
 
 
 def task(run):
-    """{harness, replayed, model, provider, ...} from a run.json object."""
+    """{harness, replayed, model, provider, ...} from a run.json object; a
+    network's run also gives each member's, with its id and perimeter
+    (docs/adr/0071 §1, docs/adr/0036 §4)."""
     recorded = run.get("recorded") if isinstance(run.get("recorded"), dict) else {}
     out = {"harness": text(run.get("harness")) or "unknown", "replayed": run.get("harness") == "replay"}
     for key in RUN_KEYS:
@@ -94,7 +104,56 @@ def task(run):
         if value is None or value is False:
             value = recorded.get(key)
         out[key] = None if value is False else value
+    if isinstance(run.get("members"), list):
+        out["members"] = []
+        for m in run["members"]:
+            m = m if isinstance(m, dict) else {}
+            mrun = m.get("run") if isinstance(m.get("run"), dict) else {}
+            mrec = mrun.get("recorded") if isinstance(mrun.get("recorded"), dict) else {}
+            hand = mrun.get("hand_written") is True or mrec.get("hand_written") is True
+            out["members"].append(dict(task(mrun), id=m.get("id"), perimeter=list(m.get("perimeter") or []),
+                                       hand_written=True if hand else None))
     return out
+
+
+def owner(path, members):
+    """The member whose perimeter globs match PATH, as core/perimeter.sh
+    matches (`*` crosses `/`); None for a single worker."""
+    for m in members or []:
+        if any(fnmatch.fnmatchcase(path, g) for g in m.get("perimeter") or []):
+            return m.get("id")
+    return None
+
+
+def patch_fields(data, members):
+    """{patch: {text, bytes, truncated}, files: [...]} from an attempt's
+    patch file (docs/adr/0071 §1): the text cut at the last newline within
+    PATCH_CAP, the files counted on the whole patch."""
+    cut = data if len(data) <= PATCH_CAP else data[:data.rfind(b"\n", 0, PATCH_CAP + 1) + 1]
+    files, order, current, hunk = {}, [], None, False
+    lines = data.decode("utf-8", errors="replace").splitlines()
+    for i, raw in enumerate(lines):
+        after = lines[i + 1] if i + 1 < len(lines) else ""
+        if raw.startswith("diff --git "):
+            parts = raw.split(" b/", 1)
+            current, hunk = (parts[1] if len(parts) == 2 else raw[len("diff --git "):]), False
+            if current not in files:
+                files[current] = {"path": current, "added": 0, "removed": 0, "member": owner(current, members)}
+                order.append(current)
+        elif _MBOX.match(raw) or (raw in ("--", "-- ") and not after.startswith((" ", "+", "-", "\\", "@@", "diff --git "))):
+            # A commit's mbox header, or the `-- ` signature format-patch ends
+            # it with (the line after it is git's version, never a hunk line).
+            current, hunk = None, False
+        elif current is None:
+            continue
+        elif raw.startswith("@@ "):
+            hunk = True
+        elif not hunk and (raw.startswith("Binary files ") or raw == "GIT binary patch"):
+            files[current]["added"] = files[current]["removed"] = None
+        elif hunk and files[current]["added"] is not None and raw[:1] in ("+", "-"):
+            files[current]["added" if raw[0] == "+" else "removed"] += 1
+    return {"patch": {"text": cut.decode("utf-8", errors="replace"), "bytes": len(data), "truncated": len(data) > PATCH_CAP},
+            "files": [files[p] for p in order]}
 
 
 class Refused(Exception):
@@ -351,12 +410,21 @@ class Tower:
 
 def main(argv, env=None):
     env = os.environ if env is None else env
-    if argv[:1] == ["task"] and len(argv) == 2:
+    if argv[:1] == ["task"] and len(argv) in (2, 3) and (len(argv) == 2 or argv[1] == "--patch"):
+        path = argv[-1]
         try:
-            with open(argv[1], encoding="utf-8") as fh:
-                print(compact(task(json.load(fh))))
+            with open(path, encoding="utf-8") as fh:
+                out = task(json.load(fh))
+            if len(argv) == 3:
+                beside = os.path.join(os.path.dirname(path), "patch")
+                if os.path.isfile(beside):
+                    with open(beside, "rb") as fh:
+                        out.update(patch_fields(fh.read(), out.get("members")))
+                else:
+                    out.update(patch=None, files=None)
+            print(compact(out))
         except (OSError, ValueError, AttributeError) as exc:
-            say(f"tower: cannot read the run {argv[1]}: {exc}")
+            say(f"tower: cannot read the run {path}: {exc}")
             return 1
         return 0
     for var in ("STATE_STORE", "EVENT_BUS"):
