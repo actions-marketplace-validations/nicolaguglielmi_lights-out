@@ -316,11 +316,7 @@ class Graph(Case):
     def test_not_run_comes_from_the_table_words(self):
         words = self.table()["words"]
         self.assertIn("not_run", words)
-        template = words["not_run"]
-        try:
-            sentence = template.format()
-        except (KeyError, IndexError):
-            self.skipTest("not_run takes arguments; the sentence cannot be rebuilt here")
+        sentence = words["not_run"].format(gate="test-proof")
         lines = [f for f in self.graph("--attempt", "1") if f.startswith("gate test-proof:")]
         self.assertEqual(len(lines), 1)
         self.assertIn(sentence, lines[0])
