@@ -56,6 +56,10 @@ proven by `ci/attach.sh` case f).
   The exit criterion is §14's: if at least two tickets in three do not
   reach a mergeable PR without a human touching the code, the thesis is
   weaker than expected.
+  First run, 2026-11-11, on jd/tenacity (sqlparse was dropped: it ended
+  its maintenance): five tests-only tickets on Anthropic, five PRs merged
+  at the first attempt with every gate GO. Gemini and OpenAI, and tickets
+  that change code, are still to run.
 - **M32 — outside adapters, other CIs, one more delivery** (ADR 0058). An
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
