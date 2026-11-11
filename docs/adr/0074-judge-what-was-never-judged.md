@@ -170,3 +170,39 @@ design, so the workflow now passes no judged trees when the base's
 mutation covers the whole range, as before this ADR. Nothing is skipped
 that the old rule would have judged; the speed comes once the base carries
 this ADR.
+
+## Amendment 2026-11-11: the mutants run in shards
+
+The integration of M17's third slice, M24 and M42 brought about 2,460
+changed lines under `core/` that no recorded green had judged: the network
+branch was pushed after its feature commit, so its 2,173 lines of
+`core/` were never mutated. Its first full judgement was cancelled at
+GitHub's 360-minute job limit twice (7849842, run 43029223575, and
+dee4e34, run 43029879949), which is an external
+constraint. The same range measured on this machine with the base's
+judge: 774 mutants that run, about 27 s each, so about 5.8 hours in one
+process (measurement, 2026-11-11, four containers on podman).
+
+The python runner now deals the pending mutants round-robin, by job id,
+to `MUTATION_SHARDS` shards, by default the processors the machine reports
+(`nproc`, measured at every run; four on a GitHub-hosted runner). Each
+shard runs `cosmic-ray exec` in its own copy of the directory with its own
+copy of the session, the other shards' mutants marked skipped there; each
+shard's results for its own mutants are written back into the one
+session, so the dump, the score and the survivors are the ones a single
+exec gives (`stacks/python/tests/test_mutation_shards.py` proves it on a
+package with killed and surviving mutants). One shard is the old single
+exec. A count that is not a positive integer is refused before any tool
+runs.
+
+The runner is the base's, like the judge: it speeds up the first push
+judged from a base that carries it. The step that lands it is a bootstrap
+commit with no line under `core/`, so its own judgement mutates nothing.
+
+Alternatives rejected: cosmic-ray's HTTP distributor (a worker per port
+and a clone per worker for the same result, and more to keep alive in a
+container that is torn down); a matrix of jobs on Actions (the judge from
+the base takes a range, not a slice of mutants, and a matrix only exists
+on GitHub, while the runner is what every attached repository uses);
+landing the integration over a cancelled `self` (a red `self` on main
+would push the next base back to the same unjudged range, every time).

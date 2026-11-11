@@ -186,7 +186,7 @@ contract, `WORKLOAD_TEST_PATHS` is ADR 0053's, and the last four are ADR
 | `TOOLCHAIN_IMAGE` | Where the three toolchain gates run their commands: `workbench`, `compose:<service>` or an image reference. The three forms are below |
 | `TEST_CMD` | The test command, one `sh -c` line, run from the repository's root. Its exit code is the verdict of the `test` gate |
 | `SAST_CMD` | The static analysis command, one `sh -c` line. It prints one line, `{"findings": N}`. Any finding is a NO-GO. A non-zero exit with no findings parsed is one too |
-| `MUTATION_CMD` | The mutation command, one `sh -c` line. It reads `MUTATION_LINES` (`all` for the whole scope, as init uses it) and prints one line, `{"total","killed","survived","score"}`. The gate compares the score with `MUTATION_BASELINE` and `MUTATION_MARGIN` |
+| `MUTATION_CMD` | The mutation command, one `sh -c` line. It reads `MUTATION_LINES` (`all` for the whole scope, as init uses it) and prints one line, `{"total","killed","survived","score"}`. The gate compares the score with `MUTATION_BASELINE` and `MUTATION_MARGIN`. The python runner splits the mutants into `MUTATION_SHARDS` parallel shards, one per processor by default, with the same score as a single run |
 
 A key that is empty or names a missing path makes its gate answer NO-GO and
 name the key. A typo never turns into a silent GO.
