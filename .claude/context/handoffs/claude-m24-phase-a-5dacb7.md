@@ -1,8 +1,9 @@
-# Handoff: M24 phase A, sqlparse dropped, tenacity ready but for one permission, 2026-11-10/11
+# Handoff: M24 phases A and B, sqlparse dropped, tenacity five for five on Anthropic, 2026-11-10/11
 
 Branch `claude/m24-phase-a-5dacb7`, cut from `main` at b395aff (0.3.1 released). Pushed; not merged, no PR,
-nothing tagged. Nothing was forked, nothing pushed outside this repository, no project was contacted. No model
-was called: phase B (live runs on Anthropic, authorized by the owner on 2026-11-10) did not start, see the end.
+nothing tagged. Nothing was forked, nothing pushed outside this repository, no project was contacted. Live model
+calls on Anthropic only, as the owner authorized on 2026-11-10 (credits) and 2026-11-11 (running tenacity's code);
+no Gemini or OpenAI call.
 
 ## The short version
 
@@ -11,10 +12,14 @@ was called: phase B (live runs on Anthropic, authorized by the owner on 2026-11-
   local attach stays as a reference: baseline 0.794, base red at `sast`.
 - **validators is the runner-up**, stopped because the auto-mode classifier refused to run its code; the owner
   dropped it from the comparison.
-- **tenacity is the pick in progress**: maintained, no AI policy, two prep commits (a `uv.lock`, four reviewed
-  `# nosec` lines), contract committed, five tests-only tickets that pass `spec` and can pass `test-proof`.
-  Its base gates and phase B are blocked by the same classifier: **running tenacity's code needs the owner's
-  permission in this session's settings.**
+- **tenacity is the pick**: maintained, no AI policy, two human prep commits before ticket 1 (a `uv.lock`, four
+  reviewed `# nosec` lines) and three contract-only commits. **Phase B: five tickets live on Anthropic, five
+  merged PRs at attempt 1, every gate GO, no human touching the code** (§14's criterion met five times in five),
+  about 248k tokens, at most $0.57 at list price. Tests-only tickets: the gates' strength here is `test`,
+  `test-weakening`, `perimeter` and `risk`; `mutation` and `test-proof` passed by absence of subject.
+- **Three lights-out bugs** stopped the first live run on a library and are fixed on this branch, each with a
+  test written first: `assign` judged the code host's base before bootstrapping it, and `COMPOSE_FILE` broke on
+  a contract with the gates half only (twice).
 
 ## 1. The prerequisite: already closed
 
@@ -46,8 +51,37 @@ docs/adr/0037 or 0033` (planted, reverted). No ADR was needed; 0067 is still fre
 6. **This podman VM** (recreated 2026-11-08) had no `/etc/containers/registries.conf.d`, so `./go up` died
    before any container. The owner created it and the Zot entry on 2026-11-11. `./go up` then started every
    service, but the final publish to Zot still failed (`http: server gave HTTP response to HTTPS client`):
-   the rootful podman service most likely needs a restart to read the new file. Not restarted (it would have
-   killed two running baselines). Gitea, all phase B needs, was up.
+   the rootful podman service most likely needs a restart to read the new file. On 2026-11-11 the owner grew
+   the disk to 60 GB (it was at 94 %, and other sessions hit ENOSPC) and the VM's restart made the publish work.
+7. **Three lights-out bugs, fixed here with tests written first** (each NO-GO before its fix, GO after):
+   - 7fa0c00 `core/steps/assign.sh`: on an attached repository it now bootstraps the code host before
+     `core/base-gates.sh`. Before, the first assign on a fresh plane failed at "could not fetch the base", and
+     the base judged could differ from the commit `core/crew.sh`'s bootstrap then force-pushes for the worker
+     (ADR 0053 §6 says it is the same). `ci/assign.sh` case (h).
+   - bb021cc and 0ffb890 `Makefile`: `COMPOSE_FILE` named `$(WORKLOAD_CONTRACT)/compose.yaml` always, so on a
+     contract with the gates half only every `docker-compose` call failed and the crew could not run at all;
+     and the root `compose.yaml` alone does not load (envoy and prometheus depend on `backend`). Such a contract
+     now gets the arrangement `harness-conformance` already uses: the root file plus `workloads/minimal`'s
+     fragment, whose `backend` is never started (`make up` refuses a contract with no compose file of its own).
+     `ci/attach.sh` case (g), which also loads the project with `docker-compose config`.
+8. **Found, not fixed, each a follow-up**:
+   - The tower's isolated runs (`core/toolchain.sh`, `COPY . /work` of a `git worktree`) lose the git metadata:
+     `.git` is a file pointing outside the image. A project that takes its version from git (`hatch-vcs`,
+     `setuptools-scm`) cannot install there. tenacity's contract works around it with
+     `SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0` in `TEST_CMD` and `MUTATION_CMD` (no test reads the version).
+     Whether cosmic-ray accepts a `VAR=value` prefix in its test command is unverified: no ticket changed code.
+   - A repository whose `.gitignore` ignores `uv.lock` at any depth (tenacity's) silently drops the runners'
+     own `.lights-out/runners/uv.lock` from the contract commit; neither `./go init` nor `./go attached` noticed,
+     and `sast` and `mutation` then fail. Force-added here (1f4f01f).
+   - The merge step's docs ticket (ADR 0054 §4) counts `.lights-out/tickets/*.md` as pages to keep aligned:
+     every tenacity merge filed "docs ticket 0001" because the next tickets cite the test file. Left untracked in
+     the clone, it then blocks `./go attach` until `./go detach`.
+   - `./go up` refuses a contract without the plane half, so a library's L1 run needs the plane started from a
+     non-attached checkout (here `.crew/full3`, bundled) beside the attached one. It works, but no page says so.
+   - `deps` on tenacity's prep range: `NO-GO: deps — this diff introduces 3 advisory finding(s)`, tornado
+     6.5.10 (GHSA-pcg2-g6cj-q92c, GHSA-pw9p-v7r6-gx4p, GHSA-r4j5-9xpp-3985, fixed in 6.6). tornado 6.6 needs
+     Python ≥3.11 and tenacity supports 3.10, so the universal lock must carry 6.5.10 for 3.10; a test-only
+     dependency. `deps` judges the diff (ADR 0032): the tickets inherit it and are not blocked.
 
 ## 3. sqlparse, the reference (dropped)
 
@@ -88,7 +122,7 @@ docs/adr/0037 or 0033` (planted, reverted). No ADR was needed; 0067 is still fre
 - **Why it stopped**: `./go init` on it was refused by the auto-mode classifier ("Code from External"). The owner
   dropped it from the comparison on 2026-11-10.
 
-## 5. tenacity, the pick in progress
+## 5. tenacity, the pick
 
 - [jd/tenacity](https://github.com/jd/tenacity), Apache-2.0, 8,831 stars, 337M PyPI downloads in the last
   month. `main` at aac059c, the shortlist's commit.
@@ -115,38 +149,62 @@ docs/adr/0037 or 0033` (planted, reverted). No ADR was needed; 0067 is still fre
   `__qualname__` nor `__name__`, so it returns `repr()`); 04 an `async_retry_base` strategy under
   `AsyncRetrying`; **05 replaced**: the shortlist's (the `initial` deprecation) is already tested at
   `tests/test_tenacity.py:734` and `:740`, so 05 tests `_utils.wrap_to_async_func`, which no test names.
-- **Not done**: the base under every gate. `./go gates` on aac059c..98f0379 was refused by the auto-mode
-  classifier ("Code from External") on 2026-11-10 23:14 UTC, although `./go init` on the same clone had been
-  allowed. A static bandit run says `sast` will be GO now.
+- Two more contract-only commits, after the owner allowed tenacity's code to run (2026-11-11): 1f4f01f, the
+  runners' `uv.lock` force-added (finding 8); df51380, `SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0` in `TEST_CMD`,
+  `MUTATION_CMD` and the brief's test command (finding 8). Neither touches tenacity's code.
+- **The base under every gate**, aac059c..1f4f01f (the prep and the contract), each gate alone, in workbench:
+  `GO: risk` 2 s; `GO: secrets` 2 s; `GO: test-weakening — no test changed` 1 s; **`NO-GO: deps — this diff
+  introduces 3 advisory finding(s)`** 7 s (tornado, finding 8); `GO: sast — in workbench` 4 s; `GO: test — in
+  workbench` 21 s; `GO: mutation — in workbench` 183 s (the `# nosec` lines); `GO: test-proof — nothing ran: no
+  test changed` 1 s. `assign`'s own precondition, `sast` and `test` on the head alone, isolated: `GO: gates —
+  risk unknown, unknown, in workbench (isolated)`, 20 s at df51380 (185 passed, 15 subtests).
 
-## 6. Phase B: authorized, not started
+## 6. Phase B: five tickets live on Anthropic
 
-The owner authorized live runs on Anthropic (credits that expire around 2026-11-12), `MODEL_PROVIDER=anthropic`,
-`claude-code` for the dev-worker, locally, no public fork. Ready: the contract, the tickets, the prep, the
-plane (`./go up APP_PORT=9000` from a non-attached checkout, `.crew/full3`; sih-live holds 8080). Blocked: every
-step runs tenacity's code (gates, the worker's tests), which this session's auto-mode classifier refuses. The
-commands, once the owner allows them or runs them:
+`PROFILE=l1 ./go request TICKET=<id> MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5 AGENT_HARNESS=claude-code`
+from `.crew/full` (tenacity attached), `ANTHROPIC_API_KEY` passed through the environment from the main
+checkout's `.env`, never written into a checkout. Code host: the local plane's Gitea, started with
+`./go up APP_PORT=9000` from `.crew/full3` (bundled; sih-live holds 8080). `MAP_BRIEF=off` (the profile's
+default): M28's half-with-the-map comparison was not run. Between tickets the merge was brought home as
+`docs/use-on-your-repo.md` says (fetch Gitea's `main` into the clone, `./go attach` again).
 
-```sh
-# from .crew/full3 (bundled): the plane, for Gitea
-./go up APP_PORT=9000
-# from .crew/full, after ./go attach /Users/nicola/Dev/m24/tenacity (now at b7a05bb): the base, then each ticket
-./go gates BASE=aac059c HEAD=b7a05bb
-./go request TICKET=tenacity-04 PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5 AGENT_HARNESS=claude-code
-```
+| Ticket | PR | Attempts | Gates (ci step, isolated) | Merged as | Main | dev-worker: turns, tokens (in / out), time | product role |
+|---|---|---|---|---|---|---|---|
+| tenacity-03 | #1 | 1 | `GO: gates — risk low, auto-merge` | 7d66513 | GO | 4, 30,893 (29,438 / 1,455), 70 s | 4,371 |
+| tenacity-05 | #2 | 1 | `GO: gates — risk low, auto-merge` | b0587a1 | GO | 5, 41,471 (40,294 / 1,177), 48 s | 3,865 |
+| tenacity-01 | #3 | 1 | `GO: gates — risk low, auto-merge` | f719d8f | GO | 4, 39,175 (37,856 / 1,319), 27 s | 3,700 |
+| tenacity-04 | #4 | 1 | `GO: gates — risk low, auto-merge` | 80801d7 | GO | 8, 74,055 (71,448 / 2,607), 104 s | 3,941 |
+| tenacity-02 | #5 | 1 | `GO: gates — risk low, auto-merge` | 01db331 | GO | 6, 42,787 (41,810 / 977), 30 s | 3,457 |
 
-`ANTHROPIC_API_KEY` goes in through the environment (`./go` passes the keys `.env.example` declares); it is
-never written into a checkout.
+- **§14's outcome, per ticket: a mergeable PR, merged, without a human touching the code.** Five of five. The
+  human commits are before ticket 1 and on packaging, review markers and the contract (section 5), and the
+  diary names them.
+- Each PR adds tests to the one file its perimeter names and nothing else; each test asserts what the ticket's
+  criteria say (01 is deterministic, 03 asserts `repr()` for the `partial`, 05 the identity and the awaited
+  result). The product role ran live on each (2 turns, `consulted: true`) and confirmed the criteria.
+- Tokens: 228,381 dev-worker plus 19,334 product role, 247,715 in all. `run.json` gives input and output only,
+  no cache split; at Sonnet 5.5's list price with every input token uncached, at most $0.57 (238,538 input at
+  $2/M, 9,177 output at $10/M). The Anthropic console has the billed figure.
+- `release` fails after `main-green` on every ticket, by construction: a library has no image to publish.
+- What the experiment did not exercise: no ticket changed code, so `mutation` and `test-proof` passed by absence
+  every time; no rework, no review (low risk), no overlap wait. Three providers were not run (Gemini spend not
+  authorized, OpenAI key absent).
+- Clone: `/Users/nicola/Dev/m24/tenacity`, branch `lights-out` at 01db331, the five merges included. The plane
+  was taken down at 11:20 UTC on 2026-11-11 and the slot released.
 
 ## The owner's decisions, each with what it costs
 
-1. **Allow tenacity's code to run in this session** (the auto-mode classifier refuses it), or run the commands
-   above yourself. Without it neither the base gates nor phase B happen here.
-2. **The fork, public on GitHub.** Not needed for phase B (local Gitea), needed to publish. Money: none. A
-   public act that names tenacity; it carries the two prep commits.
-3. **The OpenAI key** (absent). M24 runs every ticket on three providers; without it, two, and Gemini spend is
-   not authorized now, so phase B is one provider.
-4. **A spending cap per provider.** Prices read on 2026-11-10; budgets from `roles/`:
+1. **Publishing.** The fork public on GitHub (money: none), the verdicts and the five PRs in the diary, with the
+   two human prep commits and the three contract commits named. A public act that names tenacity. Whether any
+   of the five tests goes upstream as a PR is a separate act, under tenacity's own review.
+2. **What the next batch measures.** Five tests-only tickets exercised the harness, not the code-changing path:
+   a batch with code changes (where `mutation` and `test-proof` judge for real, against the 0.869 baseline) is
+   what M24 has not shown yet. That batch needs the cosmic-ray `VAR=value` question in finding 8 answered first.
+3. **The other two providers.** M24 runs every ticket on three providers; this run is one. Gemini spend is not
+   authorized; the OpenAI key is absent.
+4. **A spending cap per provider.** Measured on Anthropic: five tickets, about 248k tokens, at most $0.57,
+   against the budget-based estimate below (an upper bound by two orders of magnitude for tests-only tickets).
+   Prices read on 2026-11-10; budgets from `roles/`:
 
    | Provider, model | Price per 1M tokens (in / cached in / out) | One dev-worker attempt at its 2.6M cap, no cache | One ticket, worst (4 attempts, each reviewed) | Five tickets, expected | Five tickets, worst | Suggested cap |
    |---|---|---|---|---|---|---|
@@ -163,20 +221,17 @@ never written into a checkout.
    [platform.claude.com/docs/en/about-claude/pricing](https://platform.claude.com/docs/en/about-claude/pricing),
    [developers.openai.com/api/docs/pricing](https://developers.openai.com/api/docs/pricing),
    [aistudio.google.com/docs/pricing](https://aistudio.google.com/docs/pricing).
-5. **The order of the tickets.** Recommended: tenacity-03 and -05 (pure functions, `tests/test_utils.py`, no
-   timing), then -01 and -04 (retry loops, `wait_none()`), last -02 (real sleeps, the one most likely to be
-   flaky). The five perimeters overlap in pairs (`tests/test_tenacity.py`: 01, 02; `tests/test_utils.py`: 03,
-   05), and `assign` holds a ticket whose perimeter overlaps an open PR's (ADR 0053 §5), so they run one after
-   another, each merged before the next. M28's `MAP_BRIEF=on` for half of them is part of this choice.
-6. **Publishing the verdicts**: the diary names the two prep commits on tenacity.
+5. **The order used**: 03, 05, 01, 04, 02, one after another, each merged before the next (the perimeters
+   overlap in pairs). M28's `MAP_BRIEF=on` for half of the tickets was not run.
+6. **The follow-ups in finding 8**, each its own change in lights-out.
 
 ## Where things are
 
 - Clones, local only: `/Users/nicola/Dev/m24/{sqlparse,tenacity,validators}`, branch `lights-out` in each
   (validators' has its tickets uncommitted); `/Users/nicola/Dev/m24/sqlparse-scratch` holds the dry run's draft.
-- Checkouts of this branch under `.crew/`: `full` (tenacity attached at 98f0379), `full2` (tenacity's init, done at 03:25 UTC), `full3`
+- Checkouts of this branch under `.crew/`: `full` (tenacity attached, its tower state in `.crew/state.sqlite`), `full2` (tenacity's init, done at 03:25 UTC), `full3`
   (bundled, the plane's).
-- The plane: down since 2026-11-10 23:15 UTC; the slot is free.
+- The plane: down since 2026-11-11 11:20 UTC; the slot is free.
 - Working notes: the shared notes folder, `m24-phase-a-notes.md`.
 
 ## Proofs
