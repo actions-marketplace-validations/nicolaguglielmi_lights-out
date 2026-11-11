@@ -20,13 +20,15 @@ LLM-heavy work ran as headless `claude -p` on the owner's `ANTHROPIC_API_KEY` cr
 
 ## What is proven
 
-- `./go ci` from a clean clone under `.crew/`: GO on 2deaadd (13:50) and on 07c0aad (8:16). On 4338d76 (a one-line run.sh fix) the first run stopped on the podman VM's disk (`No space left on device` in ci-logbook, not this code); see the retry's result below.
+- `./go ci` from a clean clone under `.crew/`: GO on 2deaadd (13:50) and on 07c0aad (8:16). On 4338d76 (a one-line run.sh fix) the first run stopped on the podman VM's disk (`No space left on device` in ci-logbook, not this code), twice; 6840dba was pushed on Actions' proof instead.
 - **Live, once, with Claude through the claude-code harness** (ADR 0073, "End-to-end proof"): real `run.sh` in its image, `claude-sonnet-5-5`, `workloads/minimal` with its `notes` server; init `connected`, one `mcp__notes__search_notes` call, `NOTES.md` = `notes-hit:canary:/crew/live-m42/workspace`, `run.json` `mcp.calls` recorded, 4 turns, 33,396 tokens, 145 s. The first two attempts never started the container: the podman VM's disk was full. The owner grew it to 60 GB (`podman machine set --disk-size 60`, then `growpart /dev/vda 4` and `xfs_growfs /var` inside the VM, since `/sysroot` is read-only on CoreOS), after pruning 37 dangling images with their OK.
+- **GitHub Actions on 775a3e1**, five triggered workflows green: ci 43012200496 (harness-conformance `GO: harness-conformance — antigravity-cli claude-code codex gemini-cli, against a scripted model, 396 s`, case 10 included; engine-compat `GO: demo, milestone M9, 648s to rollback (budget 900s, plan §2)`), stranger 43012200523 (`412s GO: demo-rollback`), self 43012200757, package 43012200997, podman 43012200533 (claude-code case 10 on rootless podman). site was not triggered by these paths; green on 6840dba (43007583266). The first push (6840dba) failed case 10b on codex: Codex 0.166.0's bundled models are code-mode only, so MCP tools are called from `exec`'s JavaScript (`tools.mcp__<s>__<t>`), not offered as functions; verified natively against the stub, fixed in the stub and the case, recorded in ADR 0073's amendment. The hook fires on those calls and `enabled_tools` still hides the unnamed tool.
+- `./go ci` from a clean clone: GO on 775a3e1 (6:31).
 - Engine-free checks GO: agents, review (cases i–m), hooks, harness-shape, harness, network, tower, app-free, model-free, vendor-free, docs-drift, shell-boundary; 781 unit tests.
 
 ## What is not proven
 
-- Case 10 on GitHub Actions: pending the push (below). Codex's MCP surface under code mode and its stub rendering are a guess the job will confirm or refute; Codex's and Gemini's failure strings for a server that does not start were read from source, never seen live.
+- Codex against the real OpenAI API with an MCP server (scripted model only). The conformance proof's fake harness speaks only Claude's protocol, so the stub's Codex code-mode branch has no planted-defect proof.
 - Remote MCP servers: unit translation only (the stub is plain http). gemini-cli takes stdio only. The check reads the base's `crew-egress.txt`, the proxy still reads the local contract (ADR 0073, Consequences).
 - `ci/logbook.sh`'s LIVE-mode POST cases fail on this macOS host (403) at clean HEAD too; GO inside `./go ci`.
 
