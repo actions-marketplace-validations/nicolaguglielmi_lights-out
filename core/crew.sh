@@ -57,8 +57,7 @@ fi
 brief="$WORKLOAD_CONTRACT/worker.md"
 [ -f "$brief" ] || nogo "$brief is missing; the worker would start from no brief (docs/adr/0037 §6)"
 
-here=$(pwd)
-crew_dir="$here/.crew/$TICKET"
+crew_dir="$(pwd)/.crew/$TICKET"
 rm -rf "$crew_dir"
 mkdir -p "$crew_dir"
 
@@ -88,6 +87,16 @@ else
   git -C "$crew_dir/workspace" checkout -q -b "ticket/$TICKET" >&2
   start=$base
 fi
+
+# The repository's agent files, read at the commit the attempt forks from,
+# never the working tree, which crew-prepare.sh and a rework's previous
+# attempt can change (docs/adr/0073 §6): roles/ and mcp.json checked, then
+# for the dev-worker the declared MCP servers normalised for the harness
+# that runs them, the network's member for `network` (§8). CREW_MCP is
+# that directory; run.sh gets it only when something is declared, and an
+# inherited value never passes: without servers run.sh does what it always did.
+CREW_MCP=$(python3 core/agents.py crew --contract "$WORKLOAD_CONTRACT" --repo "$crew_dir/workspace" --rev "$base" \
+  --role "$ROLE" --harness "$harness" --member "$AGENT_HARNESS" --out "$crew_dir/mcp") || nogo "${CREW_MCP#NO-GO: agents — }"
 
 # A workload may need its checked-out workspace prepared before the
 # harness starts on it — a layout its test suite assumes but a plain
@@ -119,7 +128,7 @@ printf '[crew] ticket %s: role %s, harness %s, attempt %s\n' "$TICKET" "$ROLE" "
 ROLE="$ROLE" TICKET="$TICKET" TICKET_FILE="$crew_dir/input.md" ATTEMPT="$ATTEMPT" \
 WORKSPACE="$crew_dir/workspace" BASE="$start" OUT="$crew_dir/out" \
 THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
-  sh "adapters/$harness/run.sh" >&2 \
+  env ${CREW_MCP:+"CREW_MCP=$CREW_MCP"} sh "adapters/$harness/run.sh" >&2 \
   || nogo "$harness run failed for ticket $TICKET"
 
 # The attempt's own range: a rework that changes nothing is no attempt.
@@ -130,8 +139,7 @@ sh core/harness-check.sh "$crew_dir/out" "$crew_dir/workspace" "$start" \
 # declared perimeter, checked before a PR ever exists so a bad fixture is
 # never written and the demo's own PRs are checked the same way.
 perimeter_out=$(git -C "$crew_dir/workspace" diff --no-renames --name-only "$base"..HEAD \
-  | sh core/perimeter.sh "$crew_dir/ticket.md" 2>&1) && perimeter_rc=0 || perimeter_rc=$?
-[ "$perimeter_rc" -eq 0 ] || nogo "$perimeter_out"
+  | sh core/perimeter.sh "$crew_dir/ticket.md" 2>&1) || nogo "$perimeter_out"
 
 sh "adapters/$CODE_HOST/push.sh" "$crew_dir/workspace" "ticket/$TICKET" >&2 \
   || nogo "push to $CODE_HOST failed"

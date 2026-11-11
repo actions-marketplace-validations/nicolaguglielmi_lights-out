@@ -59,6 +59,11 @@
     ],
     "map_sha": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4"
   },
+  "agents": {
+    "lines": [
+      "dev-worker MCP: none"
+    ]
+  },
   "docs_to_realign": [
     {
       "docs_ticket": "0009",
@@ -356,7 +361,7 @@
       "version": "0.5.0-d"
     }
   ],
-  "schema": "lights-out/logbook/1.2",
+  "schema": "lights-out/logbook/1.3",
   "source": {
     "code_host": "gitea",
     "commit": "cdcb7c46c74ca91e003b3eb37ea129e904dcf0f4",

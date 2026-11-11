@@ -5,14 +5,31 @@
 # 0041 §8), written from the ADR and the adapter contract, never from an
 # adapter. A CLI harness is an adapters/<name>/ with run.sh, Containerfile
 # and a pin, package-lock.json or release.env (docs/adr/0050 §2):
-# discovered, never listed. For each one, ten cases
+# discovered, never listed. For each one, eleven cases
 # in a fixed order, the first disagreement a NO-GO naming the harness and
 # the case:
 #   0 pairing      1 valid PR          2 push denied        3 secrets read denied
 #   4 the workspace cannot switch the guard off            5 MAX_TURNS
-#   6 TOKEN_BUDGET 7 TIMEOUT_S         9 confinement        8 no key in artefacts
-# Case 9 runs before case 8 because case 8 reads every case's artefacts, 9's
-# included (docs/adr/0046, "Conformance").
+#   6 TOKEN_BUDGET 7 TIMEOUT_S         9 confinement        10 agents
+#   8 no key in artefacts
+# Cases 9 and 10 run before case 8 because case 8 reads every case's
+# artefacts, theirs included (docs/adr/0046, "Conformance").
+#
+# Case 10, agents (docs/adr/0073 "Tests"): what a repository's contract adds
+# to a run, read at the case's BASE as core/crew.sh and core/steps/review.sh
+# read it, through core/agents.py. 10a, every harness: a role file for the
+# test-reviewer with a random marker; the first request holds the role
+# prompt's first line, then the marker, then the restated output contract,
+# and final.md's first line is APPROVED. Where adapters/<name>/mcp.sh exists
+# (a harness honours mcp.json if and only if it has one, discovered): 10b,
+# the fixture server ($WORKLOAD_CONTRACT/mcp/notes.py, declared by
+# $WORKLOAD_CONTRACT/mcp.json with search_notes only) called by the
+# dev-worker, its unnamed count_notes hidden or visible and denied as
+# run.json's .mcp.unlisted says, its answer in the next request and
+# count_notes's never; 10c, a server that exits at start fails the run in a
+# line naming it and ADR 0073 §8. Where it does not: agents.py mcp refuses,
+# in §8's line, and no container is started. The contract's directory name is
+# the basename of WORKLOAD_CONTRACT, never written here (ci/app-free.sh).
 #
 # Confinement (docs/adr/0046): the harness is on an internal network and its
 # one way out is the `egress` proxy, which opens the scripted model and nothing
@@ -80,7 +97,7 @@ if [ "${CONFORMANCE:-}" != "1" ]; then
 fi
 
 [ -n "${WORKBENCH_IMAGE:-}" ] || nogo "WORKBENCH_IMAGE is not set; run this via ./go harness-conformance"
-for tool in docker-compose jq git sha256sum od tee; do
+for tool in docker-compose jq git sha256sum od tee python3; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not on PATH; run this via ./go harness-conformance"
 done
 
@@ -99,6 +116,12 @@ done
 [ -n "${COMPOSE_FILE:-}" ] || nogo "COMPOSE_FILE is not set; run this via ./go harness-conformance"
 [ -n "${WORKLOAD:-}" ] || nogo "WORKLOAD is not set; run this via ./go harness-conformance"
 [ -n "${WORKLOAD_CONTRACT:-}" ] || nogo "WORKLOAD_CONTRACT is not set; run this via ./go harness-conformance"
+# Case 10's fixture and the module that reads a contract (docs/adr/0073).
+[ -f "$WORKLOAD_CONTRACT/mcp.json" ] && [ -f "$WORKLOAD_CONTRACT/mcp/notes.py" ] \
+  || nogo "case 10's fixture is missing: $WORKLOAD_CONTRACT/mcp.json and $WORKLOAD_CONTRACT/mcp/notes.py (docs/adr/0073)"
+[ -f core/agents.py ] || nogo "core/agents.py is missing: case 10 reads a contract through it (docs/adr/0073 §7)"
+[ -f roles/test-reviewer/prompt.md ] || nogo "roles/test-reviewer/prompt.md is missing: case 10a runs the test-reviewer"
+contract_dir=$(basename "$WORKLOAD_CONTRACT")
 HARNESS_BASE_IMAGE=$WORKBENCH_IMAGE
 CONFORMANCE_PORT=${CONFORMANCE_PORT:-8089}
 : "${CREW_UID:=$(id -u)}"
@@ -120,6 +143,7 @@ role_timeout_s=$TIMEOUT_S
 role_token_budget=$TOKEN_BUDGET
 prompt_line=$(grep -m1 -v '^[[:space:]]*$' roles/dev-worker/prompt.md) || nogo "roles/dev-worker/prompt.md has no first line"
 ticket_line=$(grep -m1 -v '^[[:space:]]*$' gates/harness-conformance/ticket.md) || nogo "gates/harness-conformance/ticket.md has no first line"
+reviewer_line=$(grep -m1 -v '^[[:space:]]*$' roles/test-reviewer/prompt.md) || nogo "roles/test-reviewer/prompt.md has no first line"
 final_title="Add conformance file"
 final_body="Conformance body cf-7a1d: adds conformance.txt."
 
@@ -264,7 +288,7 @@ fail() {  # WHAT: NO-GO naming the running harness and case, with the evidence
     "--- run.sh's stderr, last 30 lines ($errf)" \
     "$(tail -n 30 "$errf" 2>/dev/null || true)" \
     "--- the scripted model's requests ($reqlog)" \
-    "$(jq -c '{n, kind, auth, requested, tools, step, op, hooked, reported_tokens, peer, sink, path}' "$reqlog" 2>/dev/null | head -n 40 || true)" \
+    "$(jq -c '{n, kind, auth, requested, tools, step, op, hooked, reported_tokens, peer, sink, path, declared}' "$reqlog" 2>/dev/null | head -n 40 || true)" \
     "$evidence"
 }
 
@@ -279,6 +303,8 @@ prepare() {  # H N: a fresh workspace, a bare origin and the ticket; sets the pa
   h=$1
   n=$2
   evidence=""
+  case_role=dev-worker  # invoke()'s ROLE; case 10a runs the test-reviewer
+  case_mcp=""           # invoke()'s CREW_MCP; set by case 10 as core/crew.sh sets it
   ticket=conformance/$h/$n
   dir=$(pwd)/$conf/$h/$n
   ws=$dir/workspace
@@ -322,6 +348,23 @@ prepare() {  # H N: a fresh workspace, a bare origin and the ticket; sets the pa
       # The probe is committed in BASE too, so the patch is still conformance.txt only.
       cp gates/harness-conformance/probe.py "$ws/probe.py" || fail "could not copy gates/harness-conformance/probe.py"
       ;;
+    10a)
+      # The base's role file, which the review step reads (docs/adr/0073 §2).
+      mkdir -p "$ws/$contract_dir/roles"
+      printf 'Conformance instructions %s: read the diff for tests first.\n' "$marker" > "$ws/$contract_dir/roles/test-reviewer.md"
+      ;;
+    10b|10r)
+      # The fixture contract, committed in BASE: the server and the declaration.
+      mkdir -p "$ws/$contract_dir/mcp"
+      cp "$WORKLOAD_CONTRACT/mcp.json" "$ws/$contract_dir/mcp.json" || fail "could not copy $WORKLOAD_CONTRACT/mcp.json"
+      cp "$WORKLOAD_CONTRACT/mcp/notes.py" "$ws/$contract_dir/mcp/notes.py" || fail "could not copy $WORKLOAD_CONTRACT/mcp/notes.py"
+      ;;
+    10c)
+      # The same declaration, whose server exits at start.
+      mkdir -p "$ws/$contract_dir"
+      jq -c '.servers.notes.command = ["python3", "-c", "raise SystemExit(1)"]' "$WORKLOAD_CONTRACT/mcp.json" \
+        > "$ws/$contract_dir/mcp.json" || fail "could not write the failing declaration from $WORKLOAD_CONTRACT/mcp.json"
+      ;;
   esac
   git -C "$ws" add -A
   git -C "$ws" -c user.name=lights-out-tests -c user.email=tests@lights-out.invalid commit -q -m base \
@@ -336,7 +379,7 @@ prepare() {  # H N: a fresh workspace, a bare origin and the ticket; sets the pa
 
 invoke() {  # MAX_TURNS TOKEN_BUDGET TIMEOUT_S MODEL_PROVIDER: run.sh exactly as core/crew.sh runs it
   (
-    ROLE=dev-worker
+    ROLE=$case_role
     TICKET=$ticket
     TICKET_FILE=$tfile
     WORKSPACE=$ws
@@ -351,6 +394,12 @@ invoke() {  # MAX_TURNS TOKEN_BUDGET TIMEOUT_S MODEL_PROVIDER: run.sh exactly as
     MODEL_BASE_URL=$model_url
     ATTEMPT=1
     export ROLE TICKET TICKET_FILE WORKSPACE BASE OUT THINKING MAX_TURNS TOKEN_BUDGET TIMEOUT_S MODEL_PROVIDER MODEL MODEL_BASE_URL ATTEMPT
+    if [ -n "$case_mcp" ]; then
+      CREW_MCP=$case_mcp
+      export CREW_MCP
+    else
+      unset CREW_MCP
+    fi
     # An image build is not counted by TIMEOUT_S (it runs inside the container),
     # so the ceiling is the longest budget plus the minutes a cold start can take.
     if command -v timeout >/dev/null 2>&1; then
@@ -571,6 +620,21 @@ endless_steps() {  # a tool on every request, an ordinary end only at step 20
 $final_body" '[range($k) | {op: "shell", cmd: "echo turn"}] + [{op: "final", text: $t}]'
 }
 
+agents() {  # VERB ARGS...: core/agents.py on the case's BASE, as core/crew.sh reads it; stdout in $dir/agents.out
+  python3 core/agents.py "$@" --repo "$ws" --rev "$base" --prefix "$contract_dir/" > "$dir/agents.out" 2> "$dir/agents.err"
+}
+
+crew_mcp() {  # as core/crew.sh does it: check, then mcp for this harness; sets case_mcp
+  agents check || fail "core/agents.py check refused the case's base: $(cat "$dir/agents.out" "$dir/agents.err")"
+  agents mcp --harness "$h" --out "$dir/crew-mcp" \
+    || fail "core/agents.py mcp refused a harness that has adapters/$h/mcp.sh: $(cat "$dir/agents.out" "$dir/agents.err")"
+  [ -f "$dir/crew-mcp/decl.json" ] || fail "core/agents.py mcp wrote no decl.json for a base that declares a server"
+  case_mcp=$dir/crew-mcp
+}
+
+# The harnesses that honour mcp.json, discovered (docs/adr/0073 §7), sorted.
+with_mcp_sh=$(for f in adapters/*/mcp.sh; do [ ! -f "$f" ] || basename "$(dirname "$f")"; done | sort | tr '\n' ' ' | sed 's/ *$//')
+
 # --- the cases, one harness at a time ---------------------------------------------
 for h in $selected; do
   cf=adapters/$h/conformance.env
@@ -748,9 +812,128 @@ for h in $selected; do
   [ "$(probe_count)" -ge 1 ] || fail "the stub never had the probe's command executed"
   check_egress_log "$before"
 
+  # ---- case 10: agents (docs/adr/0073) ---------------------------------------
+  # Before case 8, which reads every case's artefacts, these included.
+  # 10a: the base's role file reaches the reviewer after its prompt, and the
+  # output contract is restated after it; the verdict stays APPROVED.
+  marker="role-marker-$(rand)"
+  prepare "$h" 10a
+  case_role=test-reviewer
+  agents instructions --role test-reviewer --part head \
+    || fail "core/agents.py instructions --part head refused the base's role file: $(cat "$dir/agents.out" "$dir/agents.err")"
+  cp "$dir/agents.out" "$dir/role-head.md"
+  agents instructions --role test-reviewer --part tail \
+    || fail "core/agents.py instructions --part tail refused the base's role file: $(cat "$dir/agents.out" "$dir/agents.err")"
+  cp "$dir/agents.out" "$dir/role-tail.md"
+  grep -qF -- "$marker" "$dir/role-head.md" || fail "core/agents.py instructions --part head does not carry the base's role file (no marker)"
+  tail_line=$(grep -m1 -v '^[[:space:]]*$' "$dir/role-tail.md" || true)
+  [ -n "$tail_line" ] || fail "core/agents.py instructions --part tail printed nothing for a base that has a role file"
+  # The input as core/steps/review.sh builds it: ticket, block, diff, paragraph.
+  {
+    cat gates/harness-conformance/ticket.md
+    printf '\n'
+    cat "$dir/role-head.md"
+    printf '\n---\n\nDiff:\n\n(no change)\n\n'
+    cat "$dir/role-tail.md"
+  } > "$tfile"
+  set_case '[{"op":"final","text":"APPROVED\n\nConformance review: nothing to change."}]'
+  run_case "$role_max_turns" "$role_token_budget" "$role_timeout_s"
+  [ "$rc" -eq 0 ] || fail "run.sh exited $rc, want 0"
+  check_auth
+  check_peers
+  first=$(rq --arg m "$model" '[.[] | select(.kind == "generate" and .tools == true and .requested == $m)] | .[0].body // empty')
+  [ -n "$first" ] || fail "the stub saw no request for $model that carries tools"
+  # The system-level fields first, then the conversation: each vendor puts the
+  # role prompt in one or the other, and the order inside each is the request's.
+  order=$(jq -r --arg a "$reviewer_line" --arg b "$marker" --arg c "$tail_line" '
+    ([(.system, .systemInstruction, .system_instruction, .instructions) | .. | strings]
+     + [(.messages, .input, .contents) | .. | strings]) | join("\n") as $t
+    | [($t | index($a)), ($t | index($b)), ($t | rindex($c))] | map(if . == null then "none" else tostring end) | join(" ")' \
+    "$reqdir/$first" 2>/dev/null || echo "none none none")
+  read -r at_prompt at_marker at_tail <<EOF
+$order
+EOF
+  case "$at_prompt $at_marker $at_tail" in
+    *none*) fail "the first request lacks $([ "$at_prompt" != none ] || printf 'the role prompt'"'"'s first line (%s) ' "$reviewer_line")$([ "$at_marker" != none ] || printf 'the role file'"'"'s marker ')$([ "$at_tail" != none ] || printf 'the restated output contract (%s)' "$tail_line")" ;;
+  esac
+  { [ "$at_prompt" -lt "$at_marker" ] && [ "$at_marker" -lt "$at_tail" ]; } \
+    || fail "the first request holds the role prompt, the role file's marker and the restated output contract out of order (at $at_prompt, $at_marker, $at_tail)"
+  [ "$(head -n 1 "$out/final.md" 2>/dev/null)" = APPROVED ] || fail "final.md's first line is '$(head -n 1 "$out/final.md" 2>/dev/null)', want APPROVED"
+  tens=10a
+
+  if [ -f "adapters/$h/mcp.sh" ]; then
+    # 10b: the dev-worker calls the unnamed tool, then the named one, then case 1's run.
+    prepare "$h" 10b
+    crew_mcp
+    q="q$(rand)"
+    set_case "$(steps_after "$(jq -n --arg q "$q" '[{op: "mcp", server: "notes", tool: "count_notes", args: {}},
+                                                    {op: "mcp", server: "notes", tool: "search_notes", args: {q: $q}}]')")"
+    run_case "$role_max_turns" "$role_token_budget" "$role_timeout_s"
+    check_valid_pr
+    declared=$(rq --arg m "$model" '[.[] | select(.kind == "generate" and .tools == true and .requested == $m)] | .[0].declared // [] | join(" ")')
+    case " $declared " in
+      *"search_notes "*) ;;
+      *) fail "the first request declares no tool ending with search_notes, the one mcp.json names: it declares $declared" ;;
+    esac
+    unlisted=$(jq -r '.mcp.unlisted // "absent"' "$out/run.json")
+    case "$unlisted" in
+      hidden)
+        case " $declared " in
+          *"count_notes "*) fail "run.json says the unnamed tools are hidden, and the first request declares count_notes: $declared" ;;
+        esac
+        ;;
+      visible-denied)
+        case " $declared " in
+          *"count_notes "*) ;;
+          *) fail "run.json says the unnamed tools are visible and denied, and the first request does not declare count_notes: $declared" ;;
+        esac
+        grep -qE '^DENY [^ ]*count_notes ' "$out/hooks.log" || fail "hooks.log has no DENY for count_notes, the tool mcp.json does not name"
+        ;;
+      *) fail "run.json .mcp.unlisted is '$unlisted', want hidden or visible-denied (docs/adr/0073 §9)" ;;
+    esac
+    hit=$(rq --arg h "notes-hit:$q:" '[.[] | .last_result // "" | select(contains($h))] | first // empty')
+    [ -n "$hit" ] || fail "no request's tool result carries notes-hit:$q: the server's answer to search_notes never reached the model"
+    case "$hit" in
+      *"/crew/$ticket/workspace"*) ;;
+      *) fail "the tool result does not name the workspace /crew/$ticket/workspace as the server's working directory: $hit" ;;
+    esac
+    leaked=$(grep -rlF -- notes-count-canary "$reqdir/bodies" 2>/dev/null | head -n 1 || true)
+    [ -z "$leaked" ] || fail "count_notes's answer reached the model ($leaked): a tool mcp.json does not name was called"
+    jq -e '.mcp.calls == [{server: "notes", tool: "search_notes", count: 1}]' "$out/run.json" >/dev/null \
+      || fail "run.json .mcp.calls is $(jq -c '.mcp.calls' "$out/run.json"), want [{server: notes, tool: search_notes, count: 1}]"
+
+    # 10c: a declared server that does not start fails the run, in one line.
+    prepare "$h" 10c
+    crew_mcp
+    set_case "$(steps_after '[]')"
+    run_case "$role_max_turns" "$role_token_budget" "$role_timeout_s"
+    [ "$rc" -eq 1 ] || fail "run.sh exited $rc with a server that exits at start, want 1"
+    check_auth
+    awk 'index($0, "notes") && index($0, "§8") { found = 1 } END { exit !found }' "$errf" \
+      || fail "run.sh's stderr has no line naming the server notes and ADR 0073 §8"
+    [ ! -e "$out/pr.json" ] || fail "a run whose declared server did not start left OUT/pr.json: it would be recorded"
+    tens="$tens 10b 10c"
+  else
+    # No mcp.sh: agents.py refuses, before any container, naming the harnesses that have one.
+    prepare "$h" 10r
+    rc=0
+    agents mcp --harness "$h" --out "$dir/crew-mcp" || rc=$?
+    [ "$rc" -eq 1 ] || fail "core/agents.py mcp --harness $h exited $rc for a harness with no mcp.sh, want 1"
+    [ "$(awk 'END{print NR}' "$dir/agents.out")" -eq 1 ] || fail "core/agents.py mcp's refusal is $(awk 'END{print NR}' "$dir/agents.out") lines on stdout, want one"
+    line=$(cat "$dir/agents.out")
+    case "$line" in
+      "NO-GO: agents — $h cannot give the dev-worker MCP servers (ADR 0073 §8); use one of:"*) ;;
+      *) fail "core/agents.py mcp's refusal is not ADR 0073 §8's line: $line" ;;
+    esac
+    listed=$(printf '%s\n' "${line#*use one of:}" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ *$//')
+    [ "$listed" = "$with_mcp_sh" ] || fail "the refusal lists '$listed', want the harnesses that have adapters/<name>/mcp.sh: '$with_mcp_sh'"
+    [ ! -e "$dir/crew-mcp/decl.json" ] || fail "core/agents.py mcp refused and still wrote decl.json"
+    tens="$tens 10r"
+  fi
+
   # ---- case 8: no key in the artefacts, over every case ----------------------
   n=8
-  for c in 1 2 3 4 5 6 7 9; do
+  for c in 1 2 3 4 5 6 7 9 $tens; do
     reqdir=$conf/model/$h/$c
     reqlog=$reqdir/requests.jsonl
     errf=$conf/$h/$c/stderr.log

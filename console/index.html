@@ -1106,13 +1106,17 @@ function screenLaunch() {
 function screenThresholds() {
   const out = [h("h1", {}, "Thresholds"),
     h("p", {cls: "lede"}, "Every number that can stop a change, where it is set, and why it has that value.")];
-  if (unread(book.thresholds)) return out.concat(h("div", {cls: "panel"}, err(book.thresholds)));
-  out.push(h("div", {cls: "panel"}, h("table", {},
+  if (unread(book.thresholds)) out.push(h("div", {cls: "panel"}, err(book.thresholds)));
+  else out.push(h("div", {cls: "panel"}, h("table", {},
     h("tr", {}, ["Key", "Value", "Judges", "Set in", "Provenance"].map((c) => h("th", {}, c))),
     book.thresholds.map((t) => h("tr", {},
       h("td", {cls: "mono"}, t.key), h("td", {cls: "mono"}, t.value), h("td", {}, t.judge),
       h("td", {cls: "mono"}, t.file + (t.overridden ? " (overrides the platform)" : "")),
       h("td", {}, t.provenance ? h("span", {}, h("b", {}, t.provenance.kind + ": "), t.provenance.text) : h("span", {cls: "chip NO-GO"}, "undeclared")))))));
+  // What the contract gives the agents (docs/adr/0073 §10): the lines `./go
+  // agents` prints, verbatim; a logbook before 1.3 has none to show.
+  if (book.agents !== undefined) out.push(h("h2", {}, "Agents"), h("div", {cls: "panel"},
+    unread(book.agents) ? err(book.agents) : h("pre", {}, (book.agents.lines || []).join("\n"))));
   return out;
 }
 

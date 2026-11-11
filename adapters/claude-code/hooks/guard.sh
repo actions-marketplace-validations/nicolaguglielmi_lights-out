@@ -25,6 +25,14 @@
 # allowed or denied, appends one line to $CREW_OUT/hooks.log (default ".",
 # so a standalone test run degrades gracefully) -- the evidence hooks fired
 # in a recorded run.
+#
+# MCP (docs/adr/0073 §9), the second layer behind each CLI's own filter: a
+# tool_name that starts with `mcp_` (Gemini's mcp_<s>_<t>, and so also
+# Claude's and Codex's mcp__<s>__<t>) is denied unless it is a word of
+# CREW_MCP_ALLOW, the qualified names the entrypoint read from the
+# adapter's mcp.sh output; empty when the repository declares no server,
+# so then every MCP call is denied. An allowed call still meets the
+# deny-list below on its arguments, which holds MCP_* token names too.
 set -eu
 
 crew_out=${CREW_OUT:-.}
@@ -51,6 +59,19 @@ if [ -z "$input" ] || ! printf '%s' "$input" | jq -e . >/dev/null 2>&1; then
   printf '%s\n' "$reason" >&2
   exit 2
 fi
+
+case "$tool_name" in
+  mcp_*)
+    case " ${CREW_MCP_ALLOW:-} " in
+      *" $tool_name "*) ;;
+      *)
+        record DENY "mcp tool not in mcp.json"
+        printf 'denied: %s is not a tool the repository named in mcp.json (docs/adr/0073 §9)\n' "$tool_name" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+esac
 
 # rm -rf (any order/casing of the two flags, split or combined) combined
 # with a dangerous target on the same string: /, ~, .., a bare *, or a
@@ -104,6 +125,7 @@ id_ed25519|id_ed25519
 .key|[A-Za-z0-9_-]\.key([[:space:]"'"'"']|$)
 /run/secrets|/run/secrets
 _API_KEY|[A-Z0-9]+_API_KEY
+MCP_|MCP_[A-Z0-9_]+
 printenv|(^|[^A-Za-z0-9_.-])printenv([^A-Za-z0-9_.-]|$)
 env|(^|[^A-Za-z0-9_.-])env([^A-Za-z0-9_.-]|$)
 os.environ|os\.environ
