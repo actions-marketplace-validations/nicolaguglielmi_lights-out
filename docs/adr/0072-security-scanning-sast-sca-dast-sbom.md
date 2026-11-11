@@ -1,6 +1,6 @@
 # ADR 0072 — Security scanning: SAST judges the diff, a signed SBOM per release, a passive DAST at staging
 
-- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices; 2026-11-11, decision 1 (SAST on the diff) built; decision 2 (the SBOM) built the same day; decisions 3-4 not yet; see "Built" below
+- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices; 2026-11-11, decision 1 (SAST on the diff), decision 2 (the SBOM) and decision 3 (DAST at staging, off by default) built the same day, decision 4 in part; see "Built" below
 - Date: 2026-11-11
 - Would amend: ADR 0015 §4 and ADR 0030 §3 (the SAST verdict and the runner's output), ADR 0053 §6 (`sast` leaves the green-base check), ADR 0024 and 0026 (an optional fifth Delivery verb), ADR 0013 §4 (a check at staging), ADR 0025 §1 (`publish.sh` also attests)
 
@@ -236,3 +236,83 @@ and no new binary. Precisions:
   `sys_platform == 'win32'`); the 31 absent are dev dependencies the image
   does not ship (measured 2026-11-11 on a saved image, no plane). syft
   stays unneeded.
+
+### Decisions 3 and 4, 2026-11-11 (M42, third slice)
+
+Built as decided, off by default (`DAST=off` in every profile). Precisions:
+
+- **The scanner is the plane's `zap` service** (`compose.yaml`, profile
+  `dast`, `zaproxy/zap-stable:20261103@sha256:9624669d…`), run once per
+  side with `run --rm` and a tmpfs `/zap/wrk`; the JSON report is printed
+  on stdout, ZAP's log on stderr.
+- **envoy-canary's `canary-url.sh` names a canary-only Envoy listener**,
+  `http://envoy:8081`, on the plane's network, where the scanner runs. It
+  is published on no host port: one more port on the host is one more to
+  collide on, for a check that is off by default. Both scans go through
+  Envoy, so they see the same proxy's headers. argo-rollouts has no
+  `canary-url.sh` yet, so `DAST=on` with it is refused before staging.
+- **The stable is scanned at `APP_URL`, its host replaced by the address
+  the workbench resolves `PLANE_HOST` to**: the scanner is another
+  container, where `host.containers.internal` need not resolve (docker
+  gives it to the workbench through `--add-host`), and the address works
+  on both engines. The host is stripped from every alert anyway. Before
+  either scan the gate reads `status.sh`: a weight other than 0 is
+  `cannot judge`, since `APP_URL` is then not the stable alone.
+- **launchpad**: `DAST=on` without `canary-url.sh` is refused before
+  staging; after `deploy.sh` the gate runs and a NO-GO rolls back at
+  staging (`NO-GO: launchpad — staging: <the gate's reason> → rolled
+  back`). The line is the record's `dast`, the tower document's
+  `release.dast` and a `staging:` line of `./go audit`. Room in
+  launchpad's line debt (ADR 0052 §4) came from moving the stage's JSON
+  into `core/releases.py stage`.
+- **`./go demo-dast`** (and a `dast` job in `ci.yml` on docker and in
+  `podman.yml` on rootless podman): the pull, timed; `DAST_RUNS` (2) times
+  the stable's own image deployed as the canary under another version,
+  which must be GO with nothing new; then a canary built from
+  `app/fixtures/dast/leaky-header` (a middleware adding
+  `X-Powered-By: meetups/<version>`, ZAP rule 10037), published, signed
+  and SBOM'd as any release and released with `DAST=on`, which must roll
+  back at staging on the dast line with the stable still answering.
+- **Decision 4, partly.** The line is in the release record and `./go
+  audit` prints it, and the SBOM digest with the `cosign
+  verify-attestation` command. Not built: the console's timeline (the
+  logbook's schema `lights-out/logbook/1.2` has no field for either; a
+  version bump is the console's own change) and `./go audit` listing
+  `sast`'s inherited findings (the CI step keeps only the gates' line in
+  the tower document, not `sast.json`). The wrapper gets the SAST change
+  for free, as the ADR says.
+
+**Measured** with `./go demo-dast` on ed19c07, 2026-11-11, on the 4.66 GiB
+podman VM (podman 6.1.4, libkrun, macOS; this machine's network):
+
+| What | Time | Provenance |
+|---|---|---|
+| Cold pull of the pinned image | 298 s | measure, `[demo-dast] measure: pull of the zap image` |
+| One scan, warm, of the bundled app | 34–40 s (six scans) | measure, `dast: … zap exited 0 in <n>s` |
+| The stable against itself (two scans) | 76 s and 74 s, both `nothing new (13 inherited)` | measure, two runs |
+| The leaky canary, deploy to rollback | 80 s, 4 new alerts (rule 10037 on 4 paths) | measure |
+
+And on GitHub Actions, the same commit, `ubuntu-latest`:
+
+| What | ci.yml `dast` (docker), run 43025578953 | podman.yml `dast-podman` (podman 5.7.0, rootless), run 43025579032 | Provenance |
+|---|---|---|---|
+| Cold pull of the pinned image | 21 s | 22 s | measure |
+| One scan, warm | 34–39 s | 37–38 s | measure |
+| The stable against itself (two scans) | 77 s, 70 s, both `nothing new (13 inherited)` | 74 s, 76 s, both `nothing new (13 inherited)` | measure |
+| The leaky canary, deploy to rollback | 79 s, 4 new alerts | 79 s, 4 new alerts | measure |
+
+The margin of the slower job on this commit: `./go demo` took 696 s in
+ci's engine-compat (docker) and 599 s in stranger (podman), so 900 − 696
+= 204 s (measure; it was 222 s on ADR 0062's commit). The pull plus two
+scans is 92–99 s on Actions, 372–378 s on the VM.
+
+**Verdict on the default.** By this ADR's own rule, measured on the slower Actions
+job, DAST fits: 99 s against 204 s. It stays off at L0 anyway, and that
+is the owner's call to change. The rule measures a datacentre's network;
+the VM, a laptop on an ordinary connection, pulled the 1.2 GB image in
+298 s, and 372 s on top of stranger's 599 s is 971 s, over the 900 s the
+golden rule allows a first `./go demo`. A cloner pays the pull once, on
+the run the golden rule is about. The choices for the owner: keep it off
+(as built), turn it on at L0 and accept that a slow first pull breaks the
+15 minutes, or turn it on only when the image is already present. At L1
+it is also the owner's call, as decided, since no gate measures L1's time.
