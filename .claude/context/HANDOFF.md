@@ -45,3 +45,5 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/sharp-khayyam-dcb1de`: the podman demo rolls back for the right reason, ADR 0066 (0063 on its branch), [handoffs/claude-sharp-khayyam-dcb1de.md](handoffs/claude-sharp-khayyam-dcb1de.md)
 - `claude/console-ux-flow-1c108a`: M17's first slice, the console says whose turn it is, ADR 0063, [handoffs/claude-console-ux-flow-1c108a.md](handoffs/claude-console-ux-flow-1c108a.md)
 - `claude/optimistic-meitner-aed1df`: the first run on a repository with no contract drafts it, ADR 0064, ships with the next version, [handoffs/claude-optimistic-meitner-aed1df.md](handoffs/claude-optimistic-meitner-aed1df.md)
+- `claude/m17-kanban-trello-33fff3`: M17's second slice, the Trello-style kanban, ADR 0068, [handoffs/claude-m17-kanban-trello-33fff3.md](handoffs/claude-m17-kanban-trello-33fff3.md)
+- `claude/m39-toolbelt-fc9aa6`: M39, the agent's toolbelt (Claude Code plugin, Codex plugin, Gemini CLI extension, `lights-out-gates mcp`), ADR 0069, nothing listed yet, [handoffs/claude-m39-toolbelt-fc9aa6.md](handoffs/claude-m39-toolbelt-fc9aa6.md)

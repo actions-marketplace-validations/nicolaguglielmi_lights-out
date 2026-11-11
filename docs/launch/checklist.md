@@ -209,9 +209,10 @@ HEAD-relative fix. The light tier is unchanged: no new upload to PyPI.
   both images; both signatures verified with the workbench's cosign.
 - [x] **The two Actions' repositories** refreshed from `actions/` and
   tagged `v0.3.1`.
-- [ ] **Publish the three draft releases** `v0.3.1` with "Publish this
+- [x] **Publish the three draft releases** `v0.3.1` with "Publish this
   Action to the GitHub Marketplace" ticked: `lights-out`, `test-proof`,
-  `test-integrity`. Owner's act.
+  `test-integrity`. Published 2026-11-10, the owner confirming with a passkey;
+  the three Marketplace pages show 0.3.1.
 
 ### The Python package on PyPI (M35)
 
@@ -258,6 +259,79 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   --light` in a repository with a contract. Then drop "Not on PyPI yet"
   from `docs/use-on-your-repo.md` (the hook recipes and the status table),
   `docs/reference.md` and the README.
+
+### The agent's toolbelt (M39)
+
+The Claude Code plugin and `lights-out-gates mcp` (ADR 0069). Nothing is
+listed anywhere: every listing below is the owner's act. What each place
+asks was read on 2026-11-10 (ADR 0069, "Verified before writing"); read it
+again the day you list.
+
+- [ ] **Release the package with the plugin.** The published 0.3.1 has no
+  `spec`, `map` or `mcp` command, and the plugin runs `lights-out-gates` at
+  its own version. In the release commit, move `version` in
+  `pyproject.toml`, in `plugins/lights-out/.claude-plugin/plugin.json`,
+  `plugins/lights-out-codex/.codex-plugin/plugin.json` and
+  `plugins/lights-out-gemini/gemini-extension.json` (`ci/plugin.sh` checks
+  they are equal) and the wrapper's `version=` together; upload to PyPI right after the tag (section "The Python
+  package on PyPI"). Until the upload, a plugin install from `main` that
+  falls back to `uvx` answers `NO-GO: lights-out — lights-out-gates
+  <version> not found`.
+- [ ] **Your own marketplace: this repository.** After the merge,
+  `.claude-plugin/marketplace.json` on `main` is the listing; there is no
+  form. Check it once on a clean machine:
+  ```bash
+  claude plugin marketplace add nicolaguglielmi/lights-out
+  claude plugin install lights-out@lights-out
+  ```
+  then `/lights-out:gates` in a repository with a contract. The relative
+  source has no ref: a new install gets `main` (ADR 0069, Consequences).
+  The 14 days the launch plan wants before awesome-claude-code count from
+  this day.
+- [ ] **Anthropic's directory** (claude.ai, Cowork, and Claude Code as
+  `lights-out@synced`): a paid claude.ai plan; submit from the developer
+  portal, `claude.ai/directory/manage`, after the pre-submission checklist
+  on claude.com. First run `claude plugin validate --strict
+  plugins/lights-out`: on 2026-11-10 it passed with one directory warning,
+  `ICON_MISSING`. The portal takes the icon only on the first save: add a
+  square PNG, 512 to 2048 px, under 2 MB, as `icon.png` beside the
+  plugin's manifest (`plugins/lights-out/.claude-plugin/`) before
+  submitting. The hook
+  and the MCP server are Claude Code components; check the portal's
+  component table for what loads on claude.ai.
+- [ ] **The official marketplace, `claude-plugins-official`**: it takes no
+  submissions through the portal, only through an Anthropic partner
+  contact (Claude Code's publish page, 2026-11-10). The roadmap's "its
+  form" does not exist; skip it unless you have that contact.
+- [ ] **The MCP registry** (in preview): after the PyPI upload of the
+  release, add `mcp-name: io.github.nicolaguglielmi/lights-out` (an HTML
+  comment is enough) to `README.md`, the package's README, and release
+  again so PyPI shows it; write `server.json` with `mcp-publisher init`
+  (name `io.github.nicolaguglielmi/lights-out`, a description of at most
+  100 characters, one `pypi` package `lights-out-gates` at the release's
+  version, transport `stdio`, the argument `mcp`), then
+  `mcp-publisher login github`, `mcp-publisher validate`, `mcp-publisher
+  publish`. Read the registry's PyPI guide that day: these steps come from
+  its quickstart, which shows npm.
+- [ ] **Codex's directory**: the plugin bundles no hook, so it is
+  eligible ("Plugins with hooks aren't eligible for the public plugin
+  directory", Codex's plugin build page, 2026-11-10). After the merge,
+  check `codex plugin marketplace add nicolaguglielmi/lights-out` and
+  `codex plugin add lights-out@lights-out` on a clean machine, then submit
+  through the plugin submission portal that page links; read its review
+  requirements that day. The release moves `version` in
+  `plugins/lights-out-codex/.codex-plugin/plugin.json` with the others
+  (`ci/plugin.sh` checks it).
+- [ ] **Gemini CLI's gallery** (geminicli.com/extensions/browse): it crawls
+  public repositories with the topic `gemini-cli-extension` daily, and
+  wants `gemini-extension.json` at the repository's root (the releasing
+  page, updated 2026-05-08). Create a public repository named
+  `lights-out-gemini` (the extension's name is its directory's), copy
+  `plugins/lights-out-gemini/` into its root at each release, tag it with
+  the release, add the topic. No check here sees that copy: refresh it at
+  every release, as the two standalone Actions' repositories. Then
+  `gemini extensions install https://github.com/nicolaguglielmi/lights-out-gemini`
+  on a clean machine.
 
 ### The README's front page
 

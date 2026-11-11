@@ -1,0 +1,14 @@
+{
+  "name": "lights-out",
+  "description": "The lights-out plugin for Claude Code: the gates in the session (docs/adr/0069)",
+  "owner": {
+    "name": "Nicola Guglielmi"
+  },
+  "plugins": [
+    {
+      "name": "lights-out",
+      "source": "./plugins/lights-out",
+      "description": "/lights-out:gates and /lights-out:spec, a pre-commit hook that runs the light gates, and a read-only MCP server over the project map"
+    }
+  ]
+}

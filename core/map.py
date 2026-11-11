@@ -30,6 +30,7 @@ import sqlite3
 import subprocess  # nosec B404 - git and make: tower.py's sh() runs scripts only (docs/adr/0054 §6)
 import sys
 import tempfile
+from urllib.parse import quote
 
 try:
     from .tower import sh
@@ -472,23 +473,23 @@ def _history(repo, sha):
 
 # --- read (§2) ---
 
-def open_map(path, base):
-    """The map at PATH, refused unless it was built at BASE."""
+def open_map(path, base, rebuild="./go map"):
+    """The map at PATH, refused unless it was built at BASE; REBUILD is the command each refusal names."""
     if not os.path.isfile(path):
-        raise Refused(f"no map at {path}; build it with ./go map")
-    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        raise Refused(f"no map at {path}; build it with {rebuild}")
+    db = sqlite3.connect(f"file:{quote(os.path.abspath(path))}?mode=ro", uri=True)
     try:
         meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
     except sqlite3.DatabaseError as error:
         db.close()
-        raise Refused(f"{path} is not a project map: {error}") from None
+        raise Refused(f"{path} is not a project map: {error}; rebuild it with {rebuild}") from None
     if meta.get("schema") != SCHEMA:
         db.close()
-        raise Refused(f"{path} has map schema {meta.get('schema')}, this reader wants {SCHEMA}; rebuild it with ./go map")
+        raise Refused(f"{path} has map schema {meta.get('schema')}, this reader wants {SCHEMA}; rebuild it with {rebuild}")
     if meta.get("sha") != base:
         db.close()
         raise Refused(f"the map at {path} was built at {meta.get('sha')}, the base is {base}: "
-                      "a stale map is never read; rebuild it with ./go map")
+                      f"a stale map is never read; rebuild it with {rebuild}")
     return db
 
 
