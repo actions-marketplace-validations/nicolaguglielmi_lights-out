@@ -1,6 +1,6 @@
 # ADR 0072 — Security scanning: SAST judges the diff, a signed SBOM per release, a passive DAST at staging
 
-- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices; 2026-11-11, decision 1 (SAST on the diff) built, see "Built" below; decisions 2-4 not yet
+- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices; 2026-11-11, decision 1 (SAST on the diff) built; decision 2 (the SBOM) built the same day; decisions 3-4 not yet; see "Built" below
 - Date: 2026-11-11
 - Would amend: ADR 0015 §4 and ADR 0030 §3 (the SAST verdict and the runner's output), ADR 0053 §6 (`sast` leaves the green-base check), ADR 0024 and 0026 (an optional fifth Delivery verb), ADR 0013 §4 (a check at staging), ADR 0025 §1 (`publish.sh` also attests)
 
@@ -191,3 +191,48 @@ duplicates, the empty tree, a subdirectory workload, old runners on either
 side). `./go demo-gates` keeps the nine verdicts and has two fixtures on a
 base already red at `sast` (a `base/` directory of patches applied first):
 `sast-inherited` GO, `sast-added-on-red-base` NO-GO.
+
+### Decision 2, 2026-11-11 (M42, second slice)
+
+Built as decided. osv-scanner 2.6.0, the pin, has `scan image --archive`
+and `--format spdx-2-3` (its `--help` in the workbench image), so no bump
+and no new binary. Precisions:
+
+- **The archive comes from the engine's API socket**, `GET
+  /images/<name>/get`, the Docker API that podman serves too: the
+  workbench has the socket `./go` mounts and no engine CLI.
+- **The order is SBOM, attestation, `cosign verify-attestation`, then the
+  signature.** A failure at any step before the signature leaves an
+  unsigned image, which `verify.sh` refuses, so even a publish that dies
+  half-way cannot leave a signed image without an SBOM. Reading the
+  attestation back on every publish is the round trip, on every `./go up`
+  and every release.
+- **The scan needs the network**, as `deps` does: `--offline` exited 127
+  with one package, because no local advisory database exists (measured on
+  a scratch Zot, 2026-11-11).
+- **The record reads the digest through an optional Registry verb,
+  `sbom.sh <repo>@<digest>`.** `verify.sh` does not change and launchpad
+  names no registry, so something behind the port has to answer; for Zot
+  it is the OCI referrers API, the sigstore bundle annotated
+  `dev.sigstore.bundle.predicateType: https://spdx.dev/Document`. Without
+  the verb, or without an attestation, `sbom` is null; it is never a
+  verdict. This verb is a structural addition the decision did not name:
+  the owner confirms it or names another way.
+- The tower document's `release` carries `sbom` from the record, and
+  `./go audit` prints it with the `cosign verify-attestation` command.
+- **Measured** on 1ce7cea (GitHub Actions run 43010516593, ci's
+  engine-compat job, docker; run 43010516570, stranger's demo job, rootless
+  podman). Each publish now prints its SBOM time: 10–16 s on docker, 4–5 s
+  on podman, for the bundled image's 1248 SPDX packages. `./go demo`
+  publishes four times, not twice (three times the stable's digest, once
+  the canary's; the log shows the four lines), so the SBOM adds 40–60 s on
+  docker and about 20 s on podman.
+  The demo took 718 s on docker (663 s on 19be6c3, the run before) and
+  573 s on podman (663 s on 19be6c3): within 900 s, and the run-to-run
+  spread on podman is larger than the SBOM's cost.
+- **The inventory covers `uv.lock`.** On the bundled backend image, the
+  SPDX document names all 40 runtime packages of `app/backend/uv.lock`
+  that install on Linux (the 41st, `tzdata`, is marked
+  `sys_platform == 'win32'`); the 31 absent are dev dependencies the image
+  does not ship (measured 2026-11-11 on a saved image, no plane). syft
+  stays unneeded.
