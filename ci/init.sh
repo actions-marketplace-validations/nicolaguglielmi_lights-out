@@ -34,6 +34,16 @@
 #       missing one; and accepts workloads/minimal-js's own.
 #   (j) the checks can fail: (a)'s reader is run on a draft that lost a
 #       provenance line, got a twelfth key, a `$`, or a baseline.
+#   (k) lights-out's own runners (docs/adr/0049 §1, amendment 2026-11-11):
+#       what is committed at HEAD is judged, because the image's entrypoint
+#       puts the base's .lights-out/runners back into the working tree
+#       (docs/adr/0033, 0045 §3) and `self` runs these checks there. GO when
+#       HEAD's .lights-out/runners equals HEAD's stacks/python/runners
+#       (self-checks.sh aside) and the working tree's stacks/python/runners
+#       is HEAD's, or equals the working tree's .lights-out/runners (an
+#       uncommitted edit made to both); NO-GO when HEAD's two copies differ,
+#       or when stacks/python/runners has an edit .lights-out/runners lacks.
+#       Run on five throwaway repositories, then on this checkout as (g).
 # Written from the ADR, not from core/init.py; ci/attach.sh's shape.
 set -eu
 name=init
@@ -50,6 +60,19 @@ mismatch=""
 fail_case() {
   printf 'ci-init: %s: %s\n' "$1" "$2" >&2
   [ -n "$mismatch" ] || mismatch="$1"
+}
+
+# runners_drift <repository> <scratch dir>: why lights-out's own runners
+# are out of step (case k's rule), nothing when they are not.
+runners_drift() {
+  rm -rf "$2" && mkdir -p "$2"
+  git -C "$1" archive HEAD stacks/python/runners .lights-out/runners | tar -x -C "$2" \
+    || { echo "could not read the runners committed at HEAD"; return 0; }
+  diff -r -x self-checks.sh "$2/stacks/python/runners" "$2/.lights-out/runners" >/dev/null 2>&1 \
+    || { echo "at HEAD, .lights-out/runners differs from stacks/python/runners"; return 0; }
+  diff -r "$1/stacks/python/runners" "$2/stacks/python/runners" >/dev/null 2>&1 && return 0
+  diff -r -x self-checks.sh "$1/stacks/python/runners" "$1/.lights-out/runners" >/dev/null 2>&1 && return 0
+  echo "stacks/python/runners has an uncommitted edit that .lights-out/runners does not have"
 }
 
 # core/ is run by path: no bytecode written into it.
@@ -294,8 +317,31 @@ python3 core/init.py --set-baseline "$t/py-out/workload.env" 0.5 "re-measured by
 # its TEST_CMD.
 diff -r stacks/javascript/runners workloads/minimal-js/.lights-out/runners >"$t/diff" 2>&1 \
   || { fail_case g-runners "workloads/minimal-js/.lights-out/runners differs from stacks/javascript/runners"; cat "$t/diff" >&2; }
-diff -r -x self-checks.sh stacks/python/runners .lights-out/runners >"$t/diff" 2>&1 \
-  || { fail_case g-self "lights-out's own .lights-out/runners differs from stacks/python/runners"; cat "$t/diff" >&2; }
+why=$(runners_drift . "$t/self")
+[ -z "$why" ] || fail_case g-self "lights-out's own runners: $why"
+
+# (k) the rule (g-self) applies, on throwaway repositories.
+k=$t/k
+mkdir -p "$k/stacks/python/runners" "$k/.lights-out/runners"
+kgit() { git -C "$k" -c user.name=ci -c user.email=ci@localhost.invalid -c commit.gpgsign=false "$@"; }
+kgit init -q
+printf 'one\n' > "$k/stacks/python/runners/score.py"
+cp "$k/stacks/python/runners/score.py" "$k/.lights-out/runners/score.py"
+printf 'exec make ci\n' > "$k/.lights-out/runners/self-checks.sh"
+kgit add -A && kgit commit -q -m one
+k_one=$(kgit rev-parse HEAD)
+[ -z "$(runners_drift "$k" "$t/k1")" ] || fail_case k-equal "equal committed copies were refused: $(runners_drift "$k" "$t/k1")"
+printf 'two\n' > "$k/stacks/python/runners/score.py"
+cp "$k/stacks/python/runners/score.py" "$k/.lights-out/runners/score.py"
+[ -z "$(runners_drift "$k" "$t/k2")" ] || fail_case k-both-uncommitted "an uncommitted edit made to both copies was refused"
+kgit add -A && kgit commit -q -m two
+kgit restore --source="$k_one" --worktree -- .lights-out/runners
+[ -z "$(runners_drift "$k" "$t/k3")" ] || fail_case k-base-contract "the base's contract put back by the entrypoint was refused: $(runners_drift "$k" "$t/k3")"
+kgit restore --worktree -- .lights-out/runners
+printf 'three\n' > "$k/stacks/python/runners/score.py"
+[ -n "$(runners_drift "$k" "$t/k4")" ] || fail_case k-stack-uncommitted "an uncommitted stack edit the contract lacks was accepted"
+kgit add -A && kgit commit -q -m three
+[ -n "$(runners_drift "$k" "$t/k5")" ] || fail_case k-stack-committed "a commit changing the stack and not the contract was accepted"
 
 # (h) a committed contract: the plane keys are kept, the rest is the draft's.
 hr="$t/committed"

@@ -145,7 +145,14 @@ What the PRs did, as I read them (no gate read them):
    follow-up: refuse, or judge a worktree of `HEAD`, when `HEAD` is not the checked-out commit.
 4. **Phase A's follow-ups came back**: the merge step's docs ticket (`0001.md`, which counts the tickets as
    pages citing the merged files) blocked every re-attach until `./go detach`, and `release` fails on a library.
-5. Once, `./go gates` in `.crew/proof` failed in 1 s with `make: No rule to make target
+5. **Fixed: a change to the python runners was red in `self` for good.** The image's entrypoint puts the
+   base's `.lights-out/runners/` into the working tree (ADR 0033), and `ci/init.sh` case g-self compared it
+   with the head's `stacks/python/runners/`, so 093b858 was `NO-GO: init — case g-self` in `self` (run
+   43087538182). With ADR 0074's base, the last green ancestor, every later push would have stayed red, here
+   and on `main` after a merge. Case g-self now judges the copies committed at HEAD. Case (k), five
+   throwaway repositories, was NO-GO on the base's contract before the change and is GO after. ADR 0049 is
+   amended.
+6. Once, `./go gates` in `.crew/proof` failed in 1 s with `make: No rule to make target
    '.attached/workload.env'` right after a `git checkout` of the attached clone. It did not recur on the same
    heads. Not investigated.
 
