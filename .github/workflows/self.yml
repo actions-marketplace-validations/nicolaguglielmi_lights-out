@@ -73,6 +73,12 @@ jobs:
           fi
           printf 'head=%s\n' "$head" >> "$GITHUB_OUTPUT"
           git worktree add -q --detach "$RUNNER_TEMP/judge" "$base"
+          # A judge older than docs/adr/0074 refuses JUDGED=: it gets none, and
+          # mutation covers the whole range, as before (the amendment of 2026-11-11).
+          if ! grep -q 'JUDGED=\*' "$RUNNER_TEMP/judge/package/entrypoint.sh"; then
+            printf 'judged=\n' >> "$GITHUB_OUTPUT"
+            echo "::notice title=self::the base's judge predates docs/adr/0074; no judged trees, the whole range is mutated"
+          fi
           sh "$RUNNER_TEMP/judge/package/build.sh" docker localhost/lights-out:judge
       - name: lights-out gates on this change
         uses: ./
