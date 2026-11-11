@@ -420,6 +420,15 @@ def cmd_machine(path):
             die(f"who[{step}] is {sentence!r}, want a non-empty sentence")
         if re.search(r"[0-9]", sentence):
             die(f"who[{step}] carries a digit: {sentence!r}; numbers come from the logbook")
+    actor = machine.get("actor")
+    if not isinstance(actor, dict):
+        die(f"actor is {actor!r}, want an object of one actor per step")
+    if sorted(actor) != sorted(tower.PRECONDITION):
+        die(f"actor names {sorted(actor)}, core/tower.py's steps are {sorted(tower.PRECONDITION)}")
+    actors = ("product", "spec", "dev", "gates", "reviewer", "tower", "canary")
+    for step, who_acts in actor.items():
+        if who_acts not in actors:
+            die(f"actor[{step}] is {who_acts!r}, want one of {', '.join(actors)}")
     bands = machine.get("bands")
     if not isinstance(bands, list) or [b.get("band") if isinstance(b, dict) else None for b in bands] != ["spec", "build", "test", "release"]:
         die(f"bands are {bands!r}, want spec, build, test, release in that order")
@@ -603,6 +612,7 @@ sys.path.insert(0, "core")
 import tower, logbook
 cols = list(logbook.COLUMNS)
 machine = {"next": tower.NEXT, "who": {s: "The " + s + " step runs" for s in tower.PRECONDITION},
+           "actor": {s: "tower" for s in tower.PRECONDITION},
            "bands": [{"band": b, "name": b.title(), "states": cols[i:j]} for b, (i, j) in
                      zip(("spec", "build", "test", "release"), ((0, 3), (3, 5), (5, 9), (9, 13)))]}
 open(sys.argv[1] + "/machine-good.json", "w").write(json.dumps(machine))
@@ -625,6 +635,12 @@ mach who-extra '.who.deploy = "The deploy step runs"'
 mach who-empty '.who.merge = "  "'
 mach who-not-string '.who.merge = 3'
 mach who-digit '.who.ci = "The gates run at 5 percent"'
+mach actor-missing 'del(.actor.rework)'
+mach actor-extra '.actor.deploy = "dev"'
+mach actor-outside-list '.actor.ci = "robot"'
+mach actor-not-string '.actor.merge = 3'
+mach actor-absent 'del(.actor)'
+mach actor-not-object '.actor = ["tower"]'
 mach bands-order '.bands |= [.[1], .[0], .[2], .[3]]'
 mach bands-three '.bands |= .[0:3]'
 mach bands-name '.bands[0].name = ""'
