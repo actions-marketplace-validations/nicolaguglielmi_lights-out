@@ -21,7 +21,7 @@ usage='usage: package/release-notes.sh lights-out VERSION GATES_DIGEST FULL_DIGE
 repo=https://github.com/nicolaguglielmi
 identity='^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v'
 
-semver() { printf '%s\n' "$1" | awk 'END { exit !(NR == 1 && /^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){2}$/) }'; }
+semver() { printf '%s\n' "$1" | awk 'END { exit !(NR == 1 && /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/) }'; }
 digest() {
   [ "$1" = unpublished ] && return 0
   printf '%s\n' "$1" | awk 'END { exit !(NR == 1 && /^sha256:[0-9a-f]+$/ && length($0) == 71) }'
