@@ -101,12 +101,14 @@ docs/adr/0037 or 0033` (planted, reverted). No ADR was needed; 0067 is still fre
   - d52d99c: four `# nosec` comments, authorized by the owner on 2026-11-11: B101 at `tenacity/retry.py:259`
     (the assert narrows the type; `__init__` raises unless exactly one of message or match is set), B311 at
     `tenacity/wait.py:91`, `:276`, `:321` (jitter, not cryptography). ruff passes with tenacity's config.
-- 98f0379: init's contract (`tenacity/`, workbench, `TEST_CMD=uv run --locked pytest tests -q -p
+- 98f0379 and b7a05bb: init's contract (`tenacity/`, workbench, `TEST_CMD=uv run --locked pytest tests -q -p
   no:cacheprovider`: 185 passed, 15 subtests, 19.66 s, its tests sleep for real), `worker.md` retitled,
-  `crew-egress.txt`, five tickets. **`MUTATION_BASELINE` is empty, saying so**: `./go init` has been measuring
-  it since 22:47 UTC in `.crew/full2` (257 of 1,741 mutants at 23:14, then stalled on a looping mutant with a
-  690 s timeout). Every tenacity ticket is tests-only, and `gates/mutation.sh:90` answers GO by absence before
-  it reads the baseline, so phase B does not wait for it; a code change in `tenacity/` would.
+  `crew-egress.txt`, five tickets, committed with `MUTATION_BASELINE` empty and labelled as being measured;
+  **b7a05bb sets it: 0.869** (1,513 of 1,741 killed, 28 filtered), 16,827 s wall, 22:44 to 03:25 UTC, beside two
+  other jobs on the VM. Looping mutants cost cosmic-ray's 690 s timeout each (10× a clean run measured at 69 s
+  under that load). The scope includes `tenacity/_version.py`, which hatch-vcs writes at build time and git
+  ignores: its version numbers were mutated too, a little noise in the score. Every ticket is tests-only, so
+  `gates/mutation.sh:90` answers GO by absence and never reads the baseline for them.
 - **Tickets tenacity-01..05**, all `GO: spec`, all tests-only, so `test-proof` passes each by absence:
   01 `stop_when_event_set` (made deterministic: the function sets the event on its third call); 02
   `sleep_using_event`; 03 `to_seconds` and `get_callback_name` (corrected: a `functools.partial` has neither
@@ -128,8 +130,8 @@ commands, once the owner allows them or runs them:
 ```sh
 # from .crew/full3 (bundled): the plane, for Gitea
 ./go up APP_PORT=9000
-# from .crew/full (tenacity attached at 98f0379): the base, then each ticket
-./go gates BASE=aac059c HEAD=98f0379
+# from .crew/full, after ./go attach /Users/nicola/Dev/m24/tenacity (now at b7a05bb): the base, then each ticket
+./go gates BASE=aac059c HEAD=b7a05bb
 ./go request TICKET=tenacity-04 PROFILE=l1 MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5 AGENT_HARNESS=claude-code
 ```
 
@@ -172,9 +174,8 @@ never written into a checkout.
 
 - Clones, local only: `/Users/nicola/Dev/m24/{sqlparse,tenacity,validators}`, branch `lights-out` in each
   (validators' has its tickets uncommitted); `/Users/nicola/Dev/m24/sqlparse-scratch` holds the dry run's draft.
-- Checkouts of this branch under `.crew/`: `full` (tenacity attached), `full2` (tenacity's init still
-  measuring; its `.attached/` holds the sqlparse-scratch dry-run branches before that), `full3` (bundled, the
-  plane's).
+- Checkouts of this branch under `.crew/`: `full` (tenacity attached at 98f0379), `full2` (tenacity's init, done at 03:25 UTC), `full3`
+  (bundled, the plane's).
 - The plane: down since 2026-11-10 23:15 UTC; the slot is free.
 - Working notes: the shared notes folder, `m24-phase-a-notes.md`.
 
