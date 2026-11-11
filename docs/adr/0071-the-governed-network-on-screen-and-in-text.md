@@ -494,3 +494,7 @@ left room. None adds a field or a number without provenance.
 11. **Below 720 px the graph keeps a 620 px minimum width and scrolls in
     its panel.** Provenance, decision: about 80% of the 760-unit drawing,
     chosen by eye on the golden's ticket 0010 at 390 px.
+12. **A replay's graph draws the attempt of the last row revealed**, so the
+    attempt the gates sent back lights its NO-GO before the next one runs;
+    the facts beside it are still the final drawing's, revealed row by row.
+    The rework loop starts at the gate that said NO-GO on the attempt drawn.
