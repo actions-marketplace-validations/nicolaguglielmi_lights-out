@@ -215,7 +215,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -437,7 +437,7 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk,
 	failed=""; failreason=""; \
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
-		out=$$(BASE="$$base" HEAD="$$head" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
+		out=$$(BASE="$$base" HEAD="$$head" JUDGED="$(JUDGED)" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
 		printf '%s\n' "$$out" >> "$(GATES_OUT)/lines"; \
 		case "$$out" in \
 			"GO: $$g"|"GO: $$g — "*) ;; \
