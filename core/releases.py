@@ -3,8 +3,10 @@
 (docs/adr/0052 §3); the shell keeps the plane and the human, this file the
 JSON.
 
-    python3 core/releases.py record VERDICT HELD_AT STAGES IMAGE
-        write RELEASE_RECORD (CANARY_VERSION, STABLE_VERSION); a final
+    python3 core/releases.py record VERDICT HELD_AT STAGES IMAGE [SBOM]
+        write RELEASE_RECORD (CANARY_VERSION, STABLE_VERSION; SBOM, the
+        digest of the image's SPDX attestation, null when the Registry
+        port gives none, docs/adr/0072 §2); a final
         verdict, `held` or `rolled-back`, is also appended to RELEASES_LOG
         with the time and RELEASE_TICKET (null for a release run directly)
     python3 core/releases.py brief
@@ -50,11 +52,11 @@ def write_record(path, record):
         fh.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
 
 
-def record(env, verdict, held_at, stages, image):
+def record(env, verdict, held_at, stages, image, sbom=""):
     path, log = paths(env)
     rec = {"version": env.get("CANARY_VERSION", ""), "stable": env.get("STABLE_VERSION", ""),
            "stages": json.loads(stages), "verdict": verdict,
-           "held_at": json.loads(held_at) if held_at else None, "image": image}
+           "held_at": json.loads(held_at) if held_at else None, "image": image, "sbom": sbom or None}
     write_record(path, rec)
     if verdict != "in-progress":
         append(log, {"kind": "release", "at": now(), "ticket": env.get("RELEASE_TICKET") or None, "record": rec})
@@ -119,7 +121,7 @@ def answer(env, said):
 def main(argv, env=None):
     env = os.environ if env is None else env
     cmd = argv[0] if argv else ""
-    if cmd == "record" and len(argv) == 5:
+    if cmd == "record" and len(argv) in (5, 6):
         record(env, *argv[1:])
     elif cmd == "brief" and len(argv) == 1:
         with open(paths(env)[0], encoding="utf-8") as fh:
@@ -132,7 +134,7 @@ def main(argv, env=None):
     elif cmd == "answer" and len(argv) == 2 and argv[1] in ("GO", "NO-GO"):
         answer(env, argv[1])
     else:
-        print("usage: releases.py record VERDICT HELD_AT STAGES IMAGE | brief | plane | answer GO|NO-GO", file=sys.stderr)
+        print("usage: releases.py record VERDICT HELD_AT STAGES IMAGE [SBOM] | brief | plane | answer GO|NO-GO", file=sys.stderr)
         return 2
     return 0
 

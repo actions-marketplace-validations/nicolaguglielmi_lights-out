@@ -61,8 +61,10 @@ rollback() {
 stages='[]'
 image=""
 record() {
-  # record VERDICT [HELD_AT]
-  python3 core/releases.py record "$1" "${2:-}" "$stages" "$image"
+  # record VERDICT [HELD_AT]; the image's SBOM attestation through the
+  # Registry port's optional sbom.sh, none when it has no such verb
+  # (docs/adr/0072 §2): a digest for the record, never a verdict.
+  python3 core/releases.py record "$1" "${2:-}" "$stages" "$image" "$( [ -z "$image" ] || sh "adapters/$REGISTRY/sbom.sh" "$image" 2>/dev/null || :)"
 }
 
 fail_stage() {

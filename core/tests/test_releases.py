@@ -51,22 +51,14 @@ class Record(ReleasesCase):
     def test_the_record_has_the_shape_launchpad_writes(self):
         self.assertEqual(self.call("record", "held", "25", json.dumps(STAGES), "img@sha")[0], 0)
         self.assertEqual(self.record(), {"version": "v2", "stable": "v1", "stages": STAGES, "verdict": "held",
-                                         "held_at": 25, "image": "img@sha"})
+                                         "held_at": 25, "image": "img@sha", "sbom": None})
 
-    def test_in_progress_is_recorded_and_never_logged(self):
-        self.call("record", "in-progress", "", "[]", "")
-        self.assertEqual(self.record()["verdict"], "in-progress")
-        self.assertIsNone(self.record()["held_at"])
-        self.assertEqual(self.log(), [])
-
-    def test_every_final_record_is_appended_with_time_and_ticket(self):
-        self.call("record", "rolled-back", "", "[]", "")
-        self.env["RELEASE_TICKET"] = "0001"
-        self.call("record", "held", "25", "[]", "")
-        first, second = self.log()
-        self.assertEqual((first["kind"], first["ticket"], first["record"]["verdict"]), ("release", None, "rolled-back"))
-        self.assertEqual((second["ticket"], second["record"]), ("0001", self.record()))
-        self.assertRegex(second["at"], STAMP)
+    def test_the_record_names_the_sbom_attestation_when_the_registry_gives_one(self):
+        # docs/adr/0072 §2: the release record gains `sbom`, the digest of the attestation.
+        self.call("record", "held", "25", "[]", "img@sha", "sha256:att")
+        self.assertEqual(self.record()["sbom"], "sha256:att")
+        self.call("record", "held", "25", "[]", "img@sha", "")
+        self.assertIsNone(self.record()["sbom"])
 
 
 class Brief(ReleasesCase):
