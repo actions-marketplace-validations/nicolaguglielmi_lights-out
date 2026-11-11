@@ -130,7 +130,7 @@ end=$(date +%s)
 duration=$((end - start))
 
 transcript="$OUT/transcript.jsonl"
-result=$(jq -cs '[.[] | select(.type == "result")] | last // {}' "$transcript" 2>/dev/null || echo '{}')
+result=$(jq -cs '[.[] | select(.type == "result")] | last // {}' "$transcript" 2>/dev/null) || result='{}'
 [ -n "$result" ] || result='{}'
 
 # Spend and served model, recorded before any verdict so a run that stops

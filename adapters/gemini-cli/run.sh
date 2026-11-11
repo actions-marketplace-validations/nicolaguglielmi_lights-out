@@ -196,8 +196,8 @@ response=$(jq -rs '
 # (`gemini-3-flash-preview`, 7,624 of 1,394,455 tokens), so `keys | first`
 # — alphabetical — would have named the helper; the model that answered
 # is the one that spent the most tokens.
-stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
-turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null || echo null)
+stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null) || stats='{}'
+turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null) || turns=null
 tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
 tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
 tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
