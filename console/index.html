@@ -282,14 +282,15 @@ aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .0
 .net-graph svg #net-tower .node { fill: var(--none-bg); stroke: var(--ink); stroke-width: 2; }
 .net-graph svg .net-role[data-ran="true"] .node, .net-graph svg .net-worker .node { stroke: var(--accent); stroke-width: 2; }
 .net-graph svg .net-role[data-ran="false"] text { fill: var(--muted); }
-.net-graph svg [data-verdict="GO"] .dot, .net-graph svg [data-verdict="approved"] .node, .net-graph svg #net-human[data-verdict="GO"] .node { fill: var(--go); stroke: var(--go); }
-.net-graph svg [data-verdict="NO-GO"] .dot, .net-graph svg [data-verdict="changes-requested"] .node, .net-graph svg #net-human[data-verdict="NO-GO"] .node { fill: var(--nogo); stroke: var(--nogo); }
+.net-graph svg [data-verdict="GO"] .dot { fill: var(--go); stroke: var(--go); }
+.net-graph svg [data-verdict="NO-GO"] .dot { fill: var(--nogo); stroke: var(--nogo); }
+.net-graph svg .net-stage[data-verdict="GO"] .dot, .net-graph svg [data-verdict="approved"] .node, .net-graph svg #net-human[data-verdict="GO"] .node { fill: var(--go-bg); stroke: var(--go); stroke-width: 2; }
+.net-graph svg .net-stage[data-verdict="NO-GO"] .dot, .net-graph svg [data-verdict="changes-requested"] .node, .net-graph svg #net-human[data-verdict="NO-GO"] .node { fill: var(--nogo-bg); stroke: var(--nogo); stroke-width: 2; }
 .net-graph svg [data-verdict="not-run"] .dot, .net-graph svg [data-verdict="not-reached"] .node { fill: var(--panel); stroke: var(--muted); stroke-dasharray: 2 2; }
-.net-graph svg #net-human[data-verdict="waiting"] .node { fill: var(--wait-bg); stroke: var(--wait); }
+.net-graph svg #net-human[data-verdict="waiting"] .node { fill: var(--wait-bg); stroke: var(--wait); stroke-width: 2; }
 .net-graph svg [data-verdict="GO"] .seg { stroke: var(--go); stroke-width: 3; }
 .net-graph svg [data-verdict="NO-GO"] .seg { stroke: var(--nogo); stroke-width: 3; }
 .net-graph svg #net-rework path { stroke: var(--nogo); stroke-width: 2; fill: none; stroke-dasharray: 6 4; }
-.net-graph svg [data-verdict="GO"] text.v, .net-graph svg [data-verdict="NO-GO"] text.v, .net-graph svg [data-verdict="approved"] text.v, .net-graph svg [data-verdict="changes-requested"] text.v { fill: var(--panel); }
 .net-graph svg [data-pending] { opacity: .18; }
 .net-graph svg .net-new .node, .net-graph svg .net-new .dot { animation: net-pulse 1s ease-out 2; }
 @keyframes net-pulse { from { stroke-width: 7; } to { stroke-width: 2; } }
@@ -438,6 +439,7 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
     "review": "review: {verdict} by {role}",
     "review_back": "review: sent attempt {attempt} back",
     "review_none": "review: not reached on attempt {attempt}",
+    "review_none_yet": "review: not reached",
     "rework": "rework: {count} sent back to the dev-worker, at most {max} attempts",
     "rework_nomax": "rework: {count} sent back to the dev-worker",
     "role_idle": "role {role}: did not run for this ticket",
@@ -1325,7 +1327,7 @@ function netRolesRan(t) {
 }
 function netHuman(t) {
   const signed = (t.timeline || []).filter((r) => r && r.phase === "sign-off");
-  if (signed.length) { const r = signed[signed.length - 1]; return {verdict: r.verdict, text: nw("human", {line: r.line, via: r.via})}; }
+  if (signed.length) { const r = signed[signed.length - 1]; return {verdict: r.verdict, who: r.line + " · " + r.via, text: nw("human", {line: r.line, via: r.via})}; }
   if (t.state === "held") return {verdict: "waiting", text: nw("human_waiting", {})};
   if (t.state === "rolled-back") return {verdict: "not-reached", text: nw("human_rolled_back", {})};
   return {verdict: "not-reached", text: nw("human_none", {})};
@@ -1335,7 +1337,7 @@ function netReview(t, n) {
   if (n === t.attempt && r && typeof r === "object" && r.verdict) return {verdict: r.verdict, text: nw("review", {verdict: r.verdict, role: r.role || "the reviewer"})};
   const back = netRework(t, n);
   if (back && back.judge === "review") return {verdict: "changes-requested", text: nw("review_back", {attempt: n})};
-  return {verdict: "not-reached", text: nw("review_none", {attempt: n})};
+  return {verdict: "not-reached", text: n !== null ? nw("review_none", {attempt: n}) : nw("review_none_yet", {})};
 }
 const netJoined = (v) => v === null || v === undefined ? null : (v.length ? v.join(", ") : nw("none", {}));
 // The same facts as core/network.py's view(), in the same order.
@@ -1355,9 +1357,10 @@ function netView(b, tid, n) {
     const ws = netWorkers(netTask(t, n));
     if (ws.length) for (const m of ws) g.push(Object.assign({kind: "worker", key: "worker:" + n + ":" + m.id, text: netWorkerFact(m)}, m));
     else g.push({kind: "worker", key: "worker:" + n, id: null, text: nw("no_worker", {attempt: n})});
-    for (const e of netGates(t, n)) g.push(Object.assign({kind: "gate", key: "gate:" + n + ":" + e.gate, attempt: n}, e));
-    g.push(Object.assign({kind: "review", key: "review"}, netReview(t, n)));
   }
+  // With no attempt yet every gate is still drawn, none of them run.
+  for (const e of netGates(t, n)) g.push(Object.assign({kind: "gate", key: "gate:" + n + ":" + e.gate, attempt: n}, e));
+  g.push(Object.assign({kind: "review", key: "review"}, netReview(t, n)));
   const rework = (t.rework || []).filter((r) => r && typeof r === "object");
   if (rework.length) {
     const mx = reworkMax();
@@ -1371,7 +1374,8 @@ function netView(b, tid, n) {
   v.graph = g;
 
   const stream = [];
-  if (old) stream.push({kind: "old", key: "old", text: nw("old_logbook", {version: b.schema})});
+  const version = String(b.schema || "").split("/").pop();
+  if (old) stream.push({kind: "old", key: "old", text: nw("old_logbook", {version})});
   for (const k of ns.slice().reverse()) {
     const task = netTask(t, k);
     const who = netWorkers(task).map((m) => m.id).join(", ") || nw("who_unknown", {});
@@ -1396,7 +1400,7 @@ function netView(b, tid, n) {
   if (!ns.length) stream.push({kind: "none", key: "none", text: nw("no_attempt", {})});
   v.stream = stream;
 
-  const files = [];
+  const files = old ? [{kind: "old", text: nw("old_logbook", {version})}] : [];
   if (unread(b.adrs)) files.push({kind: "unread", text: nw("unread", {what: "the project map", error: b.adrs.error})});
   if (unread(b.perimeters_held)) files.push({kind: "unread", text: nw("unread", {what: "who holds which files", error: b.perimeters_held.error})});
   let globs = t.perimeter;
@@ -1490,7 +1494,7 @@ function netGraph(v) {
   out.push(svg("line", {cls: "wire", x1: 156, y1: lane, x2: 712, y2: lane}));
   gates.forEach((g, i) => {
     const x = x0 + i * step;
-    out.push(svg("g", {cls: "net-gate", "data-gate": g.gate || "", "data-verdict": g.verdict || "", "data-attempt": String(g.attempt), "data-key": g.key},
+    out.push(svg("g", {cls: "net-gate", "data-gate": g.gate || "", "data-verdict": g.verdict || "", "data-attempt": g.attempt === null ? "" : String(g.attempt), "data-key": g.key},
       svg("line", {cls: "seg", x1: i ? x - step : 156, y1: lane, x2: x, y2: lane}),
       svg("circle", {cls: "dot", cx: x, cy: lane, r: 8}),
       svg("text", {x, y: lane + 22, "text-anchor": "end", transform: "rotate(-35 " + x + " " + (lane + 22) + ")", cls: "sub"}, g.gate || "?")));
@@ -1503,8 +1507,9 @@ function netGraph(v) {
       svg("circle", {cls: "dot", cx: x, cy: lane, r: 15}), svg("text", {x, y: lane + 4, "text-anchor": "middle", cls: "v"}, s.pct + "%")));
   });
   if (human) out.push(svg("g", {id: "net-human", "data-verdict": human.verdict, "data-key": "human"},
-    svg("rect", {cls: "node", x: 682, y: lane - 16, width: 64, height: 32, rx: 16}), svg("text", {x: 714, y: lane + 4, "text-anchor": "middle", cls: "v"}, "human")));
-  if (rework) out.push(svg("g", {id: "net-rework", "data-count": String(rework.count), "data-max": rework.max === null ? null : String(rework.max), "data-key": "rework"},
+    svg("rect", {cls: "node", x: 682, y: lane - 16, width: 64, height: 32, rx: 16}), svg("text", {x: 714, y: lane + 4, "text-anchor": "middle", cls: "v"}, "human"),
+    human.who ? netLabel(714, lane + 34, human.who, "sub") : null));
+  if (rework) out.push(svg("g", {id: "net-rework", "data-count": String(v.reworkSoFar === undefined ? rework.count : v.reworkSoFar), "data-max": rework.max === null ? null : String(rework.max), "data-key": "rework"},
     svg("path", {d: "M " + (x0 + 150) + " " + (lane - 12) + " C " + (x0 + 120) + " " + (lane - 100) + ", 110 " + (lane - 100) + ", 80 " + (top - 18)}),
     netLabel(x0 + 12, lane - 86, "rework " + rework.count + (rework.max !== null ? " of " + rework.max : ""))));
   return svg("svg", {viewBox: "0 0 760 340", role: "img", "aria-labelledby": "net-facts-title"}, out, tower);
@@ -1527,7 +1532,7 @@ function screenNetwork(arg) {
   const t = tickets.find((x) => x.id === tid);
   if (!t) return [h("h1", {}, "Network"), h("div", {cls: "panel"}, "The logbook holds no ticket " + tid + ".")];
   // `replay=1` in the link starts the replay once the screen is drawn.
-  if (q.replay === "1" && !(replay && replay.ticket === tid)) setTimeout(() => { if (!(replay && replay.ticket === tid)) startReplay(tid); }, 0);
+  if (q.replay === "1" && !(replay && replay.ticket === tid)) startReplay(tid, false);
   const ns = netAttempts(t);
   const n = q.attempt && ns.includes(Number(q.attempt)) ? Number(q.attempt) : null;
   const v = netView(book, tid, n);
@@ -1537,26 +1542,32 @@ function screenNetwork(arg) {
   const select = h("select", {id: "net-ticket", "aria-label": "Ticket",
     onchange: (e) => { location.hash = "#network/" + encodeURIComponent(e.target.value); }},
     tickets.map((x) => h("option", Object.assign({value: x.id}, x.id === tid ? {selected: true} : {}), named(x))));
+  // The rework count of a replay counts only the rework rows revealed so far.
+  if (playing && !replay.done) v.reworkSoFar = (t.timeline || []).slice(0, replay.row).filter((r) => r && r.phase === "rework").length;
   const graph = netGraph(v);
   for (const el of graph.querySelectorAll("[data-key]")) if (pending(el.getAttribute("data-key"))) el.setAttribute("data-pending", "");
-  const facts = h("ul", {cls: "net-facts", id: "net-facts"}, v.graph.map((f) => netFact("li", f, {"data-pending": pending(f.key)})));
-  const stream = h("ol", {id: "net-stream"}, v.stream.map((e) => e.kind !== "attempt"
-    ? h("li", {cls: "net-note"}, netFact("p", e, {"data-pending": pending(e.key)}))
+  // In a replay a fact is drawn once its row is revealed; the graph's
+  // nodes stay in place, dimmed until then (docs/adr/0071 §3).
+  const shown = (f) => !pending(f.key);
+  const facts = h("ul", {cls: "net-facts", id: "net-facts"}, v.graph.filter(shown).map((f) => netFact("li", f)));
+  const stream = h("ol", {id: "net-stream"}, v.stream.filter(shown).map((e) => e.kind !== "attempt"
+    ? h("li", {cls: "net-note"}, netFact("p", e))
     : h("li", {cls: "net-attempt", "data-attempt": String(e.attempt)},
-      netFact("div", e, {"data-pending": pending(e.key)}),
-      h("ul", {}, e.items.map((i) => i.kind === "line"
-        ? netFact("li", i, {cls: "net-fact net-line", "data-gate": i.gate || "", "data-verdict": i.verdict || "", "data-pending": pending(i.key)})
-        : netFact("li", i, {"data-pending": pending(i.key)}))),
+      netFact("div", e),
+      h("ul", {}, e.items.filter(shown).map((i) => i.kind === "line"
+        ? netFact("li", i, {cls: "net-fact net-line", "data-gate": i.gate || "", "data-verdict": i.verdict || ""})
+        : netFact("li", i))),
       e.patch || e.withheld ? h("details", Object.assign({cls: "net-patch", "data-truncated": e.patch ? String(e.patch.truncated === true) : "false"},
-        e.attempt === v.attempt && e.patch ? {open: true} : {}),
+        e.attempt === v.attempt ? {open: true} : {}),
         h("summary", {}, "The patch of attempt " + e.attempt), h("pre", {}, e.patch ? e.patch.text : e.withheld)) : null)));
   const rows = [];
   for (const f of v.files) {
+    if (f.kind === "file" && !shown(f)) continue;
     if (f.kind === "file") {
       const r = f.row;
       rows.push(h("tr", {cls: "net-file", "data-path": r.path, "data-glob": r.glob === null ? "" : r.glob, "data-member": r.member || "",
         "data-held-by": (r.held_by || []).join(",")},
-        h("td", {cls: "net-fact", "data-key": f.key, "data-pending": pending(f.key)}, netSentence("file_row", f.parts, {
+        h("td", {cls: "net-fact", "data-key": f.key}, netSentence("file_row", f.parts, {
           tests: (s) => h("span", {cls: "net-tests mono"}, s),
           adrs: (s) => h("span", {cls: "net-adrs"}, (r.adrs || []).length ? r.adrs.flatMap((a, i) => [i ? ", " : null, h("a", {href: "#adr/" + a}, a)]) : s)}))));
     } else rows.push(h("tr", {cls: f.kind === "glob" ? "net-glob" : "net-note"}, h("td", {cls: "net-fact"}, f.text)));
@@ -1612,12 +1623,12 @@ function noteNet(after) {
 }
 // The replay (docs/adr/0071 §3): the final record revealed one timeline row
 // at a time on the 2 s beat, labelled, with no request until it ends.
-function startReplay(tid) {
+function startReplay(tid, draw = true) {
   if (replay && replay.timer) clearInterval(replay.timer);
   const t = ticketsList().find((x) => x.id === tid);
   const total = t && Array.isArray(t.timeline) ? t.timeline.length : 0;
   replay = {ticket: tid, row: 0, total, done: false, timer: null};
-  render();
+  if (draw) render();
   replay.timer = setInterval(() => {
     replay.row += 1;
     if (replay.row >= replay.total) { replay.row = replay.total; replay.done = true; clearInterval(replay.timer); replay.timer = null; }

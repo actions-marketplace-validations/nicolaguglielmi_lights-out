@@ -2393,6 +2393,16 @@ def expect_net(book, tid, attempt, table_gates, roles):
     latest = atts[-1] if atts else None
     n = attempt if attempt is not None else latest
     rows = [r for r in (gates_of(t, n, latest) or []) if r.get("gate")]
+    gate_pairs = gates_of_pairs(rows, table_gates)
+    # A judge recorded with no gate lines (before 1.3 recorded them): one
+    # summary edge with its verdict, as for a 1.2 logbook (docs/adr/0071 §6);
+    # eight `not-run` edges would draw history the record does not hold. A
+    # rework entry the reviewer or main's check wrote followed a gates GO.
+    back = next((r for r in t.get("rework") or [] if r.get("attempt") == n), None)
+    judge = back if back is not None else (t.get("ci") if n == latest and isinstance(t.get("ci"), dict) else None)
+    if judge is not None and judge.get("gates") is None:
+        v = ("GO" if back.get("judge") != "gates" else "NO-GO") if back is not None else judge.get("verdict")
+        gate_pairs = [("gates", v if v in ("GO", "NO-GO") else "not-run")]
     named = {x.get("role") for x in t.get("tasks") or []} | {(t.get("task") or {}).get("role"), (t.get("review") or {}).get("role")}
     if (t.get("product") or {}).get("consulted"):
         named.add("product")
@@ -2426,8 +2436,13 @@ def expect_net(book, tid, attempt, table_gates, roles):
         stream.append({"attempt": str(a), "open": a == n, "patch": shown_patch, "members": [m["id"] for m in task_a.get("members") or []],
                        "lines": [(r["gate"], r["verdict"], r["line"]) for r in (gates_of(t, a, latest) or []) if r.get("gate")]})
     return {"ticket": tid, "version": version_of(book), "attempt": n, "roles": sorted(roles), "ran": {r: r in named for r in roles},
-            "workers": workers, "gates": gates_of_pairs(rows, table_gates), "gate_attempt": str(n),
-            "review": (t.get("review") or {}).get("verdict"),
+            "workers": workers, "gates": gate_pairs, "gate_attempt": "" if n is None else str(n),
+            # The graph lights the attempt shown (docs/adr/0071 §2, `attempt`):
+            # the record's review belongs to the latest; an earlier attempt was
+            # sent back by the reviewer, or never reached it.
+            "review": (t.get("review") or {}).get("verdict") if n == latest else
+                      ("changes-requested" if any(r.get("attempt") == n and r.get("judge") == "review" for r in t.get("rework") or [])
+                       else "not-reached"),
             "rework": {"count": str(len(t["rework"])), "max": None if top is None else str(top)} if t.get("rework") else None,
             "stages": [(str(s["pct"]), stage_verdict(s["verdict"])) for s in (rel or {}).get("stages") or []],
             "human": human, "stream": stream, "files": t.get("files"), "perimeter": t.get("perimeter")}
@@ -2604,7 +2619,13 @@ def net_old_problems(info, exp, sentence):
         bad.append(f"#net-stream does not say {sentence!r}: {info['stream_text'][:160]!r}")
     if info["text"].count(sentence) < 2:
         bad.append(f"the sentence {sentence!r} is said {info['text'].count(sentence)} time(s) in section#net, want the stream's and the files'")
-    for glob in exp["perimeter"] or []:
+    perimeter = exp["perimeter"]
+    if isinstance(perimeter, dict) and perimeter.get("ok") is False:
+        # An unread perimeter (a ticket with no `## Perimeter`): its reason is shown instead.
+        if perimeter.get("error", "") not in info["text"]:
+            bad.append(f"the perimeter could not be read, and the screen does not say why: {perimeter.get('error')!r}")
+        perimeter = []
+    for glob in perimeter or []:
         if glob not in info["text"]:
             bad.append(f"the perimeter {glob!r} is not shown")
     if any(s["lines"] for s in info["stream"]):
@@ -2959,13 +2980,13 @@ def x_replay(browser, bases, book):
     # By the button.
     ctx = browser.new_context(viewport=DESKTOP)
     tab = Tab(ctx, bases["golden"])
-    tab.page.clock.install(time=CLOCK_T0)
+    tab.page.clock.install(time=CLOCK_T0 / 1000)  # Playwright for Python takes seconds
     info = net_open(tab, net_hash(NETWORK_TICKET), "x, the static drawing")
     static = info["facts"]
     need(info["replay"] == "off" and not (info["label"] and info["label"]["visible"]),
          f"x: before it is asked, the screen is data-replay={info['replay']!r} with the label {info['label']}: want off and no visible label")
     need(tab.page.locator("#net-replay").count() == 1, "x: there is no #net-replay button")
-    tab.page.clock.pause_at(tab.page.evaluate("Date.now()") + 20)
+    tab.page.clock.pause_at((tab.page.evaluate("Date.now()") + 20) / 1000)
     requests = []
     tab.page.on("request", lambda r: requests.append(f"{r.method} {r.url}"))
     tab.page.click("#net-replay")
@@ -2982,11 +3003,13 @@ def x_replay(browser, bases, book):
     # By the link.
     ctx = browser.new_context(viewport=DESKTOP)
     tab = Tab(ctx, bases["golden"])
-    tab.page.clock.install(time=CLOCK_T0)
+    tab.page.clock.install(time=CLOCK_T0 / 1000)  # Playwright for Python takes seconds
     tab.page.goto("about:blank")
+    # Paused before the load: the beat counts from the moment the page starts
+    # the replay, which is then the clock's own, not a race with this script.
+    tab.page.clock.pause_at((tab.page.evaluate("Date.now()") + 20) / 1000)
     tab.load(net_hash(NETWORK_TICKET, replay=True))
     wait_for(tab, "section#net[data-replay=on]", "x, ?replay=1 did not start the replay")
-    tab.page.clock.pause_at(tab.page.evaluate("Date.now()") + 20)
     start = net_info(tab)
     need(start["row"] == "0", f"x, ?replay=1: data-row is {start['row']!r} a moment after the load, want 0")
     drive_replay(tab, rows, static, final_count, "x, ?replay=1")
@@ -3060,12 +3083,11 @@ def y_live(browser, bases, golden, nbooks):
         need(not bad, f"{what}: {bad[0] if bad else ''}", *bad)
         pinned.wait("() => document.querySelectorAll(\"ol#net-stream > li.net-attempt[data-attempt='2']\").length === 1", None,
                     f"{what}: the new attempt never joined the stream", timeout=9000)
-        if reduced:
-            pinned.page.wait_for_timeout(MARK_MS + 1500)
-            need(pinned.page.evaluate(NET_NEW_JS) > 0, f"{what}: with reduced motion the mark went away; it must stay")
-        else:
-            pinned.wait("() => document.querySelectorAll('section#net .net-new').length === 0", None,
-                        f"{what}: the mark never went away (it lasts {MARK_MS} ms)", timeout=MARK_MS + 5000)
+        # With reduced motion the mark stays and only the motion goes (docs/adr/
+        # 0071 §3, ADR 0059 §1's mark): it was drawn above, with no animation
+        # (live_problems); like any mark it lasts MARK_MS.
+        pinned.wait("() => document.querySelectorAll('section#net .net-new').length === 0", None,
+                    f"{what}: the mark never went away (it lasts {MARK_MS} ms)", timeout=MARK_MS + 5000)
         bad = net_problems(net_info(pinned), expect_net(golden, NETWORK_TICKET, None, gates, roles))
         need(not bad, f"{what}, the drawing after the poll: {bad[0] if bad else ''}", *bad)
         following.wait("t => { const s = document.querySelector('section#net'); return !!s && s.dataset.ticket === t; }", default_ticket(golden),
@@ -3269,7 +3291,7 @@ def self_checks_0068(book):
     need(set(ACTOR_OF_STEP) == set(tower.PRECONDITION) and set(ACTOR_OF_STEP.values()) <= set(ACTORS), "the actor table of this suite is not core/tower.py's steps")
     by_id = {t["id"]: t for t in book["tickets"]}
     turns = turns_of(book)
-    want = {"0001": "done", "0002": "done", "0003": "dev", "0004": "you", "0005": "you", "0007": "you", "0008": "dev", "0009": "you"}
+    want = {"0001": "done", "0002": "done", "0003": "dev", "0004": "you", "0005": "you", "0007": "you", "0008": "dev", "0009": "you", "0010": "done"}
     need({i: actor_of(by_id[i], turns[i]) for i in by_id} == want, f"the badge rule gives {({i: actor_of(by_id[i], turns[i]) for i in by_id})}, want {want}")
     answered = {"id": "9", "state": "questions", "questions": [{"question": "q", "answer": "a"}]}
     need(actor_of(answered, {"turn": "tower"}) == "product", "an answered question is not the product role's turn")
