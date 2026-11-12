@@ -140,11 +140,11 @@ class Report(unittest.TestCase):
 
     def test_per_ticket(self):
         self.check(self.got["tickets"]["0201"], 4.20, 3, 0, agent_s=560, elapsed_s=90000)
-        self.check(self.got["tickets"]["0202"], 0.0, 2, 1, agent_s=55, elapsed_s=5400)
+        self.check(self.got["tickets"]["0202"], 0.0, 2, 1, agent_s=50, elapsed_s=5400)
 
     def test_per_role(self):
         self.check(self.got["roles"]["dev-worker"], 3.70, 3, 1, agent_s=550)
-        self.check(self.got["roles"]["test-reviewer"], 0.50, 2, 0, agent_s=65)
+        self.check(self.got["roles"]["test-reviewer"], 0.50, 2, 0, agent_s=60)
 
     def test_per_day(self):
         self.check(self.got["days"]["2026-11-10"], 3.00, 2, 0)

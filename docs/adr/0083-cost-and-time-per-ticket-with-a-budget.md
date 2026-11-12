@@ -94,8 +94,11 @@ invented price (docs/PLAN.md, sprint 2026-11-12, M50).
 5. **`./go spend`** reads every ticket's document through the state
    store and prints on stderr the cost and time per ticket (the known
    cost, how many runs, how many of unknown cost, the agents' time as the
-   sum of `duration_s`, and the elapsed time from the first to the last
-   history entry), per role and per day; stdout is one line of the gate
+   sum of `duration_s` of the runs that were not replayed, and the
+   elapsed time from the first to the last history entry), per role and
+   per day. A replayed run reports the recorded run's duration, not its
+   own (found at the first `./go demo` with this ADR: ticket 0001's
+   replayed attempt reported 328 s of agents inside 218 s of ticket); stdout is one line of the gate
    contract, `GO: spend — <n> tickets, <r> runs, $<x> known, <u> of cost
    unknown`, or `NO-GO: spend — <why>` when the store cannot be read.
 
@@ -142,8 +145,9 @@ and 3.75 until 2026-12-31, 1.50 and 7.50 from 2027-01-01):
   test-reviewer, replayed, 5 s, 2026-11-11T12:05:00Z ($0); history from
   2026-11-11T11:00:00Z to 2026-11-11T12:30:00Z. Expected: 0201 $4.20, 3
   runs, 0 unknown, 560 s of agents, 90,000 s elapsed; 0202 $0.00, 2
-  runs, 1 unknown, 55 s, 5,400 s; dev-worker $3.70, 3 runs, 1 unknown,
-  550 s; test-reviewer $0.50, 2 runs, 65 s; 2026-11-10 $3.00, 2 runs;
+  runs, 1 unknown, 50 s (the replayed review's 5 s not counted), 5,400
+  s; dev-worker $3.70, 3 runs, 1 unknown, 550 s; test-reviewer $0.50, 2
+  runs, 60 s; 2026-11-10 $3.00, 2 runs;
   2026-11-11 $1.20, 3 runs, 1 unknown; in all $4.20, 5 runs, 1 unknown.
 - The budget, on 0201's spend: `SPEND_BUDGET_TICKET_USD=4.20` stops,
   4.21 does not; on a day whose entries are 0201's $1.20 alone,
