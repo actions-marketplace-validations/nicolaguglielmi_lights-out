@@ -1,0 +1,43 @@
+{
+  "about": "List prices per model, USD per million tokens, input and output; from/until are UTC days, both included. One entry per provider, model and period; a model not listed has no price, and its runs are 'cost unknown' (docs/adr/0083 §1). Each price is the vendor's own page, read on the day in `checked`.",
+  "prices": [
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "input": 0.75,
+      "output": 3.75,
+      "until": "2026-12-31",
+      "note": "Standard, paid tier; output includes thinking tokens",
+      "source": "https://aistudio.google.com/docs/pricing",
+      "checked": "2026-11-12"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "input": 1.50,
+      "output": 7.50,
+      "from": "2027-01-01",
+      "note": "Standard, paid tier, the price the page announces from 2027-01-01",
+      "source": "https://aistudio.google.com/docs/pricing",
+      "checked": "2026-11-12"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "input": 2.00,
+      "output": 10.00,
+      "note": "base input and output; no long-context tier for this model",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "checked": "2026-11-12"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-6.1-sol",
+      "input": 2.00,
+      "output": 10.00,
+      "note": "Standard, prompts up to 272K tokens; over that 4.00 and 15.00, not applied (docs/adr/0083)",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "checked": "2026-11-12"
+    }
+  ]
+}
