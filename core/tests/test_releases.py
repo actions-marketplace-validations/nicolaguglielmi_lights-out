@@ -51,7 +51,8 @@ class Record(ReleasesCase):
     def test_the_record_has_the_shape_launchpad_writes(self):
         self.assertEqual(self.call("record", "held", "25", json.dumps(STAGES), "img@sha")[0], 0)
         self.assertEqual(self.record(), {"version": "v2", "stable": "v1", "stages": STAGES, "verdict": "held",
-                                         "held_at": 25, "image": "img@sha", "sbom": None, "dast": None})
+                                         "held_at": 25, "image": "img@sha", "sbom": None, "dast": None,
+                                         "reason": None})
 
     def test_the_record_names_the_sbom_attestation_when_the_registry_gives_one(self):
         # docs/adr/0072 §2: the release record gains `sbom`, the digest of the attestation.
@@ -69,13 +70,85 @@ class Record(ReleasesCase):
 
 class Stage(ReleasesCase):
     def test_a_stage_appends_its_pct_verdict_and_slo_lines(self):
-        # docs/adr/0020 §4: one entry per verified stage with its verdict and the `slo:` lines behind it.
+        # docs/adr/0020 §4: one entry per verified stage with its verdict and the `slo:` lines behind it;
+        # docs/adr/0080 §1: and its times and its numbers as structures.
         code, out = self.call("stage", json.dumps([{"pct": 5, "verdict": "GO: slo", "numbers": []}]), "25",
                               "NO-GO: slo — error_rate", stdin="noise\nslo: error_rate canary=1.0\nslo: p99 ok\n")
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out), [{"pct": 5, "verdict": "GO: slo", "numbers": []},
-                                           {"pct": 25, "verdict": "NO-GO: slo — error_rate",
-                                            "numbers": ["slo: error_rate canary=1.0", "slo: p99 ok"]}])
+        entries = json.loads(out)
+        self.assertEqual(entries[0], {"pct": 5, "verdict": "GO: slo", "numbers": []})
+        last = entries[1]
+        self.assertEqual({k: last[k] for k in ("pct", "verdict", "numbers")},
+                         {"pct": 25, "verdict": "NO-GO: slo — error_rate",
+                          "numbers": ["slo: error_rate canary=1.0", "slo: p99 ok"]})
+        self.assertIsNone(last["started_at"])
+        self.assertRegex(last["judged_at"], STAMP)
+        self.assertEqual(last["slo"], [])  # both lines are off the shape: nothing parsed, both kept in numbers
+
+    def stage(self, stderr, started_at="2026-11-12T10:00:00Z", env=None):
+        argv = ["stage", "[]", "5", "GO: slo"] + ([started_at] if started_at is not None else [])
+        code, out = self.call(*argv, stdin=stderr, env={**self.env, **(env or {})})
+        self.assertEqual(code, 0)
+        return json.loads(out)[0]
+
+    def test_the_times_started_at_is_the_argument_and_judged_at_a_utc_stamp(self):
+        entry = self.stage("")
+        self.assertEqual(entry["started_at"], "2026-11-12T10:00:00Z")
+        self.assertRegex(entry["judged_at"], STAMP)
+        self.assertIsNone(self.stage("", started_at=None)["started_at"])
+        self.assertIsNone(self.stage("", started_at="")["started_at"])
+
+    def test_slo_is_one_object_per_line_in_order_with_the_numbers_the_line_prints(self):
+        lines = ["slo: traffic canary(v2)=12.5 stable(v1)=250.0",
+                 "slo: error_rate canary(v2)=0.004 stable(v1)=0.000",
+                 "slo: latency_p95 canary(v2)=0.31 stable(v1)=0.25"]
+        entry = self.stage("noise\n" + "\n".join(lines) + "\n", env={"ERROR_RATE_MAX_DELTA": "0.01",
+                                                                      "LATENCY_P95_MAX_DELTA": "0.2"})
+        self.assertEqual(entry["numbers"], lines)  # unchanged
+        self.assertEqual(entry["slo"], [
+            {"query": "traffic", "canary": 12.5, "stable": 250.0, "delta": -237.5, "max_delta": None},
+            {"query": "error_rate", "canary": 0.004, "stable": 0.0, "delta": 0.004, "max_delta": 0.01},
+            {"query": "latency_p95", "canary": 0.31, "stable": 0.25, "delta": 0.06, "max_delta": 0.2}])
+        for row in entry["slo"]:
+            for key in ("canary", "stable", "delta", "max_delta"):
+                self.assertIn(type(row[key]), (float, type(None)))
+
+    def test_delta_is_rounded_to_three_decimals(self):
+        entry = self.stage("slo: error_rate canary(v2)=0.30000 stable(v1)=0.10000\n")
+        self.assertEqual(entry["slo"][0]["delta"], 0.2)
+        entry = self.stage("slo: error_rate canary(v2)=0.0123456 stable(v1)=0.0000001\n")
+        self.assertEqual(entry["slo"][0]["delta"], round(0.0123456 - 0.0000001, 3))
+
+    def test_no_data_is_null_and_so_is_the_delta(self):
+        entry = self.stage("slo: error_rate canary(v2)=no data stable(v1)=0.000\n"
+                           "slo: latency_p95 canary(v2)=0.2 stable(v1)=no data\n"
+                           "slo: traffic canary(v2)=no data stable(v1)=no data\n")
+        self.assertEqual([(r["canary"], r["stable"], r["delta"]) for r in entry["slo"]],
+                         [(None, 0.0, None), (0.2, None, None), (None, None, None)])
+        self.assertEqual(len(entry["numbers"]), 3)
+
+    def test_max_delta_comes_from_the_policy_env_per_query(self):
+        line = "slo: error_rate canary(v2)=0.1 stable(v1)=0.0\nslo: latency_p95 canary(v2)=0.1 stable(v1)=0.0\n"
+        entry = self.stage(line, env={"ERROR_RATE_MAX_DELTA": "0.05", "LATENCY_P95_MAX_DELTA": "0.5"})
+        self.assertEqual([r["max_delta"] for r in entry["slo"]], [0.05, 0.5])
+        for env in ({}, {"ERROR_RATE_MAX_DELTA": "", "LATENCY_P95_MAX_DELTA": ""}):
+            self.assertEqual([r["max_delta"] for r in self.stage(line, env=env)["slo"]], [None, None])
+        # one set, the other not
+        entry = self.stage(line, env={"ERROR_RATE_MAX_DELTA": "0.05"})
+        self.assertEqual([r["max_delta"] for r in entry["slo"]], [0.05, None])
+
+    def test_traffic_and_other_queries_have_no_max_delta_whatever_the_env(self):
+        entry = self.stage("slo: traffic canary(v2)=1.0 stable(v1)=2.0\nslo: saturation canary(v2)=1.0 stable(v1)=2.0\n",
+                           env={"ERROR_RATE_MAX_DELTA": "0.05", "LATENCY_P95_MAX_DELTA": "0.5"})
+        self.assertEqual([(r["query"], r["max_delta"]) for r in entry["slo"]], [("traffic", None), ("saturation", None)])
+
+    def test_a_line_off_the_shape_adds_nothing_to_slo_but_stays_in_numbers(self):
+        lines = ["slo: error_rate 0.001", "slo: error_rate canary(v2)=abc stable(v1)=0.0",
+                 "slo: error_rate canary(v2)=0.1 stable(v1)=0.0"]
+        entry = self.stage("\n".join(lines) + "\nnot an slo line canary(v2)=0.1 stable(v1)=0.0\n")
+        self.assertEqual(entry["numbers"], lines)
+        self.assertEqual([r["query"] for r in entry["slo"]], ["error_rate"])
+        self.assertEqual(entry["slo"][0]["canary"], 0.1)
 
     def test_in_progress_is_recorded_and_never_logged(self):
         self.call("record", "in-progress", "", "[]", "")
@@ -91,6 +164,64 @@ class Stage(ReleasesCase):
         self.assertEqual((first["kind"], first["ticket"], first["record"]["verdict"]), ("release", None, "rolled-back"))
         self.assertEqual((second["ticket"], second["record"]), ("0001", self.record()))
         self.assertRegex(second["at"], STAMP)
+
+
+class Running(ReleasesCase):
+    """docs/adr/0080 §2: the in-progress record names the running stage."""
+
+    def test_running_writes_the_in_progress_record_with_the_running_stage_and_the_stages_so_far(self):
+        code, _ = self.call("running", json.dumps(STAGES), "50", "2026-11-12T10:00:00Z", "60", "img@sha")
+        self.assertEqual(code, 0)
+        rec = self.record()
+        self.assertEqual(rec["verdict"], "in-progress")
+        self.assertEqual(rec["running"], {"pct": 50, "started_at": "2026-11-12T10:00:00Z", "judge_after_s": 60})
+        self.assertIs(type(rec["running"]["pct"]), int)
+        self.assertIs(type(rec["running"]["judge_after_s"]), int)
+        self.assertEqual(rec["stages"], STAGES)
+        self.assertEqual((rec["version"], rec["stable"], rec["image"]), ("v2", "v1", "img@sha"))
+
+    def test_running_appends_nothing_to_the_log(self):
+        self.call("running", "[]", "5", "2026-11-12T10:00:00Z", "60", "img@sha")
+        self.call("running", "[]", "25", "2026-11-12T10:01:00Z", "60", "img@sha", "GO: dast — x")
+        self.assertEqual(self.log(), [])
+        self.assertEqual(self.record()["running"]["pct"], 25)
+
+    def test_the_next_running_replaces_the_last_and_a_final_record_has_none(self):
+        self.call("running", "[]", "5", "2026-11-12T10:00:00Z", "60", "img@sha")
+        self.call("record", "held", "5", "[]", "img@sha")
+        self.assertNotIn("running", self.record())
+        self.assertEqual(len(self.log()), 1)
+        self.call("running", "[]", "5", "2026-11-12T10:00:00Z", "60", "img@sha")
+        self.call("record", "rolled-back", "", "[]", "img@sha")
+        self.assertNotIn("running", self.record())
+
+    def test_running_without_its_arguments_is_a_usage_error(self):
+        self.assertEqual(self.call("running", "[]", "5")[0], 2)
+
+
+class Reason(ReleasesCase):
+    """docs/adr/0080 §3: a rolled-back record says why."""
+
+    def test_rolled_back_takes_the_reason_from_the_env(self):
+        env = {**self.env, "RELEASE_REASON": "5%: error_rate 1.000"}
+        self.call("record", "rolled-back", "", "[]", "img@sha", env=env)
+        self.assertEqual(self.record()["reason"], "5%: error_rate 1.000")
+        self.assertEqual(self.log()[-1]["record"]["reason"], "5%: error_rate 1.000")
+        self.assertNotIn("running", self.record())
+
+    def test_rolled_back_without_a_reason_has_the_key_null(self):
+        self.call("record", "rolled-back", "", "[]", "img@sha")
+        self.assertIn("reason", self.record())
+        self.assertIsNone(self.record()["reason"])
+
+    def test_a_held_record_has_reason_null_even_with_the_env_set(self):
+        self.call("record", "held", "25", "[]", "img@sha", env={**self.env, "RELEASE_REASON": "stale words"})
+        self.assertIn("reason", self.record())
+        self.assertIsNone(self.record()["reason"])
+
+    def test_in_progress_has_no_reason(self):
+        self.call("record", "in-progress", "", "[]", "", env={**self.env, "RELEASE_REASON": "stale words"})
+        self.assertIsNone(self.record().get("reason"))
 
 
 class Brief(ReleasesCase):

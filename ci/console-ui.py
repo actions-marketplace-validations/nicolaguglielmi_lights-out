@@ -75,6 +75,15 @@ fixtures/logbook/golden-1.4.json, and drives it with Playwright:
      over a logbook derived from it where the held release has a ticket (LIVE,
      simulated), only on that card and on the two targets;
 
+  ac. the live canary (docs/adr/0080 §5): over the golden `section#canary` on #launch
+     with one `.canary-stage[data-pct]` row per stage of the held record, `data-within`
+     by delta <= max_delta, no running row, no #canary-rollback; over records derived at
+     run time (a LIVE console SIMULATED as o does): the running row with the time left
+     against read_at (and never below zero), "judged after N s" in a snapshot, the
+     overview's section#canary at the top only while in progress, and on a rolled-back
+     record #canary-rollback with the reason (the last stage's verdict when none) and the
+     deciding stage marked data-decided; nothing POSTed;
+
 ADR 0071, the governed network (every expectation is worked out from the golden's
 own fields at run time; the CLI is core/network.py run as a subprocess):
 
@@ -2967,6 +2976,274 @@ def ab_launch(browser, bases, golden, books):
     ctx.close()
 
 
+# --- ac. the live canary (docs/adr/0080 §5) ----------------------------------------------------------
+# Written from docs/adr/0080 and the selectors it names (section#canary, .canary-stage[data-pct],
+# [data-query], data-within, [data-running], #canary-rollback, data-decided), not from console/index.html.
+# The golden's record and the records derived here are the only inputs; every expectation is worked out
+# from the stages' own fields.
+
+CANARY_JS = """() => {
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const sec = [...document.querySelectorAll('section#canary')];
+  const s = sec[0] || null;
+  const rows = s ? [...s.querySelectorAll('.canary-stage')].map((r) => ({
+    pct: r.getAttribute('data-pct'), running: r.hasAttribute('data-running'), decided: r.hasAttribute('data-decided'), text: txt(r),
+    cells: [...r.querySelectorAll('[data-query]')].map((c) => {
+      const w = c.hasAttribute('data-within') ? c : c.querySelector('[data-within]');
+      return {query: c.getAttribute('data-query'), within: w ? w.getAttribute('data-within') : null, text: txt(c)};
+    }),
+    within_elsewhere: [...r.querySelectorAll('[data-within]')].map((w) => {
+      const q = w.closest('[data-query]'); return q ? q.getAttribute('data-query') : null; })})) : [];
+  const main = document.querySelector('main');
+  const firstBlock = main ? [...main.querySelectorAll('section, .panel, h2')].find((e) => e.id !== 'canary' && !e.closest('#canary')) : null;
+  const before = !!(s && firstBlock && (s.compareDocumentPosition(firstBlock) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const rb = [...document.querySelectorAll('#canary-rollback')];
+  return {sections: sec.length, rows, rollback: rb.length, rollback_text: rb.length ? txt(rb[0]) : null,
+    rollback_inside: rb.every((e) => !!e.closest('section#canary')), before_every_other_block: before || (!!s && !firstBlock), text: txt(s)};
+}"""
+
+CANARY_FLOAT = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def canary_numbers(text):
+    return [float(x) for x in CANARY_FLOAT.findall(text or "")]
+
+
+def canary_hms(stamp):
+    return stamp[11:19]
+
+
+def canary_stage_problems(row, stage, decided=False):
+    """Why a drawn row is not the record's STAGE (ADR 0080 §5): the percentage, the verdict, when it started and when
+    it was judged, and for each slo entry of error_rate or latency_p95 the four numbers and data-within by delta <= max_delta."""
+    bad = []
+    if row["pct"] != str(stage["pct"]):
+        bad.append(f"the row's data-pct is {row['pct']!r}, want {stage['pct']}")
+    if row["running"]:
+        bad.append("a recorded stage is drawn as the running one")
+    if row["decided"] != decided:
+        bad.append(f"data-decided is {row['decided']}, want {decided}")
+    if norm_text(stage["verdict"]) not in row["text"]:
+        bad.append(f"the verdict {stage['verdict']!r} is not in the row's text {row['text']!r}")
+    for key in ("started_at", "judged_at"):
+        if stage.get(key) and canary_hms(stage[key]) not in row["text"]:
+            bad.append(f"{key} {stage[key]} (time {canary_hms(stage[key])}) is not in the row's text {row['text']!r}")
+    for slo in stage.get("slo") or []:
+        if slo["query"] not in ("error_rate", "latency_p95"):
+            continue
+        cells = [c for c in row["cells"] if c["query"] == slo["query"]]
+        if len(cells) != 1:
+            bad.append(f"{len(cells)} [data-query={slo['query']!r}] cells in the row, want 1")
+            continue
+        cell = cells[0]
+        want = None if slo["delta"] is None or slo["max_delta"] is None else ("true" if slo["delta"] <= slo["max_delta"] else "false")
+        if want is not None and cell["within"] != want:
+            bad.append(f"{slo['query']}: data-within is {cell['within']!r}, want {want!r} (delta {slo['delta']}, max {slo['max_delta']})")
+        shown = canary_numbers(cell["text"])
+        for key in ("canary", "stable", "delta", "max_delta"):
+            if slo[key] is not None and not any(abs(x - slo[key]) < 1e-9 for x in shown):
+                bad.append(f"{slo['query']}: {key} {slo[key]} is not among the numbers {shown} of the cell {cell['text']!r}")
+    stray = [q for q in row["within_elsewhere"] if q not in ("error_rate", "latency_p95")]
+    if stray:
+        bad.append(f"data-within outside the error_rate and latency_p95 cells: {stray}")
+    return bad
+
+
+def canary_left_problems(row, pct, left=None, judge_after_s=None):
+    """The running row (ADR 0080 §5): the running percentage, and in live mode LEFT whole seconds (as a number of its
+    own, never negative); in a snapshot 'judged after <judge_after_s> s'."""
+    bad = []
+    if not row["running"] or row["pct"] != str(pct):
+        bad.append(f"the running row is {row['pct']!r}/{row['running']}, want data-pct {pct} and data-running")
+    text = row["text"]
+    if left is not None:
+        if not re.search(r"(?<![\d:.\-])%d(?![\d:.])" % left, text):
+            bad.append(f"{left} seconds left is not in the running row's text {text!r}")
+        if re.search(r"(?<![\w])-\s?\d+(?:\.\d+)?\s*s\b", text):
+            bad.append(f"the running row shows a negative time left: {text!r}")
+        if re.search(r"judged after", text):
+            bad.append(f"the live running row says 'judged after' ({text!r}), which is the snapshot's words")
+    else:
+        if f"judged after {judge_after_s} s" not in text:
+            bad.append(f"the snapshot's running row does not say 'judged after {judge_after_s} s': {text!r}")
+    return bad
+
+
+def self_checks_canary():
+    stage = {"pct": 25, "verdict": "NO-GO: launchpad — 25%: error_rate 0.050 → rolled back", "started_at": "2026-11-12T08:00:00Z",
+             "judged_at": "2026-11-12T08:01:00Z",
+             "slo": [{"query": "error_rate", "canary": 0.05, "stable": 0.0, "delta": 0.05, "max_delta": 0.01}]}
+    row = {"pct": "25", "running": False, "decided": True, "text": stage["verdict"] + " 08:00:00 08:01:00",
+           "cells": [{"query": "error_rate", "within": "false", "text": "canary 0.050 stable 0.000 Δ 0.050 max 0.01"}], "within_elsewhere": ["error_rate"]}
+    need(not canary_stage_problems(row, stage, True), f"ac: a good row is refused: {canary_stage_problems(row, stage, True)}")
+    for what, change, decided in (("the wrong pct", {"pct": "5"}, True), ("data-within true on a delta over its max", {"cells": [{**row["cells"][0], "within": "true"}]}, True),
+                                  ("no data-within", {"cells": [{**row["cells"][0], "within": None}]}, True),
+                                  ("no verdict", {"text": "08:00:00 08:01:00"}, True), ("no judged_at", {"text": stage["verdict"] + " 08:00:00"}, True),
+                                  ("a missing max_delta", {"cells": [{**row["cells"][0], "text": "canary 0.050 stable 0.000 Δ 0.050"}]}, True),
+                                  ("no cell", {"cells": []}, True), ("data-within on traffic", {"within_elsewhere": ["traffic"]}, True),
+                                  ("the running flag", {"running": True}, True), ("data-decided where not wanted", {}, False)):
+        need(canary_stage_problems({**row, **change}, stage, decided), f"ac: a row with {what} is accepted")
+    need(canary_stage_problems({**row, "decided": False}, stage, True), "ac: a deciding stage without data-decided is accepted")
+    run = {"pct": "25", "running": True, "decided": False, "text": "25% running 08:09:30 53 s left", "cells": [], "within_elsewhere": []}
+    need(not canary_left_problems(run, 25, left=53), f"ac: a good running row is refused: {canary_left_problems(run, 25, left=53)}")
+    for what, row2, kw in (("another time left", run, {"left": 54}), ("a negative time left", {**run, "text": "25% running -5 s left"}, {"left": 0}),
+                           ("not running", {**run, "running": False}, {"left": 53}), ("another pct", {**run, "pct": "5"}, {"left": 53}),
+                           ("the snapshot's words live", {**run, "text": run["text"] + " judged after 90 s"}, {"left": 53}),
+                           ("no snapshot words", run, {"judge_after_s": 90})):
+        need(canary_left_problems(row2, 25, **kw), f"ac: a running row with {what} is accepted")
+    need(not canary_left_problems({**run, "text": "25% judged after 90 s"}, 25, judge_after_s=90), "ac: a good snapshot row is refused")
+
+
+def canary_book(golden, record):
+    book = json.loads(json.dumps(golden))
+    book["launch"]["record"] = record
+    book["launch"]["pressable"] = False
+    book["launch"]["disabled_reason"] = f"release {record['version']} is {record['verdict']}"
+    return book
+
+
+def canary_tab(browser, bases, book, live):
+    """The golden's console, the logbook BOOK served by page.route; LIVE is a dict {'read_at': ...} (a LIVE console
+    SIMULATED as o does, console.json answered with mode live and that read_at, which the test may change) or None
+    (the snapshot server's own console.json, which has no read_at)."""
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    if live is not None:
+        real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+        tab.page.route("**/v1/console.json", lambda route: route.fulfill(
+            status=200, content_type="application/json", headers={"Cache-Control": "no-store"},
+            body=json.dumps({**real, "mode": "live", "read_at": live["read_at"]})))
+    tab.page.route("**/v1/logbook.json", lambda route: route.fulfill(
+        status=200, content_type="application/json", headers={"Cache-Control": "no-store"}, body=json.dumps(book)))
+    return ctx, tab
+
+
+def canary_info(tab, hash_, what):
+    tab.load(hash_)
+    wait_for(tab, "section#canary", what)
+    tab.page.wait_for_timeout(300)
+    return tab.page.evaluate(CANARY_JS)
+
+
+def canary_running_row(tab):
+    return next((r for r in tab.page.evaluate(CANARY_JS)["rows"] if r["running"]), None)
+
+
+def ac_canary(browser, bases, golden):
+    """ADR 0080 §5: over the golden the held record's stages, one row each, with data-within by delta <= max_delta, no
+    running row, no rollback banner; over derived records the running row and its time left against the console's
+    read_at, the overview's section at the top only while in progress, and the rollback with its reason and the
+    deciding stage."""
+    self_checks_canary()
+    rec = golden["launch"]["record"]
+    need(rec["verdict"] == "held" and len(rec["stages"]) >= 2 and all(st.get("slo") and st.get("judged_at") for st in rec["stages"]),
+         "ac: the golden's launch record is not a held one with two stages that carry slo and judged_at")
+    # 1. The golden: a held record.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    info = canary_info(tab, "#launch", "ac, the golden")
+    need(info["sections"] == 1, f"ac, the golden: {info['sections']} section#canary on #launch, want 1")
+    rows = [r for r in info["rows"] if not r["running"]]
+    need(len(rows) == len(rec["stages"]) and len(info["rows"]) == len(rows),
+         f"ac, the golden: {len(info['rows'])} .canary-stage rows ({len(rows)} not running), want {len(rec['stages'])} and no running row")
+    need(all(r["pct"] is not None for r in info["rows"]), "ac, the golden: a .canary-stage row has no data-pct")
+    for row, stage in zip(rows, rec["stages"]):
+        bad = canary_stage_problems(row, stage, decided=False)
+        need(not bad, f"ac, the golden, stage {stage['pct']}%: {bad[0] if bad else ''}", *bad)
+        need(any(c["query"] == "error_rate" and c["within"] == "true" for c in row["cells"]),
+             f"ac, the golden, stage {stage['pct']}%: no [data-query=error_rate] cell with data-within=true")
+    need(not tab.page.locator("section#canary [data-running]").count(), "ac, the golden: a [data-running] row on a held record")
+    need(info["rollback"] == 0, "ac, the golden: #canary-rollback on a held record")
+    tab.page.goto(bases["golden"] + "/#overview")
+    tab.page.wait_for_selector("#your-turn", timeout=TIMEOUT_MS)
+    tab.page.wait_for_timeout(300)
+    need(tab.page.locator("main section#canary").count() == 0, "ac, the golden: the overview shows section#canary on a record that is not in progress")
+    tab.audit("ac, the golden")
+    ctx.close()
+    # 2. In progress, live, against read_at.
+    first = rec["stages"][0]
+    running = {"pct": 25, "started_at": "2026-11-12T08:09:30Z", "judge_after_s": 90}
+    inprog = {"version": rec["version"], "stable": rec["stable"], "image": rec["image"], "stages": [first], "verdict": "in-progress",
+              "held_at": None, "reason": None, "running": running}
+    book = canary_book(golden, inprog)
+    live = {"read_at": "2026-11-12T08:10:07Z"}  # 37 s into 90: 53 left
+    ctx, tab = canary_tab(browser, bases, book, live)
+    info = canary_info(tab, "#launch", "ac, in progress")
+    need(info["sections"] == 1, f"ac, in progress: {info['sections']} section#canary on #launch, want 1")
+    done = [r for r in info["rows"] if not r["running"]]
+    runs = [r for r in info["rows"] if r["running"]]
+    need(len(done) == 1 and len(runs) == 1, f"ac, in progress: {len(done)} stage rows and {len(runs)} running rows, want 1 and 1")
+    bad = canary_stage_problems(done[0], first, decided=False)
+    need(not bad, f"ac, in progress, the recorded stage: {bad[0] if bad else ''}", *bad)
+    bad = canary_left_problems(runs[0], 25, left=53)
+    need(not bad, f"ac, in progress, read_at {live['read_at']}: {bad[0] if bad else ''}", *bad)
+    need(info["rollback"] == 0, "ac, in progress: #canary-rollback while the record is in progress")
+    # The next poll carries a later read_at: the time left follows the server's clock, not the browser's.
+    for read_at, left in (("2026-11-12T08:10:27Z", 33), ("2026-11-12T08:12:00Z", 0)):
+        live["read_at"] = read_at
+        row = None
+        for _ in range(40):  # the page polls every 2 s (ADR 0047 §4)
+            tab.page.wait_for_timeout(250)
+            row = canary_running_row(tab)
+            if row and not canary_left_problems(row, 25, left=left):
+                break
+        else:
+            need(False, f"ac, in progress: after read_at moved to {read_at} the running row says {row and row['text']!r}, want {left} s left (never negative)")
+    tab.audit("ac, in progress")
+    # The overview: section#canary at the top while in progress.
+    live["read_at"] = "2026-11-12T08:10:07Z"
+    tab.page.goto(bases["golden"] + "/#overview")
+    tab.page.wait_for_selector("section#canary", timeout=TIMEOUT_MS)
+    tab.page.wait_for_timeout(300)
+    ov = tab.page.evaluate(CANARY_JS)
+    need(ov["sections"] == 1 and ov["before_every_other_block"], f"ac, the overview in progress: section#canary is {ov['sections']}x and "
+         f"{'' if ov['before_every_other_block'] else 'not '}before every other section, panel and heading of main")
+    need(any(r["running"] for r in ov["rows"]), "ac, the overview in progress: no running row in section#canary")
+    tab.audit("ac, the overview in progress")
+    ctx.close()
+    # 3. In progress in a snapshot: no read_at, so 'judged after N s'.
+    ctx, tab = canary_tab(browser, bases, book, None)
+    info = canary_info(tab, "#launch", "ac, the snapshot")
+    runs = [r for r in info["rows"] if r["running"]]
+    need(len(runs) == 1, f"ac, the snapshot: {len(runs)} running rows, want 1")
+    bad = canary_left_problems(runs[0], 25, judge_after_s=90)
+    need(not bad, f"ac, the snapshot: {bad[0] if bad else ''}", *bad)
+    tab.audit("ac, the snapshot")
+    ctx.close()
+    # 4. Rolled back: the reason and the deciding stage.
+    nogo = {"pct": 25, "verdict": "NO-GO: launchpad — 25%: error_rate 0.050 → rolled back", "numbers": [
+        "slo: error_rate canary(v)=0.050 stable(s)=0.000", "slo: latency_p95 canary(v)=0.300 stable(s)=0.100"],
+        "started_at": "2026-11-12T08:01:05Z", "judged_at": "2026-11-12T08:02:07Z",
+        "slo": [{"query": "error_rate", "canary": 0.05, "stable": 0.0, "delta": 0.05, "max_delta": 0.01},
+                {"query": "latency_p95", "canary": 0.3, "stable": 0.1, "delta": 0.2, "max_delta": 0.5}]}
+    edge = {**first, "slo": [{"query": "error_rate", "canary": 0.01, "stable": 0.0, "delta": 0.01, "max_delta": 0.01}]}  # delta == max: within
+    back = {"version": rec["version"], "stable": rec["stable"], "image": rec["image"], "stages": [edge, nogo], "verdict": "rolled-back",
+            "held_at": None, "reason": "25%: error_rate 0.050"}
+    for what, record, want in (("with its reason", back, "25%: error_rate 0.050"),
+                               ("from before the ADR, no reason", {k: v for k, v in back.items() if k != "reason"}, nogo["verdict"]),
+                               ("with a null reason", {**back, "reason": None}, nogo["verdict"])):
+        ctx, tab = canary_tab(browser, bases, canary_book(golden, record), None)
+        info = canary_info(tab, "#launch", f"ac, rolled back {what}")
+        need(info["rollback"] == 1 and info["rollback_inside"], f"ac, rolled back {what}: {info['rollback']} #canary-rollback inside section#canary, want 1")
+        need("Rolled back automatically" in info["rollback_text"], f"ac, rolled back {what}: #canary-rollback does not say 'Rolled back automatically': {info['rollback_text']!r}")
+        need(norm_text(want) in info["rollback_text"], f"ac, rolled back {what}: #canary-rollback does not hold {want!r}: {info['rollback_text']!r}")
+        rows = [r for r in info["rows"] if not r["running"]]
+        need(len(rows) == 2 and len(info["rows"]) == 2, f"ac, rolled back {what}: {len(info['rows'])} rows, want 2 and none running")
+        for row, stage, decided in zip(rows, record["stages"], (False, True)):
+            bad = canary_stage_problems(row, stage, decided)
+            need(not bad, f"ac, rolled back {what}, stage {stage['pct']}%: {bad[0] if bad else ''}", *bad)
+        need([c["within"] for c in rows[0]["cells"] if c["query"] == "error_rate"] == ["true"], f"ac, rolled back {what}: a delta equal to its max_delta is not within it")
+        need([c["within"] for c in rows[1]["cells"] if c["query"] == "error_rate"] == ["false"], f"ac, rolled back {what}: the failing error_rate is within its max_delta")
+        need([c["within"] for c in rows[1]["cells"] if c["query"] == "latency_p95"] == ["true"], f"ac, rolled back {what}: the latency within its max_delta is not within")
+        need(not tab.page.locator("section#canary [data-running]").count(), f"ac, rolled back {what}: a running row on a final record")
+        tab.page.goto(bases["golden"] + "/#overview")
+        tab.page.wait_for_selector("#your-turn", timeout=TIMEOUT_MS)
+        tab.page.wait_for_timeout(300)
+        need(tab.page.locator("main section#canary").count() == 0, f"ac, rolled back {what}: the overview shows section#canary on a final record")
+        tab.audit(f"ac, rolled back {what}")
+        ctx.close()
+
+
 def t_agents(browser, bases, golden):
     """ADR 0073 §10: the Thresholds screen's Agents panel prints the logbook's lines verbatim, the same text `./go agents` prints."""
     lines = (golden.get("agents") or {}).get("lines")
@@ -4348,6 +4625,7 @@ def main():
                             t_agents(browser, bases, golden)
                             aa_why(browser, bases, golden)
                             ab_launch(browser, bases, golden, books)
+                            ac_canary(browser, bases, golden)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)

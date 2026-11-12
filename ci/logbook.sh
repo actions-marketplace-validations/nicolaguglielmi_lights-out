@@ -84,6 +84,13 @@
 #      runs promote and the record's `rejected.reason` is it, via console; a
 #      GO with a reason records it in `promoted.reason`, and both carry the
 #      brief's sha256 (docs/adr/0079 §1).
+#      The 1.4 canary fields (docs/adr/0080 §1-§4), by hand from the stub's
+#      first log line and release.json: 0.2.0-a's reason and stage times and
+#      slo, the others' none, launch.record's times, slo, reason and no running,
+#      ticket 0001's canary row at the stage's judged_at with its slo, the rows
+#      of the older releases at the release's at with none; a record in
+#      progress surfaces `running` verbatim in launch.record; each check run
+#      again on a logbook with one fact planted wrong.
 #   f. Every numeric policy key has a "# Provenance, <kind>:" line above it
 #      (Consequences).
 # Before any of that, every checker runs on a bad input and must reject it:
@@ -1305,7 +1312,7 @@ plant "another schema" '.schema = "lights-out/logbook/1.2"'
 # rework entry (the mutation NO-GO) ran secrets GO, so it is shown.
 h14() {
   jq -e --slurpfile s3 "$stub/state/tickets.0003.json" --slurpfile s2 "$stub/state/tickets.0002.json" \
-    --slurpfile s10 "$stub/state/tickets.0010.json" --slurpfile rel "$stub/releases.jsonl" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+    --slurpfile s10 "$stub/state/tickets.0010.json" --slurpfile rel "$stub/releases.jsonl" --slurpfile cur "$stub/release.json" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
 }
 t03='(.tickets[] | select(.id == "0003"))'
 t02='(.tickets[] | select(.id == "0002"))'
@@ -1367,6 +1374,43 @@ hand_14() {
       | length == 2 and all" "$1" || return 1
   h14 "a ticket's sign-off rows are exactly the two the stub's answers give it" \
     "[.tickets[] | select(any(.timeline[]; .phase == \"sign-off\")) | .id] == [\"0002\", \"0010\"]" "$1" || return 1
+  # docs/adr/0080 §1, §4: stage times and numbers as structures, a rolled-back
+  # release's reason, the canary rows' judged_at and slo. The values are the stub's
+  # first log line (0.2.0-a, rolled back at 5%) and release.json (0.5.0-d, held),
+  # written out by hand here; the stages of the older log lines have none.
+  h14 "0.2.0-a's reason is the stub's, and its stage's started_at, judged_at and slo are the stub's, by hand" \
+    "(\$rel[0].record) as \$r | (.releases[] | select(.version == \"0.2.0-a\"))
+      | (.reason == \"5%: error_rate 1.000\" and .reason == \$r.reason
+        and .stages[0].started_at == \"2026-11-01T09:27:30Z\" and .stages[0].judged_at == \"2026-11-01T09:28:31Z\"
+        and .stages[0].started_at == \$r.stages[0].started_at and .stages[0].judged_at == \$r.stages[0].judged_at
+        and .stages[0].slo == [{query: \"error_rate\", canary: 1.0, stable: 0.0, delta: 1.0, max_delta: 0.01}]
+        and .stages[0].slo == \$r.stages[0].slo)" "$1" || return 1
+  h14 "no other release has a reason (null, or no key where the source has none)" \
+    "[.releases[] | select(.version != \"0.2.0-a\") | .reason] | length == 4 and all(. == null)" "$1" || return 1
+  h14 "the releases whose log lines predate the fields have no stage times and no slo" \
+    "[.releases[] | select(.version == \"0.2.5-n\" or .version == \"0.3.0-b\" or .version == \"0.4.0-c\") | .stages[]]
+      | length == 5 and all(.started_at == null and .judged_at == null and .slo == null)" "$1" || return 1
+  h14 "0.5.0-d, from release.json, has its two stages' times and slo as the stub's, by hand" \
+    "(.releases[] | select(.version == \"0.5.0-d\") | .stages) as \$s | \$cur[0].stages as \$c
+      | (\$s | length) == 2 and \$s[0].started_at == \"2026-11-04T10:00:00Z\" and \$s[0].judged_at == \"2026-11-04T10:01:02Z\"
+        and \$s[1].started_at == \"2026-11-04T10:01:05Z\" and \$s[1].judged_at == \"2026-11-04T10:02:07Z\"
+        and \$s[1].slo == [{query: \"error_rate\", canary: 0.001, stable: 0.0, delta: 0.001, max_delta: 0.01}]
+        and all(range(0; 2); \$s[.].slo == \$c[.].slo and \$s[.].judged_at == \$c[.].judged_at)" "$1" || return 1
+  h14 "launch.record is the stub's record as written: its stages' times and slo, reason null, no running" \
+    ".launch.record as \$l | \$cur[0] as \$c
+      | (\$l | has(\"reason\") and .reason == null and (has(\"running\") | not))
+        and (\$l.stages | length) == 2
+        and all(range(0; 2); \$l.stages[.].started_at == \$c.stages[.].started_at and \$l.stages[.].judged_at == \$c.stages[.].judged_at
+          and \$l.stages[.].slo == \$c.stages[.].slo and \$l.stages[.].slo[0].max_delta == 0.01)" "$1" || return 1
+  h14 "ticket 0001's canary row is at the stage's judged_at and carries the stage's slo" \
+    "(.tickets[] | select(.id == \"0001\") | [.timeline[] | select(.phase == \"canary\")]) as \$c
+      | (\$c | length) == 1 and \$c[0].at == \"2026-11-01T09:28:31Z\" and \$c[0].at == \$rel[0].record.stages[0].judged_at
+        and \$c[0].slo == [{query: \"error_rate\", canary: 1.0, stable: 0.0, delta: 1.0, max_delta: 0.01}]
+        and \$c[0].slo == \$rel[0].record.stages[0].slo" "$1" || return 1
+  h14 "the canary rows of releases with no judged_at keep the release's at and have no slo" \
+    "[.tickets[] | select(.id != \"0001\") | . as \$t | .timeline[] | select(.phase == \"canary\")
+      | (.slo == null) and .at == (\$rel[] | select(.kind == \"release\" and .ticket == \$t.id) | .at)]
+      | length == 4 and all" "$1" || return 1
 }
 bad=$(hand_14 "$root/out1.json") || nogo "the 1.4 fields over the stub sources: $bad" \
   "$(jq -c "{t3: ($t03 | {attempt, ci_why: .ci.why, rework_why: [.rework[].why]}), t2: ($t02 | [.rework[].why])}" "$root/out1.json" 2>&1)"
@@ -1421,6 +1465,31 @@ plant14 "an answer made up for an unanswered release" "$(rel14 0.5.0-d '.answer 
 plant14 "0002's sign-off row with a reason" "$(tix 0002 '(.timeline[] | select(.phase == "sign-off") | .reason) = "fine"')"
 plant14 "0010's sign-off row with no reason key" "$(tix 0010 '.timeline |= map(if .phase == "sign-off" then del(.reason) else . end)')"
 plant14 "0002's sign-off row dropped" "$(tix 0002 '.timeline |= map(select(.phase != "sign-off"))')"
+# docs/adr/0080 §1, §4: the stage times, the numbers and the reason, each one planted wrong.
+plant14 "0.2.0-a's reason changed" "$(rel14 0.2.0-a '.reason = "5%: latency"')"
+plant14 "0.2.0-a's reason null" "$(rel14 0.2.0-a '.reason = null')"
+plant14 "0.2.0-a's reason dropped" "$(rel14 0.2.0-a 'del(.reason)')"
+plant14 "a reason made up for 0.3.0-b" "$(rel14 0.3.0-b '.reason = "5%: error_rate 1.000"')"
+plant14 "0.2.0-a's stage started_at changed" "$(rel14 0.2.0-a '.stages[0].started_at = "2026-11-01T09:27:31Z"')"
+plant14 "0.2.0-a's stage judged_at null" "$(rel14 0.2.0-a '.stages[0].judged_at = null')"
+plant14 "0.2.0-a's stage slo delta changed" "$(rel14 0.2.0-a '.stages[0].slo[0].delta = 0.5')"
+plant14 "0.2.0-a's stage slo max_delta changed" "$(rel14 0.2.0-a '.stages[0].slo[0].max_delta = 0.05')"
+plant14 "0.2.0-a's stage slo gone" "$(rel14 0.2.0-a 'del(.stages[0].slo)')"
+plant14 "a slo made up for 0.3.0-b's stage" "$(rel14 0.3.0-b '.stages[0].slo = [{query: "error_rate", canary: 0.0, stable: 0.0, delta: 0.0, max_delta: 0.01}]')"
+plant14 "a judged_at made up for 0.4.0-c's stage" "$(rel14 0.4.0-c '.stages[0].judged_at = "2026-11-03T12:00:00Z"')"
+plant14 "0.5.0-d's second stage judged_at changed" "$(rel14 0.5.0-d '.stages[1].judged_at = "2026-11-04T10:02:08Z"')"
+plant14 "0.5.0-d's first stage slo gone" "$(rel14 0.5.0-d '.stages[0].slo = []')"
+plant14 "launch.record's stage slo gone" '.launch.record.stages[1].slo = null'
+plant14 "launch.record's stage judged_at changed" '.launch.record.stages[0].judged_at = "2026-11-04T10:01:03Z"'
+plant14 "launch.record's started_at dropped" 'del(.launch.record.stages[0].started_at)'
+plant14 "launch.record with a reason" '.launch.record.reason = "5%: error_rate 1.000"'
+plant14 "launch.record with no reason key" 'del(.launch.record.reason)'
+plant14 "launch.record with a running stage" '.launch.record.running = {pct: 25, started_at: "2026-11-04T10:01:05Z", judge_after_s: 60}'
+plant14 "0001's canary row with its release's at" "$(tix 0001 '(.timeline[] | select(.phase == "canary") | .at) = "2026-11-01T09:29:00Z"')"
+plant14 "0001's canary row with no slo" "$(tix 0001 '(.timeline[] | select(.phase == "canary") | .slo) = null')"
+plant14 "0001's canary row with another delta" "$(tix 0001 '(.timeline[] | select(.phase == "canary") | .slo[0].delta) = 0.0')"
+plant14 "0002's canary row with a slo made up" "$(tix 0002 '(.timeline[] | select(.phase == "canary") | .slo) = [{query: "error_rate", canary: 0.0, stable: 0.0, delta: 0.0, max_delta: 0.01}]')"
+plant14 "0002's canary row at another time" "$(tix 0002 '(.timeline[] | select(.phase == "canary") | .at) = "2026-11-02T10:00:00Z"')"
 
 # The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
 # state, and every ticket is on exactly one card. Then the tower moves a
@@ -1531,6 +1600,28 @@ var_case "a rolled-back record" '
   (.launch.pressable == false
   and (.launch.disabled_reason | startswith("release 0.5.0-d is rolled-back")))
   and (.releases[-1] | .from == "release.json" and .verdict == "rolled-back")' RELEASE_RECORD=release.rb.json
+# docs/adr/0080 §2, §4: a record in progress that names its running stage is
+# in launch.record as written, `running` verbatim.
+jq -c '.verdict = "in-progress" | .held_at = null | del(.reason) | .stages |= .[0:1]
+  | .running = {pct: 25, started_at: "2026-11-04T10:01:05Z", judge_after_s: 60}' "$root/release.json" > "$root/release.running.json"
+running_expr='.launch.record.running == {pct: 25, started_at: "2026-11-04T10:01:05Z", judge_after_s: 60}
+  and .launch.record.verdict == "in-progress" and (.launch.record.stages | length) == 1
+  and .launch.record.stages[0].slo[0].max_delta == 0.01 and .launch.pressable == false'
+var_case "an in-progress record with its running stage" "$running_expr" RELEASE_RECORD=release.running.json
+# The check refuses a logbook that dropped or changed the running stage.
+for bad in 'del(.launch.record.running)' '.launch.record.running.pct = 5' '.launch.record.running.started_at = "2026-11-04T10:00:00Z"' \
+  '.launch.record.running.judge_after_s = 30' '.launch.record.running.judge_after_s = "60"' '.launch.record.running = null'; do
+  jq "$bad" "$root/var.json" > "$tmp/var-bad.json"
+  if jq -e "$running_expr" "$tmp/var-bad.json" >/dev/null 2>&1; then
+    nogo "the in-progress hand check accepts a logbook with '$bad'; a gate that cannot fail is not a gate"
+  fi
+done
+# A rolled-back record keeps its reason in launch.record and in releases[-1].
+jq -c '.verdict = "rolled-back" | .held_at = null | .reason = "25%: error_rate 0.050"' "$root/release.json" > "$root/release.rbwhy.json"
+var_case "a rolled-back record with its reason" '
+  .launch.record.reason == "25%: error_rate 0.050" and (.launch.record | has("running") | not)
+  and (.releases[-1] | .from == "release.json" and .reason == "25%: error_rate 0.050")' RELEASE_RECORD=release.rbwhy.json
+
 # A record the last log entry already is: no second entry.
 jq -c 'select(.kind == "release" and .record.version == "0.4.0-c") | .record' "$root/releases.jsonl" > "$root/release.same.json"
 var_case "a record equal to the last log entry" '(.releases | length) == 4 and all(.releases[]; .from == "releases.jsonl")' \
