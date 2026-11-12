@@ -55,11 +55,6 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 
-try:
-    from . import spend
-except ImportError:  # run as a script: core/ is on sys.path
-    import spend
-
 COLLECTION = "tickets"
 USAGE = ("usage: tower.sh open <ticket> | request <ticket> | answer <ticket> | step <ticket> <step>"
          " | resume <ticket> | task [--patch] <run.json>")
@@ -174,6 +169,17 @@ def patch_fields(data, members):
             "files": [files[p] for p in order]}
 
 
+def spend_module():
+    """core/spend.py (docs/adr/0083), imported only where a step needs it: a
+    module or a check that loads the tower for its tables, `sh` or `task`,
+    or copies it alone into a tree, needs no copy of spend.py."""
+    try:
+        from . import spend
+    except ImportError:  # run as a script: core/ is on sys.path
+        import spend
+    return spend
+
+
 class Refused(Exception):
     """One `[tower]` line on stderr and an exit code."""
 
@@ -265,6 +271,7 @@ class Tower:
     def over_budget(self, doc):
         """Why the next attempt is not launched (docs/adr/0083 §4), or "".
         The day counts every ticket the Tracker lists, as the logbook reads them."""
+        spend = spend_module()
         lim = spend.limits()  # ValueError on a malformed limit: the caller refuses the step
         today = []
         if lim.get("SPEND_BUDGET_DAY_USD") is not None:
@@ -417,6 +424,7 @@ class Tower:
         if isinstance(result.get("task"), dict):
             updated["tasks"] = (doc.get("tasks") or []) + [dict(result["task"], **attempt(updated))]
         # Every run's cost beside its tokens, appended, never rewritten (docs/adr/0083 §3).
+        spend = spend_module()
         runs = spend.entries(step, result, updated.get("attempt"), now())
         if runs:
             updated["spend"] = spend.ledger(doc) + runs
