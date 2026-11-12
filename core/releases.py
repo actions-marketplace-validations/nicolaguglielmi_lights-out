@@ -23,12 +23,15 @@ JSON.
     python3 core/releases.py answer GO|NO-GO
         record who answered (GO_FOR_LAUNCH_BY, default `unauthenticated`;
         GO_FOR_LAUNCH_VIA, default `cli`) into RELEASE_RECORD, `promoted`
-        on GO and `rejected` on NO-GO, and one line of RELEASES_LOG
+        on GO and `rejected` on NO-GO, and one line of RELEASES_LOG; with
+        the reason (GO_FOR_LAUNCH_REASON, null when empty) and the sha256
+        and author of PROMOTE_OUT's brief (docs/adr/0079 §1)
 
 RELEASE_RECORD keeps only the latest record; the log keeps them all and is
 never rewritten, only appended.
 """
 
+import hashlib
 import json
 import os
 import sys
@@ -109,18 +112,38 @@ def plane(env, status):
     return None
 
 
+def answered_brief(env):
+    """(sha256, author) of the brief on disk in PROMOTE_OUT, the one the
+    answer is to (docs/adr/0079 §1); None for each that is not there."""
+    out = env.get("PROMOTE_OUT") or ".crew/promote"
+    sha = author = None
+    try:
+        with open(os.path.join(out, "brief.md"), "rb") as fh:
+            sha = hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(out, "brief.author"), encoding="utf-8") as fh:
+            author = fh.readline().rstrip("\n") or None
+    except OSError:
+        pass
+    return sha, author
+
+
 def answer(env, said):
     path, log = paths(env)
     with open(path, encoding="utf-8") as fh:
         rec = json.load(fh)
     at, by, via = now(), env.get("GO_FOR_LAUNCH_BY") or "unauthenticated", env.get("GO_FOR_LAUNCH_VIA") or "cli"
+    sha, author = answered_brief(env)
+    why = {"reason": (env.get("GO_FOR_LAUNCH_REASON") or "").strip() or None, "brief_sha256": sha, "brief_author": author}
     if said == "GO":
-        rec["promoted"] = {"weight": 100, "at": at, "by": by, "via": via}
+        rec["promoted"] = dict({"weight": 100, "at": at, "by": by, "via": via}, **why)
     else:
-        rec["rejected"] = {"at": at, "by": by, "via": via}
+        rec["rejected"] = dict({"at": at, "by": by, "via": via}, **why)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
-    append(log, {"kind": "answer", "at": at, "version": rec.get("version"), "answer": said, "by": by, "via": via})
+    append(log, dict({"kind": "answer", "at": at, "version": rec.get("version"), "answer": said, "by": by, "via": via}, **why))
 
 
 def main(argv, env=None):

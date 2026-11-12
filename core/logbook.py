@@ -194,12 +194,19 @@ def governing(book_adrs, tickets):
 # --- releases -------------------------------------------------------------
 
 
+# What an answer records beside who and how (docs/adr/0079 §1); null when
+# a record from before it has none.
+ANSWER_WHY = ("reason", "brief_sha256", "brief_author")
+
+
 def answer_of(obj):
-    """{answer, by, via, at} from a record's promoted/rejected object, else None."""
+    """{answer, by, via, at, reason, brief_sha256, brief_author} from a
+    record's promoted/rejected object, else None."""
     for key, answer in (("promoted", "GO"), ("rejected", "NO-GO")):
         a = obj.get(key) if isinstance(obj, dict) else None
         if isinstance(a, dict) and all(k in a for k in ("by", "via", "at")):
-            return {"answer": answer, "by": a["by"], "via": a["via"], "at": a["at"]}
+            return dict({"answer": answer, "by": a["by"], "via": a["via"], "at": a["at"]},
+                        **{k: a.get(k) for k in ANSWER_WHY})
     return None
 
 
@@ -240,7 +247,7 @@ def releases(record):
             if later.get("kind") == "release":
                 break
             if later.get("kind") == "answer" and later.get("version") == rec.get("version"):
-                answer = {k: later.get(k) for k in ("answer", "by", "via", "at")}
+                answer = {k: later.get(k) for k in ("answer", "by", "via", "at") + ANSWER_WHY}
                 break
         out.append(release_entry(rec, line.get("at"), line.get("ticket"), answer, "releases.jsonl"))
     if isinstance(record, dict) and not is_unread(record) and record.get("verdict") in ("held", "rolled-back"):
@@ -670,7 +677,7 @@ def timeline(doc, tid, rels, globs):
             answer = mine[-1]["answer"] if mine else None
             if answer:
                 rows.append(row("sign-off", answer.get("at"), f"{answer.get('answer')} by {answer.get('by')}",
-                                "release log", answer.get("answer"), via=answer.get("via")))
+                                "release log", answer.get("answer"), via=answer.get("via"), reason=answer.get("reason")))
         elif step == "resume":
             rows.append(row("resume", at, f"{h.get('resumed')} requested again", "tower history"))
     end = outcome(doc, tid, rels)

@@ -5,4 +5,4 @@
 {"kind": "answer", "at": "2026-11-02T10:30:00Z", "version": "0.3.0-b", "answer": "GO", "by": "alice", "via": "console"}
 {"kind": "release", "at": "2026-11-03T12:00:00Z", "ticket": null, "record": {"version": "0.4.0-c", "stable": "0.3.0-b", "image": "img-c", "stages": [{"pct": 5, "verdict": "GO", "numbers": ["slo: traffic canary(0.4.0-c)=0.208 stable(0.3.0-b)=4.018"]}], "verdict": "held", "held_at": 5}}
 {"kind": "answer", "at": "2026-11-03T12:10:00Z", "version": "9.9.9-stray", "answer": "GO", "by": "eve", "via": "cli"}
-{"kind": "answer", "at": "2026-11-03T12:20:00Z", "version": "0.4.0-c", "answer": "NO-GO", "by": "carol", "via": "cli"}
+{"kind": "answer", "at": "2026-11-03T12:20:00Z", "version": "0.4.0-c", "answer": "NO-GO", "by": "carol", "via": "cli", "reason": "the error budget is spent for the week", "brief_sha256": "3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b", "brief_author": "the release role, stub-harness"}

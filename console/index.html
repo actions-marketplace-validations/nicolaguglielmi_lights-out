@@ -242,6 +242,17 @@ dialog#why { padding: 16px 20px; border: 0; border-radius: 12px; width: min(640p
 dialog#why::backdrop { background: var(--scrim); }
 dialog#why ul { padding-left: 20px; }
 dialog#why .withheld { color: var(--muted); font-style: italic; }
+/* The human gate on the card (docs/adr/0079): the held release drags onto
+   one of two targets; the drop opens the same confirmation as #launch. */
+.card[draggable="true"] { cursor: grab; border-left: 3px solid var(--focus); }
+#launch-drop { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
+#launch-drop button { flex: 1 1 200px; padding: 12px; border: 2px dashed var(--line); border-radius: 10px; font-weight: 700; background: var(--panel); color: var(--ink); }
+#launch-drop button.over { border-style: solid; border-color: var(--focus); }
+dialog#launch-confirm { padding: 16px 20px; border: 0; border-radius: 12px; width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--panel); color: var(--ink);
+  box-shadow: 0 12px 40px var(--shadow); overflow-y: auto; }
+dialog#launch-confirm::backdrop { background: var(--scrim); }
+dialog#launch-confirm textarea { width: 100%; min-height: 4em; box-sizing: border-box; }
+dialog#launch-confirm pre { max-height: 14em; overflow: auto; }
 button.why-open { padding: 0 2px; border: 0; background: none; cursor: pointer; font: inherit; }
 .why-open[role="button"] { cursor: pointer; }
 .back-top { display: flex; align-items: flex-start; gap: 10px; }
@@ -365,6 +376,8 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
 <dialog id="card-back" aria-label="A card's back"></dialog>
 <!-- The why of a NO-GO (docs/adr/0078 §4): one panel, opened from any red gate. -->
 <dialog id="why" aria-labelledby="why-title"></dialog>
+<!-- The human gate's confirmation (docs/adr/0079 §4): from a drop, a target or #launch's buttons. -->
+<dialog id="launch-confirm" aria-labelledby="lc-title"></dialog>
 <div id="announce" aria-live="polite"></div>
 <!-- The tower's transition table, as board/index.html embeds it (docs/adr/
      0035), with who runs each step and the bands the columns sit under
@@ -885,8 +898,11 @@ function searched(t, q) {
 function card(t, v) {
   const m = moved[t.id] && moved[t.id].until > Date.now() ? moved[t.id] : null;
   const open = () => setView({card: t.id});
+  const held = launchTicket() === t ? launchable() : null;
   return h("div", {cls: "card" + (m ? " moved" : "") + (v.card === t.id ? " selected" : ""), "data-id": t.id, "data-turn": now(t).turn,
-    "data-from": m ? m.from : null, tabindex: "0", role: "button", "aria-label": named(t), onclick: open},
+    "data-from": m ? m.from : null, tabindex: "0", role: "button", "aria-label": named(t), onclick: open,
+    draggable: held ? "true" : null, "data-launch": held ? held.version : null,
+    ondragstart: held ? (e) => { e.dataTransfer.setData("text/plain", held.version); e.dataTransfer.effectAllowed = "move"; } : null},
     labels(t),
     titled(t, v.q),
     nowLine(t),
@@ -944,7 +960,7 @@ function drawer(t) {
 }
 function screenKanban() {
   const out = [h("h1", {}, "Kanban"),
-    h("p", {cls: "lede"}, "One list per tower state, under the four bands of the flow. A card moves only when the tower moves its ticket: there is no drag. ",
+    h("p", {cls: "lede"}, "One list per tower state, under the four bands of the flow. A card moves only when the tower moves its ticket. The one card that drags is a held release, onto Promote or Rollback: the drop opens the confirmation, it moves nothing. ",
       h("span", {cls: "muted"}, "Click a card, or press Enter on it, to turn it over; the arrows move between cards, Esc closes, / searches; the link keeps the view."))];
   if (unread(book.kanban) || unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(unread(book.kanban) ? book.kanban : book.tickets)));
   if (!Array.isArray(book.kanban)) return out.concat(h("div", {cls: "panel"}, h("p", {cls: "muted"}, "This logbook has no kanban (written before 1.1).")));
@@ -1022,6 +1038,8 @@ function drawBoard() {
       const el = area.querySelector('.band[data-band="' + b.band + '"]');
       if (el) el.scrollIntoView({block: "start", behavior: still() ? "auto" : "smooth"});
     }}, b.name))));
+  const drop = launchDrop();
+  if (drop) kids.unshift(drop);
   area.replaceChildren(...kids);
   fly();
   showBack(v.card ? byId[v.card] : null);
@@ -1070,7 +1088,7 @@ function moveFocus(el, key) {
   if (next) next.focus();
 }
 document.addEventListener("keydown", (e) => {
-  if (route().screen !== "kanban" || document.getElementById("why").open) return;
+  if (route().screen !== "kanban" || document.getElementById("why").open || document.getElementById("launch-confirm").open) return;
   const el = e.target;
   const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
   if (e.key === "Escape" && kanbanView().card) {
@@ -1280,21 +1298,101 @@ function screenIncidents() {
 }
 
 // --- screen 4 ----------------------------------------------------------
-async function pressAnswer(answer) {
+// The one press (docs/adr/0047 §3): GO and NO-GO only from the confirmation
+// panel (docs/adr/0079 §4), with its reason; PREPARE moves nothing.
+async function pressAnswer(answer, reason) {
   const L = book.launch, rec = L.record;
-  if (answer !== "PREPARE") {
-    const first = (L.brief.text.split("\n").find((l) => l.trim()) || "").replace(/^#+\s*/, "");
-    if (!confirm(answer + " for " + rec.version + "?\n\n" + first + "\n\n" + (answer === "GO" ? "100% of traffic goes to the canary." : "The canary is rolled back."))) return;
-  }
-  busy = true; render();
+  busy = true; render(); if (lc) drawLaunch();
   try {
-    const r = await fetch("/v1/go-for-launch", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({answer, version: rec.version, held_at: rec.held_at, brief_sha256: L.brief ? L.brief.sha256 : null})});
-    const body = await r.json().catch(() => ({}));
-    lastLine = body.line || ("refused (" + r.status + "): " + (body.error || r.statusText));
+    const body = {answer, version: rec.version, held_at: rec.held_at, brief_sha256: L.brief ? L.brief.sha256 : null};
+    if (reason) body.reason = reason;
+    const r = await fetch("/v1/go-for-launch", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const said = await r.json().catch(() => ({}));
+    lastLine = said.line || ("refused (" + r.status + "): " + (said.error || r.statusText));
   } catch (e) { lastLine = "the console did not answer: " + e; }
-  busy = false; await load(); render();
+  busy = false; await load(); render(); if (lc) drawLaunch();
 }
+// --- the human gate on the card (docs/adr/0079 §3-§4) -------------------------
+// The held record no one has answered yet, when it can be pressed or prepared.
+function launchable() {
+  const L = book.launch || {}, rec = L.record && !unread(L.record) ? L.record : null;
+  return rec && rec.verdict === "held" && !rec.promoted && !rec.rejected && (L.pressable || L.preparable) ? rec : null;
+}
+// The ticket that release carries: its card is the one that drags.
+function launchTicket() {
+  const rec = launchable();
+  return rec ? ticketsList().find((t) => t.release && t.release.version === rec.version) || null : null;
+}
+function launchDrop() {
+  const t = launchTicket();
+  if (!t) return null;
+  const target = (id, answer, text) => h("button", {type: "button", id, "data-answer": answer, "aria-haspopup": "dialog",
+    title: text + ": drop the card of " + t.id + " here, or press Enter",
+    ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); },
+    ondragleave: (e) => e.currentTarget.classList.remove("over"),
+    ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); openLaunch(answer, e.currentTarget); },
+    onclick: (e) => openLaunch(answer, e.currentTarget)}, text + " — " + launchable().version);
+  return h("div", {id: "launch-drop", role: "group", "aria-label": "The human gate for " + named(t)},
+    target("drop-promote", "GO", "Promote to 100%"), target("drop-rollback", "NO-GO", "Rollback"));
+}
+let lc = null;  // {answer, opener, reason} while the confirmation is open
+function openLaunch(answer, opener) {
+  lc = {answer, opener: opener || null, reason: ""};
+  const d = document.getElementById("launch-confirm");
+  drawLaunch();
+  if (!d.open) d.showModal();
+  const box = d.querySelector("#lc-reason");
+  if (box) box.focus();
+}
+function closeLaunch() {
+  const d = document.getElementById("launch-confirm");
+  if (d.open) d.close();
+  d.replaceChildren();
+  const back = lc && lc.opener;
+  lc = null;
+  if (back && back.isConnected) back.focus();
+}
+function drawLaunch() {
+  const d = document.getElementById("launch-confirm");
+  const L = book.launch || {}, rec = L.record && !unread(L.record) ? L.record : {};
+  const t = ticketsList().find((x) => x.release && x.release.version === rec.version) || null;
+  const go = lc.answer === "GO";
+  const verify = (Array.isArray(book.thresholds) ? book.thresholds : []).filter((x) => x.judge === "verify");
+  const gates = t && t.ci && Array.isArray(t.ci.gates) ? t.ci.gates : null;
+  const ready = () => con.can_launch && !busy && L.pressable && (go || lc.reason.trim() !== "");
+  const confirmBtn = h("button", {type: "button", id: "lc-confirm", cls: go ? "go" : "nogo", disabled: !ready(),
+    onclick: () => { if (ready()) pressAnswer(lc.answer, lc.reason.trim()); }}, go ? "Confirm: promote to 100%" : "Confirm: roll back");
+  const box = h("textarea", {id: "lc-reason", placeholder: go ? "Why, if you want it on the record" : "Why the canary goes back: it is recorded with your name",
+    "aria-required": go ? "false" : "true", oninput: (e) => { lc.reason = e.target.value; confirmBtn.disabled = !ready(); }});
+  box.value = lc.reason;
+  d.replaceChildren(...[
+    h("div", {cls: "back-top"}, h("h2", {id: "lc-title", style: "flex: 1; margin: 0"}, (go ? "Promote " : "Roll back ") + shown(rec.version) + (t ? " — " + named(t) : "")),
+      h("button", {type: "button", cls: "close", onclick: closeLaunch}, "Close (Esc)")),
+    h("p", {cls: "muted"}, go ? "100% of traffic goes to the canary." : "The canary is rolled back.", " Nothing moves until you confirm."),
+    h("h3", {}, "The brief"), h("div", {id: "lc-brief"}, L.brief
+      ? [h("p", {cls: "muted"}, "By " + shown(L.brief.author) + " · sha256 ", h("span", {cls: "mono"}, L.brief.sha256)), h("pre", {}, L.brief.text)]
+      : h("p", {cls: "muted"}, "No brief on disk yet: prepare it first.")),
+    h("h3", {}, "Thresholds"), h("table", {id: "lc-thresholds"}, h("tr", {}, ["Key", "Value", "Provenance"].map((c) => h("th", {}, c))),
+      verify.map((x) => h("tr", {}, h("td", {cls: "mono"}, x.key), h("td", {cls: "mono"}, x.value),
+        h("td", {}, x.provenance ? x.provenance.kind + ": " + x.provenance.text : "undeclared")))),
+    h("h3", {}, "Stages"), h("table", {id: "lc-stages"}, h("tr", {}, ["Stage", "Verdict", "Numbers"].map((c) => h("th", {}, c))),
+      (rec.stages || []).map((st) => h("tr", {}, h("td", {}, st.pct + "%"), h("td", {cls: "mono"}, st.verdict), h("td", {cls: "mono"}, (st.numbers || []).join("\n"))))),
+    h("h3", {}, "Risk"), h("p", {id: "lc-risk"}, t ? shown(t.ci && t.ci.risk_level) : "No ticket carries this release."),
+    h("h3", {}, "The PR's gates"), h("ul", {id: "lc-gates"}, gates && gates.length ? gates.map((g) => h("li", {cls: "mono"}, g.line))
+      : h("li", {cls: "muted"}, "No gate lines recorded.")),
+    h("label", {for: "lc-reason"}, go ? "Reason (optional)" : "Reason (required for a rollback)"), box,
+    h("div", {cls: "buttons"},
+      L.preparable && !L.pressable ? h("button", {type: "button", id: "lc-prepare", disabled: busy || !con.can_launch,
+        onclick: () => pressAnswer("PREPARE")}, "Prepare the brief") : null,
+      confirmBtn),
+    busy ? h("p", {cls: "muted"}, "core/promote.sh is running…") : null,
+    lastLine ? h("pre", {id: "lc-line"}, lastLine) : null].filter(Boolean));
+}
+(function () {
+  const d = document.getElementById("launch-confirm");
+  d.addEventListener("cancel", (e) => { e.preventDefault(); closeLaunch(); });
+  d.addEventListener("click", (e) => { if (e.target === d) closeLaunch(); });
+})();
 function screenLaunch() {
   const L = book.launch, rec = L.record;
   const out = [h("h1", {}, "Go-for-launch"),
@@ -1330,8 +1428,8 @@ function screenLaunch() {
     reasons.length ? h("p", {}, "Disabled: ", reasons.join("; ")) : h("p", {}, "Pressing answers the brief above, as " + shown(con.identity === "loopback" ? "unauthenticated (loopback)" : con.identity) + "."),
     h("div", {cls: "buttons"},
       L.preparable ? h("button", {onclick: () => pressAnswer("PREPARE"), disabled: !can}, "Prepare the brief") : null,
-      h("button", {cls: "go", onclick: () => pressAnswer("GO"), disabled: !(can && L.pressable)}, "GO — promote to 100%"),
-      h("button", {cls: "nogo", onclick: () => pressAnswer("NO-GO"), disabled: !(can && L.pressable)}, "NO-GO — roll back")),
+      h("button", {cls: "go", id: "launch-go", onclick: (e) => openLaunch("GO", e.currentTarget), disabled: !(can && L.pressable)}, "GO — promote to 100%"),
+      h("button", {cls: "nogo", id: "launch-nogo", onclick: (e) => openLaunch("NO-GO", e.currentTarget), disabled: !(can && L.pressable)}, "NO-GO — roll back")),
     busy ? h("p", {cls: "muted"}, "core/promote.sh is running…") : null,
     lastLine ? h("pre", {}, lastLine) : null));
   return out;
