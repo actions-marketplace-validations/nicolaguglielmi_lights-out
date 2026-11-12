@@ -49,7 +49,12 @@ proven by `ci/attach.sh` case f).
 - **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
   package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
   Marketplace. **0.3.1** (2026-11-10) ships the first run that drafts the
-  contract (ADR 0064); on the Marketplace too since 2026-11-10.
+  contract (ADR 0064); on the Marketplace too since 2026-11-10. **0.4.0**
+  (tagged 2026-11-12) ships the agent network (ADR 0071), per-role
+  instructions and MCP servers (ADR 0073), the toolbelt (ADR 0069), the
+  Trello-style kanban (ADR 0068), and `self` judged from its last green
+  ancestor with the mutants in shards (ADR 0074). The Marketplace and PyPI
+  steps are the owner's. Security scanning (ADR 0072) ships in 0.4.1.
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.

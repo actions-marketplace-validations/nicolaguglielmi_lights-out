@@ -223,16 +223,21 @@ agent's toolbelt (ADR 0069, M39), the Trello-style kanban (ADR 0068),
 `self` judged from its last green ancestor (ADR 0074), the podman port
 fix, M24's fixes. Security scanning (ADR 0072) ships in 0.4.1.
 
-- [ ] **The release commit**: `version=` in `lights-out`, `version` in
-  `pyproject.toml`, the three plugin manifests (`ci/plugin.sh` holds them
-  to the package's version) and the landing page at 0.4.0, every usage
-  pinned to `@v0.4.0`.
-- [ ] **Tag `v0.4.0`**, both images published and signed, signatures
-  verified.
-- [ ] **The two Actions' repositories** refreshed from `actions/` and
+- [x] **The release commit** (1626e63, landed on `main` as the merge
+  0213078): `version=` in `lights-out`, `version` in `pyproject.toml`, the
+  three plugin manifests and the landing page at 0.4.0, every usage pinned
+  to `@v0.4.0`. `self` on the merge ran 3 h 10 min (run 43104690404): the
+  first `self` judged by ADR 0074's judge, with the mutants in 4 shards.
+  The two before it were cancelled at GitHub's 360-minute limit.
+- [x] **Tag `v0.4.0`** on 0213078: `package.yml` run 43131164910 published
+  and signed both images; both signatures verified with the workbench's
+  cosign.
+- [x] **The two Actions' repositories** refreshed from `actions/` and
   tagged `v0.4.0`.
-- [ ] **Publish the three draft releases** with the Marketplace box
-  ticked (owner, passkey).
+- [ ] **The three releases `v0.4.0` are published, not drafts**:
+  `lights-out`, `test-proof`, `test-integrity`. On the Marketplace: edit
+  each one, tick "Publish this Action to the GitHub Marketplace" and save
+  (owner, passkey).
 - [ ] **PyPI**: `lights-out-gates` 0.4.0, which adds `lights-out-gates mcp`
   and `spec` (owner, the token in the keychain).
 
