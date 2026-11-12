@@ -9,11 +9,12 @@
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.3.json, written by hand from the
+#      golden fixtures/logbook/golden-1.4.json, written by hand from the
 #      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6 and
 #      its 1.2 `adrs` against the stub map (docs/adr/0059 §3), its 1.3
-#      `agents` against the stub contract (docs/adr/0073 §10), and its 1.3
-#      fields of ticket 0010, the network ticket, one by one against the
+#      `agents` against the stub contract (docs/adr/0073 §10), its 1.4 `why`
+#      (docs/adr/0078 §2, §3) against the stub's tower documents (below), and
+#      its 1.3 fields of ticket 0010, the network ticket, one by one against the
 #      stub's tower documents and ADR 0071 (docs/adr/0071 §8): each task's
 #      members (ids, harness, model, hand-written), files with their added
 #      and removed counts, the patch shown, ci.gates (eight GO in the
@@ -21,8 +22,17 @@
 #      raw `lines`, the patch of 0004's attempt in flight withheld with the
 #      contract's error, and tickets[].files rows (glob, member, attempts,
 #      tests, adrs, held_by), each hand check run again on a logbook with
-#      one fact planted wrong, which it must refuse. golden-1.2.json stays in
-#      the repository, untouched, as the old-logbook fixture. The stub root
+#      one fact planted wrong, which it must refuse. The 1.4 `why`, by hand
+#      from ADR 0078 and the stub: ticket 0003's ci.why (attempt 2, gates, the
+#      test gate, its line verbatim, its two FAILED lines, sast null) and its
+#      rework[0].why (attempt 1, the sast gate, details shown, the two new
+#      findings {rule, file, line}); ticket 0002's rework[0].why, recorded with
+#      no gate lines, withheld with the exact error and its 1.3 `details`
+#      null; ticket 0010's rework[0].why shown (mutation); every ci that said
+#      GO has ci.why null; each run again on a logbook with one fact planted
+#      wrong. golden-1.3.json and golden-1.2.json stay in the repository,
+#      untouched, as the old-logbook fixtures, and validate against their
+#      schemas. The stub root
 #      holds three ADRs, the files they cite, the notifier and its test, and
 #      a ticket that names one in its one commit; its map is built from that
 #      commit with core/map.py,
@@ -37,7 +47,9 @@
 #      The kanban's every card sits in its ticket's state's column, and moves
 #      when the tower moves the ticket (docs/adr/0055 §7).
 #   b. The golden validates against every committed schema of its major
-#      (1.0 to 1.3), and against the schema file of its own minor.
+#      (1.0 to 1.4), and against the schema file of its own minor; so do the
+#      old fixtures, golden-1.3.json and golden-1.2.json (their own minors
+#      and the ones before).
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
 #      snapshot is drift; with neither, this point is skipped.
@@ -75,7 +87,9 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.3.json"
+golden="$repo/fixtures/logbook/golden-1.4.json"
+golden13="$repo/fixtures/logbook/golden-1.3.json"
+golden12="$repo/fixtures/logbook/golden-1.2.json"
 tmp=$(mktemp -d)
 pids=""
 # shellcheck disable=SC2154 # p is the loop's own variable, assigned when the trap runs
@@ -85,7 +99,9 @@ for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.3.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.4.json not found"
+[ -f "$golden13" ] || nogo "fixtures/logbook/golden-1.3.json not found (the old-logbook fixture)"
+[ -f "$golden12" ] || nogo "fixtures/logbook/golden-1.2.json not found (the old-logbook fixture)"
 [ -d "$stub" ] || nogo "fixtures/logbook/stub not found"
 
 # --- the checkers, one python file, one subcommand each ---------------------
@@ -545,6 +561,11 @@ jq '(.tickets[] | select(.id == "0010") | .tasks[0].members) = "impl"' "$golden"
 jq '(.tickets[] | select(.id == "0010") | .files[0].tests) = "tests/test_notify.py"' "$golden" > "$st/bad-files-tests.json"
 jq '(.tickets[] | select(.id == "0010") | .files[0].attempts) = [1, "2"]' "$golden" > "$st/bad-files-attempts.json"
 jq '(.tickets[] | select(.id == "0010") | .tasks[0].patch.bytes) = "577"' "$golden" > "$st/bad-patch-bytes.json"
+# 1.4 (docs/adr/0078 §2): `why` is typed, on ci and on a rework entry.
+jq '(.tickets[] | select(.id == "0003") | .ci.why.attempt) = "2"' "$golden" > "$st/bad-why-attempt.json"
+jq '(.tickets[] | select(.id == "0003") | .ci.why.details) = "FAILED tests/a.py::one"' "$golden" > "$st/bad-why-details.json"
+jq '(.tickets[] | select(.id == "0003") | .rework[0].why.sast[0].line) = "7"' "$golden" > "$st/bad-why-sast.json"
+jq '(.tickets[] | select(.id == "0003") | .rework[0].why.gate) = 5' "$golden" > "$st/bad-why-gate.json"
 (
   cd "$st"
   must_reject "schema validation (an enum value)" valid bad-enum.json
@@ -561,6 +582,10 @@ jq '(.tickets[] | select(.id == "0010") | .tasks[0].patch.bytes) = "577"' "$gold
   must_reject "schema validation (a file's tests that is not a list)" valid bad-files-tests.json
   must_reject "schema validation (a file's attempts that are not integers)" valid bad-files-attempts.json
   must_reject "schema validation (a patch's bytes that is not an integer)" valid bad-patch-bytes.json
+  must_reject "schema validation (a why's attempt that is not an integer)" valid bad-why-attempt.json
+  must_reject "schema validation (a why's details that is neither a list nor the withheld reason)" valid bad-why-details.json
+  must_reject "schema validation (a sast finding's line that is not an integer)" valid bad-why-sast.json
+  must_reject "schema validation (a why's gate that is not a string or null)" valid bad-why-gate.json
   must_accept "schema validation" valid "$golden"
 ) || exit 1
 
@@ -1058,7 +1083,7 @@ run_reader LOGBOOK_FILE=out2.json
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.3.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.4.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
 # the day it was blessed; these are the rules, worked out again from the
@@ -1111,9 +1136,9 @@ t10='(.tickets[] | select(.id == "0010"))'
 t04='(.tickets[] | select(.id == "0004"))'
 hand_13() {
   # shellcheck disable=SC2016 # $old is jq's own variable
-  # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 adds none.
-  h13 "nothing new at the top level but agents, and the schema is 1.3" \
-    '.schema == "lights-out/logbook/1.3" and (keys == ($old[0] | keys + ["agents"] | sort))' "$1" || return 1
+  # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 and ADR 0078 add none.
+  h13 "nothing new at the top level but agents, and the schema is 1.4" \
+    '.schema == "lights-out/logbook/1.4" and (keys == ($old[0] | keys + ["agents"] | sort))' "$1" || return 1
   h13 "0010's two attempts, as the tower recorded them" \
     "$t10 | (.tasks | map(.attempt)) == [1, 2]" "$1" || return 1
   h13 "0010 attempt 1: members impl and tests, in that order, with their harness, model and perimeter" \
@@ -1154,8 +1179,9 @@ hand_13() {
       and .[6].line == \"NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%\"" "$1" || return 1
   h13 "the raw lines are not exposed, on ci nor on a rework entry" \
     "[.tickets[] | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(has(\"gates\") and (has(\"lines\") | not))" "$1" || return 1
+  # Ticket 0003 is the other one whose stub records gate lines (ADR 0078 §5): hand_14 reads it.
   h13 "a ticket whose gates recorded no lines has gates null, ci and rework alike" \
-    "[.tickets[] | select(.id != \"0010\") | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(.gates == null)" "$1" || return 1
+    "[.tickets[] | select(.id != \"0010\" and .id != \"0003\") | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(.gates == null)" "$1" || return 1
   h13 "0004's attempt in flight: the patch is withheld with the contract's error, its files and null members stay" \
     "$t04 | .tasks[0].patch == {ok: false, error: \"withheld: the secrets gate did not say GO on attempt 1\"}
       and .tasks[0].files == \$s4[0].tasks[0].files and .tasks[0].members == null" "$1" || return 1
@@ -1217,6 +1243,94 @@ plant "a file row dropped" "$(tix 0010 '.files |= .[0:1]')"
 plant "0004's tests known" "$(tix 0004 '.files[0].tests = []')"
 plant "a field new at the top level" '. + {network: {}}'
 plant "another schema" '.schema = "lights-out/logbook/1.2"'
+
+# The 1.4 fields (docs/adr/0078 §2, §3, §5), worked out from the stub's tower
+# documents (state/tickets.0003.json, 0002, 0010) and written down by hand; the
+# reader's code is not read. Ticket 0003 is at attempt 2 (PR 3): attempt 1 was
+# sent back by a sast NO-GO (secrets GO, two new findings), the current ci is
+# a test NO-GO (secrets GO, two FAILED lines). Ticket 0002's one rework entry
+# was recorded with no gate lines, so its details are withheld. Ticket 0010's
+# rework entry (the mutation NO-GO) ran secrets GO, so it is shown.
+h14() {
+  jq -e --slurpfile s3 "$stub/state/tickets.0003.json" --slurpfile s2 "$stub/state/tickets.0002.json" \
+    --slurpfile s10 "$stub/state/tickets.0010.json" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+t03='(.tickets[] | select(.id == "0003"))'
+t02='(.tickets[] | select(.id == "0002"))'
+hand_14() {
+  h14 "the schema is 1.4" '.schema == "lights-out/logbook/1.4"' "$1" || return 1
+  h14 "0003 is at attempt 2, PR 3, with two ci runs and one rework in its history" \
+    "$t03 | .attempt == 2 and .pr.number == 3 and ([.history[] | select(.step == \"ci\")] | length) == 2
+      and ([.history[] | select(.step == \"rework\")] | length) == 1" "$1" || return 1
+  h14 "0003's ci.why: attempt 2, gates, the test gate, the line verbatim, the two FAILED lines, sast null" \
+    "$t03 | .ci.why == {attempt: 2, judge: \"gates\", gate: \"test\", line: \"NO-GO: gates — test: NO-GO: test — 2 failed\",
+        details: [\"FAILED tests/a.py::one\", \"FAILED tests/a.py::two\"], sast: null}
+      and .ci.why.line == \$s3[0].ci.line and .ci.details == \$s3[0].ci.details" "$1" || return 1
+  h14 "0003's rework[0].why: attempt 1, gates, the sast gate, details shown, the two findings {rule, file, line}" \
+    "$t03 | .rework | length == 1 and (.[0].why == {attempt: 1, judge: \"gates\", gate: \"sast\", line: \$s3[0].rework[0].line,
+        details: [\"new: B602 README.md:7\", \"new: B105 README.md:9\"],
+        sast: [{rule: \"B602\", file: \"README.md\", line: 7}, {rule: \"B105\", file: \"README.md\", line: 9}]})
+      and .[0].details == [\"new: B602 README.md:7\", \"new: B105 README.md:9\"]" "$1" || return 1
+  h14 "0003's ci.gates: risk, secrets, test-weakening, deps, sast GO, then test NO-GO; rework[0].gates ends on the sast NO-GO, each line verbatim" \
+    "$t03 | (.ci.gates | map(.gate + \":\" + .verdict)) == [\"risk:GO\", \"secrets:GO\", \"test-weakening:GO\", \"deps:GO\", \"sast:GO\", \"test:NO-GO\"]
+      and (.ci.gates | map(.line)) == \$s3[0].ci.lines
+      and (.rework[0].gates | map(.gate + \":\" + .verdict)) == [\"risk:GO\", \"secrets:GO\", \"test-weakening:GO\", \"deps:GO\", \"sast:NO-GO\"]
+      and (.rework[0].gates | map(.line)) == \$s3[0].rework[0].lines" "$1" || return 1
+  h14 "0003's timeline: gates rows for attempts 1 and 2, a rework row for attempt 2, and one gate row per shown detail" \
+    "$t03 | ([.timeline[] | select(.phase == \"gates\") | .attempt]) == [1, 2]
+      and ([.timeline[] | select(.phase == \"rework\") | .attempt]) == [2]
+      and ([.timeline[] | select(.phase == \"gate\") | .line]) == [\"FAILED tests/a.py::one\", \"FAILED tests/a.py::two\"]" "$1" || return 1
+  h14 "0002's rework[0].why is withheld with the exact error for attempt 1, its 1.3 details are null, and the text is nowhere in the entry" \
+    "$t02 | .rework | length == 1 and (.[0].why == {attempt: 1, judge: \"gates\", gate: null, line: \$s2[0].rework[0].line,
+        details: {ok: false, error: \"withheld: the secrets gate did not say GO on attempt 1\"}, sast: null})
+      and .[0].details == null and (.[0] | tojson | contains(\"test_join\") | not)" "$1" || return 1
+  h14 "0010's rework[0].why is shown: the mutation gate, the survivor, sast null" \
+    "$t10 | .rework[0].why == {attempt: 1, judge: \"gates\", gate: \"mutation\", line: \$s10[0].rework[0].line,
+        details: \$s10[0].rework[0].details, sast: null} and .rework[0].details == \$s10[0].rework[0].details" "$1" || return 1
+  h14 "every ci that said GO has a ci.why that is null (the key is there), and a NO-GO has one that is not" \
+    "[.tickets[] | .ci | select(type == \"object\")] | length > 0
+      and all(if .verdict == \"GO\" then (has(\"why\") and .why == null) else (.why | type) == \"object\" end)" "$1" || return 1
+  h14 "every rework entry of every ticket has a why of its own attempt, judge and line" \
+    "[.tickets[] | (.rework | select(type == \"array\") | .[])] | length > 0 and all(.why.attempt == .attempt and .why.judge == .judge and .why.line == .line)" "$1" || return 1
+}
+bad=$(hand_14 "$root/out1.json") || nogo "the 1.4 fields over the stub sources: $bad" \
+  "$(jq -c "{t3: ($t03 | {attempt, ci_why: .ci.why, rework_why: [.rework[].why]}), t2: ($t02 | [.rework[].why])}" "$root/out1.json" 2>&1)"
+plant14() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_14 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.4 fields accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+plant14 "the schema 1.3" '.schema = "lights-out/logbook/1.3"'
+plant14 "0003's attempt null" "$(tix 0003 '.attempt = null')"
+plant14 "0003's ci.why gone" "$(tix 0003 '.ci.why = null')"
+plant14 "0003's ci.why gate changed" "$(tix 0003 '.ci.why.gate = "tests"')"
+plant14 "0003's ci.why attempt changed" "$(tix 0003 '.ci.why.attempt = 1')"
+plant14 "0003's ci.why judge changed" "$(tix 0003 '.ci.why.judge = "review"')"
+plant14 "0003's ci.why line trimmed" "$(tix 0003 '.ci.why.line = "NO-GO: test — 2 failed"')"
+plant14 "0003's ci.why details cut to one" "$(tix 0003 '.ci.why.details |= .[0:1]')"
+plant14 "0003's ci.why details withheld" "$(tix 0003 '.ci.why.details = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 2"}')"
+plant14 "0003's ci.why with a sast list" "$(tix 0003 '.ci.why.sast = []')"
+plant14 "0003's rework[0].why gone" "$(tix 0003 '.rework[0].why = null')"
+plant14 "0003's rework[0].why gate changed" "$(tix 0003 '.rework[0].why.gate = "test"')"
+plant14 "0003's rework[0].why sast finding's line changed" "$(tix 0003 '.rework[0].why.sast[1].line = 10')"
+plant14 "0003's rework[0].why sast finding dropped" "$(tix 0003 '.rework[0].why.sast |= .[0:1]')"
+plant14 "0003's rework[0].why sast null" "$(tix 0003 '.rework[0].why.sast = null')"
+plant14 "0003's rework[0].why sast withheld" "$(tix 0003 '.rework[0].why.sast = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 1"}')"
+plant14 "0003's rework[0].why details withheld" "$(tix 0003 '.rework[0].why.details = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 1"}')"
+plant14 "0003's rework[0] 1.3 details null" "$(tix 0003 '.rework[0].details = null')"
+plant14 "0003's timeline with no gate rows" "$(tix 0003 '.timeline |= map(select(.phase != "gate"))')"
+plant14 "0002's details shown" "$(tix 0002 '.rework[0].why.details = ["FAILED tests/test_w.py::test_join"]')"
+plant14 "0002's withheld error for another attempt" "$(tix 0002 '.rework[0].why.details.error = "withheld: the secrets gate did not say GO on attempt 2"')"
+plant14 "0002's withheld error reworded" "$(tix 0002 '.rework[0].why.details.error = "withheld"')"
+plant14 "0002's 1.3 details still shown" "$(tix 0002 '.rework[0].details = ["FAILED tests/test_w.py::test_join"]')"
+plant14 "0002's why gone" "$(tix 0002 '.rework[0].why = null')"
+plant14 "0010's rework why withheld" "$(tix 0010 '.rework[0].why.details = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 1"}')"
+plant14 "0010's rework why gate changed" "$(tix 0010 '.rework[0].why.gate = "test"')"
+plant14 "0010's rework why gone" "$(tix 0010 'del(.rework[0].why)')"
+plant14 "a GO ci with a why" "$(tix 0010 '.ci.why = {attempt: 2, judge: "gates", gate: null, line: "GO: gates", details: [], sast: null}')"
+plant14 "a GO ci with no why key" "$(tix 0010 'del(.ci.why)')"
+plant14 "a rework why of another attempt" "$(tix 0010 '.rework[0].why.attempt = 2')"
 
 # The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
 # state, and every ticket is on exactly one card. Then the tower moves a
@@ -1448,7 +1562,15 @@ var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009")
 cp "$tmp/0009.keep" "$root/state/tickets.0009.json"
 
 # --- b. the golden against every committed schema of its major ---------------
+for n in 0 1 2 3 4; do
+  [ -f "core/logbook/1.$n.schema.json" ] || nogo "core/logbook/1.$n.schema.json not found: the golden validates against 1.0 to 1.4"
+done
 chk valid "$golden" >"$tmp/chk.out" || nogo "the golden does not validate" "$(cat "$tmp/chk.out")"
+# The old-logbook fixtures stay valid against their own major's schemas, untouched.
+chk valid "$golden13" >"$tmp/chk.out" || nogo "golden-1.3.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+chk valid "$golden12" >"$tmp/chk.out" || nogo "golden-1.2.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+[ "$(jq -r .schema "$golden13")" = "lights-out/logbook/1.3" ] || nogo "golden-1.3.json is not a 1.3 logbook: the old fixture was changed"
+[ "$(jq -r .schema "$golden12")" = "lights-out/logbook/1.2" ] || nogo "golden-1.2.json is not a 1.2 logbook: the old fixture was changed"
 
 # --- c. the committed snapshot -----------------------------------------------
 if [ -f console/snapshot/logbook.json ]; then
@@ -1651,7 +1773,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.3.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.4.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -1661,7 +1783,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.3.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.4.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"

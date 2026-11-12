@@ -12,7 +12,7 @@ job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 Written from docs/adr/0059 and the DOM contract it names (and, for t-z, from
 docs/adr/0071; for `agents`, from docs/adr/0073), not from console/index.html.
 It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.3.json, and drives it with Playwright:
+fixtures/logbook/golden-1.4.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -110,6 +110,20 @@ own fields at run time; the CLI is core/network.py run as a subprocess):
 ADR 0073, what the contract gives the agents (every expectation is worked out
 from the golden's own fields at run time):
 
+  aa. ADR 0078 §4, the why of a NO-GO (every expectation is worked out from the
+     golden's own fields at run time, the attempts left from its thresholds, the next
+     move from the card's own now line): `button.why-open` on a NO-GO card and in the
+     verdict cell of the timeline's `gates` and `rework` rows, the SVG `g.net-gate`
+     and the stream's `li.net-line` of a NO-GO on #network (class why-open,
+     role=button, tabindex=0, data-ticket, data-attempt) open the one modal
+     dialog#why, by click and by focus + Enter, holding #why-line, #why-gate,
+     #why-details (li, or one .withheld), #why-sast (tr with three td, or one
+     .withheld; absent when the record has no sast list), #why-attempt, #why-left
+     and #why-next; Esc and button.close close it and the focus returns to the
+     opener; no POST; a card whose outcome is not NO-GO has no opener. Ticket 0003
+     holds the sast and the test NO-GO, ticket 0002's withheld case opens from
+     #network/0002?attempt=1.
+
   agents. the Thresholds screen's Agents panel prints the logbook's lines
      (docs/adr/0073 §10), and each card's back shows its task's MCP calls and
      its review's instructions, and no such row when they are null.
@@ -133,7 +147,7 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.3.json"
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.4.json"
 SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds", "network", "network/0010"]
 THEME_KEY = "lights-out.theme"
 TIMEOUT_MS = 5000
@@ -2316,6 +2330,277 @@ def s_nodrag(browser, bases):
     ctx.close()
 
 
+# --- aa. the why of a NO-GO (docs/adr/0078 §4) ---------------------------------------------------
+
+WHY_WITHHELD = "withheld: the secrets gate did not say GO on attempt {}"  # ADR 0078 §3, word for word
+WHY_OPEN_JS = "() => { const d = document.querySelector('dialog#why'); return !!d && d.open; }"
+WHY_CLOSED_JS = "() => { const d = document.querySelector('dialog#why'); return !d || !d.open; }"
+WHY_JS = """() => {
+  const d = document.querySelector('dialog#why');
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const q = (s) => (d ? d.querySelector(s) : null);
+  const a = document.activeElement;
+  const back = document.querySelector('dialog#card-back');
+  const sast = q('#why-sast');
+  return {count: document.querySelectorAll('dialog#why').length, open: !!d && d.open, modal: !!d && d.matches(':modal'),
+    inside: !!d && d.contains(a), close: !!q('button.close'), card_back_open: !!back && back.open,
+    line: txt(q('#why-line')), gate: txt(q('#why-gate')),
+    details: d ? [...d.querySelectorAll('#why-details li:not(.withheld)')].map(txt) : [],
+    details_withheld: d ? [...d.querySelectorAll('#why-details .withheld')].map(txt) : [],
+    sast: sast ? {rows: [...sast.querySelectorAll('tr')].filter((r) => r.querySelector('td') && !r.querySelector('.withheld') && !r.classList.contains('withheld'))
+                        .map((r) => [...r.querySelectorAll('td')].map(txt)),
+                  withheld: [...sast.querySelectorAll('.withheld')].map(txt)} : null,
+    attempt: txt(q('#why-attempt')), left: txt(q('#why-left')), next: txt(q('#why-next')),
+    active: a ? {tag: a.tagName.toLowerCase(), ticket: a.dataset.ticket || null, attempt: a.dataset.attempt || null,
+                 why: a.classList.contains('why-open'), scope: a.closest('tr[data-phase]') ? a.closest('tr[data-phase]').dataset.phase : null} : null};
+}"""
+OPENER_JS = """(el) => ({tag: el.tagName.toLowerCase(), ticket: el.dataset.ticket || null, attempt: el.dataset.attempt || null, why: el.classList.contains('why-open'),
+  scope: el.closest('tr[data-phase]') ? el.closest('tr[data-phase]').dataset.phase : null})"""
+NET_OPENERS_JS = """() => [...document.querySelectorAll('g.net-gate, li.net-line')].map((e) => ({kind: e.tagName.toLowerCase(), gate: e.dataset.gate || null,
+  verdict: e.dataset.verdict || null, why: e.classList.contains('why-open'), role: e.getAttribute('role'), tabindex: e.getAttribute('tabindex'),
+  ticket: e.dataset.ticket || null, attempt: e.dataset.attempt || null}))"""
+ROW_OPENERS_JS = """() => [...document.querySelectorAll('tr[data-phase] .why-open')].map((b) => ({phase: b.closest('tr[data-phase]').dataset.phase,
+  tag: b.tagName.toLowerCase(), ticket: b.dataset.ticket || null, attempt: b.dataset.attempt || null}))"""
+CARD_OPENERS_JS = """() => [...document.querySelectorAll('.card[data-id]')].map((c) => ({id: c.dataset.id,
+  openers: [...c.querySelectorAll('.why-open')].map((b) => ({tag: b.tagName.toLowerCase(), ticket: b.dataset.ticket || null, attempt: b.dataset.attempt || null}))}))"""
+
+
+def why_record(t, n):
+    """The logbook's `why` of ticket T's attempt N: a rework entry's, or the ci's when it is that attempt's."""
+    for r in t.get("rework") or []:
+        if r.get("attempt") == n and isinstance(r.get("why"), dict):
+            return r["why"]
+    ci = t.get("ci")
+    if isinstance(ci, dict) and isinstance(ci.get("why"), dict) and ci["why"].get("attempt") == n:
+        return ci["why"]
+    return None
+
+
+def why_expect(book, t, n, now_text):
+    """What the panel must say for ticket T's attempt N (ADR 0078 §4), worked out from the golden's own fields."""
+    w = why_record(t, n)
+    if w is None:
+        return None
+    top = max_attempts_of(book)
+    details = w["details"]
+    sast = w.get("sast")
+    if isinstance(sast, list):
+        sast = {"rows": [[x["rule"], x["file"], str(x["line"])] for x in sast], "withheld": []}
+    elif isinstance(sast, dict):
+        sast = {"rows": [], "withheld": [sast["error"]]}
+    else:
+        sast = None
+    return {"line": w["line"], "gate": w["gate"], "judge": w["judge"], "attempt": f"attempt {n}",
+            "left": f"{max(0, top - n)} of {top} attempts left",
+            "next": now_text if n == t.get("attempt") else f"sent back to the dev-worker: attempt {n + 1}",
+            "details": [] if isinstance(details, dict) else list(details or []),
+            "details_withheld": [details["error"]] if isinstance(details, dict) else [],
+            "sast": sast}
+
+
+def why_problems(info, exp):
+    """Why the panel INFO (WHY_JS) is not what EXP says, or []."""
+    bad = []
+    if info["count"] != 1 or not info["open"]:
+        bad.append(f"{info['count']} dialog#why, open={info['open']}: want exactly one, open")
+    if not info["modal"]:
+        bad.append("dialog#why is not modal (:modal)")
+    if not info["inside"]:
+        bad.append("the focus is not inside dialog#why")
+    if not info["close"]:
+        bad.append("dialog#why has no button.close")
+    if info["card_back_open"]:
+        bad.append("dialog#card-back opened too")
+    if info["line"] != exp["line"]:
+        bad.append(f"#why-line is {info['line']!r}, want {exp['line']!r}")
+    names = [x for x in (exp["gate"], exp["judge"]) if x]
+    if not info["gate"] or any(x not in info["gate"] for x in names):
+        bad.append(f"#why-gate is {info['gate']!r}, want it to name {names}")
+    if info["details"] != exp["details"]:
+        bad.append(f"#why-details lists {info['details']}, want {exp['details']}")
+    if info["details_withheld"] != exp["details_withheld"]:
+        bad.append(f"#why-details withheld {info['details_withheld']}, want {exp['details_withheld']}")
+    if exp["sast"] is None:
+        if info["sast"] is not None:
+            bad.append("#why-sast is present, but the record has no sast list")
+    elif info["sast"] != exp["sast"]:
+        bad.append(f"#why-sast is {info['sast']}, want {exp['sast']}")
+    if info["attempt"] != exp["attempt"]:
+        bad.append(f"#why-attempt is {info['attempt']!r}, want {exp['attempt']!r}")
+    if info["left"] != exp["left"]:
+        bad.append(f"#why-left is {info['left']!r}, want {exp['left']!r}")
+    if not info["next"] or exp["next"] not in info["next"]:
+        bad.append(f"#why-next is {info['next']!r}, want it to contain {exp['next']!r}")
+    return bad
+
+
+def timeline_openers(t):
+    """(phase, ticket, attempt) of each opener the timeline of T must draw, in order: a `gates` row of a rejected
+    attempt opens that attempt; a `rework` row (attempt n) names the rejection that sent it back, n-1."""
+    out = []
+    for row in t.get("timeline") or []:
+        n = row.get("attempt")
+        if not isinstance(n, int):
+            continue
+        if row["phase"] == "gates" and row.get("verdict") in ("ci-failed", "NO-GO") and why_record(t, n):
+            out.append(("gates", t["id"], str(n)))
+        elif row["phase"] == "rework" and why_record(t, n - 1):
+            out.append(("rework", t["id"], str(n - 1)))
+    return out
+
+
+def net_opener_problems(rows, ident):
+    """Every NO-GO gate node and stream line is an opener, and every opener is a NO-GO (ADR 0078 §4)."""
+    bad = []
+    for r in rows:
+        nogo = r["verdict"] == "NO-GO"
+        if nogo != r["why"]:
+            bad.append(f"{r['kind']} (gate {r['gate']}, attempt {r['attempt']}) has data-verdict {r['verdict']!r} and why-open={r['why']}")
+        if r["why"] and (r["role"] != "button" or r["tabindex"] != "0" or r["ticket"] != ident or not (r["attempt"] or "").isdigit()):
+            bad.append(f"{r['kind']} opener is role={r['role']!r} tabindex={r['tabindex']!r} data-ticket={r['ticket']!r} data-attempt={r['attempt']!r}")
+    return bad
+
+
+def open_why(tab, loc, what, how):
+    """Open dialog#why from the element LOC by a click, or by focus + Enter; the opener's signature and the panel."""
+    sig = loc.evaluate(OPENER_JS)
+    if how == "click":
+        loc.click()
+    else:
+        loc.focus()
+        tab.page.keyboard.press("Enter")
+    tab.wait(WHY_OPEN_JS, None, f"aa, {what}: dialog#why never opened ({how})")
+    tab.page.wait_for_timeout(300)
+    return sig, tab.page.evaluate(WHY_JS)
+
+
+def close_why(tab, how, sig, what):
+    if how == "esc":
+        tab.page.keyboard.press("Escape")
+    else:
+        tab.page.click("dialog#why button.close")
+    tab.wait(WHY_CLOSED_JS, None, f"aa, {what}: dialog#why never closed ({how})")
+    active = tab.page.evaluate(WHY_JS)["active"]
+    need(active == {"tag": sig["tag"], "ticket": sig["ticket"], "attempt": sig["attempt"], "why": True, "scope": sig["scope"]},
+         f"aa, {what}: after {how} the focus is on {active}, want the opener {sig}")
+
+
+def see_why(tab, loc, book, t, n, now_text, what, how, closing):
+    exp = why_expect(book, t, n, now_text)
+    need(exp is not None, f"aa, {what}: the golden has no why for {t['id']} attempt {n}")
+    sig, info = open_why(tab, loc, what, how)
+    need(sig["ticket"] == t["id"] and sig["attempt"] == str(n), f"aa, {what}: the opener says ticket {sig['ticket']} attempt {sig['attempt']}, want {t['id']} {n}")
+    bad = why_problems(info, exp)
+    need(not bad, f"aa, {what} ({how}): {bad[0] if bad else ''}", *bad)
+    close_why(tab, closing, sig, what)
+
+
+def aa_why(browser, bases, golden):
+    by_id = {t["id"]: t for t in golden["tickets"]}
+    t3, t2 = by_id["0003"], by_id["0002"]
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    # The card: only a NO-GO outcome has an opener, and it names its own ticket.
+    draw_kanban(tab, "aa")
+    tab.page.wait_for_timeout(300)
+    for card in tab.page.evaluate(CARD_OPENERS_JS):
+        verdict = (by_id[card["id"]].get("outcome") or {}).get("verdict")
+        need(verdict == "NO-GO" or not card["openers"], f"aa: card {card['id']}'s outcome is {verdict!r}, but it has {len(card['openers'])} why-open")
+        need(len(card["openers"]) <= 1 and all(o["tag"] == "button" and o["ticket"] == card["id"] for o in card["openers"]),
+             f"aa: card {card['id']}'s openers are {card['openers']}: want at most one button.why-open with its own data-ticket")
+    mine = next(c for c in tab.page.evaluate(CARD_OPENERS_JS) if c["id"] == "0003")
+    need(len(mine["openers"]) == 1 and mine["openers"][0]["attempt"] == str(t3["ci"]["why"]["attempt"]),
+         f"aa: card 0003 has {mine['openers']}, want one button.why-open for attempt {t3['ci']['why']['attempt']}")
+    now_text = one_now(tab, ".card[data-id='0003']", "aa, card 0003")["text"]
+    opener = tab.page.locator(".card[data-id='0003'] button.why-open")
+    for how, closing in (("click", "esc"), ("enter", "esc"), ("click", "button")):
+        see_why(tab, opener, golden, t3, t3["ci"]["why"]["attempt"], now_text, "card 0003", how, closing)
+    # The timeline: openers in the verdict cell of the gates and rework rows, in the logbook's order.
+    for ident in ("0003", "0002", "0010"):
+        tab.page.goto("about:blank")
+        tab.load(f"#ticket/{ident}")
+        wait_for(tab, "tr[data-phase]", f"aa, {ident}")
+        got = [(o["phase"], o["ticket"], o["attempt"]) for o in tab.page.evaluate(ROW_OPENERS_JS)]
+        want = timeline_openers(by_id[ident])
+        need(got == want, f"aa, #ticket/{ident}: the openers are {got}, want {want}")
+        need(all(o["tag"] == "button" for o in tab.page.evaluate(ROW_OPENERS_JS)), f"aa, #ticket/{ident}: an opener is not a button")
+    need(timeline_openers(t2) == [], "aa: ticket 0002's history has no ci or rework step, but the golden's timeline wants openers")
+    tab.page.goto("about:blank")
+    tab.load("#ticket/0003")
+    wait_for(tab, "tr[data-phase]", "aa, 0003")
+    rows = tab.page.locator("tr[data-phase] button.why-open")
+    for index, how in ((0, "click"), (1, "enter"), (2, "click")):  # gates:1, rework (opens 1), gates:2
+        n = int(timeline_openers(t3)[index][2])
+        see_why(tab, rows.nth(index), golden, t3, n, now_text, f"timeline row {index}", how, "esc" if index != 2 else "button")
+    # The network: the node and the line are the openers themselves; ticket 0002's withheld case opens from its summary node.
+    for ident in ("0003", "0010", "0002"):
+        net_open(tab, f"#network/{ident}", f"aa, {ident}")
+        bad = net_opener_problems(tab.page.evaluate(NET_OPENERS_JS), ident)
+        need(not bad, f"aa, #network/{ident}: {bad[0] if bad else ''}", *bad)
+    net_open(tab, "#network/0003", "aa, 0003")
+    lines = sorted(r["attempt"] for r in tab.page.evaluate(NET_OPENERS_JS) if r["kind"] == "li" and r["why"])
+    want = sorted(str(w["attempt"]) for w in [r.get("why") for r in t3["rework"]] + [t3["ci"]["why"]] if w)
+    need(lines == want, f"aa, #network/0003: the stream's openers are for attempts {lines}, want {want}")
+    nodes = [(r["gate"], r["attempt"]) for r in tab.page.evaluate(NET_OPENERS_JS) if r["kind"] == "g" and r["why"]]
+    need(("test", "2") in nodes, f"aa, #network/0003: the gate nodes that open are {nodes}, want test at attempt 2")
+    see_why(tab, tab.page.locator("li.net-line.why-open[data-attempt='1']"), golden, t3, 1, now_text, "network line, attempt 1", "click", "esc")
+    see_why(tab, tab.page.locator("g.net-gate.why-open[data-gate='test'][data-attempt='2']"), golden, t3, 2, now_text, "network node, attempt 2", "enter", "esc")
+    net_open(tab, "#network/0002?attempt=1", "aa, 0002")
+    node = tab.page.locator("g.net-gate.why-open[data-gate='gates'][data-attempt='1']")
+    need(node.count() == 1, f"aa, #network/0002?attempt=1: {node.count()} openers g.net-gate[data-gate=gates][data-attempt=1], want one")
+    sig, info = open_why(tab, node, "network node, 0002", "enter")
+    need(info["details"] == [] and info["details_withheld"] == [WHY_WITHHELD.format(1)],
+         f"aa, ticket 0002 attempt 1: #why-details is {info['details']} / withheld {info['details_withheld']}, want one .withheld {WHY_WITHHELD.format(1)!r}")
+    bad = why_problems(info, why_expect(golden, t2, 1, now_text))
+    need(not bad, f"aa, ticket 0002 attempt 1: {bad[0] if bad else ''}", *bad)
+    close_why(tab, "esc", sig, "network node, 0002")
+    tab.audit("aa")
+    ctx.close()
+
+
+def self_checks_why(book):
+    """aa's own comparisons, each shown to fail on a wrong input."""
+    by_id = {t["id"]: t for t in book["tickets"]}
+    t3, t2 = by_id["0003"], by_id["0002"]
+    need(why_record(t3, 2) is not None and why_record(t3, 1) is not None and why_record(t2, 1) is not None,
+         "the golden holds no why for 0003 attempts 1 and 2 or 0002 attempt 1: it is not a 1.4 logbook")
+    need(timeline_openers(t3) == [("gates", "0003", "1"), ("rework", "0003", "1"), ("gates", "0003", "2")],
+         f"0003's timeline openers are {timeline_openers(t3)}, want gates 1, rework (opens 1), gates 2")
+    need(timeline_openers(t2) == [], "0002's timeline has openers")
+    now = "Waiting for the dev-worker: attempt 3 of 4"
+    first, second, old = why_expect(book, t3, 1, now), why_expect(book, t3, 2, now), why_expect(book, t2, 1, now)
+    need(first["sast"] == {"rows": [["B602", "README.md", "7"], ["B105", "README.md", "9"]], "withheld": []} and first["left"] == "3 of 4 attempts left"
+         and first["next"] == "sent back to the dev-worker: attempt 2", f"attempt 1's expectation is {first}")
+    need(second["sast"] is None and second["left"] == "2 of 4 attempts left" and second["next"] == now and len(second["details"]) == 2,
+         f"attempt 2's expectation is {second}")
+    need(old["details_withheld"] == [WHY_WITHHELD.format(1)] and old["details"] == [], f"0002's expectation is {old}")
+
+    def good(exp):
+        return {"count": 1, "open": True, "modal": True, "inside": True, "close": True, "card_back_open": False, "line": exp["line"],
+                "gate": f"{exp['gate'] or ''} {exp['judge']}", "details": list(exp["details"]), "details_withheld": list(exp["details_withheld"]),
+                "sast": None if exp["sast"] is None else {"rows": [list(r) for r in exp["sast"]["rows"]], "withheld": list(exp["sast"]["withheld"])},
+                "attempt": exp["attempt"], "left": exp["left"], "next": "Next: " + exp["next"], "active": None}
+    for exp in (first, second, old):
+        need(not why_problems(good(exp), exp), f"a good panel is refused: {why_problems(good(exp), exp)}")
+    for what, change in (("another line", {"line": "NO-GO: x"}), ("no details", {"details": []}), ("an extra detail", {"details": ["a", "b", "c"]}),
+                         ("a withheld nobody asked for", {"details_withheld": ["withheld"]}), ("no sast table", {"sast": None}),
+                         ("a sast row changed", {"sast": {"rows": [["B602", "README.md", "8"], ["B105", "README.md", "9"]], "withheld": []}}),
+                         ("another attempt", {"attempt": "attempt 3"}), ("no attempts left", {"left": None}), ("another count left", {"left": "1 of 4 attempts left"}),
+                         ("another next move", {"next": "nothing"}), ("the dialog closed", {"open": False}), ("a second dialog", {"count": 2}),
+                         ("a non-modal dialog", {"modal": False}), ("the focus outside", {"inside": False}), ("no close button", {"close": False}),
+                         ("the card's back opened too", {"card_back_open": True}), ("no gate named", {"gate": ""})):
+        need(why_problems({**good(first), **change}, first), f"a panel with {what} is accepted for attempt 1")
+    need(why_problems({**good(second), "sast": {"rows": [], "withheld": []}}, second), "a sast table is accepted where the record has no sast list")
+    need(why_problems({**good(old), "details": ["FAILED tests/test_w.py::test_join"], "details_withheld": []}, old), "shown details are accepted where they are withheld")
+    row = {"kind": "li", "gate": "test", "verdict": "NO-GO", "why": True, "role": "button", "tabindex": "0", "ticket": "0003", "attempt": "2"}
+    need(not net_opener_problems([row, {**row, "verdict": "GO", "why": False}], "0003"), "good network openers are refused")
+    need(net_opener_problems([{**row, "why": False}], "0003"), "a NO-GO line with no opener is accepted")
+    need(net_opener_problems([{**row, "verdict": "GO"}], "0003"), "an opener on a GO line is accepted")
+    need(net_opener_problems([{**row, "role": None}], "0003") and net_opener_problems([{**row, "tabindex": None}], "0003")
+         and net_opener_problems([{**row, "ticket": "0001"}], "0003") and net_opener_problems([{**row, "attempt": None}], "0003"),
+         "an opener without its role, its tabindex, its ticket or its attempt is accepted")
+
+
 def t_agents(browser, bases, golden):
     """ADR 0073 §10: the Thresholds screen's Agents panel prints the logbook's lines verbatim, the same text `./go agents` prints."""
     lines = (golden.get("agents") or {}).get("lines")
@@ -3278,8 +3563,9 @@ def self_checks():
     # ADR 0063: the rules and the comparisons of g-k, each shown to fail.
     book = json.loads(GOLDEN.read_text(encoding="utf-8"))
     turns = turns_of(book)
+    by_id03 = next(t for t in book["tickets"] if t["id"] == "0003")  # at attempt 2 since ADR 0078's stub: the next is attempt 3
     need(sorted(i for i, e in turns.items() if e["turn"] == "you") == sorted(YOUR_TURN_GOLDEN), f"the now rules give {turns} over the golden")
-    need(turns["0003"]["contains"] == ["dev-worker", "attempt 2 of 4"] and turns["0008"]["contains"] == ["dev-worker", "attempt 2 of 4"],
+    need(turns["0003"]["contains"] == ["dev-worker", f"attempt {by_id03['attempt'] + 1} of 4"] and turns["0008"]["contains"] == ["dev-worker", "attempt 2 of 4"],
          f"the rework line's words are {turns['0003']['contains']}")
     need(turns["0009"]["contains"] == ["spec gate's"] and turns["0009"]["href"] == "#ticket/0009", f"the question's rule is {turns['0009']}")
     need(turns["0001"]["turn"] == "done" and turns["0002"]["turn"] == "done", "a rolled-back and a human-judged held ticket are not done")
@@ -3370,8 +3656,9 @@ def self_checks_0068(book):
     stale["history"][-1]["state"] = "pr-opened"
     need(expected_age(stale, ref) is None, "a ticket whose last history entry is not its state has an age")
     need(expected_age(by_id["0009"], READ_AT)[1] == "5d", f"the live age is {expected_age(by_id['0009'], READ_AT)}")
-    need(expected_pips(by_id["0007"], book) == (4, 4) and expected_pips(by_id["0001"], book) == (4, 1) and expected_pips(by_id["0003"], book) is None,
-         "the pips are wrong: 0007 (4, 4), 0001 (4, 1), 0003 none")
+    need(expected_pips(by_id["0007"], book) == (4, 4) and expected_pips(by_id["0001"], book) == (4, 1) and expected_pips(by_id["0003"], book) == (4, by_id["0003"]["attempt"]),
+         "the pips are wrong: 0007 (4, 4), 0001 (4, 1), 0003 (4, its attempt)")
+    self_checks_why(book)
     need(expected_pips(by_id["0001"], {"thresholds": []}) is None and expected_pips({**by_id["0001"], "attempt": "x"}, book) is None, "unreadable pips are not left out")
     # The face: every ticket's good face is accepted; each wrong one is refused.
 
@@ -3650,7 +3937,7 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(golden.get("schema") == "lights-out/logbook/1.3", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.3")
+        need(golden.get("schema") == "lights-out/logbook/1.4", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.4")
         need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 or later logbook")
         need(GOLDEN_12.is_file(), f"{GOLDEN_12.relative_to(ROOT)} not found: the 1.2 degradation (z) reads it")
         book12 = json.loads(GOLDEN_12.read_text(encoding="utf-8"))
@@ -3693,6 +3980,7 @@ def main():
                             y_live(browser, bases, golden, nbooks)
                             z_old(browser, book12)
                             t_agents(browser, bases, golden)
+                            aa_why(browser, bases, golden)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)
