@@ -989,6 +989,77 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
 - **Prima di scrivere.** Verificare in quel momento le API di ciascun fornitore (la regola di CLAUDE.md: le API cambiano in fretta), scrivere l'ADR con le alternative scartate e la provenienza di ogni numero, partire dal fornitore che un utente chiede per primo.
 - **Fatto quando (per fornitore):** `gates/delivery-conformance.sh` invariata stampa `GO: delivery-conformance` contro quel fornitore in una nightly reale; `./go demo` resta invariato, a L0, senza account; la guida `docs/use-on-your-repo.md` dice come attivarlo e quanto costa un run.
 
+### Sprint 2026-11-12 — Sei feature per il primo colpo d'occhio e per l'utente vero (M45–M50)
+
+*Aggiunto 2026-11-12, decisione dell'owner: le sei proposte del coordinatore, tutte nello sprint della notte.* Ognuna ha il suo ADR, numerato qui per evitare collisioni fra i branch paralleli: 0078 (M47), 0079 (M45), 0080 (M46), 0081 (M49), 0082 (M48), 0083 (M50). Tre filoni con file disgiunti, perché quattro feature toccano il logbook e la console (lettura del codice, 2026-11-12):
+
+- **Filone A, la console del rilascio** (un branch, tre fette in ordine, ognuna verde prima della successiva): M47, M45, M46. È l'unico che tocca `core/logbook.py`, lo schema (1.4), il golden, `console/index.html`, `console/serve.py`, `core/promote.sh`, `core/releases.py`, `launchpad.sh`.
+- **Filone B, il pacchetto di evidenze**: M49. Tocca `core/audit.py`, un nuovo `core/evidence.py`, i suoi test; legge `releases.jsonl` e lo stato della tower senza cambiarne il formato.
+- **Filone C, misure e spesa**: M48 e M50, solo comandi e core (`core/dora.py`, il prezzo per run, il budget nella tower). Non tocca logbook né console: i pannelli di M48 e M50 nella console sono una fetta finale, dopo che il filone A è atterrato.
+
+Valgono per tutte: test scritti dall'ADR prima del codice; contratto dei gate per ogni comando nuovo (una riga su stdout, il resto su stderr); `./go demo` invariato a L0 senza chiave; niente chiamate a modelli dal vivo (modello scriptato); ogni soglia con la sua provenienza; `./go ci` verde da un clone sotto `.crew/` prima di ogni push; i workflow del branch letti prima di chiedere l'atterraggio; il coordinatore fa il merge, mai un push su `main` da un branch di sprint.
+
+#### M47 — Il perché di un NO-GO, con un clic (ADR 0078; filone A, prima fetta)
+
+Oggi la console mostra la riga del motivo e, per il solo ci corrente, i `details`; i `details` dei tentativi di rework, gli `items` di `sast.json` e il testo del test che fallisce di un tentativo vecchio non arrivano (lettura del codice: `logbook.py:595-607`, nessun `.details` in `index.html`).
+
+- **Criteri di accettazione:**
+  - Il logbook 1.4 porta, per ogni tentativo (ci corrente e `rework[]`), i `details` del gate che ha detto NO-GO e, per `sast`, i finding nuovi (`new` di `sast.json`, regola, file, riga), copiati nella tower dal passo ci; un logbook 1.3 resta leggibile e la console lo mostra come oggi.
+  - Un clic su un gate rosso (card, retro, timeline, rete) apre un pannello: la riga del gate, i dettagli, il tentativo, quanti tentativi restano su `REWORK_MAX_ATTEMPTS` e la prossima mossa (di chi è il turno, ADR 0063). Da tastiera come da mouse.
+  - Nessun dettaglio prima che `secrets` abbia detto GO sullo stesso tentativo, come per la patch nella rete (`logbook.py:398-405`).
+  - Golden 1.4 nuovo, controllato a mano; `ci/logbook.sh`, `ci/console-ui.py` e `site/render.py` aggiornati; un ticket dello stub con un NO-GO di `test` e uno di `sast`.
+
+#### M45 — Il gate umano sulla card (ADR 0079; filone A, seconda fetta)
+
+Il gate prima del 100% esiste (`core/promote.sh`, `POST /v1/go-for-launch`), ma il record non porta il motivo, lo sha del brief né l'autore del brief (`releases.py:112-123`). Decisione dell'owner, 2026-11-12: il drag torna, solo per questo gesto; emenda il rifiuto di ADR 0059 e la regola di ADR 0068 §1, che restano valide per ogni altra card.
+
+- **Criteri di accettazione:**
+  - La card di un rilascio `held` si trascina su due bersagli, "Promuovi al 100%" e "Rollback", e il drag apre lo stesso pannello del pulsante: il brief, le soglie con la loro provenienza, i numeri di ogni stadio, il rischio, i gate del PR. Niente si muove senza la conferma nel pannello; ogni altra card resta senza `draggable`.
+  - Il pannello chiede un motivo (obbligatorio per il rollback, facoltativo per la promozione); il record e `releases.jsonl` portano `reason`, `brief_sha256`, `brief_author` accanto a `by` e `via`.
+  - Nessuna nuova strada di scrittura: lo stesso `POST /v1/go-for-launch`, con le stesse regole (`CONSOLE_AUTH`, `CONSOLE_LAUNCHERS`, Origin, il lock). Un'alternativa da tastiera equivalente al drag.
+  - `./go demo-console` e `ci/promote.sh` provano promozione e rollback dal drag; `production-readiness` invariato.
+
+#### M46 — Il canary dal vivo (ADR 0080; filone A, terza fetta)
+
+Oggi ogni stadio ha solo il verdetto e le righe `slo:` in testo, senza tempo (`releases.py:131-134`); la console interroga ogni 2 s.
+
+- **Criteri di accettazione:**
+  - Ogni stadio registra `started_at`, `judged_at`, la percentuale e i numeri strutturati (`{query, canary, stable, delta, max_delta}`) accanto alle righe `slo:` di oggi, che restano.
+  - Durante un rilascio la console mostra il canary che avanza: la percentuale di traffico, errore e latenza del canary contro lo stabile e contro la soglia, il tempo che manca al giudizio dello stadio, e il rollback automatico quando arriva, con il suo motivo. Al più un punto per stadio: non è una serie temporale (ADR 0047 resta), è lo stadio in corso.
+  - `./go demo` con la console aperta (`./go demo-console`) mostra il canary salire e, nella demo di rollback, il rollback con la riga che lo ha deciso; il tempo di `./go demo` misurato prima e dopo, nessun secondo in più oltre la misura.
+
+#### M49 — Il pacchetto di evidenze per rilascio (ADR 0081; filone B)
+
+`./go audit` ricostruisce la catena su stderr, ma senza le righe dei gate, i `details`, l'approvazione (chi, quando) e i tempi; nessun pacchetto firmato (`core/audit.py:128-162`).
+
+- **Criteri di accettazione:**
+  - `./go evidence VERSION=<v>` scrive `.crew/evidence/<v>.json`: il record del rilascio, gli stadi, le righe di ogni gate di ogni PR del rilascio, i tentativi di rework, la review, lo sha della spec, il digest dell'immagine e dello SBOM, la riga DAST, la risposta umana con chi, quando e via; ogni voce con la sua fonte. Il formato ha uno schema versionato.
+  - Il pacchetto è firmato con la chiave cosign del piano a L0 (`cosign sign-blob`) e verificato nello stesso comando; una riga del contratto dei gate su stdout, il comando di verifica su stderr. Un'evidenza che manca (per esempio nessuna risposta umana) è nominata nel pacchetto come mancante, mai inventata.
+  - `./go audit` resta com'è; i test da ADR prima del codice; `./go demo` invariato.
+
+#### M48 — Le misure di consegna, dal logbook (ADR 0082; filone C)
+
+Nessun codice di misure di consegna esiste; i tempi ci sono per ticket (history) e per rilascio (`releases.jsonl`), mancano il tempo per stadio e un "ripristinato" esplicito.
+
+- **Criteri di accettazione:**
+  - `./go dora` stampa una riga del contratto e, su stderr e in `.crew/dora.json`, le quattro misure su una finestra (`WINDOW_DAYS`, default 30, decisione dell'owner da scrivere nell'ADR): frequenza dei rilasci, lead time dal `request` al 100%, change failure rate (rollback su rilasci), tempo di ripristino. Una misura che i dati non permettono è stampata come non misurata, con il motivo; mai stimata.
+  - Le definizioni nell'ADR, con la fonte (il rapporto DORA) e lo scarto dichiarato fra la definizione e quello che lights-out registra.
+  - Test su uno stato di fixture con i risultati scritti a mano dall'ADR.
+
+#### M50 — Costo e tempo per ticket, con un budget che ferma il run (ADR 0083; filone C)
+
+`run.json` porta i token, `roles/*/role.env` un `TOKEN_BUDGET` per run; nessun prezzo, nessun limite per ticket o per giorno.
+
+- **Criteri di accettazione:**
+  - Una tabella dei prezzi per modello in `profiles/` (solo lì e in `adapters/` vivono gli id dei modelli), ogni prezzo con la fonte e la data; il costo di ogni run calcolato da input e output e scritto nella tower accanto ai token; il run del ruolo di rilascio (`promote.sh`) registrato come gli altri.
+  - `SPEND_BUDGET_TICKET_USD` e `SPEND_BUDGET_DAY_USD` nella policy, vuoti di default (nessun limite, `./go demo` invariato): oltre il limite la tower non lancia il tentativo successivo e il ticket va a `needs-human` con il motivo in una riga.
+  - `./go spend` stampa una riga del contratto e, su stderr, costo e tempo per ticket, per ruolo e per giorno.
+  - Test da ADR prima del codice; nessun prezzo inventato: un modello senza prezzo è "costo non noto", e il budget lo dice.
+
+#### Fetta finale — I pannelli di M48 e M50 nella console (dopo il filone A)
+
+Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, dal logbook 1.4 o da un suo emendamento; un solo branch, dopo che A è atterrato.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

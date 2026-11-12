@@ -251,16 +251,17 @@ tag (ADR 0077), and the mutants that run only the tests that reach them
 (ADR 0076). Named 0.5.0, not 0.4.1: it adds features, and nothing in it is
 a fix of 0.4.0 alone.
 
-- [ ] **The release commit**: `version=` in `lights-out`, `version` in
-  `pyproject.toml`, the three plugin manifests and the landing page at
-  0.5.0, every usage pinned to `@v0.5.0`, the prose in
-  `docs/releases/v0.5.0.md`.
-- [ ] **Rehearsal**: `package.yml` dispatched on the release commit with
-  `dry_run`.
-- [ ] **The three one-time settings** of "Release automation" and the
-  wiki's first page (owner).
-- [ ] **Tag `v0.5.0`** on the merge on `main`; every job of `package.yml`
-  green.
+- [x] **The release commit** (67a63d1, landed on `main` as the merge
+  cf2955c): `version=` in `lights-out`, `version` in `pyproject.toml`,
+  the three plugin manifests and the landing page at 0.5.0, every usage
+  pinned to `@v0.5.0`, the prose in `docs/releases/v0.5.0.md`.
+- [x] **Rehearsal**: `package.yml` dispatched on the merge with `dry_run`
+  (run 43303067425), every job green, `pypi` skipped.
+- [x] **The three one-time settings** of "Release automation" and the
+  wiki's first page (owner, 2026-11-12).
+- [x] **Tag `v0.5.0`** on cf2955c: `package.yml` run 43309065223, all
+  nine jobs green; `lights-out-gates` 0.5.0 on PyPI by trusted publishing,
+  both Action repositories tagged with a draft each, the wiki rendered.
 - [ ] **The three drafts `v0.5.0` published to the Marketplace** (owner,
   passkey).
 
