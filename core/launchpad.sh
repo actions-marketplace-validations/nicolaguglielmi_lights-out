@@ -65,16 +65,14 @@ record() {
   # Registry port's optional sbom.sh, none when it has no such verb
   # (docs/adr/0072 §2): a digest for the record, never a verdict; and
   # the DAST line of the staging stage, when DAST=on (§3).
-  python3 core/releases.py record "$1" "${2:-}" "$stages" "$image" "$( [ -z "$image" ] || sh "adapters/$REGISTRY/sbom.sh" "$image" 2>/dev/null || :)" "$dast"
+  RELEASE_REASON="${3:-}" python3 core/releases.py record "$1" "${2:-}" "$stages" "$image" "$( [ -z "$image" ] || sh "adapters/$REGISTRY/sbom.sh" "$image" 2>/dev/null || :)" "$dast"
 }
 
 fail_stage() {
   # fail_stage STAGE REASON: rolls back, records with the reason (docs/adr/
   # 0080 §3), then NO-GOs with both in one line.
   rollback >&2
-  RELEASE_REASON="$1: $2"
-  export RELEASE_REASON
-  record rolled-back
+  record rolled-back "" "$1: $2"
   nogo "$1: $2 → rolled back"
 }
 
@@ -123,15 +121,6 @@ sh "$delivery/deploy.sh" "$CANARY_VERSION" "$image" >&2 || fail_stage staging "d
 # The passive scan, canary against stable, before any traffic (§3).
 [ "${DAST:-off}" != on ] || dast=$(sh verify/dast.sh) || fail_stage staging "${dast#NO-GO: dast — }"
 
-# The thresholds each stage's numbers are read against (docs/adr/0080 §1):
-# the effective policy, as verify/slo.sh reads it, once per release.
-policy=$(mktemp)
-effective_policy "$policy"
-ERROR_RATE_MAX_DELTA=$(sed -n 's/^ERROR_RATE_MAX_DELTA=//p' "$policy")
-LATENCY_P95_MAX_DELTA=$(sed -n 's/^LATENCY_P95_MAX_DELTA=//p' "$policy")
-export ERROR_RATE_MAX_DELTA LATENCY_P95_MAX_DELTA
-rm -f "$policy"
-
 for pct in 5 25; do
   frozen "$pct%"
 
@@ -148,12 +137,8 @@ for pct in 5 25; do
   cat "$slo_err" >&2
   stages=$(python3 core/releases.py stage "$stages" "$pct" "$slo_out" "$started_at" < "$slo_err")
   rm -f "$slo_err"
-  if [ "$slo_rc" -eq 0 ]; then
-    printf '[launchpad] %s%%: GO\n' "$pct" >&2
-  else
-    reason=$(printf '%s' "$slo_out" | sed 's/^NO-GO: slo — //')
-    fail_stage "$pct%" "$reason"
-  fi
+  [ "$slo_rc" -eq 0 ] || fail_stage "$pct%" "${slo_out#NO-GO: slo — }"
+  printf '[launchpad] %s%%: GO\n' "$pct" >&2
 done
 
 record held 25

@@ -117,12 +117,6 @@ if [ -n "$failed" ] && [ "$failed" != perimeter ]; then
   cp "$gates_dir/$failed.details" "$details_file" 2>/dev/null || :
 fi
 details=$(jq -R . < "$details_file" | jq -cs .)
-# The findings a sast NO-GO says this diff introduces (docs/adr/0078 §1):
-# sast.json's `new`, as core/sastdiff.py wrote it; null for any other gate.
-sast=null
-if [ "$failed" = sast ] && [ -f "$gates_dir/sast.json" ]; then
-  sast=$(jq -c '[.new[]? | {rule, file, line}] | if length > 0 then . else null end' "$gates_dir/sast.json" 2>/dev/null) || sast=null
-fi
 
 case "$verdict/$decision" in
   GO/auto-merge) state=ci-passed; status=success ;;
@@ -133,8 +127,11 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
   || { printf 'step-ci: could not post the status\n' >&2; exit 1; }
 [ "$state" != review ] || printf '[ci] risk %s: review requested; test-reviewer picks it up next (docs/adr/0021)\n' "$level" >&2
 
+# ci.sast: on a sast NO-GO, the findings sast.json's `new` says this diff
+# introduces, as core/sastdiff.py wrote them; null for any other gate
+# (docs/adr/0078 §1).
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
-  --argjson details "$details" --argjson sast "$sast" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
+  --argjson details "$details" --argjson sast "$( { [ "$failed" = sast ] && jq -c '[.new[]? | {rule, file, line}] | if length > 0 then . else null end' "$gates_dir/sast.json" 2>/dev/null; } || echo null)" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
   '{state: $state, ci: {verdict: $verdict, failed: (if $failed == "" then null else $failed end),
     risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, sast: $sast, lines: $lines}}'

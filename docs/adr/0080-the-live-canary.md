@@ -50,9 +50,13 @@ to the entry, beside `pct`, `verdict` and `numbers` (unchanged):
     shows; `null` if either is `null`;
   - `max_delta`: the effective policy's `ERROR_RATE_MAX_DELTA` for
     `error_rate`, `LATENCY_P95_MAX_DELTA` for `latency_p95`, `null` for
-    `traffic` (verify has no delta for it). The launchpad reads the
-    effective policy once, through `ci/lib.sh`'s `effective_policy`, the
-    reader `verify/slo.sh` uses, and passes both values.
+    `traffic` (verify has no delta for it). `core/releases.py` takes
+    them from its environment when set, else reads the effective policy
+    through `core/policy.py`, the reader `verify/slo.sh`'s
+    `effective_policy` calls (`policy/merge.env` under
+    `WORKLOAD_CONTRACT`'s own); a policy it cannot read gives `null`,
+    never a guess. The launchpad's shell does not grow
+    (`ci/shell-boundary.sh`, ADR 0052).
 
 A line that does not match the `slo:` shape stays in `numbers` and adds
 nothing to `slo`. `verify/slo.sh` is unchanged.
@@ -134,7 +138,8 @@ The poll stays 2 s (ADR 0047 §4). One point per stage, no chart.
 - Records and log lines written before this ADR have none of the new
   fields; the console shows what it showed for them.
 - The launchpad calls `core/releases.py` once more per stage (the
-  in-progress record) and `core/policy.py` once per release.
+  in-progress record); `core/releases.py stage` reads the policy files
+  once per stage.
 
 ## Golden-rule check
 

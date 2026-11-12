@@ -91,9 +91,35 @@ def number(text):
     return None if text == "no data" else float(text)
 
 
+def thresholds(env):
+    """ERROR_RATE_MAX_DELTA and LATENCY_P95_MAX_DELTA from the environment,
+    else from the effective policy core/policy.py reads for verify/slo.sh
+    (policy/merge.env under WORKLOAD_CONTRACT's own); {} when neither."""
+    if any(env.get(k) for k in MAX_DELTA.values()) or not env.get("WORKLOAD_CONTRACT"):
+        return env
+    try:
+        from policy import PolicyError, effective  # core/ is sys.path[0] when run as a script
+    except ImportError:
+        from .policy import PolicyError, effective
+    contract = env["WORKLOAD_CONTRACT"]
+
+    def text(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+    try:
+        policy, _ = effective(text("policy/merge.env"), text(f"{contract}/workload.env"), text(f"{contract}/policy.env"))
+    except PolicyError:  # a policy verify/slo.sh would refuse: no threshold to show, never a guess
+        return {}
+    return policy
+
+
 def slo_of(lines, env):
     """[{query, canary, stable, delta, max_delta}] from the `slo:` lines; a
     line off the shape adds nothing."""
+    env = thresholds(env)
     out = []
     for line in lines:
         m = _SLO.match(line)
