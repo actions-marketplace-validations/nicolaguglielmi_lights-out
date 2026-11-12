@@ -154,6 +154,85 @@ class Answer(ReleasesCase):
         self.assertEqual(self.call()[0], 2)
 
 
+class AnswerWhy(ReleasesCase):
+    """docs/adr/0079 §1: reason, brief_sha256 and brief_author beside by and via."""
+
+    BRIEF = "Release v2: stages 5% and 25% GO. Recommend promoting.\n".encode()
+
+    def setUp(self):
+        super().setUp()
+        self.call("record", "held", "25", "[]", "")
+        self.out_dir = Path(self._tmp.name) / "promote"
+        self.out_dir.mkdir()
+        self.env["PROMOTE_OUT"] = str(self.out_dir)
+
+    def brief(self, author="alice <alice@example.org>\nsecond line\n"):
+        (self.out_dir / "brief.md").write_bytes(self.BRIEF)
+        if author is not None:
+            (self.out_dir / "brief.author").write_text(author)
+
+    def answered(self, answer):
+        self.assertEqual(self.call("answer", answer)[0], 0)
+        key = "promoted" if answer == "GO" else "rejected"
+        line = self.log()[-1]
+        self.assertEqual(line["kind"], "answer")
+        return self.record()[key], line
+
+    def test_go_records_reason_brief_sha_and_author_in_record_and_log(self):
+        import hashlib
+        self.brief()
+        self.env["GO_FOR_LAUNCH_REASON"] = "  numbers hold at 25%  \n"
+        want = {"reason": "numbers hold at 25%", "brief_sha256": hashlib.sha256(self.BRIEF).hexdigest(),
+                "brief_author": "alice <alice@example.org>"}
+        entry, line = self.answered("GO")
+        self.assertEqual({k: entry[k] for k in want}, want)
+        self.assertEqual({k: line[k] for k in want}, want)
+
+    def test_no_go_records_them_in_rejected_and_the_log(self):
+        import hashlib
+        self.brief()
+        self.env["GO_FOR_LAUNCH_REASON"] = "p99 too close to the limit"
+        want = {"reason": "p99 too close to the limit", "brief_sha256": hashlib.sha256(self.BRIEF).hexdigest(),
+                "brief_author": "alice <alice@example.org>"}
+        entry, line = self.answered("NO-GO")
+        self.assertEqual({k: entry[k] for k in want}, want)
+        self.assertEqual({k: line[k] for k in want}, want)
+        self.assertNotIn("promoted", self.record())
+
+    def test_an_empty_or_blank_or_absent_reason_is_null(self):
+        self.brief()
+        for reason in (None, "", "   \n\t"):
+            self.call("record", "held", "25", "[]", "")
+            env = dict(self.env)
+            env.pop("GO_FOR_LAUNCH_REASON", None)
+            if reason is not None:
+                env["GO_FOR_LAUNCH_REASON"] = reason
+            self.assertEqual(self.call("answer", "NO-GO", env=env)[0], 0, reason)
+            self.assertIsNone(self.record()["rejected"]["reason"], repr(reason))
+            self.assertIsNone(self.log()[-1]["reason"], repr(reason))
+
+    def test_without_a_brief_the_sha_and_author_are_null(self):
+        entry, line = self.answered("GO")
+        for got in (entry, line):
+            self.assertIsNone(got["brief_sha256"])
+            self.assertIsNone(got["brief_author"])
+            self.assertIn("brief_author", got)
+            self.assertIn("brief_sha256", got)
+
+    def test_a_brief_without_an_author_gives_a_sha_and_a_null_author(self):
+        import hashlib
+        self.brief(author=None)
+        entry, _ = self.answered("GO")
+        self.assertEqual(entry["brief_sha256"], hashlib.sha256(self.BRIEF).hexdigest())
+        self.assertIsNone(entry["brief_author"])
+
+    def test_the_existing_fields_stay(self):
+        self.brief()
+        self.env.update(GO_FOR_LAUNCH_BY="ada@example.org", GO_FOR_LAUNCH_VIA="console")
+        entry, line = self.answered("NO-GO")
+        self.assertEqual((entry["by"], entry["via"]), ("ada@example.org", "console"))
+        self.assertEqual((line["by"], line["via"], line["answer"]), ("ada@example.org", "console", "NO-GO"))
+
 
 if __name__ == "__main__":
     unittest.main()

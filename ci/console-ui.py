@@ -69,8 +69,11 @@ fixtures/logbook/golden-1.4.json, and drives it with Playwright:
      fill), every control the keyboard reaches there at 2 px and 3:1, and the
      replay label;
   r. the phone's band bar (§5);
-  s. no drag: no draggable attribute, no drag or drop listener registered, on the
-     board and on #network (which sends no POST either);
+  s. no drag but the held release's (docs/adr/0079 §3, which amends ADR 0059 §1 for
+     that one gesture): over the golden no draggable attribute and no drag or drop
+     handler or listener, on the board and on #network (which sends no POST either);
+     over a logbook derived from it where the held release has a ticket (LIVE,
+     simulated), only on that card and on the two targets;
 
 ADR 0071, the governed network (every expectation is worked out from the golden's
 own fields at run time; the CLI is core/network.py run as a subprocess):
@@ -123,6 +126,21 @@ from the golden's own fields at run time):
      opener; no POST; a card whose outcome is not NO-GO has no opener. Ticket 0003
      holds the sast and the test NO-GO, ticket 0002's withheld case opens from
      #network/0002?attempt=1.
+
+  ab. ADR 0079 §3-§5, the human gate on the card, on a LIVE console SIMULATED in the
+     browser over a logbook derived from the golden where ticket 0002's release is the
+     held record's: over the golden no card drags (its pressable record has no ticket);
+     over the derived one exactly one `.card[draggable="true"]` carries `data-launch`
+     (0002's) and `#launch-drop` holds `button#drop-promote` and `button#drop-rollback`;
+     Playwright's drag_to from the card onto the Rollback target opens the modal
+     dialog#launch-confirm holding #lc-brief, #lc-thresholds (a data row per threshold
+     judged by verify), #lc-stages (a row per stage), #lc-risk and #lc-gates; #lc-confirm
+     is disabled while textarea#lc-reason is empty or blank for a rollback; no POST is
+     sent before the confirmation, and the one sent then is {answer: NO-GO, version,
+     held_at, brief_sha256, reason}; Enter on #drop-promote opens the same panel for GO,
+     confirmable with no reason; the launch screen's #launch-go and #launch-nogo open it
+     too and never call window.confirm; Esc and button.close close it and the focus
+     returns to the opener.
 
   agents. the Thresholds screen's Agents panel prints the logbook's lines
      (docs/adr/0073 §10), and each card's back shows its task's MCP calls and
@@ -2303,15 +2321,19 @@ def drag_problems(events, draggable):
     return bad
 
 
-def s_nodrag(browser, bases):
+def s_nodrag(browser, bases, held):
     ctx = browser.new_context(viewport=DESKTOP)
     ctx.add_init_script(RECORD_EVENTS)
+    ctx.add_init_script(RECORD_DRAG)
     probe = ctx.new_page()
     probe.goto(bases["golden"] + "/v1/console.json")
     probe.evaluate("() => { document.addEventListener('dragstart', () => {}); document.addEventListener('drop', () => {}); }")
     seen = probe.evaluate("window.__events")
     need("dragstart" in seen and "drop" in seen, f"s: the listener recorder did not see a dragstart and a drop registered: {seen}")
     need(drag_problems(seen, 0), "s: a session that registered dragstart and drop is accepted")
+    need(len(probe.evaluate("window.__dragl")) == 2, "s: the drag recorder did not see a dragstart and a drop registered")
+    probe.evaluate("() => { const e = document.createElement('div'); e.ondrop = () => {}; e.setAttribute('draggable', 'true'); document.body.append(e); }")
+    need(drag_scan_problems(probe.evaluate(DRAG_SCAN_JS)), "s: a page with a draggable element and an ondrop handler is accepted")
     tab = Tab(ctx, bases["golden"])
     draw_kanban(tab, "s")
     tab.page.wait_for_timeout(300)
@@ -2326,7 +2348,25 @@ def s_nodrag(browser, bases):
     need(len(events) > 5, f"s: the recorder saw {len(events)} registrations in a whole session: it is not recording")
     bad = drag_problems(events, tab.page.evaluate("document.querySelectorAll('[draggable=true]').length"))
     need(not bad, f"s: {bad[0] if bad else ''}", *bad)
+    bad = drag_scan_problems(tab.page.evaluate(DRAG_SCAN_JS))
+    need(not bad, f"s: over the golden, {bad[0] if bad else ''}", *bad)
     tab.audit("s")
+    ctx.close()
+    # ADR 0079 §3: over the logbook where the held release has a ticket, the card and the two targets alone.
+    book = launch_book(held)
+    version = book["launch"]["record"]["version"]
+    ctx, tab = launch_tab(browser, bases, book, [])
+    draw_kanban(tab, "s, the held card")
+    wait_for(tab, ".card[draggable='true']", "s, the held card")
+    tab.page.wait_for_timeout(2500)  # a poll of the live console redraws the board: the rule holds across it
+    open_back(tab, "0009")
+    tab.page.keyboard.press("Escape")
+    tab.wait(CLOSED_JS, None, "s, the held card: the back never closed")
+    scan = tab.page.evaluate(DRAG_SCAN_JS)
+    need(scan["draggable"] and scan["handlers"] + scan["listeners"], f"s, the held card: the page shows nothing that drags: {scan}")
+    bad = drag_scan_problems(scan, version)
+    need(not bad, f"s, the held card: {bad[0] if bad else ''}", *bad)
+    tab.audit("s, the held card")
     ctx.close()
 
 
@@ -2599,6 +2639,332 @@ def self_checks_why(book):
     need(net_opener_problems([{**row, "role": None}], "0003") and net_opener_problems([{**row, "tabindex": None}], "0003")
          and net_opener_problems([{**row, "ticket": "0001"}], "0003") and net_opener_problems([{**row, "attempt": None}], "0003"),
          "an opener without its role, its tabindex, its ticket or its attempt is accepted")
+
+
+# --- ab. the human gate on the card (docs/adr/0079 §3, §4, §5) ------------------------------------
+# Written from docs/adr/0079 and the DOM contract the task names, not from console/index.html.
+
+HELD_ID = "0002"
+DRAG_NAMES = ["drag", "dragstart", "dragend", "dragenter", "dragover", "dragleave", "drop"]
+# Records every drag or drop listener registered with addEventListener, with the object it was put on.
+RECORD_DRAG = """(() => { window.__dragl = []; const orig = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, ...rest) {
+    if (/^(drag|drop)/.test(String(type))) window.__dragl.push({type: String(type), target: this});
+    return orig.call(this, type, ...rest); }; })();"""
+# Every element with a draggable attribute, every one with an on-drag/drop property or attribute, every
+# registered drag or drop listener: what each is, by id, card and data-launch.
+DRAG_SCAN_JS = """() => {
+  const names = %s;
+  const desc = (e) => (e && e.nodeType === 1 ? {tag: e.tagName.toLowerCase(), id: e.id || null,
+    card: e.classList.contains('card') ? (e.dataset.id || null) : null, launch: e.dataset.launch || null} : {tag: String(e), id: null, card: null, launch: null});
+  const draggable = [], handlers = [];
+  for (const e of document.querySelectorAll('*')) {
+    if (e.hasAttribute('draggable')) draggable.push({...desc(e), value: e.getAttribute('draggable')});
+    if (names.some((n) => e['on' + n] || e.hasAttribute('on' + n))) handlers.push(desc(e));
+  }
+  return {draggable, handlers, listeners: (window.__dragl || []).map((r) => ({type: r.type, ...desc(r.target)}))};
+}""" % json.dumps(DRAG_NAMES)
+
+
+def drag_scan_problems(scan, version=None):
+    """Why a page's drag surface is wrong. VERSION None: any draggable, drag handler or drag listener is a
+    problem. Else (ADR 0079 §3): `draggable="true"` only on the card HELD_ID with data-launch VERSION, and drag
+    or drop handlers and listeners only on that card and on #drop-promote and #drop-rollback."""
+    def card(d):
+        return version is not None and d["card"] == HELD_ID and d["launch"] == version
+
+    def target(d):
+        return version is not None and d["id"] in ("drop-promote", "drop-rollback") and d["tag"] == "button"
+
+    bad = []
+    for d in scan["draggable"]:
+        if not (card(d) and d["value"] == "true"):
+            bad.append(f"draggable={d['value']!r} on {d}")
+    for kind in ("handlers", "listeners"):
+        for d in scan[kind]:
+            if not (card(d) or target(d)):
+                bad.append(f"a drag or drop {kind[:-1]} on {d}" + (f" ({d['type']})" if "type" in d else ""))
+    return bad
+
+
+def launch_book(held):
+    """The derived logbook of derive() (0002 carries the held record's version) where 0002 also has a ci with a
+    risk level and gate lines, copied from 0010's, so the panel's #lc-risk and #lc-gates have something to show."""
+    book = json.loads(json.dumps(held))
+    two = next(t for t in book["tickets"] if t["id"] == HELD_ID)
+    ten = next(t for t in book["tickets"] if t["id"] == "0010")
+    need(ten["ci"] and ten["ci"].get("risk_level") and ten["ci"].get("gates"), "ab: ticket 0010 has no ci with a risk level and gates to copy")
+    two["ci"] = json.loads(json.dumps(ten["ci"]))
+    return book
+
+
+def launch_tab(browser, bases, book, sent, dialogs=None, size=DESKTOP):
+    """A LIVE console SIMULATED in the browser (as o does): page.route answers /v1/console.json with the real
+    answer turned live and able to launch, /v1/logbook.json with BOOK, and /v1/go-for-launch with promote's line
+    for the answer posted, recording each body in SENT. Window.confirm and friends are recorded in DIALOGS."""
+    real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+    live = {**real, "mode": "live", "read_at": READ_AT, "can_launch": True, "reason": None}
+    ctx = browser.new_context(viewport=size)
+    ctx.add_init_script(RECORD_DRAG)
+    tab = Tab(ctx, bases["golden"])
+    if dialogs is not None:
+        tab.page.on("dialog", lambda d: (dialogs.append(f"{d.type}: {d.message}"), d.dismiss()))
+
+    def console_route(route):
+        route.fulfill(status=200, content_type="application/json", headers={"Cache-Control": "no-store"}, body=json.dumps(live))
+
+    def logbook_route(route):
+        # As the server does (ADR 0059 §1): the same bytes under the same ETag answer 304, so a poll redraws nothing.
+        if route.request.headers.get("if-none-match") == '"launch"':
+            route.fulfill(status=304, headers={"ETag": '"launch"'})
+        else:
+            route.fulfill(status=200, content_type="application/json", headers={"Cache-Control": "no-store", "ETag": '"launch"'}, body=json.dumps(book))
+
+    def go_route(route):
+        body = json.loads(route.request.post_data or "{}")
+        sent.append(body)
+        line = "GO: go-for-launch" if body.get("answer") == "GO" else "NO-GO: go-for-launch — human said NO-GO"
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({"line": line, "exit": 0 if body.get("answer") == "GO" else 1}))
+
+    tab.page.route("**/v1/console.json", console_route)
+    tab.page.route("**/v1/logbook.json", logbook_route)
+    tab.page.route("**/v1/go-for-launch", go_route)
+    return ctx, tab
+
+
+LC_JS = """() => {
+  const d = document.querySelector('dialog#launch-confirm');
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const q = (s) => (d ? d.querySelector(s) : null);
+  const rows = (s) => (d ? [...d.querySelectorAll(s + ' tr')].filter((r) => r.querySelector('td')).map(txt) : []);
+  const a = document.activeElement;
+  const box = q('textarea#lc-reason'), ok = q('button#lc-confirm');
+  return {count: document.querySelectorAll('dialog#launch-confirm').length, open: !!d && d.open, modal: !!d && d.matches(':modal'),
+    close: !!q('button.close'), brief: txt(q('#lc-brief')), thresholds: rows('#lc-thresholds'), stages: rows('#lc-stages'),
+    risk: txt(q('#lc-risk')), gates: txt(q('#lc-gates')), gate_items: d ? [...d.querySelectorAll('#lc-gates li')].map(txt) : [],
+    has_reason: !!box, confirm: !!ok, confirm_disabled: ok ? ok.disabled : null, text: txt(d),
+    active: a ? a.id : null, inside: !!d && d.contains(a), others: document.querySelectorAll('dialog#launch-confirm, dialog.launch-confirm').length};
+}"""
+LC_OPEN_JS = "() => { const d = document.querySelector('dialog#launch-confirm'); return !!d && d.open; }"
+LC_CLOSED_JS = "() => { const d = document.querySelector('dialog#launch-confirm'); return !d || !d.open; }"
+
+
+def norm_text(text):
+    return " ".join(str(text).split())
+
+
+def lc_problems(info, book):
+    """Why the panel does not hold what the decision rests on, worked out from the logbook BOOK."""
+    bad = []
+    L, rec = book["launch"], book["launch"]["record"]
+    two = next(t for t in book["tickets"] if t["id"] == HELD_ID)
+    if info["count"] != 1:
+        bad.append(f"{info['count']} dialog#launch-confirm in the page, want 1")
+    if not info["open"] or not info["modal"]:
+        bad.append(f"the panel is open={info['open']}, modal={info['modal']}; want a modal dialog")
+    if not info["close"]:
+        bad.append("the panel has no button.close")
+    brief = L["brief"]
+    if norm_text(brief["text"]) not in (info["brief"] or ""):
+        bad.append(f"#lc-brief does not hold the brief's text ({(info['brief'] or '')[:80]!r})")
+    if brief["author"] not in (info["brief"] or "") or brief["sha256"] not in (info["brief"] or ""):
+        bad.append("#lc-brief does not name the brief's author and sha256")
+    verify = [t for t in book["thresholds"] if t["judge"] == "verify"]
+    if not verify:
+        bad.append("the logbook has no verify threshold: the check cannot work")
+    if len(info["thresholds"]) != len(verify):
+        bad.append(f"#lc-thresholds has {len(info['thresholds'])} data row(s), want {len(verify)} (the thresholds judged by verify)")
+    else:
+        for row, t in zip(info["thresholds"], verify):
+            want = [t["key"], str(t["value"])] + ([t["provenance"]["text"]] if t.get("provenance") else [])
+            miss = [w for w in want if w not in row]
+            if miss:
+                bad.append(f"the #lc-thresholds row for {t['key']} lacks {miss}: {row!r}")
+    if len(info["stages"]) != len(rec["stages"]):
+        bad.append(f"#lc-stages has {len(info['stages'])} data row(s), want {len(rec['stages'])} (every stage of the record)")
+    else:
+        for row, s in zip(info["stages"], rec["stages"]):
+            want = [str(s["pct"]), s["verdict"]] + list(s["numbers"])
+            miss = [w for w in want if w not in row]
+            if miss:
+                bad.append(f"the #lc-stages row for {s['pct']}% lacks {miss}: {row!r}")
+    if two["ci"]["risk_level"] not in (info["risk"] or ""):
+        bad.append(f"#lc-risk says {info['risk']!r}, want {two['ci']['risk_level']!r}")
+    gate_text = info["gates"] or ""
+    miss = [g["line"] for g in two["ci"]["gates"] if g["line"] not in gate_text]
+    if miss:
+        bad.append(f"#lc-gates lacks the gate line(s) {miss}")
+    if not info["has_reason"] or not info["confirm"]:
+        bad.append("the panel has no textarea#lc-reason or no button#lc-confirm")
+    return bad
+
+
+def lc_open(tab, what):
+    tab.wait(LC_OPEN_JS, None, f"ab, {what}: dialog#launch-confirm never opened")
+    tab.page.wait_for_timeout(300)
+    return tab.page.evaluate(LC_JS)
+
+
+def lc_closed(tab, what):
+    tab.wait(LC_CLOSED_JS, None, f"ab, {what}: dialog#launch-confirm never closed")
+    tab.page.wait_for_timeout(150)
+
+
+def self_checks_launch(book):
+    rec = book["launch"]["record"]
+    version = rec["version"]
+    card = {"tag": "div", "id": None, "card": HELD_ID, "launch": version, "value": "true"}
+    target = {"tag": "button", "id": "drop-rollback", "card": None, "launch": None}
+    good = {"draggable": [card], "handlers": [{**card}, {**target}], "listeners": [{**target, "type": "drop"}]}
+    need(not drag_scan_problems(good, version), "ab: the held card and its targets are refused")
+    need(drag_scan_problems(good, None), "ab: a page with a draggable card is accepted where none may drag")
+    other = {**card, "card": "0009"}
+    need(drag_scan_problems({**good, "draggable": [card, other]}, version), "ab: a second draggable card is accepted")
+    need(drag_scan_problems({**good, "draggable": [{**card, "launch": None}]}, version), "ab: a draggable card with no data-launch is accepted")
+    need(drag_scan_problems({**good, "draggable": [{**card, "value": "false"}]}, version), "ab: a draggable that is not 'true' is accepted")
+    need(drag_scan_problems({**good, "handlers": [{**other}]}, version), "ab: a drag handler on another card is accepted")
+    need(drag_scan_problems({**good, "listeners": [{"tag": "[object Window]", "id": None, "card": None, "launch": None, "type": "drop"}]}, version),
+         "ab: a drop listener on the window is accepted")
+    need(drag_scan_problems({**good, "listeners": [{**target, "id": "somewhere-else", "type": "dragover"}]}, version),
+         "ab: a dragover listener on another button is accepted")
+    # The panel's comparison refuses a panel that lacks what it must hold.
+    two = next(t for t in book["tickets"] if t["id"] == HELD_ID)
+    verify = [t for t in book["thresholds"] if t["judge"] == "verify"]
+    info = {"count": 1, "open": True, "modal": True, "close": True,
+            "brief": norm_text(book["launch"]["brief"]["text"]) + " " + book["launch"]["brief"]["author"] + " " + book["launch"]["brief"]["sha256"],
+            "thresholds": [" ".join([t["key"], str(t["value"])] + ([t["provenance"]["text"]] if t.get("provenance") else [])) for t in verify],
+            "stages": [" ".join([str(s["pct"]), s["verdict"]] + list(s["numbers"])) for s in rec["stages"]],
+            "risk": two["ci"]["risk_level"], "gates": " ".join(g["line"] for g in two["ci"]["gates"]), "has_reason": True, "confirm": True}
+    need(not lc_problems(info, book), f"ab: a good panel is refused: {lc_problems(info, book)[:1]}")
+    for what, change in (("no brief", {"brief": ""}), ("no threshold rows", {"thresholds": []}), ("a missing stage", {"stages": info["stages"][:1]}),
+                         ("no risk", {"risk": ""}), ("no gate lines", {"gates": ""}), ("a non-modal panel", {"modal": False}),
+                         ("no reason box", {"has_reason": False}), ("two panels", {"count": 2})):
+        need(lc_problems({**info, **change}, book), f"ab: a panel with {what} is accepted")
+
+
+def ab_launch(browser, bases, golden, books):
+    """ADR 0079 §3-§5: the one card that drags, the panel its drop and the launch screen's buttons open, and what is
+    sent only when it is confirmed."""
+    held = books["held"]
+    book = launch_book(held)
+    rec = book["launch"]["record"]
+    version = rec["version"]
+    self_checks_launch(book)
+    need(version == golden["launch"]["record"]["version"] and book["launch"]["pressable"], "ab: the derived logbook has no pressable held record")
+    # 1. Over the golden, where the pressable record 0.5.0-d has no ticket: nothing drags, no target is shown.
+    ctx = browser.new_context(viewport=DESKTOP)
+    ctx.add_init_script(RECORD_DRAG)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "ab, the golden")
+    tab.page.wait_for_timeout(300)
+    need(tab.page.locator(".card[draggable]").count() == 0, "ab, the golden: a card is draggable although the held release has no ticket")
+    need(tab.page.locator("#drop-promote, #drop-rollback").count() == 0, "ab, the golden: the drop targets are shown with no card to drop")
+    bad = drag_scan_problems(tab.page.evaluate(DRAG_SCAN_JS))
+    need(not bad, f"ab, the golden: {bad[0] if bad else ''}", *bad)
+    tab.audit("ab, the golden")
+    ctx.close()
+    # 2. Over the derived logbook, served live: exactly one card drags, with two targets.
+    sent = []
+    ctx, tab = launch_tab(browser, bases, book, sent)
+    draw_kanban(tab, "ab")
+    tab.wait("() => document.querySelectorAll('.card[draggable=\"true\"]').length > 0", None, "ab: no .card[draggable=true] for the held release")
+    tab.page.wait_for_timeout(300)
+    cards = tab.page.evaluate("() => [...document.querySelectorAll('.card[draggable=\"true\"]')].map((c) => [c.dataset.id, c.dataset.launch])")
+    need(cards == [[HELD_ID, version]], f"ab: the draggable cards are {cards}, want exactly [[{HELD_ID!r}, {version!r}]]")
+    scan = tab.page.evaluate(DRAG_SCAN_JS)
+    bad = drag_scan_problems(scan, version)
+    need(not bad and len(scan["draggable"]) == 1, f"ab: {bad[0] if bad else 'draggable elements: ' + str(scan['draggable'])}", *bad)
+    for sel in ("#launch-drop button#drop-promote", "#launch-drop button#drop-rollback"):
+        need(tab.page.locator(sel).count() == 1, f"ab: {sel} is not in the page exactly once")
+    # 3. The drag onto Rollback opens the panel and sends nothing.
+    tab.page.locator(f".card[data-id='{HELD_ID}']").drag_to(tab.page.locator("#drop-rollback"))
+    info = lc_open(tab, "the drag onto Rollback")
+    bad = lc_problems(info, book)
+    need(not bad, f"ab, the drag: {bad[0] if bad else ''}", *bad)
+    need(not sent and not tab.posts, f"ab, the drag: the drop sent {sent or tab.posts} before the confirmation")
+    need(info["confirm_disabled"] is True, "ab, the drag: #lc-confirm is enabled with no reason for a rollback")
+    tab.page.fill("textarea#lc-reason", "   ")
+    tab.page.wait_for_timeout(150)
+    need(tab.page.is_disabled("button#lc-confirm"), "ab, the drag: #lc-confirm is enabled with a blank reason for a rollback")
+    reason = "p99 is too close to the limit"
+    tab.page.fill("textarea#lc-reason", reason)
+    tab.page.wait_for_timeout(150)
+    need(tab.page.is_enabled("button#lc-confirm"), "ab, the drag: #lc-confirm is still disabled with a reason typed")
+    need(not sent and not tab.posts, f"ab, the drag: typing the reason sent {sent or tab.posts}")
+    tab.page.click("button#lc-confirm")
+    tab.page.wait_for_timeout(500)
+    need(len(sent) == 1, f"ab, the drag: confirming sent {len(sent)} request(s), want exactly 1")
+    want = {"answer": "NO-GO", "version": version, "held_at": rec["held_at"], "brief_sha256": book["launch"]["brief"]["sha256"], "reason": reason}
+    need({k: sent[0].get(k) for k in want} == want, f"ab, the drag: the POST body is {sent[0]}, want {want}")
+    need("NO-GO: go-for-launch — human said NO-GO" in tab.page.evaluate(LC_JS)["text"], "ab, the drag: the panel does not show promote's answer line")
+    tab.audit("ab, the drag", allow=("/v1/go-for-launch",))
+    ctx.close()
+    # 4. The keyboard alternative: Tab to #drop-promote, Enter. A promotion needs no reason.
+    sent = []
+    ctx, tab = launch_tab(browser, bases, book, sent)
+    draw_kanban(tab, "ab, the keyboard")
+    wait_for(tab, "button#drop-promote", "ab, the keyboard")
+    tab.page.wait_for_timeout(300)
+    tab.page.focus("button#drop-promote")
+    tab.page.keyboard.press("Enter")
+    info = lc_open(tab, "Enter on Promote")
+    bad = lc_problems(info, book)
+    need(not bad, f"ab, Enter on Promote: {bad[0] if bad else ''}", *bad)
+    need(info["confirm_disabled"] is False, "ab, Enter on Promote: #lc-confirm is disabled with an empty reason for a promotion")
+    need(not sent and not tab.posts, f"ab, Enter on Promote: the keypress sent {sent or tab.posts}")
+    tab.page.click("button#lc-confirm")
+    tab.page.wait_for_timeout(500)
+    need(len(sent) == 1 and sent[0].get("answer") == "GO" and sent[0].get("version") == version and sent[0].get("reason") in (None, ""),
+         f"ab, Enter on Promote: the POSTs are {sent}, want one GO for {version} with no reason")
+    tab.audit("ab, Enter on Promote", allow=("/v1/go-for-launch",))
+    ctx.close()
+    # 5. Esc and button.close close the panel and the focus returns to the opener; nothing is sent. The Rollback
+    # target needs a reason, so its panel opens with the confirmation disabled.
+    sent = []
+    ctx, tab = launch_tab(browser, bases, book, sent)
+    draw_kanban(tab, "ab, closing")
+    wait_for(tab, "button#drop-rollback", "ab, closing")
+    tab.page.wait_for_timeout(300)
+    for target, how in (("#drop-rollback", "Escape"), ("#drop-rollback", "button.close"), ("#drop-promote", "Escape"), ("#drop-promote", "button.close")):
+        tab.page.focus(target)
+        tab.page.keyboard.press("Enter")
+        info = lc_open(tab, f"{target}, {how}")
+        need(info["inside"], f"ab, {target}: the focus is not inside the panel when it opens")
+        need(info["confirm_disabled"] is (target == "#drop-rollback"),
+             f"ab, {target}: #lc-confirm disabled is {info['confirm_disabled']}, want {target == '#drop-rollback'}")
+        if how == "Escape":
+            tab.page.keyboard.press("Escape")
+        else:
+            tab.page.click("dialog#launch-confirm button.close")
+        lc_closed(tab, f"{target}, {how}")
+        active = tab.page.evaluate("document.activeElement && document.activeElement.id")
+        need(active == target[1:], f"ab, {target}, closed by {how}: the focus is on {active!r}, want it back on {target}")
+    need(not sent and not tab.posts, f"ab, closing: closing the panel sent {sent or tab.posts}")
+    tab.audit("ab, closing")
+    ctx.close()
+    # 6. The launch screen's buttons open the same panel, and window.confirm is never called.
+    sent, dialogs = [], []
+    ctx, tab = launch_tab(browser, bases, book, sent, dialogs)
+    tab.load("#launch")
+    wait_for(tab, "#launch-go", "ab, the launch screen")
+    tab.page.wait_for_timeout(300)
+    for button, how, need_reason in (("#launch-go", "Escape", False), ("#launch-nogo", "button.close", True)):
+        tab.page.click(button)
+        info = lc_open(tab, f"the launch screen's {button}")
+        bad = lc_problems(info, book)
+        need(not bad, f"ab, {button}: {bad[0] if bad else ''}", *bad)
+        need(info["confirm_disabled"] is need_reason, f"ab, {button}: #lc-confirm disabled is {info['confirm_disabled']}, want {need_reason}")
+        if how == "Escape":
+            tab.page.keyboard.press("Escape")
+        else:
+            tab.page.click("dialog#launch-confirm button.close")
+        lc_closed(tab, f"{button}, {how}")
+        active = tab.page.evaluate("document.activeElement && document.activeElement.id")
+        need(active == button[1:], f"ab, {button}, closed by {how}: the focus is on {active!r}, want it back on {button}")
+    need(not dialogs, f"ab: the launch screen called window dialogs: {dialogs}")
+    need(not sent and not tab.posts, f"ab, the launch screen: opening and closing the panel sent {sent or tab.posts}")
+    tab.audit("ab, the launch screen")
+    ctx.close()
 
 
 def t_agents(browser, bases, golden):
@@ -3969,7 +4335,7 @@ def main():
                             p_long(browser, bases)
                             q_contrast(browser, bases)
                             r_bands(browser, bases, golden)
-                            s_nodrag(browser, bases)
+                            s_nodrag(browser, bases, books["held"])
                             net_nodrag(browser, bases)
                             q_network(browser, bases)
                             t_route(browser, bases, golden)
@@ -3981,6 +4347,7 @@ def main():
                             z_old(browser, book12)
                             t_agents(browser, bases, golden)
                             aa_why(browser, bases, golden)
+                            ab_launch(browser, bases, golden, books)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)

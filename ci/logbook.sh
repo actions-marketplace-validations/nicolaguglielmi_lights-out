@@ -57,8 +57,10 @@
 #      `core/logbook.sh`, `core/promote.sh`, `gates/spec.sh`,
 #      `core/spec.py draft` and `make answer` / `make request` only, and has
 #      four POST routes (docs/adr/0055 §2, docs/adr/0059 §4); index.html
-#      fetches /v1/ only, POSTs to those four routes and declares no
-#      `draggable` and no drag or drop listener (docs/adr/0059 §1). The
+#      fetches /v1/ only, POSTs to those four routes; `draggable` and the drag or drop handlers
+#      appear only in the launch code, and a `draggable` value is conditional,
+#      so only the held release's card drags (docs/adr/0079 §3, §5, which
+#      amends docs/adr/0059 §1 for that one gesture). The
 #      page's `#network-words` is `python3 core/network.py --table` as JSON,
 #      its roles are the directories of roles/ and its gates the Makefile's
 #      `GATES :=` (docs/adr/0071 §5), a wrong copy refused; and `make network
@@ -76,7 +78,12 @@
 #      as it was; a request is refused in snapshot, public and without the
 #      proxy header, refuses a NO-GO draft with nothing written, and on a GO
 #      draft writes the next id and runs `make request` with who pressed and
-#      `via: console` (docs/adr/0059 §4).
+#      `via: console` (docs/adr/0059 §4). The press's reason (docs/adr/0079
+#      §2): a NO-GO with no reason, a blank one or a reason that is not a
+#      string is refused with 400 before anything runs; a NO-GO with a reason
+#      runs promote and the record's `rejected.reason` is it, via console; a
+#      GO with a reason records it in `promoted.reason`, and both carry the
+#      brief's sha256 (docs/adr/0079 §1).
 #   f. Every numeric policy key has a "# Provenance, <kind>:" line above it
 #      (Consequences).
 # Before any of that, every checker runs on a bad input and must reject it:
@@ -267,18 +274,39 @@ def cmd_index(path):
     for banned in ("XMLHttpRequest", "sendBeacon", "<form"):
         if banned in src:
             die(f"{path} uses {banned}; the page reads with GET fetch and writes with POST fetch")
-    # No drag and drop (docs/adr/0055 §7, docs/adr/0059 §1): a card moves only
-    # when the tower moves its ticket. The attribute, the property, the
-    # handler attributes and a listener named by a string; prose is not read.
-    for form, what in ((r"\bdraggable\s*[=:]", "a draggable attribute or key"),
+    # Drag and drop only for the one gesture (docs/adr/0079 §3, §5; the rest of
+    # docs/adr/0059 §1 and 0068 §1 stands): `draggable` and the drag or drop
+    # handlers may appear only inside a function of the page that is about the
+    # launch (its body names "launch": the held card's, the two targets'), and
+    # a `draggable` value must be conditional (`held ? "true" : null`), so a
+    # card that is not the held release has none. The property, setAttribute,
+    # a handler or attribute outside any function (markup), and a listener
+    # named by a string are the same sites and take the same rule; prose and
+    # the CSS selector `[draggable=...]` are not read.
+    spans = [(m.start(), m.group(1)) for m in re.finditer(r"^function\s+(\w+)", src, re.M)]
+    def enclosing(pos):
+        start = max((s for s, _ in spans if s <= pos), default=None)
+        if start is None:
+            return None
+        end = re.compile(r"^\}", re.M).search(src, start)
+        end = end.end() if end else len(src)
+        return src[start:end] if pos < end else None
+    for form, what in ((r"(?<!\[)\bdraggable\s*[=:]", "a draggable attribute or key"),
                        (r"\.draggable\b", "the draggable property"),
                        (r"""\bsetAttribute\s*\(\s*['"`]draggable['"`]""", "setAttribute('draggable')"),
                        (r"\bon" + DRAG + r"\s*[=:]", "a drag or drop handler attribute or key"),
                        (r"""['"`]on""" + DRAG + r"""['"`]""", "a drag or drop handler named by a string"),
                        (r"""\baddEventListener\s*\(\s*['"`]""" + DRAG + r"""['"`]""", "a drag or drop listener")):
-        hit = re.search(form, src)
-        if hit:
-            die(f"{path} has {what} ({hit.group(0).strip()}); a card moves only when the tower moves its ticket")
+        for hit in re.finditer(form, src):
+            body = enclosing(hit.start())
+            line = src[src.rfind("\n", 0, hit.start()) + 1:src.find("\n", hit.end())]
+            if body is None or "launch" not in body.lower():
+                die(f"{path} has {what} ({hit.group(0).strip()}) outside the launch code; only the held release's card and its two targets may drag or take a drop")
+            if what in ("the draggable property", "setAttribute('draggable')"):
+                die(f"{path} has {what}; `draggable` is a conditional attribute of the held card only")
+            value = re.match(r"draggable\s*[=:]\s*([^,}\n]*)", src[hit.start():]).group(1) if what == "a draggable attribute or key" else "?"
+            if "?" not in value:
+                die(f"{path} sets draggable with no condition ({line.strip()[:60]}); only the held release's card drags")
     posted = set()
     root_literals = re.findall(r"""(['"`])(/[A-Za-z0-9_.\-][^'"`\s]*)\1""", src)
     stray = sorted({lit for _, lit in root_literals if not lit.startswith("/v1/")})
@@ -659,10 +687,22 @@ for v in adapter two-posts shell route git delete make no-request-recipe two-tar
 done
 
 # index.html: GET fetch on /v1/, a POST fetch to each of the four routes, and
-# no drag and drop (docs/adr/0059 §1).
+# drag and drop only for the held release (docs/adr/0079 §3, §5).
 cat > "$st/index-good.html" <<'HTML'
-<!-- no drag-and-drop here: a card is not draggable, and a dropdown is a select -->
+<!-- no drag-and-drop here but the held release's: a dropdown is a select -->
+<style>.card[draggable="true"] { cursor: grab; }</style>
 <script>
+function card(t) {
+  const held = launchTicket() === t;
+  return h("div", {cls: "card", draggable: held ? "true" : null, "data-launch": held ? "v" : null,
+    ondragstart: held ? (e) => begin(e) : null});
+}
+function launchDrop() {
+  return h("button", {id: "drop-rollback", ondragover: (e) => e.preventDefault(), ondragleave: stop, ondrop: (e) => ask(e)});
+}
+function column(c) {
+  return h("div", {cls: "col"});
+}
 fetch('/v1/logbook.json').then(r => r.json());
 fetch("/v1/go-for-launch", {method: 'POST', body: '{}'});
 fetch("/v1/answer", {method: 'POST', body: '{}'});
@@ -695,10 +735,22 @@ sed 's|<script>|<script>col.addEventListener("dragover", stop);|' "$st/index-goo
 sed 's|<script>|<script>col.addEventListener("dragenter", stop);|' "$st/index-good.html" > "$st/index-listener-dragenter.html"
 sed 's|<script>|<script>col.addEventListener("dragleave", stop);|' "$st/index-good.html" > "$st/index-listener-dragleave.html"
 sed 's|<script>|<script>card.addEventListener("dragstart", begin);|' "$st/index-good.html" > "$st/index-listener-dragstart.html"
+# docs/adr/0079 §3, §5: the same sites, in a function that is not the launch's,
+# or with no condition on the card, are refused.
+sed 's|{cls: "col"}|{cls: "col", draggable: held ? "true" : null}|' "$st/index-good.html" > "$st/index-draggable-other-card.html"
+sed 's|{cls: "col"}|{cls: "col", draggable: "true"}|' "$st/index-good.html" > "$st/index-draggable-column.html"
+sed 's|draggable: held ? "true" : null|draggable: "true"|' "$st/index-good.html" > "$st/index-draggable-unconditional.html"
+sed 's|{cls: "col"}|{cls: "col", ondrop: move}|' "$st/index-good.html" > "$st/index-ondrop-column.html"
+sed 's|{cls: "col"}|{cls: "col", ondragover: stop}|' "$st/index-good.html" > "$st/index-ondragover-column.html"
+sed 's|return h("div", {cls: "col"});|col.addEventListener("dragover", stop); return h("div", {cls: "col"});|' "$st/index-good.html" > "$st/index-listener-column.html"
+sed 's|<style>|<div draggable="true">x</div><style>|' "$st/index-good.html" > "$st/index-draggable-markup.html"
+sed 's|return h("div", {cls: "col"});|x.draggable = true; launch(); return h("div", {cls: "col"});|' "$st/index-good.html" > "$st/index-draggable-prop-launch.html"
 must_accept "index.html" index "$st/index-good.html"
 for v in external other put post-elsewhere get-go get-answer get-spec get-request no-request no-spec xhr \
   draggable-attr draggable-key draggable-prop draggable-set ondrop-attr ondragover-key ondragstart-string ondragend-prop \
-  listener-drop listener-dragover listener-dragenter listener-dragleave listener-dragstart; do
+  listener-drop listener-dragover listener-dragenter listener-dragleave listener-dragstart \
+  draggable-other-card draggable-column draggable-unconditional ondrop-column ondragover-column listener-column \
+  draggable-markup draggable-prop-launch; do
   must_reject "index.html ($v)" index "$st/index-$v.html"
 done
 
@@ -1253,7 +1305,7 @@ plant "another schema" '.schema = "lights-out/logbook/1.2"'
 # rework entry (the mutation NO-GO) ran secrets GO, so it is shown.
 h14() {
   jq -e --slurpfile s3 "$stub/state/tickets.0003.json" --slurpfile s2 "$stub/state/tickets.0002.json" \
-    --slurpfile s10 "$stub/state/tickets.0010.json" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+    --slurpfile s10 "$stub/state/tickets.0010.json" --slurpfile rel "$stub/releases.jsonl" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
 }
 t03='(.tickets[] | select(.id == "0003"))'
 t02='(.tickets[] | select(.id == "0002"))'
@@ -1292,6 +1344,29 @@ hand_14() {
       and all(if .verdict == \"GO\" then (has(\"why\") and .why == null) else (.why | type) == \"object\" end)" "$1" || return 1
   h14 "every rework entry of every ticket has a why of its own attempt, judge and line" \
     "[.tickets[] | (.rework | select(type == \"array\") | .[])] | length > 0 and all(.why.attempt == .attempt and .why.judge == .judge and .why.line == .line)" "$1" || return 1
+  # docs/adr/0079 §1: an answer carries reason, brief_sha256 and brief_author
+  # beside by and via. Carol's 0.4.0-c NO-GO is the one answer line of the stub
+  # that holds them, and the check reads its three values from that line; the
+  # other answers say none, as null, the keys there.
+  h14 "every answer of releases[] has the keys reason, brief_sha256 and brief_author" \
+    "[.releases[] | .answer | select(. != null)] | length == 3 and all(has(\"reason\") and has(\"brief_sha256\") and has(\"brief_author\"))" "$1" || return 1
+  h14 "carol's 0.4.0-c NO-GO carries the reason, brief_sha256 and brief_author of the stub's answer line, by and via with them" \
+    "([\$rel[] | select(.kind == \"answer\" and .version == \"0.4.0-c\")][0]) as \$l
+      | (\$l.reason == \"the error budget is spent for the week\" and (\$l.brief_sha256 | type) == \"string\"
+        and (.releases[] | select(.version == \"0.4.0-c\") | .answer)
+          == {answer: \"NO-GO\", at: \$l.at, by: \"carol\", via: \"cli\", reason: \"the error budget is spent for the week\",
+              brief_sha256: \$l.brief_sha256, brief_author: \"the release role, stub-harness\"})" "$1" || return 1
+  h14 "the answers that say no reason, no brief sha and no author say null for each" \
+    "[.releases[] | select(.version == \"0.2.5-n\" or .version == \"0.3.0-b\") | .answer]
+      | length == 2 and all(.reason == null and .brief_sha256 == null and .brief_author == null)" "$1" || return 1
+  h14 "no release without an answer has one made up" \
+    "[.releases[] | select(.version == \"0.2.0-a\" or .version == \"0.5.0-d\") | .answer] == [null, null]" "$1" || return 1
+  h14 "each sign-off row's reason is its release's answer's reason (a key, null here)" \
+    ". as \$b | [.tickets[] | . as \$t | .timeline[] | select(.phase == \"sign-off\")
+      | has(\"reason\") and .reason == (\$b.releases[] | select(.version == \$t.release.version) | .answer.reason)]
+      | length == 2 and all" "$1" || return 1
+  h14 "a ticket's sign-off rows are exactly the two the stub's answers give it" \
+    "[.tickets[] | select(any(.timeline[]; .phase == \"sign-off\")) | .id] == [\"0002\", \"0010\"]" "$1" || return 1
 }
 bad=$(hand_14 "$root/out1.json") || nogo "the 1.4 fields over the stub sources: $bad" \
   "$(jq -c "{t3: ($t03 | {attempt, ci_why: .ci.why, rework_why: [.rework[].why]}), t2: ($t02 | [.rework[].why])}" "$root/out1.json" 2>&1)"
@@ -1331,6 +1406,21 @@ plant14 "0010's rework why gone" "$(tix 0010 'del(.rework[0].why)')"
 plant14 "a GO ci with a why" "$(tix 0010 '.ci.why = {attempt: 2, judge: "gates", gate: null, line: "GO: gates", details: [], sast: null}')"
 plant14 "a GO ci with no why key" "$(tix 0010 'del(.ci.why)')"
 plant14 "a rework why of another attempt" "$(tix 0010 '.rework[0].why.attempt = 2')"
+rel14() { printf '.releases |= map(if .version == "%s" then %s else . end)' "$1" "$2"; }
+plant14 "carol's reason changed" "$(rel14 0.4.0-c '.answer.reason = "the budget is fine"')"
+plant14 "carol's reason null" "$(rel14 0.4.0-c '.answer.reason = null')"
+plant14 "carol's brief_sha256 null" "$(rel14 0.4.0-c '.answer.brief_sha256 = null')"
+plant14 "carol's brief_sha256 another" "$(rel14 0.4.0-c '.answer.brief_sha256 = "0000"')"
+plant14 "carol's brief_author null" "$(rel14 0.4.0-c '.answer.brief_author = null')"
+plant14 "carol's brief_author dropped" "$(rel14 0.4.0-c 'del(.answer.brief_author)')"
+plant14 "carol's reason key dropped" "$(rel14 0.4.0-c 'del(.answer.reason)')"
+plant14 "a reason made up for bob's GO" "$(rel14 0.2.5-n '.answer.reason = "fine"')"
+plant14 "a brief sha made up for alice's GO" "$(rel14 0.3.0-b '.answer.brief_sha256 = "ab"')"
+plant14 "a brief author made up for bob's GO" "$(rel14 0.2.5-n '.answer.brief_author = "bob"')"
+plant14 "an answer made up for an unanswered release" "$(rel14 0.5.0-d '.answer = {answer: "GO", at: "2026-11-04T00:00:00Z", by: "x", via: "cli", reason: null, brief_sha256: null, brief_author: null}')"
+plant14 "0002's sign-off row with a reason" "$(tix 0002 '(.timeline[] | select(.phase == "sign-off") | .reason) = "fine"')"
+plant14 "0010's sign-off row with no reason key" "$(tix 0010 '.timeline |= map(if .phase == "sign-off" then del(.reason) else . end)')"
+plant14 "0002's sign-off row dropped" "$(tix 0002 '.timeline |= map(select(.phase != "sign-off"))')"
 
 # The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
 # state, and every ticket is on exactly one card. Then the tower moves a
@@ -1380,12 +1470,20 @@ jq -c '. + {rejected: {at: "2026-11-04T10:00:00Z", by: "bob", via: "cli"}}' "$ro
 var_case "a promoted record" '
   .launch.pressable == false and .launch.preparable == false
   and .launch.disabled_reason == "release 0.5.0-d was already answered GO by bob via cli"
-  and (.releases[-1] | .from == "release.json" and .answer == {answer: "GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z"})' \
+  and (.releases[-1] | .from == "release.json" and .answer == {answer: "GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z", reason: null, brief_sha256: null, brief_author: null})' \
   RELEASE_RECORD=release.promoted.json
+# docs/adr/0079 §1: a record that holds them, and the logbook says so in the
+# release's answer and in launch.record.
+jq -c '. + {promoted: {weight: 100, at: "2026-11-04T10:00:00Z", by: "bob", via: "console", reason: "numbers hold", brief_sha256: "ab12", brief_author: "the release role"}}' "$root/release.json" > "$root/release.promoted-why.json"
+var_case "a promoted record with its reason" '
+  .launch.record.promoted.reason == "numbers hold" and .launch.record.promoted.brief_sha256 == "ab12"
+  and .launch.record.promoted.brief_author == "the release role"
+  and (.releases[-1].answer == {answer: "GO", by: "bob", via: "console", at: "2026-11-04T10:00:00Z", reason: "numbers hold", brief_sha256: "ab12", brief_author: "the release role"})' \
+  RELEASE_RECORD=release.promoted-why.json
 var_case "a rejected record" '
   .launch.pressable == false
   and .launch.disabled_reason == "release 0.5.0-d was already answered NO-GO by bob via cli"
-  and .releases[-1].answer == {answer: "NO-GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z"}' \
+  and .releases[-1].answer == {answer: "NO-GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z", reason: null, brief_sha256: null, brief_author: null}' \
   RELEASE_RECORD=release.rejected.json
 
 # The plane runs another canary: promote's own sentence.
@@ -1654,6 +1752,14 @@ base() { printf 'http://127.0.0.1:%s' "$port"; }
 # identity) in front of the call.
 press() {
   p_body=$(printf '{"answer":"%s","version":"%s","held_at":%s,"brief_sha256":"%s"}' "$1" "$2" "$3" "$4")
+  req -X POST -H 'Content-Type: application/json' -H "Origin: ${PO:-http://127.0.0.1:$port}" \
+    -H "${PH:-X-Noop: 1}" -d "$p_body" "$(base)/v1/go-for-launch"
+}
+
+# press_why ANSWER VERSION HELD_AT SHA EXTRA: the same POST, with EXTRA (raw
+# JSON members such as ',"reason":"x"', or nothing) added to the body.
+press_why() {
+  p_body=$(printf '{"answer":"%s","version":"%s","held_at":%s,"brief_sha256":"%s"%s}' "$1" "$2" "$3" "$4" "$5")
   req -X POST -H 'Content-Type: application/json' -H "Origin: ${PO:-http://127.0.0.1:$port}" \
     -H "${PH:-X-Noop: 1}" -d "$p_body" "$(base)/v1/go-for-launch"
 }
@@ -1957,6 +2063,28 @@ press MAYBE 0.5.0-d 25 "$want_sha"
 req -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" -d '{"answer":"GO"}' "$(base)/v1/go-for-launch"
 [ "$code" = 400 ] || nogo "a POST without version, held_at and brief_sha256 answered $code, want 400"
 untouched "malformed bodies"
+# docs/adr/0079 §2: a NO-GO needs a reason (missing, empty, blank, null: 400,
+# nothing runs); a reason is a string, on a GO too.
+press_why NO-GO 0.5.0-d 25 "$want_sha" ''
+[ "$code" = 400 ] || nogo "a NO-GO with no reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with no reason"
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":""'
+[ "$code" = 400 ] || nogo "a NO-GO with an empty reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with an empty reason"
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":"   \t "'
+[ "$code" = 400 ] || nogo "a NO-GO with a blank reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with a blank reason"
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":null'
+[ "$code" = 400 ] || nogo "a NO-GO with a null reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with a null reason"
+for r in 7 true '["too slow"]' '{"text":"x"}'; do
+  press_why NO-GO 0.5.0-d 25 "$want_sha" ",\"reason\":$r"
+  [ "$code" = 400 ] || nogo "a NO-GO whose reason is $r answered $code, want 400" "$(cat "$body")"
+  untouched "NO-GO with a reason that is $r"
+  press_why GO 0.5.0-d 25 "$want_sha" ",\"reason\":$r"
+  [ "$code" = 400 ] || nogo "a GO whose reason is $r answered $code, want 400" "$(cat "$body")"
+  untouched "GO with a reason that is $r"
+done
 stop_console
 
 # --- e4. LIVE behind a proxy: the identity header ------------------------------
@@ -2013,13 +2141,39 @@ cp "$tmp/releases.held.jsonl" "$live/releases.jsonl"
 start_console "$live" "$tmp/live2.log" $(live_env) TMPDIR="$tmp/ctmp"
 first_read
 pressable_again
-press GO 0.5.0-d 25 "$want_sha"
+want_author=$(head -n 1 "$live/promote/brief.author" 2>/dev/null || true)
+# docs/adr/0079 §1, §2: a NO-GO with a reason runs promote; the record's
+# `rejected` and the log's answer line carry the reason, the brief's sha256
+# (and its author, null when the brief has none), via console.
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":"  p99 is too close to the limit  "'
+[ "$code" = 200 ] || nogo "a NO-GO POST with a reason answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/live2.log")"
+jq -e '.line == "NO-GO: go-for-launch — human said NO-GO" and .exit == 1' "$body" >/dev/null \
+  || nogo "the answer to a NO-GO POST is not {line: 'NO-GO: go-for-launch — human said NO-GO', exit: 1}" "$(cat "$body")"
+[ "$(cat "$live/effects.log")" = "rollback" ] || nogo "the delivery stub saw '$(cat "$live/effects.log")' after the NO-GO, want exactly 'rollback'"
+jq -e --arg s "$want_sha" --arg a "$want_author" '.rejected.reason == "p99 is too close to the limit" and .rejected.via == "console"
+  and .rejected.brief_sha256 == $s and .rejected.brief_author == (if $a == "" then null else $a end) and (has("promoted") | not)' "$live/release.json" >/dev/null \
+  || nogo "the record after the NO-GO press does not hold its reason, the brief's sha256 and author, via console" "$(cat "$live/release.json")"
+tail -n 1 "$live/releases.jsonl" | jq -e --arg s "$want_sha" '.kind == "answer" and .answer == "NO-GO" and .via == "console"
+  and .reason == "p99 is too close to the limit" and .brief_sha256 == $s' >/dev/null \
+  || nogo "the release log's new line is not the console's NO-GO answer with its reason and brief sha" "$(tail -n 1 "$live/releases.jsonl")"
+# The held record again, for the GO.
+cp "$tmp/release.held.json" "$live/release.json"
+cp "$tmp/releases.held.jsonl" "$live/releases.jsonl"
+: > "$live/effects.log"
+sleep 3
+pressable_again
+press_why GO 0.5.0-d 25 "$want_sha" ',"reason":" numbers hold at 25% "'
 [ "$code" = 200 ] || nogo "a correct GO POST answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/live2.log")"
 jq -e '.line == "GO: go-for-launch" and .exit == 0' "$body" >/dev/null \
   || nogo "the answer to a correct GO POST is not {line: 'GO: go-for-launch', exit: 0}" "$(cat "$body")"
 [ "$(cat "$live/effects.log")" = "shift 100" ] || nogo "the delivery stub saw '$(cat "$live/effects.log")', want exactly 'shift 100'"
 jq -e '.promoted.weight == 100 and .promoted.by == "unauthenticated" and .promoted.via == "console" and (.promoted.at | type == "string") and (has("rejected") | not)' "$live/release.json" >/dev/null \
   || nogo "the record after the press is not promoted by unauthenticated via console" "$(cat "$live/release.json")"
+jq -e --arg s "$want_sha" --arg a "$want_author" '.promoted.reason == "numbers hold at 25%" and .promoted.brief_sha256 == $s
+  and .promoted.brief_author == (if $a == "" then null else $a end)' "$live/release.json" >/dev/null \
+  || nogo "the record after the GO press does not hold its reason and the brief's sha256 and author" "$(cat "$live/release.json")"
+tail -n 1 "$live/releases.jsonl" | jq -e '.reason == "numbers hold at 25%"' >/dev/null \
+  || nogo "the release log's GO answer does not hold the reason" "$(tail -n 1 "$live/releases.jsonl")"
 [ "$(wc -l < "$live/releases.jsonl")" -eq "$(($(wc -l < "$tmp/releases.held.jsonl") + 1))" ] \
   || nogo "the release log did not gain exactly one line from the press"
 tail -n 1 "$live/releases.jsonl" | jq -e '.kind == "answer" and .version == "0.5.0-d" and .answer == "GO" and .by == "unauthenticated" and .via == "console"' >/dev/null \
