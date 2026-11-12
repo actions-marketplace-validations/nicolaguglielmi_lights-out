@@ -908,6 +908,14 @@ demo-network: ## Prove a network of members on ticket 0012: one PR, gated, merge
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
 
+# The evidence pack of one release (docs/adr/0081): the release record, its
+# stages, every gate line of its PR, the rework, the review, the spec, the
+# digests and the human answer, each entry naming its source and every gap
+# named; signed with the plane's cosign key and verified in the same run.
+.PHONY: evidence
+evidence: ## Build, sign and verify the evidence pack of a release: VERSION=<v> → .crew/evidence/<v>.json (docs/adr/0081)
+	@VERSION="$(VERSION)" sh core/evidence.sh
+
 # A ticket whose last step failed stays at that step's starting state
 # with nothing queued (docs/adr/0034). resume asks the tower to request
 # that step again — refused unless the last history entry is a failed
