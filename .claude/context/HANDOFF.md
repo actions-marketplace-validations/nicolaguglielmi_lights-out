@@ -34,6 +34,12 @@ PyPI refused the first upload of `lights-out` ("too similar to an existing proje
 
 Release commit 995ba3f on `main`, tag `v0.3.1`, images published and signed (package.yml run 42790042827), signatures verified; `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity` refreshed and tagged. Three draft releases wait for the owner's Marketplace publish. The podman workflow's harness-conformance timed out twice in 40 runs ("the scripted model did not answer within 60 s"): worth a session of its own if it happens again. My landing gate's `grep -q -v` never failed (grep is ugrep in this shell); replaced by awk.
 
+## Release 0.4.0, 2026-11-12
+
+The release commit 1626e63 was cut on dee4e34. `self` on dee4e34 was cancelled at 360 minutes: the old judge mutated about 774 mutants that no green had judged. The way out was a bootstrap. `fix/mutation-shards` (bf618fa) put ADR 0074's judge and the sharded mutation runner (`MUTATION_SHARDS`, ADR 0074's 2026-11-11 amendment) on top of the last green, with `ci/init.sh` g-self comparing the runners committed at HEAD. Once it was green, the release was merged onto it (0213078). `self` on that merge took 3 h 10 min (run 43104690404); `main` and `fix/adr-still-header` were then fast-forwarded to 0213078. The tag `v0.4.0` is on 0213078. `package.yml` run 43131164910 published and signed both images, and both signatures were verified. Digests: `lights-out-gates@sha256:520fe8a40fc59759d7607bff209660c14a64e1606a691e0a3cd08ad9fab46a80`, `lights-out@sha256:d092fb9697520a35ecbd7b16fe7d6dafaf03e0f2d3001cbb7702178b5923fb04`. The site serves 0.4.0, and its 11 media files and the README's 5 images return 200. `test-proof` and `test-integrity` are tagged and released at `v0.4.0`. The three releases are published, not drafts. The owner's steps: the Marketplace box on each, and the PyPI upload.
+
+A GitHub glitch left runs on bf618fa queued with no jobs, and cancelling them returned 409. Pushing the same sha to a second ref (`fix/mutation-shards-run`) started them again; a waiter must take the newest run per workflow.
+
 ## Branches landed, one handoff each
 
 Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/context/handoffs/`; this file is the coordinator's: the state of the integration branch and one line per branch landed.
@@ -52,4 +58,5 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/m17-network-edfb56`: M17's third slice, the agent network, ADR 0071, logbook 1.3, [handoffs/claude-m17-network-edfb56.md](handoffs/claude-m17-network-edfb56.md)
 - `claude/m24-phase-a-5dacb7`: M24 on tenacity, five tests-only tickets merged live, three fixes, [handoffs/claude-m24-phase-a-5dacb7.md](handoffs/claude-m24-phase-a-5dacb7.md)
 - `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
+- `fix/mutation-shards`: the bootstrap, ADR 0074's judge and the mutants in shards, landed with the release as 0213078
 - Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) waits for 0.4.1
