@@ -2,11 +2,12 @@
 # §8; 0057). On every push: the gates image built through package/build.sh
 # and the wrapper's acceptance on it (./go demo-package), the full image
 # built and both measured, and the root Action's own test with each of its
-# three `gates` values. On a v* tag: the release, five jobs (docs/adr/0075):
-# dist (the wheel built and checked), publish (both images to ghcr.io,
-# signed keyless and verified), pypi (trusted publishing, no token), actions
-# (the two Action repositories synced and tagged, their releases drafted)
-# and release (this repository's release drafted with the digests). A manual
+# three `gates` values. On a v* tag: the release, six jobs (docs/adr/0075,
+# 0077): dist (the wheel built and checked), publish (both images to
+# ghcr.io, signed keyless and verified), pypi (trusted publishing, no
+# token), actions (the two Action repositories synced and tagged, their
+# releases drafted), release (this repository's release drafted with the
+# digests) and wiki (the wiki rendered from the tag and pushed). A manual
 # dispatch is a dry run unless dry_run is false: every job shows what it
 # would do and nothing leaves the runner. GitHub-only, every job: the L0
 # Gitea runner reads this directory too and holds the engine socket
@@ -546,3 +547,35 @@ jobs:
             gh release create "v$VERSION" --draft --verify-tag --title "lights-out $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
             echo "draft release v$VERSION created; publish it, with the Marketplace box ticked, by hand" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+
+  # docs/adr/0077: the wiki rendered from the repository at the tag by
+  # package/wiki.py and pushed by package/sync-wiki.sh with this workflow's
+  # own token, after the release is drafted: a failed release leaves the
+  # wiki as it was. On a dispatch the pages are rendered and listed, and
+  # nothing is cloned or pushed (the wiki's repository exists only once the
+  # owner saves its first page).
+  wiki:
+    runs-on: ubuntu-latest
+    needs: release
+    if: github.server_url == 'https://github.com'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Render the pages
+        run: |
+          set -eu
+          python3 -I package/wiki.py "$RUNNER_TEMP/wiki-pages"
+          { echo "### wiki"; echo '```'; (cd "$RUNNER_TEMP/wiki-pages" && wc -c -- *.md); echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "A dry run: the push the tag makes"
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          echo "at the tag: sh package/sync-wiki.sh \$RUNNER_TEMP/wiki-pages \$RUNNER_TEMP/wiki --push, with WIKI_TOKEN the job's GITHUB_TOKEN" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Push the wiki
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          WIKI_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          sh package/sync-wiki.sh "$RUNNER_TEMP/wiki-pages" "$RUNNER_TEMP/wiki" --push > "$RUNNER_TEMP/wiki.txt"
+          cat "$RUNNER_TEMP/wiki.txt" >> "$GITHUB_STEP_SUMMARY"
