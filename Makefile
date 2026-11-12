@@ -221,7 +221,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -319,6 +319,20 @@ network: ## The agent network of one ticket in text: the graph, every attempt wi
 	@book="$(NETWORK_LOGBOOK)"; \
 	if [ -z "$$book" ]; then sh core/logbook.sh >&2 || exit 1; book="$${LOGBOOK_FILE:-.crew/logbook.json}"; fi; \
 	python3 core/network.py --logbook "$$book" --ticket "$(if $(filter file,$(origin TICKET)),,$(TICKET))" --attempt "$(ATTEMPT)"
+
+# The delivery measures (docs/adr/0082): DORA's four keys over the last
+# WINDOW_DAYS days, from the logbook (written first unless DORA_LOGBOOK
+# names one); one contract line on stdout, the measures on stderr and in
+# DORA_OUT.
+.PHONY: dora
+dora: ## The four delivery measures over a window, from the logbook: [WINDOW_DAYS=30] [DORA_LOGBOOK=<file>] [DORA_OUT=.crew/dora.json] (docs/adr/0082)
+	@WINDOW_DAYS="$(WINDOW_DAYS)" DORA_LOGBOOK="$(DORA_LOGBOOK)" DORA_OUT="$(DORA_OUT)" sh core/dora.sh
+
+# Cost and time per ticket (docs/adr/0083 §5): per ticket, role and day,
+# from every ticket's spend ledger; one contract line on stdout.
+.PHONY: spend
+spend: ## Cost and time per ticket, per role and per day, from the tower's spend ledger; a model with no price is cost unknown (docs/adr/0083)
+	@sh core/spend.sh
 
 # The console (docs/adr/0047, 0055, 0059, 0071): the client's eleven screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the
@@ -927,6 +941,14 @@ demo-network: ## Prove a network of members on ticket 0012: one PR, gated, merge
 .PHONY: audit
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
+
+# The evidence pack of one release (docs/adr/0081): the release record, its
+# stages, every gate line of its PR, the rework, the review, the spec, the
+# digests and the human answer, each entry naming its source and every gap
+# named; signed with the plane's cosign key and verified in the same run.
+.PHONY: evidence
+evidence: ## Build, sign and verify the evidence pack of a release: VERSION=<v> → .crew/evidence/<v>.json (docs/adr/0081)
+	@VERSION="$(VERSION)" sh core/evidence.sh
 
 # A ticket whose last step failed stays at that step's starting state
 # with nothing queued (docs/adr/0034). resume asks the tower to request
