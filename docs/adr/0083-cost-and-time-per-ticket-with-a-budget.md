@@ -144,7 +144,7 @@ and 3.75 until 2026-12-31, 1.50 and 7.50 from 2027-01-01):
   runs, 0 unknown, 560 s of agents, 90,000 s elapsed; 0202 $0.00, 2
   runs, 1 unknown, 55 s, 5,400 s; dev-worker $3.70, 3 runs, 1 unknown,
   550 s; test-reviewer $0.50, 2 runs, 65 s; 2026-11-10 $3.00, 2 runs;
-  2026-11-11 $1.20, 3 runs, 1 unknown; in all $4.70, 5 runs, 1 unknown.
+  2026-11-11 $1.20, 3 runs, 1 unknown; in all $4.20, 5 runs, 1 unknown.
 - The budget, on 0201's spend: `SPEND_BUDGET_TICKET_USD=4.20` stops,
   4.21 does not; on a day whose entries are 0201's $1.20 alone,
   `SPEND_BUDGET_DAY_USD=1.20` stops, 1.21 does not, and yesterday's

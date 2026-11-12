@@ -151,7 +151,7 @@ class Report(unittest.TestCase):
         self.check(self.got["days"]["2026-11-11"], 1.20, 3, 1)
 
     def test_in_all(self):
-        self.check(self.got["total"], 4.70, 5, 1)
+        self.check(self.got["total"], 4.20, 5, 1)
 
 
 class Budget(unittest.TestCase):
