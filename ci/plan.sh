@@ -7,8 +7,11 @@
 # otherwise; a table of paths, written from §3, says which is which. And
 # every job of ci, stranger, self, podman and package but plan and publish
 # needs plan and runs only on its outputs (§1, §4): run for every job,
-# full too for every job a docs-only push skips. The check first proves
-# each half can fail.
+# full too for every job a docs-only push skips. package.yml's release jobs,
+# dist, pypi, actions and release, are exempt like publish (docs/adr/0075
+# §1): they run on a v* tag or a dispatch, never on a branch push, and a
+# tag on a commit already green would otherwise skip its own release. The
+# exemption names that file only. The check first proves each half can fail.
 set -eu
 name=plan
 . ci/lib.sh
@@ -36,10 +39,11 @@ done
 [ "$(classify README.md Makefile)" = code ] || nogo "a documentation path and the Makefile are not code"
 [ "$(printf '' | sh .github/plan.sh classify)" = code ] || nogo "no paths at all is not code: an empty compare proves nothing"
 
-# The workflows: every job but plan and publish is gated on plan.
+# The workflows: every job but plan, publish and package.yml's release jobs is gated on plan.
 cat > "$t/gated.py" <<'PY'
 import sys, yaml
 FULL_KEEP = {("ci.yml", "ci"), ("self.yml", "gates")}
+RELEASE = {("package.yml", n) for n in ("dist", "pypi", "actions", "release")}
 def flaws(root, names):
     for f in names:
         d = yaml.safe_load(open(f"{root}/.github/workflows/{f}"))
@@ -53,7 +57,7 @@ def flaws(root, names):
         if p.get("permissions") != {"actions": "read", "contents": "read"}:
             yield f"{f}: plan's permissions are {p.get('permissions')}, want actions: read and contents: read"
         for n, j in jobs.items():
-            if n in ("plan", "publish"):
+            if n in ("plan", "publish") or (f, n) in RELEASE:
                 continue
             needs = j.get("needs") or []
             needs = [needs] if isinstance(needs, str) else needs
@@ -73,10 +77,12 @@ jobs:
   plan: {permissions: {actions: read, contents: read}, outputs: {run: x, full: y}}
   free: {if: "github.server_url == 'https://github.com'"}
   half: {needs: plan, if: "needs.plan.outputs.run == 'true'"}
+  dist: {if: "github.server_url == 'https://github.com'"}
 YML
 found=$(python3 "$t/gated.py" "$t/probe" w.yml) && nogo "a job not gated on plan passed"
 [ "$found" = "w.yml: job free does not need plan and run only when run is true
-w.yml: job half runs on a docs-only push" ] || nogo "the probe workflow did not give its two findings" "$found"
+w.yml: job half runs on a docs-only push
+w.yml: job dist does not need plan and run only when run is true" ] || nogo "the probe workflow did not give its two findings" "$found"
 
 found=$(python3 "$t/gated.py" . ci.yml stranger.yml self.yml podman.yml package.yml) \
   || nogo "$(printf '%s\n' "$found" | wc -l | tr -d ' ') job(s) escape the plan job" "$found"
