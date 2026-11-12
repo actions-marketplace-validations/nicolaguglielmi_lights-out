@@ -320,6 +320,14 @@ network: ## The agent network of one ticket in text: the graph, every attempt wi
 	if [ -z "$$book" ]; then sh core/logbook.sh >&2 || exit 1; book="$${LOGBOOK_FILE:-.crew/logbook.json}"; fi; \
 	python3 core/network.py --logbook "$$book" --ticket "$(if $(filter file,$(origin TICKET)),,$(TICKET))" --attempt "$(ATTEMPT)"
 
+# The delivery measures (docs/adr/0082): DORA's four keys over the last
+# WINDOW_DAYS days, from the logbook (written first unless DORA_LOGBOOK
+# names one); one contract line on stdout, the measures on stderr and in
+# DORA_OUT.
+.PHONY: dora
+dora: ## The four delivery measures over a window, from the logbook: [WINDOW_DAYS=30] [DORA_LOGBOOK=<file>] [DORA_OUT=.crew/dora.json] (docs/adr/0082)
+	@WINDOW_DAYS="$(WINDOW_DAYS)" DORA_LOGBOOK="$(DORA_LOGBOOK)" DORA_OUT="$(DORA_OUT)" sh core/dora.sh
+
 # The console (docs/adr/0047, 0055, 0059, 0071): the client's eleven screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the
 # answer to a ticket's open question through `make answer` and a new
