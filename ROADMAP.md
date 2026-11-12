@@ -54,7 +54,9 @@ proven by `ci/attach.sh` case f).
   instructions and MCP servers (ADR 0073), the toolbelt (ADR 0069), the
   Trello-style kanban (ADR 0068), and `self` judged from its last green
   ancestor with the mutants in shards (ADR 0074). The Marketplace and PyPI
-  steps are the owner's. Security scanning (ADR 0072) ships in 0.4.1.
+  steps are the owner's. **0.5.0** ships security scanning (ADR 0072):
+  SAST on the diff, a signed SBOM, passive DAST at staging; it is the
+  first release cut by its own tag (ADR 0075).
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.

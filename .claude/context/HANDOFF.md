@@ -40,6 +40,10 @@ The release commit 1626e63 was cut on dee4e34. `self` on dee4e34 was cancelled a
 
 A GitHub glitch left runs on bf618fa queued with no jobs, and cancelling them returned 409. Pushing the same sha to a second ref (`fix/mutation-shards-run`) started them again; a waiter must take the newest run per workflow.
 
+## Release 0.5.0, 2026-11-12
+
+Security scanning (ADR 0072) landed as M43, not M42: main had given M42 to ADR 0073. The merge of the new main into `claude/security-scanning` turned `self` red at `secrets`: the branch's last green ancestor carried the excuse that names the pre-rewrite 3fb56bf. It landed instead as a merge with main as its first parent (1387a74), judged from 09bbd37. The `dast` job flaked once (run 43236481626): ZAP 2.17's passive scanner on its default threads; fixed on one thread and landed as 9772522. The version is 0.5.0, not 0.4.1. The release commit is the first one for ADR 0075's tag, which waits for the owner's three settings and the wiki's first page (checklist, "Release automation" and "The wiki").
+
 ## Branches landed, one handoff each
 
 Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/context/handoffs/`; this file is the coordinator's: the state of the integration branch and one line per branch landed.
@@ -59,6 +63,7 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/m24-phase-a-5dacb7`: M24 on tenacity, five tests-only tickets merged live, three fixes, [handoffs/claude-m24-phase-a-5dacb7.md](handoffs/claude-m24-phase-a-5dacb7.md)
 - `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
 - `fix/mutation-shards`: the bootstrap, ADR 0074's judge and the mutants in shards, landed with the release as 0213078
-- Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) waits for 0.4.1
+- Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) landed as 1387a74 for 0.5.0
 - `claude/release-automation-005454`: ADR 0075, a `v*` tag runs the whole release from the release after 0.4.0, once the owner has set up three things (checklist, "Release automation"); merged as 28eaa07, [handoffs/claude-release-automation-005454.md](handoffs/claude-release-automation-005454.md)
 - `claude/mutation-coverage`: a mutant runs the tests that reach it, ADR 0076 (0075 on its branch, renumbered at the merge); core/ mutation from 3,467 s to 251 s, same score and survivors; merged as fc1ff59, [handoffs/claude-mutation-coverage.md](handoffs/claude-mutation-coverage.md)
+- `claude/amazing-khorana-533a7b`: the DAST stable against itself, ZAP's passive scanner on one thread (ADR 0072 amended), merged as 9772522
