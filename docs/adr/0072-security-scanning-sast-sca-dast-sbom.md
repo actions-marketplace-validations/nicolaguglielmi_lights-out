@@ -1,6 +1,6 @@
 # ADR 0072 — Security scanning: SAST judges the diff, a signed SBOM per release, a passive DAST at staging
 
-- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices (renumbered M43 when it landed, M42 being ADR 0073's); 2026-11-11, decision 1 (SAST on the diff), decision 2 (the SBOM) and decision 3 (DAST at staging, off by default) built the same day, decision 4 in part; see "Built" below
+- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices (renumbered M43 when it landed, M42 being ADR 0073's); 2026-11-11, decision 1 (SAST on the diff), decision 2 (the SBOM) and decision 3 (DAST at staging, off by default) built the same day, decision 4 in part; 2026-11-12, the scanner runs on one passive-scan thread ("The stable against itself"); see "Built" below
 - Date: 2026-11-11
 - Would amend: ADR 0015 §4 and ADR 0030 §3 (the SAST verdict and the runner's output), ADR 0053 §6 (`sast` leaves the green-base check), ADR 0024 and 0026 (an optional fifth Delivery verb), ADR 0013 §4 (a check at staging), ADR 0025 §1 (`publish.sh` also attests)
 
@@ -316,3 +316,52 @@ the run the golden rule is about. The choices for the owner: keep it off
 (as built), turn it on at L0 and accept that a slow first pull breaks the
 15 minutes, or turn it on only when the image is already present. At L1
 it is also the owner's call, as decided, since no gate measures L1's time.
+
+### The stable against itself, 2026-11-12
+
+`./go demo-dast` NO-GOed once on Actions (run 43236481626, `dast`,
+docker, c72da16, attempt 1; the rerun was green): in the stable against
+itself, the canary scan had `10020 GET /` (Missing Anti-clickjacking
+Header) and the stable scan did not. Both sides ran the same image, the
+spider found the same five URLs with the same statuses, and the rules
+raise alerts deterministically for a given response.
+
+**Cause (measure).** ZAP 2.17.0's passive scanner, on its default
+threads, sometimes leaves out of the report an alert a rule raised. The
+app's `/` is recorded twice, and the two records are scanned on parallel
+threads, which raise the same alerts within milliseconds. With ZAP's
+debug log on (`org.zaproxy.zap.extension.alert`), one scan logged
+`alertFound Storable and Cacheable Content …/sitemap.xml` 31 s before
+the report was written, and the report has no such instance. Timing is
+not the cause: ZAP's `passiveScan-wait` did not return early. The exact
+line in ZAP was not found; the measure below is what the fix rests on.
+
+| Scans of the same stable | Passive scan threads | Scans missing one tuple | Provenance |
+|---|---|---|---|
+| Actions, 7 `dast`/`dast-podman` jobs, runs 43198017866, 43198017849, 43236481626 (both attempts), 43236481651, 43239393780, 43239394037 | default | 6 of 42 | measure; always `/`, `/robots.txt` or `/sitemap.xml` |
+| 4.66 GiB podman VM, 2 to 5 scans in parallel | default | 3 of 39 | measure; one is the same `10020 GET /` |
+| the same VM, 2 or 3 scans in parallel | 1 | 0 of 35 | measure |
+| Actions, fd9a2f7, `./go demo-dast DAST_RUNS=5`, runs 43259058744 (docker) and 43259059125 (rootless podman) | 1 | 0 of 24 | measure; every stable-against-stable run `nothing new (13 inherited)` |
+
+**Decision.** `verify/dast.sh` passes `-z "-config pscans.threads=1"`
+to `zap-baseline.py`. One is not a tuning: it is the only count with no
+concurrent raises (decision, from the measure above). The rule does not
+change: NO-GO only for a tuple the canary has and the stable lacks. It
+costs nothing measurable: one scan took 34–40 s on those runs, against
+34–39 s on default threads (measure). The `dast` and
+`dast-podman` jobs run the stable against itself five times
+(`DAST_RUNS=5`, ten scans per job): at six missing in 42, a regression
+shows within a run of both jobs (decision).
+
+Rejected: scanning the stable twice and taking the union, which makes a
+false NO-GO rarer but not impossible and costs a scan; a delay before
+`passiveScan-wait`, since the lost alert was raised long before the
+report.
+
+Still open, the owner's call: `zap-baseline.py` runs ZAP once with
+`-addonupdate -addoninstall pscanrulesBeta` before every scan, so the
+beta rules (10049, 10063, 90004 among the 13 inherited) and
+`webdriverlinux` come from GitHub at scan time, not from the pinned
+image. If it fails in one scan of a pair, the two sides may run
+different rules (not measured). `-z -silent` skips the download and
+drops the beta rules.

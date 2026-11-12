@@ -22,6 +22,12 @@
 # need not resolve (docker gives the workbench host.containers.internal
 # with --add-host; a compose service has no such entry), and the address
 # does on both engines. The host is stripped from every alert anyway.
+#
+# The passive scanner runs on one thread (`pscans.threads=1`). On its
+# default threads, ZAP 2.17 sometimes leaves out of the report an alert a
+# rule raised while another thread raised alerts on the same page, so the
+# same image scanned twice could differ by one tuple: a NO-GO for the
+# stable against itself (ADR 0072, "The stable against itself").
 set -eu
 name=dast
 . ci/lib.sh
@@ -50,7 +56,7 @@ scan() {
   t0=$(date +%s)
   # shellcheck disable=SC2016 # $0 is the inner shell's: the URL
   docker-compose --profile dast run --rm -T zap sh -c \
-    'zap-baseline.py -t "$0" -J report.json -I >&2; rc=$?; cat /zap/wrk/report.json 2>/dev/null; exit $rc' "$url" \
+    'zap-baseline.py -t "$0" -J report.json -I -z "-config pscans.threads=1" >&2; rc=$?; cat /zap/wrk/report.json 2>/dev/null; exit $rc' "$url" \
     > "$tmp/$1.json" </dev/null && rc=0 || rc=$?
   printf 'dast: %s scan of %s: zap exited %s in %ss\n' "$1" "$url" "$rc" "$(($(date +%s) - t0))" >&2
   case "$rc" in

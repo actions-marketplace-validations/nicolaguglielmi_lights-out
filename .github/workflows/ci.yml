@@ -167,7 +167,10 @@ jobs:
   # L0: `./go demo-dast` proves both verdicts on a plane of its own and
   # prints the measures the ADR asks for before DAST may be on in
   # `./go demo` (the scanner's cold pull, each scan, the stable against
-  # itself). Docker here; podman.yml runs it on rootless podman.
+  # itself). Docker here; podman.yml runs it on rootless podman. Five
+  # stable-against-itself runs, ten scans: before the scanner ran on one
+  # thread, six scans in 42 dropped an alert (ADR 0072, "The stable
+  # against itself").
   dast:
     runs-on: ubuntu-latest
     needs: plan
@@ -179,7 +182,7 @@ jobs:
       - run: ./go up
         env:
           CONTAINER_ENGINE: docker
-      - run: ./go demo-dast
+      - run: ./go demo-dast DAST_RUNS=5
         env:
           CONTAINER_ENGINE: docker
 

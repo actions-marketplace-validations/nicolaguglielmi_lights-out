@@ -59,7 +59,8 @@ jobs:
 
   # docs/adr/0072 §3 on the reference engine: the same `./go demo-dast` as
   # ci.yml's dast job, on rootless podman, for the cold pull of the scanner
-  # and the scans measured on both engines.
+  # and the scans measured on both engines, five stable-against-itself runs
+  # as there.
   dast-podman:
     runs-on: ubuntu-latest
     needs: plan
@@ -74,6 +75,6 @@ jobs:
       - run: ./go up
         env:
           CONTAINER_ENGINE: podman
-      - run: ./go demo-dast
+      - run: ./go demo-dast DAST_RUNS=5
         env:
           CONTAINER_ENGINE: podman
