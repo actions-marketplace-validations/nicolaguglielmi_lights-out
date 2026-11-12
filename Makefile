@@ -372,13 +372,15 @@ demo-console: ## Prove go-for-launch pressed from the console: a held canary rol
 	post() { curl -sS --max-time 600 -X POST "$$url/v1/go-for-launch" -H 'Content-Type: application/json' -H "Origin: $$url" -d "$$1"; }; \
 	launch() { curl -fsS --max-time 10 "$$url/v1/logbook.json" | jq -c .launch; }; \
 	held() { \
+		rm -rf "$${PROMOTE_OUT:-.crew/promote}"; \
 		$(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION) \
 			|| { printf 'NO-GO: demo-console — release rolled back; expected a hold at 25%%\n'; exit 1; }; \
 		i=0; l=""; \
 		while [ "$$i" -lt 60 ]; do \
 			l=$$(launch 2>/dev/null) || l=""; \
 			[ "$$(printf '%s' "$$l" | jq -r '.record.verdict // empty' 2>/dev/null)" = held ] \
-				&& [ "$$(printf '%s' "$$l" | jq -r '.record | has("promoted") or has("rejected")' 2>/dev/null)" = false ] && break; \
+				&& [ "$$(printf '%s' "$$l" | jq -r '.record | has("promoted") or has("rejected")' 2>/dev/null)" = false ] \
+				&& [ "$$(printf '%s' "$$l" | jq -r .preparable 2>/dev/null)" = true ] && break; \
 			i=$$((i + 1)); sleep 1; \
 		done; \
 		[ "$$(printf '%s' "$$l" | jq -r .preparable)" = true ] \
