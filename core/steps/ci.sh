@@ -11,7 +11,8 @@
 # document. Next state: ci-passed on GO + auto-merge, review on GO +
 # review (core/steps/review.sh picks it up from there, docs/adr/0021),
 # ci-failed on NO-GO, with the failed gate's own details as ci.details —
-# what core/steps/rework.sh hands back to the worker (docs/adr/0038).
+# what core/steps/rework.sh hands back to the worker (docs/adr/0038) — and,
+# for sast, the new findings as ci.sast (docs/adr/0078 §1).
 # Called by the tower (PR_NUMBER, BASE_SHA,
 # HEAD_SHA from the document) and by the Makefile's crew-run (from
 # .crew/<id>/pr-opened.env): one code path for both.
@@ -116,6 +117,12 @@ if [ -n "$failed" ] && [ "$failed" != perimeter ]; then
   cp "$gates_dir/$failed.details" "$details_file" 2>/dev/null || :
 fi
 details=$(jq -R . < "$details_file" | jq -cs .)
+# The findings a sast NO-GO says this diff introduces (docs/adr/0078 §1):
+# sast.json's `new`, as core/sastdiff.py wrote it; null for any other gate.
+sast=null
+if [ "$failed" = sast ] && [ -f "$gates_dir/sast.json" ]; then
+  sast=$(jq -c '[.new[]? | {rule, file, line}] | if length > 0 then . else null end' "$gates_dir/sast.json" 2>/dev/null) || sast=null
+fi
 
 case "$verdict/$decision" in
   GO/auto-merge) state=ci-passed; status=success ;;
@@ -128,6 +135,6 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
 
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
-  --argjson details "$details" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
+  --argjson details "$details" --argjson sast "$sast" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
   '{state: $state, ci: {verdict: $verdict, failed: (if $failed == "" then null else $failed end),
-    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, lines: $lines}}'
+    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, sast: $sast, lines: $lines}}'

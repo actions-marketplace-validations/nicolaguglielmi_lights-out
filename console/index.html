@@ -236,6 +236,14 @@ dialog#card-back[open] { animation: back-in .16s ease-out; }
   .card, .card:hover { transition: none; transform: none; }
   dialog#card-back[open] { animation: none; }
 }
+/* The why of a NO-GO (docs/adr/0078 §4): one modal over any screen. */
+dialog#why { padding: 16px 20px; border: 0; border-radius: 12px; width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); background: var(--panel); color: var(--ink);
+  box-shadow: 0 12px 40px var(--shadow); overflow-y: auto; }
+dialog#why::backdrop { background: var(--scrim); }
+dialog#why ul { padding-left: 20px; }
+dialog#why .withheld { color: var(--muted); font-style: italic; }
+button.why-open { padding: 0 2px; border: 0; background: none; cursor: pointer; font: inherit; }
+.why-open[role="button"] { cursor: pointer; }
 .back-top { display: flex; align-items: flex-start; gap: 10px; }
 .back-top .labels { flex: 1; margin: 4px 0 0; }
 .question { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--wait-bg); color: var(--ink); }
@@ -355,6 +363,8 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
 <!-- The card's back (docs/adr/0068 §3), opened with showModal() over the
      board; and the region that announces a card the tower moved (§4). -->
 <dialog id="card-back" aria-label="A card's back"></dialog>
+<!-- The why of a NO-GO (docs/adr/0078 §4): one panel, opened from any red gate. -->
+<dialog id="why" aria-labelledby="why-title"></dialog>
 <div id="announce" aria-live="polite"></div>
 <!-- The tower's transition table, as board/index.html embeds it (docs/adr/
      0035), with who runs each step and the bands the columns sit under
@@ -557,6 +567,77 @@ function nowLine(t, primary) {
   return h("span", {cls: "now", "data-turn": w.turn}, w.text, w.code ? [" ", h("code", {}, w.code)] : null,
     w.href ? [primary ? h("br") : null, h("a", {cls: "act" + (primary ? " primary" : ""), href: w.href, onclick: (e) => e.stopPropagation()}, w.act + " →")] : null);
 }
+
+// --- the why of a NO-GO (docs/adr/0078 §4) ---------------------------------
+// One dialog, one builder: the gate's line and its details (or why they are
+// withheld), the new SAST findings, the attempt, the attempts left on
+// REWORK_MAX_ATTEMPTS and the next move. It writes nothing.
+function whyFor(t, n) {
+  const back = (t.rework || []).find((r) => r && r.attempt === n && r.why);
+  if (back) return back.why;
+  return t.ci && t.ci.why && t.ci.why.attempt === n ? t.ci.why : null;
+}
+let whyOpener = null;
+function whyAttrs(t, n) {
+  return {"data-ticket": t.id, "data-attempt": String(n), "aria-haspopup": "dialog",
+    onclick: (e) => { e.stopPropagation(); openWhy(t.id, n, e.currentTarget); }};
+}
+// A button that opens the panel, or null when attempt n has no why.
+function whyButton(t, n, ...kids) {
+  return whyFor(t, n) ? h("button", Object.assign({type: "button", cls: "why-open", title: "Why attempt " + n + " was rejected"}, whyAttrs(t, n)), kids) : null;
+}
+// A fact whose words are fixed (#network) opens it itself, by mouse and key.
+function whyFact(el, t, n) {
+  if (!whyFor(t, n)) return el;
+  el.classList.add("why-open");
+  el.setAttribute("role", "button"); el.setAttribute("tabindex", "0");
+  el.setAttribute("data-ticket", t.id); el.setAttribute("data-attempt", String(n)); el.setAttribute("aria-haspopup", "dialog");
+  el.addEventListener("click", (e) => { e.stopPropagation(); openWhy(t.id, n, el); });
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); openWhy(t.id, n, el); } });
+  return el;
+}
+function whyNext(t, n) {
+  return n === t.attempt ? now(t).text : "sent back to the dev-worker: attempt " + (Number(n) + 1);
+}
+function whyPanel(t, w) {
+  const max = reworkMax(), n = w.attempt;
+  const listed = (v, row) => unread(v) ? h("p", {cls: "withheld"}, v.error) : v;
+  const details = unread(w.details) ? listed(w.details)
+    : w.details.length ? h("ul", {}, w.details.map((d) => h("li", {cls: "mono"}, d))) : h("p", {cls: "muted"}, "The gate gave no details.");
+  return [h("div", {cls: "back-top"}, h("h2", {id: "why-title", style: "flex: 1; margin: 0"}, "Why attempt " + shown(n) + " of " + named(t) + " was rejected"),
+      h("button", {type: "button", cls: "close", onclick: closeWhy}, "Close (Esc)")),
+    h("p", {id: "why-line", cls: "mono"}, shown(w.line)),
+    h("p", {id: "why-gate", cls: "muted"}, "gate " + shown(w.gate) + " · judged by " + shown(w.judge)),
+    h("h3", {}, "Details"), h("div", {id: "why-details"}, details),
+    w.sast === null || w.sast === undefined ? null : [h("h3", {}, "New SAST findings"), h("div", {id: "why-sast"}, unread(w.sast) ? listed(w.sast)
+      : h("table", {}, h("tr", {}, ["Rule", "File", "Line"].map((c) => h("th", {}, c))),
+        w.sast.map((f) => h("tr", {}, h("td", {cls: "mono"}, f.rule), h("td", {cls: "mono"}, f.file), h("td", {cls: "mono"}, String(f.line))))))],
+    dl([["Attempt", h("span", {id: "why-attempt"}, "attempt " + shown(n))],
+      max !== null && Number.isInteger(n) ? ["Left", h("span", {id: "why-left"}, Math.max(0, max - n) + " of " + max + " attempts left")] : null,
+      ["Next", h("span", {id: "why-next"}, whyNext(t, n))]])];
+}
+function openWhy(id, n, opener) {
+  const t = ticketsList().find((x) => x.id === id), w = t ? whyFor(t, n) : null;
+  if (!w) return;
+  const d = document.getElementById("why");
+  whyOpener = opener || null;
+  d.replaceChildren(...whyPanel(t, w).flat().filter(Boolean));
+  if (!d.open) d.showModal();
+  d.querySelector("button.close").focus();
+}
+function closeWhy() {
+  const d = document.getElementById("why");
+  if (d.open) d.close();
+  d.replaceChildren();
+  const back = whyOpener;
+  whyOpener = null;
+  if (back && back.isConnected) back.focus();
+}
+(function () {
+  const d = document.getElementById("why");
+  d.addEventListener("cancel", (e) => { e.preventDefault(); closeWhy(); });
+  d.addEventListener("click", (e) => { if (e.target === d) closeWhy(); });
+})();
 
 // --- the card's face (docs/adr/0068 §2) -------------------------------------
 // Who has the ball, as an icon: the actor of the step the tower requests
@@ -810,7 +891,8 @@ function card(t, v) {
     titled(t, v.q),
     nowLine(t),
     h("div", {cls: "badges"}, whoBadge(t), age(t), pips(t),
-      t.outcome && t.outcome.verdict !== "pending" ? chip(t.outcome.verdict) : null),
+      t.outcome && t.outcome.verdict !== "pending"
+        ? (t.outcome.verdict === "NO-GO" && whyButton(t, t.attempt, chip(t.outcome.verdict))) || chip(t.outcome.verdict) : null),
     m ? h("div", {cls: "muted"}, "moved here from " + m.from) : null);
 }
 function adrName(n) {
@@ -854,7 +936,7 @@ function drawer(t) {
       ...agentRows(t)]),
     h("h3", {}, "Timeline"),
     rows.length ? h("ol", {cls: "compact"}, rows.map((r) => h("li", {"data-phase": r.phase},
-      h("span", {}, r.phase), r.verdict ? chip(verdictOf(r)) : h("span", {cls: "muted"}, "—"),
+      h("span", {}, r.phase), r.verdict ? whyRow(t, r, chip(verdictOf(r))) : whyRow(t, r, null) || h("span", {cls: "muted"}, "—"),
       h("span", {cls: "line", title: r.line || ""}, shown(r.line)), h("span", {cls: "at"}, shown(r.at)))))
       : h("p", {cls: "muted"}, "This logbook has no timeline (written before 1.1)."),
     h("h3", {}, "ADRs that govern its perimeter"), adrLinks(t.adrs),
@@ -988,7 +1070,7 @@ function moveFocus(el, key) {
   if (next) next.focus();
 }
 document.addEventListener("keydown", (e) => {
-  if (route().screen !== "kanban") return;
+  if (route().screen !== "kanban" || document.getElementById("why").open) return;
   const el = e.target;
   const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT");
   if (e.key === "Escape" && kanbanView().card) {
@@ -1118,6 +1200,19 @@ function verdictOf(r) {
   if (r.phase === "product" && r.verdict === "questions") return "asked";
   return VERDICTS[r.verdict] || r.verdict;
 }
+// A timeline row that names a rejection opens its why (docs/adr/0078 §4):
+// the gates row of the attempt the gates sent back, and the rework row,
+// which names the rejection of the attempt before it.
+function whyAttemptOf(r) {
+  if (r.phase === "gates" && verdictOf(r) === "NO-GO" && Number.isInteger(r.attempt)) return r.attempt;
+  if (r.phase === "rework" && Number.isInteger(r.attempt)) return r.attempt - 1;
+  return null;
+}
+function whyRow(t, r, inner) {
+  const n = whyAttemptOf(r);
+  const b = n === null ? null : whyButton(t, n, inner || "why");
+  return b || inner;
+}
 function screenTicket(id) {
   const t = ticketsList().find((x) => x.id === id);
   const back = h("p", {cls: "lede"}, h("a", {id: "back-to-kanban", href: "#kanban?card=" + encodeURIComponent(id)}, "← The kanban, with this card open"));
@@ -1131,7 +1226,7 @@ function screenTicket(id) {
       band = b;
       body.push(h("tr", {cls: "band-row", "data-band": b}, h("th", {colspan: "5"}, bandName(b))));
     }
-    body.push(h("tr", {"data-phase": r.phase}, h("td", {}, r.phase), h("td", {}, r.verdict ? chip(verdictOf(r)) : "—"),
+    body.push(h("tr", {"data-phase": r.phase}, h("td", {}, r.phase), h("td", {}, r.verdict ? whyRow(t, r, chip(verdictOf(r))) : whyRow(t, r, null) || "—"),
       h("td", {}, rowDetail(r)), h("td", {cls: "mono at"}, shown(r.at)), h("td", {cls: "muted"}, r.record)));
   });
   const w = now(t);
@@ -1519,10 +1614,11 @@ function netGraph(v) {
   out.push(svg("line", {cls: "wire", x1: 156, y1: lane, x2: 712, y2: lane}));
   gates.forEach((g, i) => {
     const x = x0 + i * step;
-    out.push(svg("g", {cls: "net-gate", "data-gate": g.gate || "", "data-verdict": g.verdict || "", "data-attempt": g.attempt === null ? "" : String(g.attempt), "data-key": g.key},
+    const node = svg("g", {cls: "net-gate", "data-gate": g.gate || "", "data-verdict": g.verdict || "", "data-attempt": g.attempt === null ? "" : String(g.attempt), "data-key": g.key},
       svg("line", {cls: "seg", x1: i ? x - step : 156, y1: lane, x2: x, y2: lane}),
       svg("circle", {cls: "dot", cx: x, cy: lane, r: 8}),
-      svg("text", {x, y: lane + 22, "text-anchor": "end", transform: "rotate(-35 " + x + " " + (lane + 22) + ")", cls: "sub"}, g.gate || "?")));
+      svg("text", {x, y: lane + 22, "text-anchor": "end", transform: "rotate(-35 " + x + " " + (lane + 22) + ")", cls: "sub"}, g.gate || "?"));
+    out.push(g.verdict === "NO-GO" && Number.isInteger(g.attempt) ? whyFact(node, v.t, g.attempt) : node);
   });
   if (review) out.push(svg("g", {id: "net-review", "data-verdict": review.verdict, "data-key": "review"},
     svg("rect", {cls: "node", x: 482, y: lane - 15, width: 76, height: 30, rx: 6}), netLabel(520, lane + 4, "review", "v")));
@@ -1592,7 +1688,7 @@ function screenNetwork(arg) {
     : h("li", {cls: "net-attempt", "data-attempt": String(e.attempt)},
       netFact("div", e),
       h("ul", {}, e.items.filter(shown).map((i) => i.kind === "line"
-        ? netFact("li", i, {cls: "net-fact net-line", "data-gate": i.gate || "", "data-verdict": i.verdict || ""})
+        ? (i.verdict === "NO-GO" ? whyFact : (el) => el)(netFact("li", i, {cls: "net-fact net-line", "data-gate": i.gate || "", "data-verdict": i.verdict || ""}), t, e.attempt)
         : netFact("li", i))),
       e.patch || e.withheld ? h("details", Object.assign({cls: "net-patch", "data-truncated": e.patch ? String(e.patch.truncated === true) : "false"},
         e.attempt === v.attempt ? {open: true} : {}),

@@ -593,3 +593,19 @@ when `ci.head_sha` is the PR's head.
 and from `releases[]` (its stages and the human answer); `./go network`
 prints the same facts in the same words, from the table
 `core/network.py --table` that the page embeds as `#network-words`.
+
+## 1.4: the why of a NO-GO (ADR 0078, 2026-11-12)
+
+All optional; the schema is `core/logbook/1.4.schema.json`.
+
+| Field | From | Rule |
+|---|---|---|
+| `tickets[].ci.sast`, `tickets[].rework[].sast` | `sast.json`'s `new`, copied by `core/steps/ci.sh` on a `sast` NO-GO, carried by `core/steps/rework.sh` | `[{rule, file, line}]`, or `null` for any other gate |
+| `tickets[].rework[].failed` | the ci's `failed`, carried by `core/steps/rework.sh` | the gate's name, `null` for a review or main's check |
+| `tickets[].ci.why`, `tickets[].rework[].why` | the entry itself | `{attempt, judge, gate, line, details, sast}`; `null` on a ci that is not NO-GO; `details` and `sast` withheld as `{ok: false, error: "withheld: …"}` unless the entry's gate lines hold `GO: secrets`, and then the entry's 1.3 `details` is `null` |
+
+A click, Enter or Space on a red gate (the card's NO-GO chip, the back's and
+the timeline's `gates` and `rework` rows, `#network`'s NO-GO gate node and
+stream line) opens `dialog#why`: the line, the gate and judge, the details
+or why they are withheld, the new SAST findings, the attempt, the attempts
+left on `REWORK_MAX_ATTEMPTS` and the next move. It writes nothing.

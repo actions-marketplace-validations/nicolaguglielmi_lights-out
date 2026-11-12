@@ -2,7 +2,7 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.3` (core/logbook/1.3.schema.json) from the
+Assembles `lights-out/logbook/1.4` (core/logbook/1.4.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
@@ -47,7 +47,7 @@ except ImportError:  # run as a script: core/ is sys.path[0]
     from map import SCHEMA as MAP_SCHEMA
     import agents as contract_agents
 
-SCHEMA = "lights-out/logbook/1.3"
+SCHEMA = "lights-out/logbook/1.4"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -359,7 +359,7 @@ def tickets(rels):
             "task": pick(doc.get("task"), TASK_KEYS + ("mcp",)),
             "rework": [judged(r) for r in doc.get("rework") or []],
             "pr": pick(doc.get("pr"), ("number", "url", "base_sha", "head_sha")),
-            "ci": judged(pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha", "lines"))),
+            "ci": ci_entry(doc),
             "review": pick(doc.get("review"), ("role", "verdict", "reason", "harness", "model", "instructions")),
             "merge": pick(doc.get("merge"), ("sha", "head_sha")),
             "map": pick(doc.get("map"), ("sha", "docs_ticket")),
@@ -371,6 +371,16 @@ def tickets(rels):
             "timeline": timeline(doc, tid, rels, perimeter(path)),
         })
     return out
+
+
+def ci_entry(doc):
+    """The ticket's ci, judged; its `why` only on a NO-GO, for the attempt
+    the ticket is at (docs/adr/0078 §2)."""
+    ci = pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha", "lines",
+                              "sast"))
+    if ci is None:
+        return None
+    return judged(ci, doc.get("attempt"), ci.get("verdict") == "NO-GO")
 
 
 def gate_rows(lines):
@@ -386,12 +396,48 @@ def gate_rows(lines):
     return rows
 
 
-def judged(entry):
-    """A ci or rework entry with `gates` in place of its raw `lines`."""
+def secrets_go(gates):
+    """Whether the attempt's secrets gate said GO (docs/adr/0071 §1)."""
+    return any(g.get("gate") == "secrets" and g.get("verdict") == "GO" for g in gates or [])
+
+
+def withheld(attempt):
+    return unread(f"withheld: the secrets gate did not say GO on attempt {attempt}")
+
+
+def why(entry, attempt, judge):
+    """Why an attempt was rejected (docs/adr/0078 §2-§3): the gate, its
+    line, its details and the new SAST findings, the last two withheld
+    until the same attempt's secrets gate said GO."""
+    gates = gate_rows(entry.get("lines")) or []
+    gate = entry.get("failed") if isinstance(entry.get("failed"), str) and entry.get("failed") else None
+    if gate is None:
+        gate = next((g["gate"] for g in gates if g["verdict"] == "NO-GO"), None)
+    shown = secrets_go(gates)
+    details, sast = entry.get("details"), entry.get("sast")
+    return {
+        "attempt": attempt,
+        "judge": entry.get("judge") or judge,
+        "gate": gate,
+        "line": entry.get("line"),
+        "details": (details if isinstance(details, list) else []) if shown else withheld(attempt),
+        "sast": None if sast is None else sast if shown else withheld(attempt),
+    }
+
+
+def judged(entry, attempt=None, rejected=True):
+    """A ci or rework entry with `gates` in place of its raw `lines`, and
+    its `why` when it rejected the attempt (docs/adr/0078 §2): its 1.3
+    `details` null where `why` withholds them."""
     if not isinstance(entry, dict):
         return entry
     out = {k: v for k, v in entry.items() if k != "lines"}
     out["gates"] = gate_rows(entry.get("lines"))
+    out["why"] = why(entry, entry.get("attempt", attempt), "gates") if rejected else None
+    if out["why"] and is_unread(out["why"]["details"]):
+        out["details"] = None
+    if out["why"] and is_unread(out["why"]["sast"]):
+        out["sast"] = None
     return out
 
 
@@ -400,7 +446,7 @@ def shown_patch(patch, gates, attempt):
     (docs/adr/0071 §1): a key a worker pasted never reaches a snapshot."""
     if patch is None:
         return None
-    if any(g.get("gate") == "secrets" and g.get("verdict") == "GO" for g in gates or []):
+    if secrets_go(gates):
         return patch
     return unread(f"withheld: the secrets gate did not say GO on attempt {attempt}")
 
@@ -604,7 +650,8 @@ def timeline(doc, tid, rels, globs):
             current = i == last["ci"]
             rows.append(row("gates", at, ci.get("line") if current else None, "tower ci", state, attempt=h.get("attempt")))
             if current:
-                rows += [row("gate", at, d, "tower ci details") for d in ci.get("details") or []]
+                shown = why(ci, doc.get("attempt"), "gates")["details"] if ci.get("verdict") == "NO-GO" else ci.get("details")
+                rows += [row("gate", at, d, "tower ci details") for d in (shown if isinstance(shown, list) else [])]
         elif step == "review":
             r = doc.get("review") or {}
             rows.append(row("review", at, (r.get("reason") or "").split("\n")[0] or None if i == last["review"] else None,

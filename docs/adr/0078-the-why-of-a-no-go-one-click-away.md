@@ -123,9 +123,13 @@ draws what it drew before.
 
 The DOM contract `ci/console-ui.py` checks:
 
-- every opener is a `button.why-open` (or, in the SVG, an element with
-  `role="button"`, `tabindex="0"` and class `why-open`) carrying
-  `data-ticket` and `data-attempt`; only a NO-GO with a `why` has one;
+- every opener is a `button.why-open` carrying `data-ticket` and
+  `data-attempt`, except on `#network`, where a fact's words are fixed
+  (ADR 0071 §5: the screen and `./go network` say the same text): there
+  the NO-GO gate node of the SVG and the NO-GO line of the stream are
+  themselves the opener, with `role="button"`, `tabindex="0"`, class
+  `why-open` and the same two attributes, and their text is unchanged;
+  only a NO-GO with a `why` has an opener;
 - `dialog#why` holds `#why-line` (the line), `#why-gate` (gate and
   judge), `#why-details` (one `li` per detail, or one `.withheld` with the
   reason), `#why-sast` (only when the record has a `sast` list: one `tr`
