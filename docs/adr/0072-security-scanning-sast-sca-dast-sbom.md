@@ -1,6 +1,6 @@
 # ADR 0072 — Security scanning: SAST judges the diff, a signed SBOM per release, a passive DAST at staging
 
-- Status: proposed, deferred: the owner put it later in the roadmap on 2026-11-11; nothing is built
+- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices (renumbered M43 when it landed, M42 being ADR 0073's); 2026-11-11, decision 1 (SAST on the diff), decision 2 (the SBOM) and decision 3 (DAST at staging, off by default) built the same day, decision 4 in part; see "Built" below
 - Date: 2026-11-11
 - Would amend: ADR 0015 §4 and ADR 0030 §3 (the SAST verdict and the runner's output), ADR 0053 §6 (`sast` leaves the green-base check), ADR 0024 and 0026 (an optional fifth Delivery verb), ADR 0013 §4 (a check at staging), ADR 0025 §1 (`publish.sh` also attests)
 
@@ -152,3 +152,167 @@ zaproxy (v2.17.0, Apache-2.0), nuclei, syft, opengrep, cosign (v3.1.4,
 scan-image); PyPI bandit and semgrep; eslint.org/docs/latest/use/suppressions;
 argoproj.github.io/argo-rollouts/features/canary; Cloud Run tag URLs
 (cloud.google.com blog on gradual rollouts).
+
+## Built
+
+### Decision 1, 2026-11-11 (M43, first slice)
+
+Built as decided, with four precisions found writing it. None changes the
+verdict.
+
+- **`file` is relative to the directory the runner runs from**, the
+  contract's `$WORKLOAD/$WORKLOAD_TEST_ROOT`, not to the repository root:
+  a runner inside `backend-test` or an image cannot know where it sits in
+  the repository. The gate prefixes the run directory's path from the root
+  (`git rev-parse --show-prefix` plus the test root), the mapping
+  `gates/mutation.sh` already uses. Fingerprints and `sast.json` carry
+  repository paths.
+- **The flagged line is read from the tree the runner scanned**, HEAD's
+  checkout and the base's worktree, which are those revisions' files: the
+  line number refers to what was scanned, and the comparison needs no
+  process. The logic is `core/sastdiff.py` (ADR 0052 §2), stdlib, no
+  process; `gates/sast.sh` is the glue.
+- **A HEAD with no finding is GO without scanning the base**: nothing can
+  be new, and nothing is inherited. The second scan costs only where HEAD
+  has findings, so `./go demo`'s PR (a clean HEAD) runs one scan as before.
+- **Each side runs the runner its checkout carries.** In the tower's CI
+  step HEAD's `.lights-out/runners/` are the base's (ADR 0033), and the
+  merge-base's are the base's by definition. An in-tree runner such as
+  `tests/sast/run.sh` stays the PR's own (ADR 0033's amendment).
+
+The mainline step (ADR 0056 §3) still runs `sast test` on the range from
+the last green main: its `sast` now judges what the group adds. Runners
+changed: `app/` and `workloads/minimal` (bandit, `-f json`), both stack
+runners and their copies (bandit, eslint with paths made relative). Tests,
+written from this ADR without the implementation: 38 unit tests in
+`core/tests/test_sastdiff.py`, and `ci/sast-diff.sh` in `./go ci`, which
+drives the real gate on scratch repositories (renames, re-indentation,
+duplicates, the empty tree, a subdirectory workload, old runners on either
+side). `./go demo-gates` keeps the nine verdicts and has two fixtures on a
+base already red at `sast` (a `base/` directory of patches applied first):
+`sast-inherited` GO, `sast-added-on-red-base` NO-GO.
+
+### Decision 2, 2026-11-11 (M43, second slice)
+
+Built as decided. osv-scanner 2.6.0, the pin, has `scan image --archive`
+and `--format spdx-2-3` (its `--help` in the workbench image), so no bump
+and no new binary. Precisions:
+
+- **The archive comes from the engine's API socket**, `GET
+  /images/<name>/get`, the Docker API that podman serves too: the
+  workbench has the socket `./go` mounts and no engine CLI.
+- **The order is SBOM, attestation, `cosign verify-attestation`, then the
+  signature.** A failure at any step before the signature leaves an
+  unsigned image, which `verify.sh` refuses, so even a publish that dies
+  half-way cannot leave a signed image without an SBOM. Reading the
+  attestation back on every publish is the round trip, on every `./go up`
+  and every release.
+- **The scan needs the network**, as `deps` does: `--offline` exited 127
+  with one package, because no local advisory database exists (measured on
+  a scratch Zot, 2026-11-11).
+- **The record reads the digest through an optional Registry verb,
+  `sbom.sh <repo>@<digest>`.** `verify.sh` does not change and launchpad
+  names no registry, so something behind the port has to answer; for Zot
+  it is the OCI referrers API, the sigstore bundle annotated
+  `dev.sigstore.bundle.predicateType: https://spdx.dev/Document`. Without
+  the verb, or without an attestation, `sbom` is null; it is never a
+  verdict. This verb is a structural addition the decision did not name:
+  the owner confirms it or names another way.
+- The tower document's `release` carries `sbom` from the record, and
+  `./go audit` prints it with the `cosign verify-attestation` command.
+- **Measured** on 1ce7cea (GitHub Actions run 43010516593, ci's
+  engine-compat job, docker; run 43010516570, stranger's demo job, rootless
+  podman). Each publish now prints its SBOM time: 10–16 s on docker, 4–5 s
+  on podman, for the bundled image's 1248 SPDX packages. `./go demo`
+  publishes four times, not twice (three times the stable's digest, once
+  the canary's; the log shows the four lines), so the SBOM adds 40–60 s on
+  docker and about 20 s on podman.
+  The demo took 718 s on docker (663 s on 19be6c3, the run before) and
+  573 s on podman (663 s on 19be6c3): within 900 s, and the run-to-run
+  spread on podman is larger than the SBOM's cost.
+- **The inventory covers `uv.lock`.** On the bundled backend image, the
+  SPDX document names all 40 runtime packages of `app/backend/uv.lock`
+  that install on Linux (the 41st, `tzdata`, is marked
+  `sys_platform == 'win32'`); the 31 absent are dev dependencies the image
+  does not ship (measured 2026-11-11 on a saved image, no plane). syft
+  stays unneeded.
+
+### Decisions 3 and 4, 2026-11-11 (M43, third slice)
+
+Built as decided, off by default (`DAST=off` in every profile). Precisions:
+
+- **The scanner is the plane's `zap` service** (`compose.yaml`, profile
+  `dast`, `zaproxy/zap-stable:20261103@sha256:9624669d…`), run once per
+  side with `run --rm` and a tmpfs `/zap/wrk`; the JSON report is printed
+  on stdout, ZAP's log on stderr.
+- **envoy-canary's `canary-url.sh` names a canary-only Envoy listener**,
+  `http://envoy:8081`, on the plane's network, where the scanner runs. It
+  is published on no host port: one more port on the host is one more to
+  collide on, for a check that is off by default. Both scans go through
+  Envoy, so they see the same proxy's headers. argo-rollouts has no
+  `canary-url.sh` yet, so `DAST=on` with it is refused before staging.
+- **The stable is scanned at `APP_URL`, its host replaced by the address
+  the workbench resolves `PLANE_HOST` to**: the scanner is another
+  container, where `host.containers.internal` need not resolve (docker
+  gives it to the workbench through `--add-host`), and the address works
+  on both engines. The host is stripped from every alert anyway. Before
+  either scan the gate reads `status.sh`: a weight other than 0 is
+  `cannot judge`, since `APP_URL` is then not the stable alone.
+- **launchpad**: `DAST=on` without `canary-url.sh` is refused before
+  staging; after `deploy.sh` the gate runs and a NO-GO rolls back at
+  staging (`NO-GO: launchpad — staging: <the gate's reason> → rolled
+  back`). The line is the record's `dast`, the tower document's
+  `release.dast` and a `staging:` line of `./go audit`. Room in
+  launchpad's line debt (ADR 0052 §4) came from moving the stage's JSON
+  into `core/releases.py stage`.
+- **`./go demo-dast`** (and a `dast` job in `ci.yml` on docker and in
+  `podman.yml` on rootless podman): the pull, timed; `DAST_RUNS` (2) times
+  the stable's own image deployed as the canary under another version,
+  which must be GO with nothing new; then a canary built from
+  `app/fixtures/dast/leaky-header` (a middleware adding
+  `X-Powered-By: meetups/<version>`, ZAP rule 10037), published, signed
+  and SBOM'd as any release and released with `DAST=on`, which must roll
+  back at staging on the dast line with the stable still answering.
+- **Decision 4, partly.** The line is in the release record and `./go
+  audit` prints it, and the SBOM digest with the `cosign
+  verify-attestation` command. Not built: the console's timeline (the
+  logbook's schema `lights-out/logbook/1.2` has no field for either; a
+  version bump is the console's own change) and `./go audit` listing
+  `sast`'s inherited findings (the CI step keeps only the gates' line in
+  the tower document, not `sast.json`). The wrapper gets the SAST change
+  for free, as the ADR says.
+
+**Measured** with `./go demo-dast` on ed19c07, 2026-11-11, on the 4.66 GiB
+podman VM (podman 6.1.4, libkrun, macOS; this machine's network):
+
+| What | Time | Provenance |
+|---|---|---|
+| Cold pull of the pinned image | 298 s | measure, `[demo-dast] measure: pull of the zap image` |
+| One scan, warm, of the bundled app | 34–40 s (six scans) | measure, `dast: … zap exited 0 in <n>s` |
+| The stable against itself (two scans) | 76 s and 74 s, both `nothing new (13 inherited)` | measure, two runs |
+| The leaky canary, deploy to rollback | 80 s, 4 new alerts (rule 10037 on 4 paths) | measure |
+
+And on GitHub Actions, the same commit, `ubuntu-latest`:
+
+| What | ci.yml `dast` (docker), run 43025578953 | podman.yml `dast-podman` (podman 5.7.0, rootless), run 43025579032 | Provenance |
+|---|---|---|---|
+| Cold pull of the pinned image | 21 s | 22 s | measure |
+| One scan, warm | 34–39 s | 37–38 s | measure |
+| The stable against itself (two scans) | 77 s, 70 s, both `nothing new (13 inherited)` | 74 s, 76 s, both `nothing new (13 inherited)` | measure |
+| The leaky canary, deploy to rollback | 79 s, 4 new alerts | 79 s, 4 new alerts | measure |
+
+The margin of the slower job on this commit: `./go demo` took 696 s in
+ci's engine-compat (docker) and 599 s in stranger (podman), so 900 − 696
+= 204 s (measure; it was 222 s on ADR 0062's commit). The pull plus two
+scans is 92–99 s on Actions, 372–378 s on the VM.
+
+**Verdict on the default.** By this ADR's own rule, measured on the slower Actions
+job, DAST fits: 99 s against 204 s. It stays off at L0 anyway, and that
+is the owner's call to change. The rule measures a datacentre's network;
+the VM, a laptop on an ordinary connection, pulled the 1.2 GB image in
+298 s, and 372 s on top of stranger's 599 s is 971 s, over the 900 s the
+golden rule allows a first `./go demo`. A cloner pays the pull once, on
+the run the golden rule is about. The choices for the owner: keep it off
+(as built), turn it on at L0 and accept that a slow first pull breaks the
+15 minutes, or turn it on only when the image is already present. At L1
+it is also the owner's call, as decided, since no gate measures L1's time.

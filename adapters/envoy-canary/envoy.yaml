@@ -44,6 +44,30 @@ static_resources:
                                   weight: 100
                                 - name: canary
                                   weight: 0
+    # The canary alone (docs/adr/0072 §3): what canary-url.sh names, so the
+    # passive DAST scan at staging reaches the canary revision and nothing
+    # else. 503 while no canary runs.
+    - name: canary-only
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 8081 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: canary_only
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                route_config:
+                  name: canary-only
+                  virtual_hosts:
+                    - name: canary-only
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/" }
+                          route: { cluster: canary }
   clusters:
     - name: stable
       type: STRICT_DNS

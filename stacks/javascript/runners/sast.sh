@@ -17,10 +17,13 @@
 # `// eslint-disable-next-line <rule> -- <reason>` comment is the escape
 # hatch, reviewed per finding.
 #
-# Output contract (docs/adr/0030 §3): exactly one JSON line {"findings":
-# N} on stdout; the report on stderr; non-zero exit only when eslint
-# itself failed (exit 2, or no JSON to count): its exit 1 for findings is
-# not a tool failure.
+# Output contract (docs/adr/0030 §3, amended by docs/adr/0072 §1): exactly
+# one JSON line on stdout, {"findings": N, "items": [{"rule", "file",
+# "line"}]}, `file` relative to the directory the command runs from (eslint
+# reports absolute paths), what gates/sast.sh fingerprints to tell a new
+# finding from an inherited one; the report on stderr; non-zero exit only
+# when eslint itself failed (exit 2, or no JSON to count): its exit 1 for
+# findings is not a tool failure.
 set -eu
 
 scope=${1:?usage: sast.sh <scope>}
@@ -49,17 +52,19 @@ if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
 fi
 
 # shellcheck disable=SC2016 # the script is node's, its ${} are template strings
-count=$(node -e '
+line=$(node -e '
 const fs = require("node:fs");
+const path = require("node:path");
 const results = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-let n = 0;
+const items = [];
 for (const file of results) {
+  const rel = path.relative(process.cwd(), file.filePath).split(path.sep).join("/");
   for (const m of file.messages) {
-    n += 1;
-    console.error(`${file.filePath}:${m.line}:${m.column} ${m.ruleId ?? "parse"} ${m.message}`);
+    items.push({ rule: m.ruleId ?? "parse", file: rel, line: m.line ?? 0 });
+    console.error(`${rel}:${m.line}:${m.column} ${m.ruleId ?? "parse"} ${m.message}`);
   }
 }
-console.log(n);
+console.log(JSON.stringify({ findings: items.length, items }));
 ' "$out") || { printf 'sast.sh: eslint printed no JSON report -- not a scored run\n' >&2; exit 1; }
 
-printf '{"findings": %s}\n' "$count"
+printf '%s\n' "$line"

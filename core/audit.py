@@ -126,6 +126,11 @@ def chain(doc, ticket):
         lines.append(f"deploy   {f('.release.version')} {state} — {f('.release.verdict')}")
         lines += ["         " + interpolated(n) for n in (dig(doc, "release", "numbers") or [])]
         lines.append(f"         image: {f('.release.image')}")
+        if f(".release.dast"):
+            lines.append(f"         staging: {f('.release.dast')}")
+        if f(".release.sbom"):
+            lines.append(f"         sbom: {f('.release.sbom')}, check with: cosign verify-attestation --type spdxjson "
+                         f"--key <the release key>.pub <registry>/{f('.release.image')}")
         lines.append(f"  ← merge  {f('.merge.sha')} (code host agrees)")
     elif state in ("merged", "main-green"):
         lines.append(f"merge    {f('.merge.sha')} (code host agrees), "

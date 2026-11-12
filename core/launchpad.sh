@@ -59,10 +59,13 @@ rollback() {
 # release run directly). RELEASE_RECORD keeps only the latest; the log
 # keeps them all, for the logbook. Both are written by core/releases.py.
 stages='[]'
-image=""
+image="" dast=""
 record() {
-  # record VERDICT [HELD_AT]
-  python3 core/releases.py record "$1" "${2:-}" "$stages" "$image"
+  # record VERDICT [HELD_AT]; the image's SBOM attestation through the
+  # Registry port's optional sbom.sh, none when it has no such verb
+  # (docs/adr/0072 §2): a digest for the record, never a verdict; and
+  # the DAST line of the staging stage, when DAST=on (§3).
+  python3 core/releases.py record "$1" "${2:-}" "$stages" "$image" "$( [ -z "$image" ] || sh "adapters/$REGISTRY/sbom.sh" "$image" 2>/dev/null || :)" "$dast"
 }
 
 fail_stage() {
@@ -107,9 +110,15 @@ frozen
 # exit 1. cosign's own reason streams to stderr from verify.sh itself.
 image=$(sh "adapters/$REGISTRY/verify.sh" "$CANARY_TAG") || nogo "unsigned image"
 
+# DAST=on (docs/adr/0072 §3) needs the Delivery port's optional
+# canary-url.sh, a URL that reaches the canary alone: refused before staging.
+[ "${DAST:-off}" != on ] || [ -f "$delivery/canary-url.sh" ] || nogo "DAST=on, and DELIVERY=$DELIVERY has no canary-url.sh to reach the canary alone"
+
 record in-progress
 printf '[launchpad] staging: deploying %s at %s (stable is %s)\n' "$CANARY_VERSION" "$image" "$stable_version" >&2
 sh "$delivery/deploy.sh" "$CANARY_VERSION" "$image" >&2 || fail_stage staging "deploy did not become healthy"
+# The passive scan, canary against stable, before any traffic (§3).
+[ "${DAST:-off}" != on ] || dast=$(sh verify/dast.sh) || fail_stage staging "${dast#NO-GO: dast — }"
 
 for pct in 5 25; do
   frozen "$pct%"
@@ -122,10 +131,8 @@ for pct in 5 25; do
   slo_err=$(mktemp)
   slo_out=$(sh verify/slo.sh 2>"$slo_err") && slo_rc=0 || slo_rc=$?
   cat "$slo_err" >&2
-  numbers=$(grep '^slo: ' "$slo_err" | jq -R . | jq -cs .)
+  stages=$(python3 core/releases.py stage "$stages" "$pct" "$slo_out" < "$slo_err")
   rm -f "$slo_err"
-  stages=$(printf '%s' "$stages" | jq -c --argjson pct "$pct" --arg verdict "$slo_out" --argjson numbers "$numbers" \
-    '. + [{pct: $pct, verdict: $verdict, numbers: $numbers}]')
   if [ "$slo_rc" -eq 0 ]; then
     printf '[launchpad] %s%%: GO\n' "$pct" >&2
   else

@@ -17,7 +17,8 @@
 #   (e) a ticket with no `## Perimeter` is refused;
 #   (f) on the bundled app the base check never runs;
 #   (g) on an attached repository a red base refuses the ticket, judged by
-#       `sast` and `test` on the empty range at the code host's HEAD,
+#       `test` alone on the empty range at the code host's HEAD (`sast`
+#       judges the diff, docs/adr/0072 §1),
 #       isolated, and nothing is cached; a green one lets it through and
 #       is cached, so the next ticket on that commit runs no gates;
 #   (h) on an attached repository whose code host does not hold it yet (a
@@ -173,9 +174,11 @@ if assigned 0005; then fail "g(a red base let the ticket through)"; fi
 [ ! -f "$root/crew-ran.0005" ] || fail "g(the worker ran on a red base)"
 case "$(cat "$root/err")" in *"base $sha is red at test"*) ;; *) fail "g(stderr: $(cat "$root/err"))" ;; esac
 [ ! -f "$root/state/bases.$sha.json" ] || fail "g(a red base was cached)"
-for want in 'GATES=sast test' "BASE=$sha" "HEAD=$sha" TOOLCHAIN_ISOLATE=1; do
+for want in 'GATES=test' "BASE=$sha" "HEAD=$sha" TOOLCHAIN_ISOLATE=1; do
   grep -q "$want" "$root/make.log" || fail "g(make was not given $want: $(cat "$root/make.log"))"
 done
+awk '/GATES=[^ ]*sast/ { found = 1 } END { exit !found }' "$root/make.log" \
+  && fail "g(the base check still runs sast: $(cat "$root/make.log"))"
 echo GO > "$root/make-verdict"
 if ! tower resume 0005 || ! tower step 0005 assign; then fail "g(a green base was refused: $(cat "$root/err"))"; fi
 [ -f "$root/state/bases.$sha.json" ] || fail "g(a green base was not cached)"

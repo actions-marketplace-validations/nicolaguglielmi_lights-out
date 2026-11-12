@@ -1,0 +1,33 @@
+From 704d2e90fb5d941d82b5a61e5624bedf81111883 Mon Sep 17 00:00:00 2001
+From: lights-out-fixtures <fixtures@lights-out.invalid>
+Date: Wed, 11 Nov 2026 10:00:00 +0100
+Subject: [PATCH] [M42] fixture base: a module with one bandit finding (B307)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The base of the sast-inherited and sast-added-on-red-base fixtures: an unused module calling eval() on its argument, so the base is red at sast before the change under test (docs/adr/0072 §1). No # nosec: the finding must be there.
+---
+ app/backend/meetups/legacy.py | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+ create mode 100644 app/backend/meetups/legacy.py
+
+diff --git a/app/backend/meetups/legacy.py b/app/backend/meetups/legacy.py
+new file mode 100644
+index 0000000..5c43b56
+--- /dev/null
++++ b/app/backend/meetups/legacy.py
+@@ -0,0 +1,10 @@
++"""Unused: a module the base already carries, with one bandit finding (B307).
++
++It exists only for two fixtures of `make demo-gates`, sast-inherited and
++sast-added-on-red-base (docs/adr/0072 §1): a base that is red at sast
++before the change under test.
++"""
++
++
++def evaluate(expression: str) -> object:
++    return eval(expression)
+-- 
+2.54.0 (Apple Git-157)
+
