@@ -69,8 +69,11 @@ record() {
 }
 
 fail_stage() {
-  # fail_stage STAGE REASON: rolls back, records, then NO-GOs with both in one line.
+  # fail_stage STAGE REASON: rolls back, records with the reason (docs/adr/
+  # 0080 §3), then NO-GOs with both in one line.
   rollback >&2
+  RELEASE_REASON="$1: $2"
+  export RELEASE_REASON
   record rolled-back
   nogo "$1: $2 → rolled back"
 }
@@ -120,18 +123,30 @@ sh "$delivery/deploy.sh" "$CANARY_VERSION" "$image" >&2 || fail_stage staging "d
 # The passive scan, canary against stable, before any traffic (§3).
 [ "${DAST:-off}" != on ] || dast=$(sh verify/dast.sh) || fail_stage staging "${dast#NO-GO: dast — }"
 
+# The thresholds each stage's numbers are read against (docs/adr/0080 §1):
+# the effective policy, as verify/slo.sh reads it, once per release.
+policy=$(mktemp)
+effective_policy "$policy"
+ERROR_RATE_MAX_DELTA=$(sed -n 's/^ERROR_RATE_MAX_DELTA=//p' "$policy")
+LATENCY_P95_MAX_DELTA=$(sed -n 's/^LATENCY_P95_MAX_DELTA=//p' "$policy")
+export ERROR_RATE_MAX_DELTA LATENCY_P95_MAX_DELTA
+rm -f "$policy"
+
 for pct in 5 25; do
   frozen "$pct%"
 
   sh "$delivery/shift.sh" "$pct" >&2 || fail_stage "$pct%" "shift did not take"
 
+  # The stage in course, for the console (docs/adr/0080 §2).
+  started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  python3 core/releases.py running "$stages" "$pct" "$started_at" "$STAGE_SECONDS" "$image" "$dast"
   sleep "$STAGE_SECONDS"
 
   # verify's stderr (the slo: lines) is kept for the record and passed on.
   slo_err=$(mktemp)
   slo_out=$(sh verify/slo.sh 2>"$slo_err") && slo_rc=0 || slo_rc=$?
   cat "$slo_err" >&2
-  stages=$(python3 core/releases.py stage "$stages" "$pct" "$slo_out" < "$slo_err")
+  stages=$(python3 core/releases.py stage "$stages" "$pct" "$slo_out" "$started_at" < "$slo_err")
   rm -f "$slo_err"
   if [ "$slo_rc" -eq 0 ]; then
     printf '[launchpad] %s%%: GO\n' "$pct" >&2

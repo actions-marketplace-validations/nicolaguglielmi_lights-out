@@ -218,6 +218,7 @@ def release_entry(record, at, ticket, answer, origin):
         "stages": record.get("stages") or [],
         "verdict": record.get("verdict"),
         "held_at": record.get("held_at"),
+        "reason": record.get("reason"),
         "at": at,
         "ticket": ticket,
         "answer": answer,
@@ -671,8 +672,11 @@ def timeline(doc, tid, rels, globs):
                 if isinstance(rels, list) else []
             for stage in (mine[-1]["stages"] if mine else []):
                 said = str(stage.get("verdict") or "")
-                rows.append(row("canary", mine[-1]["at"], said, "release log", "GO" if said.startswith("GO") else "NO-GO",
-                                pct=stage.get("pct"), numbers=stage.get("numbers") or []))
+                # A stage judged after docs/adr/0080 §1 has its own time and numbers.
+                more = {"slo": stage["slo"]} if isinstance(stage.get("slo"), list) else {}
+                rows.append(row("canary", stage.get("judged_at") or mine[-1]["at"], said, "release log",
+                                "GO" if said.startswith("GO") else "NO-GO",
+                                pct=stage.get("pct"), numbers=stage.get("numbers") or [], **more))
             rows.append(row("release", at, rel.get("verdict"), "tower release", state))
             answer = mine[-1]["answer"] if mine else None
             if answer:

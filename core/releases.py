@@ -9,10 +9,18 @@ JSON.
         port gives none, docs/adr/0072 §2; DAST, the staging stage's
         verify/dast.sh line, null when DAST is off, §3); a final
         verdict, `held` or `rolled-back`, is also appended to RELEASES_LOG
-        with the time and RELEASE_TICKET (null for a release run directly)
-    python3 core/releases.py stage STAGES PCT VERDICT < SLO_STDERR
-        print STAGES with one more entry, {pct, verdict, numbers}, the
-        numbers being the `slo:` lines of verify/slo.sh's stderr
+        with the time and RELEASE_TICKET (null for a release run directly);
+        a rolled-back record carries RELEASE_REASON as `reason`, null
+        otherwise (docs/adr/0080 §3)
+    python3 core/releases.py stage STAGES PCT VERDICT [STARTED_AT] < SLO_STDERR
+        print STAGES with one more entry, {pct, verdict, numbers,
+        started_at, judged_at, slo}: the numbers are the `slo:` lines of
+        verify/slo.sh's stderr, `slo` the same lines as {query, canary,
+        stable, delta, max_delta}, max_delta from ERROR_RATE_MAX_DELTA and
+        LATENCY_P95_MAX_DELTA (docs/adr/0080 §1)
+    python3 core/releases.py running STAGES PCT STARTED_AT JUDGE_AFTER_S IMAGE [DAST]
+        write RELEASE_RECORD in-progress with the running stage
+        (docs/adr/0080 §2); the log is not touched
     python3 core/releases.py brief
         print the brief rendered from RELEASE_RECORD, the L0 brief: no
         model at L0, the release role writes it from L1
@@ -34,6 +42,7 @@ never rewritten, only appended.
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -59,15 +68,48 @@ def write_record(path, record):
         fh.write(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
 
 
-def record(env, verdict, held_at, stages, image, sbom="", dast=""):
+def record(env, verdict, held_at, stages, image, sbom="", dast="", running=None):
     path, log = paths(env)
     rec = {"version": env.get("CANARY_VERSION", ""), "stable": env.get("STABLE_VERSION", ""),
            "stages": json.loads(stages), "verdict": verdict,
            "held_at": json.loads(held_at) if held_at else None, "image": image, "sbom": sbom or None,
-           "dast": dast or None}
+           "dast": dast or None,
+           "reason": (env.get("RELEASE_REASON") or None) if verdict == "rolled-back" else None}
+    if running is not None:
+        rec["running"] = running
     write_record(path, rec)
     if verdict != "in-progress":
         append(log, {"kind": "release", "at": now(), "ticket": env.get("RELEASE_TICKET") or None, "record": rec})
+
+
+# One `slo:` line of verify/slo.sh's stderr (docs/adr/0080 §1).
+_SLO = re.compile(r"^slo: (\S+) canary\(([^)]*)\)=(no data|-?[0-9.]+) stable\(([^)]*)\)=(no data|-?[0-9.]+)$")
+MAX_DELTA = {"error_rate": "ERROR_RATE_MAX_DELTA", "latency_p95": "LATENCY_P95_MAX_DELTA"}
+
+
+def number(text):
+    return None if text == "no data" else float(text)
+
+
+def slo_of(lines, env):
+    """[{query, canary, stable, delta, max_delta}] from the `slo:` lines; a
+    line off the shape adds nothing."""
+    out = []
+    for line in lines:
+        m = _SLO.match(line)
+        if not m:
+            continue
+        canary, stable = number(m.group(3)), number(m.group(5))
+        key = MAX_DELTA.get(m.group(1))
+        limit = env.get(key) if key else None
+        try:
+            limit = float(limit) if limit not in (None, "") else None
+        except ValueError:
+            limit = None
+        out.append({"query": m.group(1), "canary": canary, "stable": stable,
+                    "delta": None if canary is None or stable is None else round(canary - stable, 3),
+                    "max_delta": limit})
+    return out
 
 
 def brief(rec):
@@ -151,10 +193,15 @@ def main(argv, env=None):
     cmd = argv[0] if argv else ""
     if cmd == "record" and len(argv) in (5, 6, 7):
         record(env, *argv[1:])
-    elif cmd == "stage" and len(argv) == 4:
+    elif cmd == "stage" and len(argv) in (4, 5):
         numbers = [ln.rstrip("\n") for ln in sys.stdin if ln.startswith("slo: ")]
-        print(json.dumps(json.loads(argv[1]) + [{"pct": int(argv[2]), "verdict": argv[3], "numbers": numbers}],
-                         ensure_ascii=False, separators=(",", ":")))
+        entry = {"pct": int(argv[2]), "verdict": argv[3], "numbers": numbers,
+                 "started_at": argv[4] if len(argv) == 5 and argv[4] else None, "judged_at": now(),
+                 "slo": slo_of(numbers, env)}
+        print(json.dumps(json.loads(argv[1]) + [entry], ensure_ascii=False, separators=(",", ":")))
+    elif cmd == "running" and len(argv) in (6, 7):
+        record(env, "in-progress", "", argv[1], argv[5], "", argv[6] if len(argv) == 7 else "",
+               running={"pct": int(argv[2]), "started_at": argv[3], "judge_after_s": int(argv[4])})
     elif cmd == "brief" and len(argv) == 1:
         with open(paths(env)[0], encoding="utf-8") as fh:
             print(brief(json.load(fh)))
@@ -166,7 +213,8 @@ def main(argv, env=None):
     elif cmd == "answer" and len(argv) == 2 and argv[1] in ("GO", "NO-GO"):
         answer(env, argv[1])
     else:
-        print("usage: releases.py record VERDICT HELD_AT STAGES IMAGE [SBOM [DAST]] | stage STAGES PCT VERDICT | brief | plane | answer GO|NO-GO", file=sys.stderr)
+        print("usage: releases.py record VERDICT HELD_AT STAGES IMAGE [SBOM [DAST]] | stage STAGES PCT VERDICT [STARTED_AT]"
+              " | running STAGES PCT STARTED_AT JUDGE_AFTER_S IMAGE [DAST] | brief | plane | answer GO|NO-GO", file=sys.stderr)
         return 2
     return 0
 

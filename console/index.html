@@ -253,6 +253,10 @@ dialog#launch-confirm { padding: 16px 20px; border: 0; border-radius: 12px; widt
 dialog#launch-confirm::backdrop { background: var(--scrim); }
 dialog#launch-confirm textarea { width: 100%; min-height: 4em; box-sizing: border-box; }
 dialog#launch-confirm pre { max-height: 14em; overflow: auto; }
+/* The live canary (docs/adr/0080 §5): one row per stage, no chart. */
+.canary-stage[data-running] td { font-weight: 700; }
+.canary-stage [data-within="false"] { color: var(--nogo); font-weight: 700; }
+#canary-rollback { margin: 0 0 8px; }
 button.why-open { padding: 0 2px; border: 0; background: none; cursor: pointer; font: inherit; }
 .why-open[role="button"] { cursor: pointer; }
 .back-top { display: flex; align-items: flex-start; gap: 10px; }
@@ -762,6 +766,9 @@ function screenOverview() {
       h("a", {href: "#kanban"}, "The kanban →"))];
   if (unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(book.tickets)));
   const all = ticketsList();
+  // A release in course is shown first (docs/adr/0080 §5).
+  const rec = book.launch && book.launch.record;
+  if (rec && !unread(rec) && rec.verdict === "in-progress") out.push(canaryPanel(rec));
   // Waiting for you (docs/adr/0063 §4): exactly the tickets whose now line is a person's turn.
   const yours = all.filter((t) => now(t).turn === "you");
   out.push(h("h2", {}, "Waiting for you"), h("div", {cls: "panel", id: "your-turn"}, yours.length
@@ -1393,10 +1400,53 @@ function drawLaunch() {
   d.addEventListener("cancel", (e) => { e.preventDefault(); closeLaunch(); });
   d.addEventListener("click", (e) => { if (e.target === d) closeLaunch(); });
 })();
+// --- the live canary (docs/adr/0080 §5) ------------------------------------
+// The record's stages, one row each, with the numbers against the stable and
+// the threshold; the stage in course with the time left before its
+// judgement, against the console's read_at, never the browser's clock; and
+// the automatic rollback with its reason. One point per stage: no chart.
+const CANARY_QUERIES = ["error_rate", "latency_p95"];
+function sloCell(st, q) {
+  const m = (Array.isArray(st.slo) ? st.slo : []).find((x) => x.query === q);
+  if (!m) return h("td", {cls: "muted"}, "—");
+  const within = m.delta === null || m.max_delta === null ? null : m.delta <= m.max_delta;
+  return h("td", {cls: "mono", "data-query": q, "data-within": within === null ? null : String(within)},
+    "canary " + shown(m.canary) + " · stable " + shown(m.stable) + " · Δ " + shown(m.delta) + (m.max_delta === null ? "" : " / max " + m.max_delta));
+}
+function timeLeft(run) {
+  const due = Date.parse(run.started_at) + 1000 * Number(run.judge_after_s);
+  if (con && con.mode === "live" && con.read_at && !isNaN(due)) {
+    const s = Math.max(0, Math.round((due - Date.parse(con.read_at)) / 1000));
+    return "judged in about " + s + " s";
+  }
+  return "judged after " + run.judge_after_s + " s";
+}
+function canaryPanel(rec) {
+  if (!rec || unread(rec)) return null;
+  const stages = Array.isArray(rec.stages) ? rec.stages : [];
+  const run = rec.verdict === "in-progress" && rec.running && typeof rec.running === "object" ? rec.running : null;
+  const back = rec.verdict === "rolled-back";
+  const decided = back ? stages.length - 1 : -1;
+  const reason = back ? (rec.reason || (stages.length ? stages[stages.length - 1].verdict : null)) : null;
+  return h("section", {id: "canary", "data-version": rec.version, "data-verdict": rec.verdict},
+    h("h2", {}, "The canary, " + shown(rec.version) + " against stable " + shown(rec.stable)),
+    h("div", {cls: "panel"},
+      back ? h("p", {id: "canary-rollback", cls: "banner err"}, "Rolled back automatically: ", h("span", {cls: "mono"}, shown(reason))) : null,
+      h("table", {}, h("tr", {}, ["Traffic", "Error rate", "Latency p95", "Started", "Judged", "Verdict"].map((c) => h("th", {}, c))),
+        stages.map((st, i) => h("tr", {cls: "canary-stage", "data-pct": String(st.pct), "data-decided": i === decided ? "" : null},
+          h("td", {}, st.pct + "%"), CANARY_QUERIES.map((q) => sloCell(st, q)),
+          h("td", {cls: "mono at"}, shown(st.started_at)), h("td", {cls: "mono at"}, shown(st.judged_at)),
+          h("td", {cls: "mono"}, String(st.verdict || "").startsWith("GO") ? chip("GO") : chip("NO-GO"), " ", shown(st.verdict)))),
+        run ? h("tr", {cls: "canary-stage", "data-pct": String(run.pct), "data-running": ""},
+          h("td", {}, run.pct + "%"), h("td", {colspan: "2", cls: "muted"}, "watching: verify reads the numbers at the end of the stage"),
+          h("td", {cls: "mono at"}, shown(run.started_at)), h("td", {cls: "canary-left"}, timeLeft(run)), h("td", {}, chip("pending"))) : null),
+      rec.verdict === "in-progress" && !run ? h("p", {cls: "muted"}, "Staging: deploying the canary before any traffic.") : null));
+}
 function screenLaunch() {
   const L = book.launch, rec = L.record;
   const out = [h("h1", {}, "Go-for-launch"),
-    h("p", {cls: "lede"}, "The one human decision before 100% of traffic. The same check and the same script as ./go promote.")];
+    h("p", {cls: "lede"}, "The one human decision before 100% of traffic. The same check and the same script as ./go promote."),
+    canaryPanel(rec)];
   if (rec && !unread(rec)) {
     // The ticket this release carries (docs/adr/0063 §3): its release.version is the record's.
     const carried = ticketsList().find((x) => x.release && x.release.version && x.release.version === rec.version);

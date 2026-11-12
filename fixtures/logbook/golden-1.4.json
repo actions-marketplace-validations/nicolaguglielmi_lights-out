@@ -165,20 +165,43 @@
     "record": {
       "held_at": 25,
       "image": "img-d",
+      "reason": null,
       "stable": "0.3.0-b",
       "stages": [
         {
+          "judged_at": "2026-11-04T10:01:02Z",
           "numbers": [
             "slo: error_rate canary(0.5.0-d)=0.000 stable(0.3.0-b)=0.000"
           ],
           "pct": 5,
+          "slo": [
+            {
+              "canary": 0.0,
+              "delta": 0.0,
+              "max_delta": 0.01,
+              "query": "error_rate",
+              "stable": 0.0
+            }
+          ],
+          "started_at": "2026-11-04T10:00:00Z",
           "verdict": "GO"
         },
         {
+          "judged_at": "2026-11-04T10:02:07Z",
           "numbers": [
             "slo: error_rate canary(0.5.0-d)=0.001 stable(0.3.0-b)=0.000"
           ],
           "pct": 25,
+          "slo": [
+            {
+              "canary": 0.001,
+              "delta": 0.001,
+              "max_delta": 0.01,
+              "query": "error_rate",
+              "stable": 0.0
+            }
+          ],
+          "started_at": "2026-11-04T10:01:05Z",
           "verdict": "GO"
         }
       ],
@@ -265,13 +288,25 @@
       "from": "releases.jsonl",
       "held_at": null,
       "image": "img-a",
+      "reason": "5%: error_rate 1.000",
       "stable": "0.1.0",
       "stages": [
         {
+          "judged_at": "2026-11-01T09:28:31Z",
           "numbers": [
             "slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"
           ],
           "pct": 5,
+          "slo": [
+            {
+              "canary": 1.0,
+              "delta": 1.0,
+              "max_delta": 0.01,
+              "query": "error_rate",
+              "stable": 0.0
+            }
+          ],
+          "started_at": "2026-11-01T09:27:30Z",
           "verdict": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back"
         }
       ],
@@ -293,6 +328,7 @@
       "from": "releases.jsonl",
       "held_at": 25,
       "image": "img-n",
+      "reason": null,
       "stable": "0.1.0",
       "stages": [
         {
@@ -328,6 +364,7 @@
       "from": "releases.jsonl",
       "held_at": 25,
       "image": "img-b",
+      "reason": null,
       "stable": "0.1.0",
       "stages": [
         {
@@ -363,6 +400,7 @@
       "from": "releases.jsonl",
       "held_at": 5,
       "image": "img-c",
+      "reason": null,
       "stable": "0.3.0-b",
       "stages": [
         {
@@ -383,20 +421,43 @@
       "from": "release.json",
       "held_at": 25,
       "image": "img-d",
+      "reason": null,
       "stable": "0.3.0-b",
       "stages": [
         {
+          "judged_at": "2026-11-04T10:01:02Z",
           "numbers": [
             "slo: error_rate canary(0.5.0-d)=0.000 stable(0.3.0-b)=0.000"
           ],
           "pct": 5,
+          "slo": [
+            {
+              "canary": 0.0,
+              "delta": 0.0,
+              "max_delta": 0.01,
+              "query": "error_rate",
+              "stable": 0.0
+            }
+          ],
+          "started_at": "2026-11-04T10:00:00Z",
           "verdict": "GO"
         },
         {
+          "judged_at": "2026-11-04T10:02:07Z",
           "numbers": [
             "slo: error_rate canary(0.5.0-d)=0.001 stable(0.3.0-b)=0.000"
           ],
           "pct": 25,
+          "slo": [
+            {
+              "canary": 0.001,
+              "delta": 0.001,
+              "max_delta": 0.01,
+              "query": "error_rate",
+              "stable": 0.0
+            }
+          ],
+          "started_at": "2026-11-04T10:01:05Z",
           "verdict": "GO"
         }
       ],
@@ -642,7 +703,7 @@
           "verdict": null
         },
         {
-          "at": "2026-11-01T09:29:00Z",
+          "at": "2026-11-01T09:28:31Z",
           "line": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
           "numbers": [
             "slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"
@@ -650,6 +711,15 @@
           "pct": 5,
           "phase": "canary",
           "record": "release log",
+          "slo": [
+            {
+              "canary": 1.0,
+              "delta": 1.0,
+              "max_delta": 0.01,
+              "query": "error_rate",
+              "stable": 0.0
+            }
+          ],
           "verdict": "NO-GO"
         },
         {
