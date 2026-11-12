@@ -206,3 +206,30 @@ the base takes a range, not a slice of mutants, and a matrix only exists
 on GitHub, while the runner is what every attached repository uses);
 landing the integration over a cancelled `self` (a red `self` on main
 would push the next base back to the same unjudged range, every time).
+
+## Amendment 2026-11-12: a rewritten history keeps its greens
+
+The history was rewritten once, on 2026-11-12, to fix attributions. GitHub attributes a commit to an account by email, and two kinds of commit were credited to the wrong account:
+- one commit (M39, 2026-11-11) had the author address `nicola@users.noreply.github.com`. That is the old noreply form, with no account id, and it belongs to a stranger's account;
+- 146 commits were credited to `claude`: 51 had `noreply@anthropic.com` as author, and 95 carried `Co-Authored-By: Claude` trailers.
+
+`git filter-repo` changed the authors, committers and those trailers on every branch and tag. It changed no tree: all 640 rewritten commits were checked to have the same tree before and after. Every sha changed, so no commit had a check of its own any more, and §1 would answer every push with `no green ancestor`.
+
+5. **A rewritten commit inherits the green of the commit it replaced.**
+   - **Which commits.** The rule applies to a first-parent ancestor that has no check of its own. A check of its own, red or green, always decides.
+   - **When it inherits.** `.github/rewritten` must name the old commit (filter-repo's commit-map, `<new> <old>` per line, read from the pushed tree). The old commit's own green must pass §1's rule. The API (`repos/<repo>/git/commits/<old>`) must give a tree for the old commit, and that tree must be the ancestor's tree.
+   - **What it gives.** An inherited green is a base, never a record. So the first push after the rewrite mutates its whole range from that base, as a judge before this ADR did.
+   - **Why the tree is the condition.** The gates judge a tree, so the same tree is the same verdict. Without the tree comparison, the file alone could promote any commit, and `ci/range.sh` (e) runs a stand-in that skips the comparison and must fail.
+   - **When the file can go.** Once a branch's own commits have greens, the file is only read for commits older than those. It can be deleted when no branch still forks from before the rewrite.
+   - **The excuses follow the commits.** gitleaks excuses a finding by a fingerprint that names a commit, and the secrets gate reads the fingerprints from the base, never from the change. The base is the merge-base of the given base and HEAD (`require_range`), so it must be a real ancestor. After the rewrite, the base's `.lights-out/.gitleaksignore` named `3fb56bf`, which no longer exists, and the first push was a NO-GO on a finding a human had excused.
+     - **The rule.** A commit with no check of its own inherits its first parent's green when the parent is green (its own, or inherited by the rule above) and the commit's tree is exactly what `.github/excuses.sh` makes of the parent. That script renames each fingerprint whose commit `.github/rewritten` names as replaced, by a commit with the same tree, and changes nothing else.
+     - **How main was laid out.** `main` gained such a commit: `aedc195` replaces `3fb56bf` in the one fingerprint, and the commit carries nothing else. It is the base of the push after it.
+     - **What was tried first.** The first attempt passed a local translated commit as the base. It failed, because the merge-base with HEAD fell back to the untranslated one (run 43199649919).
+     - **The proof.** `ci/range.sh` (e) and (f) prove the rule and the script. A stand-in that skips the tree comparison fails, and so does the `range.sh` without the rule.
+6. **`ci/authors.sh` keeps the history attributed.** On every commit reachable from HEAD, author, committer, `Co-authored-by` and `Signed-off-by` are checked:
+   - no address is `noreply@anthropic.com`;
+   - no `users.noreply.github.com` address lacks its account id.
+
+   Anyone else contributes under their own address (CONTRIBUTING, DCO). The check also runs itself on planted histories: three it must accept and six it must refuse.
+
+Rejected: deleting and recreating the repository, as on 2026-11-04. That loses the stars, the releases, the Marketplace listings and every check run. Also rejected: leaving the attributions. The owner's rule is that no commit names the tools that write this repository, and the stranger's account was credited with 1,111 lines.

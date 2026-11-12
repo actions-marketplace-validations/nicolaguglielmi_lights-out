@@ -32,16 +32,36 @@
 #       no ancestor of HEAD is one NO-GO line; the GO line says how many
 #       lines were skipped and at which short shas; empty or unset JUDGED is
 #       today's lines and today's GO line.
+#   (e) a rewritten history (§5): a first-parent ancestor with no check of
+#       its own that .github/rewritten maps to an old commit inherits the
+#       old commit's green when the old commit's tree, as the API gives it,
+#       is the ancestor's tree; a different tree, a tree the API does not
+#       give, a red old commit, no map, or a check of the ancestor's own
+#       (red) leave the walk going. A commit with no check of its own whose
+#       first parent is green and whose tree is exactly what
+#       .github/excuses.sh makes of that parent inherits the parent's green;
+#       one that also changes another file, translates nothing, or whose
+#       parent is red does not.
+#   (f) the excuses of a rewritten base (§5), as (e)'s translated commits
+#       use them: .github/excuses.sh BASE prints
+#       BASE when nothing is translated, and otherwise a commit whose only
+#       parent is BASE and whose tree is BASE's with every fingerprint of
+#       .lights-out/.gitleaksignore that names an old commit of
+#       .github/rewritten, whose tree the API gives as the new commit's,
+#       naming the new commit; comments and other lines are kept as they
+#       are. A different tree, no map, or a sha the map does not name
+#       leaves BASE. A stand-in that skips the tree comparison must fail.
 #   (d) the checks can fail: (a) and (b) run against stand-ins for
 #       .github/range.sh that take HEAD^1 as the base, always refuse, or
-#       take any commit with a check; (c) against copies of gates/mutation.sh
+#       take any commit with a check, or inherit without comparing trees;
+#       (c) against copies of gates/mutation.sh
 #       that ignore JUDGED, or never run. Each must be reported.
 # Written from the ADR, not from the implementation.
 set -eu
 name=range
 . ci/lib.sh
 
-for f in ci/lib.sh .github/range.sh gates/mutation.sh core/toolchain.sh core/policy.py \
+for f in ci/lib.sh .github/range.sh .github/excuses.sh gates/mutation.sh core/toolchain.sh core/policy.py \
   policy/merge.env .lights-out/workload.env; do
   [ -f "$f" ] || nogo "$f not found"
 done
@@ -89,6 +109,11 @@ while [ "$#" -gt 0 ]; do
 done
 q='?check_name=lights-out%20gates&filter=all&per_page=100'
 case "$path" in
+  repos/o/r/git/commits/*)
+    sha=${path#repos/o/r/git/commits/}
+    if [ -f "$GH_DIR/$sha.commit" ]; then cat "$GH_DIR/$sha.commit"; exit 0; fi
+    echo "gh: Not Found (HTTP 404)" >&2
+    exit 1 ;;
   repos/o/r/commits/*/check-runs"$q") ;;
   *) echo "fake gh: unexpected path $path" >&2; exit 1 ;;
 esac
@@ -362,6 +387,60 @@ cm m2
 want_go p1 a1
 done_case
 
+# (e) a rewritten history: r0..r6 on main, an old commit o5 on an orphan
+# branch that r5 replaced
+oldc() {  # NAME [FILE]: an orphan commit NAME, empty or holding FILE, tagged
+  g checkout -q --orphan "old-$1"
+  if [ -n "${2:-}" ]; then
+    printf 'x\n' > "$d/$2"
+    g add "$2"
+  fi
+  g commit -q --allow-empty -m "$1"
+  g tag "$1"
+  g checkout -q -f main
+}
+rw() {  # NEW OLD: .github/rewritten maps NEW to OLD
+  mkdir -p "$d/.github"
+  printf '%s %s\n' "$(sha "$1")" "$(sha "$2")" >> "$d/.github/rewritten"
+}
+tree() {  # OLD: the API gives OLD's tree
+  printf '{"sha":"%s","tree":{"sha":"%s"}}\n' "$(sha "$1")" "$(g rev-parse "$1^{tree}")" > "$cdir/gh/$(sha "$1").commit"
+}
+lin e-inherit
+oldc o5; green o5 r0; rw r5 o5; tree o5; green r2 r1; want_go r5; done_case
+lin e-tree-differs
+oldc o5 f; green o5 r0; rw r5 o5; tree o5; green r2 r1; want_go r2; done_case
+lin e-tree-unknown
+oldc o5; green o5 r0; rw r5 o5; green r2 r1; want_go r2; done_case
+lin e-old-red
+oldc o5; rid=$((rid + 1)); rec o5 "$rid" failure "r0..o5"; rw r5 o5; tree o5; green r2 r1; want_go r2; done_case
+lin e-own-red
+oldc o5; green o5 r0; rw r5 o5; tree o5; rid=$((rid + 1)); rec r5 "$rid" failure "r4..r5"; green r2 r1; want_go r2; done_case
+lin e-no-map
+oldc o5; green o5 r0; tree o5; green r2 r1; want_go r2; done_case
+lin e-only
+oldc o5; green o5 r0; rw r5 o5; tree o5; want_go r5; done_case
+# r0 r1, r2 adding excuses that name o1, t3 translating them to n1, HEAD r4
+xlate() {  # ID [extra|none]
+  newcase "$1"
+  mkdir -p "$d/.github"; cp "$repo/.github/excuses.sh" "$d/.github/excuses.sh"
+  cm r0 r1
+  oldc o1; oldc n1; tree o1
+  [ "${2:-}" = none ] || rw n1 o1
+  mkdir -p "$d/.lights-out"
+  printf '# why\n%s:a.md:private-key:1\n' "$(sha o1)" > "$d/.lights-out/.gitleaksignore"
+  g add .lights-out/.gitleaksignore; g commit -q -m r2; g tag r2
+  printf '# why\n%s:a.md:private-key:1\n' "$(sha n1)" > "$d/.lights-out/.gitleaksignore"
+  g add .lights-out/.gitleaksignore
+  if [ "${2:-}" = extra ]; then printf 'y\n' > "$d/y"; g add y; fi
+  g commit -q -m t3; g tag t3
+  cm r4
+}
+xlate e-translated; green r2 r1; want_go t3; done_case
+xlate e-translated-extra extra; green r2 r1; green r1 r0; want_go r2; done_case
+xlate e-translated-unmapped none; green r2 r1; want_go r2; done_case
+xlate e-translated-red-parent; rid=$((rid + 1)); rec r2 "$rid" failure "r1..r2"; green r1 r0; want_go r1; done_case
+
 # check_range SCRIPT: the flaws (one line each) of SCRIPT against every case
 check_range() {
   script=$1
@@ -457,9 +536,69 @@ for c in $(git rev-list --first-parent HEAD^1); do
 done
 exit 1
 S
-for broken in naive refuse gh-blind; do
+# inherits without comparing trees: the real script with same_tree always true
+awk '/^same_tree\(\) \{$/ { print "same_tree() { return 0; }"; print "same_tree_unused() {"; n++; next } { print } END { exit n != 1 }' \
+  "$repo/.github/range.sh" > "$t/tree-blind.sh" || fail_case d-range "no same_tree() in .github/range.sh to stand in for"
+for broken in naive refuse gh-blind tree-blind; do
   [ -n "$(check_range "$t/$broken.sh")" ] || fail_case d-range "the cases of (a) and (b) accepted a stand-in that is $broken"
 done
+
+# (f) the excuses of a rewritten base
+check_excuses() {  # SCRIPT: the flaws (one line each) of SCRIPT
+  script=$1
+  for ex in x-translate x-tree-differs x-no-map x-other-sha; do
+    xdir=$t/excuses/$ex
+    rm -rf "$xdir"; mkdir -p "$xdir/gh"
+    d=$xdir/repo cdir=$xdir
+    git init -q "$d"; g symbolic-ref HEAD refs/heads/main
+    g commit -q --allow-empty -m root; g tag root
+    if [ "$ex" = x-tree-differs ]; then oldc o1 f; else oldc o1; fi
+    oldc n1
+    tree o1
+    other=0123456789abcdef0123456789abcdef01234567
+    mkdir -p "$d/.lights-out"
+    {
+      printf '# a reason a human wrote\n'
+      printf '%s:docs/a.md:private-key:3\n' "$(sha o1)"
+      printf '%s:docs/b.md:private-key:9\n' "$other"
+    } > "$d/.lights-out/.gitleaksignore"
+    g add .lights-out/.gitleaksignore; g commit -q -m b0; g tag b0
+    case "$ex" in
+      x-no-map) ;;
+      x-other-sha) rw n1 root ;;  # the map names a commit, not o1
+      *) rw n1 o1 ;;
+    esac
+    rm -f "$t/xout" "$t/xerr"; : > "$t/gh.log"
+    (
+      cd "$d" &&
+      env -i PATH="$t/bin:$PATH" HOME="$t" GITHUB_REPOSITORY=o/r GH_DIR="$xdir/gh" GH_LOG="$t/gh.log" \
+        sh "$script" "$(sha b0)"
+    ) >"$t/xout" 2>"$t/xerr" && xrc=0 || xrc=$?
+    [ "$xrc" -eq 0 ] || { printf '%s: exit %s: %s\n' "$ex" "$xrc" "$(tr '\n' '|' <"$t/xerr")"; continue; }
+    [ "$(awk 'END{print NR}' "$t/xout")" -eq 1 ] || { printf '%s: stdout has %s lines, want 1\n' "$ex" "$(awk 'END{print NR}' "$t/xout")"; continue; }
+    got=$(cat "$t/xout")
+    if [ "$ex" != x-translate ]; then
+      [ "$got" = "$(sha b0)" ] || printf '%s: printed %s, want the base itself\n' "$ex" "$got"
+      continue
+    fi
+    [ "$got" != "$(sha b0)" ] || { printf '%s: printed the base, want a translated commit\n' "$ex"; continue; }
+    [ "$(g rev-list --parents -n 1 "$got" | awk '{print NF}')" -eq 2 ] && [ "$(g rev-parse "$got^1")" = "$(sha b0)" ] \
+      || { printf '%s: the translated commit is not a child of the base alone\n' "$ex"; continue; }
+    [ "$(g diff --name-only "$(sha b0)" "$got")" = .lights-out/.gitleaksignore ] \
+      || { printf '%s: the translated commit changes more than .lights-out/.gitleaksignore\n' "$ex"; continue; }
+    want=$(printf '# a reason a human wrote\n%s:docs/a.md:private-key:3\n%s:docs/b.md:private-key:9' "$(sha n1)" "$other")
+    [ "$(g show "$got:.lights-out/.gitleaksignore")" = "$want" ] \
+      || printf '%s: the translated excuses are [%s], want [%s]\n' "$ex" "$(g show "$got:.lights-out/.gitleaksignore" | tr '\n' '|')" "$(printf '%s' "$want" | tr '\n' '|')"
+  done
+}
+out=$(check_excuses "$repo/.github/excuses.sh")
+if [ -n "$out" ]; then
+  printf '%s\n' "$out" >&2
+  fail_case f-excuses "$(printf '%s\n' "$out" | awk 'END{print NR}') case(s) of .github/excuses.sh failed, first: $(printf '%s\n' "$out" | sed -n 1p)"
+fi
+awk '/^same_tree\(\) \{$/ { print "same_tree() { return 0; }"; print "same_tree_unused() {"; n++; next } { print } END { exit n != 1 }' \
+  "$repo/.github/excuses.sh" > "$t/excuses-blind.sh" || fail_case d-excuses "no same_tree() in .github/excuses.sh to stand in for"
+[ -n "$(check_excuses "$t/excuses-blind.sh")" ] || fail_case d-excuses "the cases of (f) accepted a stand-in that translates without comparing trees"
 
 # ------------------------------------------------------- mutation fixtures
 # The gate runs from a directory of its own (it writes .crew/ under the

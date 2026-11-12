@@ -13,6 +13,10 @@
 #                   is a green record (§2, external_id <base>..<itself>),
 #                   kept only when sound: its records' bases lead to an
 #                   ancestor-or-self of base before an unrecorded commit
+#                   A rewritten ancestor with no check of its own inherits
+#                   the green of the commit .github/rewritten says it
+#                   replaced, when both have the same tree, or of its
+#                   parent, when it only translates the parent's excuses (§5)
 # No green ancestor within $bound first-parent commits: one NO-GO line on
 # stdout, exit 1. Everything else on stderr and in the step summary. Needs
 # git, gh and jq, GH_TOKEN with checks: read.
@@ -50,8 +54,55 @@ latest() {
   cat "$cache/$1"
 }
 
+# same_tree <new> <old>: the API gives <old>'s tree and it is <new>'s.
+same_tree() {
+  ot=$(gh api "repos/$repo/git/commits/$2" 2>/dev/null | jq -r '.tree.sha // empty' 2>/dev/null) || return 1
+  [ -n "$ot" ] && [ "$ot" = "$(git rev-parse "$1^{tree}")" ]
+}
+
+# inherited <sha>: §5, a history rewritten without a change to any tree
+# (an author fixed, a trailer dropped) keeps its greens. The commit has no
+# check of its own, .github/rewritten (git filter-repo's commit-map, "<new>
+# <old>" per line) names the commit it replaced, that commit is green and
+# both have the same tree. It is a base, never a record.
+inherited() {
+  [ -f .github/rewritten ] || return 1
+  old=$(awk -v n="$1" '$1 == n && length($2) == 40 && $2 !~ /[^0-9a-f]/ { print $2; exit }' .github/rewritten)
+  [ -n "$old" ] || return 1
+  case "$(latest "$old")" in success\ *|success) ;; *) return 1 ;; esac
+  same_tree "$1" "$old" || return 1
+  printf 'range: %s inherits the green of %s, which it replaced with the same tree (docs/adr/0074 §5)\n' "$1" "$old" >&2
+}
+
+# own_green <sha>: its own green, or one inherited from the commit it replaced.
+own_green() {
+  case "$(latest "$1")" in
+    success\ *|success) return 0 ;;
+    '') inherited "$1" ;;
+    *) return 1 ;;
+  esac
+}
+
+# translated <sha>: §5, the excuses follow the commits. A commit with no
+# check of its own whose first parent is green (own_green) and whose tree
+# is exactly the tree .github/excuses.sh makes of that parent, the parent's
+# .lights-out/.gitleaksignore with its rewritten commits renamed and
+# nothing else, inherits the parent's green. The secrets gate reads its
+# excuses from the base, so the base must be such a commit for a rewritten
+# history to be judged at all.
+translated() {
+  [ -f .github/excuses.sh ] || return 1
+  p=$(git rev-parse -q --verify "$1^1") || return 1
+  own_green "$p" || return 1
+  x=$(sh .github/excuses.sh "$p" 2>/dev/null) || return 1
+  [ "$x" != "$p" ] && [ "$(git rev-parse "$x^{tree}")" = "$(git rev-parse "$1^{tree}")" ] || return 1
+  printf 'range: %s inherits the green of %s, of which it only translates the excuses (docs/adr/0074 §5)\n' "$1" "$p" >&2
+}
+
 green() {
-  case "$(latest "$1")" in success\ *|success) return 0 ;; *) return 1 ;; esac
+  own_green "$1" && return 0
+  [ -n "$(latest "$1")" ] && return 1
+  translated "$1"
 }
 
 # record <sha>: the base its green record names, when the most recent check
