@@ -45,7 +45,12 @@ to the entry, beside `pct`, `verdict` and `numbers` (unchanged):
   - `query`: the line's query name (`traffic`, `error_rate`,
     `latency_p95`);
   - `canary`, `stable`: the numbers the line prints, `null` where it says
-    `no data`;
+    `no data`, except one case `verify/slo.sh` itself decides: an
+    `error_rate` with `no data` on a side whose `traffic` is above zero is
+    `0`, because verify judges it as zero errors (ADR 0011's empty
+    numerator; found by `./go demo` on 2026-11-13, where the stable's
+    error series is absent and the deciding delta would otherwise be
+    `null`);
   - `delta`: `canary - stable`, rounded to the three decimals the line
     shows; `null` if either is `null`;
   - `max_delta`: the effective policy's `ERROR_RATE_MAX_DELTA` for

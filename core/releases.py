@@ -120,12 +120,16 @@ def slo_of(lines, env):
     """[{query, canary, stable, delta, max_delta}] from the `slo:` lines; a
     line off the shape adds nothing."""
     env = thresholds(env)
+    parsed = [m for m in (_SLO.match(line) for line in lines) if m]
+    # verify/slo.sh's own rule (docs/adr/0011, 0013): with a side's traffic
+    # confirmed, an absent error series is zero errors, not missing data.
+    traffic = next(((number(m.group(3)), number(m.group(5))) for m in parsed if m.group(1) == "traffic"), (None, None))
     out = []
-    for line in lines:
-        m = _SLO.match(line)
-        if not m:
-            continue
+    for m in parsed:
         canary, stable = number(m.group(3)), number(m.group(5))
+        if m.group(1) == "error_rate":
+            canary = 0.0 if canary is None and traffic[0] else canary
+            stable = 0.0 if stable is None and traffic[1] else stable
         key = MAX_DELTA.get(m.group(1))
         limit = env.get(key) if key else None
         try:

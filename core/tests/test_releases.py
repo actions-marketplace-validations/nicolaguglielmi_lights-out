@@ -367,3 +367,33 @@ class AnswerWhy(ReleasesCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ErrorRateWithTraffic(ReleasesCase):
+    """docs/adr/0080 §1: an error_rate with no data on a side whose traffic
+    is above zero is 0, as verify/slo.sh judges it; with no traffic, or no
+    traffic line, it stays null."""
+
+    def slo(self, stderr):
+        code, out = self.call("stage", "[]", "5", "NO-GO: slo", "t", stdin=stderr,
+                              env=dict(self.env, ERROR_RATE_MAX_DELTA="0.01"))
+        self.assertEqual(code, 0)
+        return {m["query"]: m for m in json.loads(out)[0]["slo"]}
+
+    def test_no_data_with_traffic_is_zero(self):
+        got = self.slo("slo: traffic canary(v2)=0.192 stable(v1)=4.291\n"
+                       "slo: error_rate canary(v2)=1.000 stable(v1)=no data\n")
+        self.assertEqual((got["error_rate"]["stable"], got["error_rate"]["delta"]), (0.0, 1.0))
+
+    def test_no_data_without_traffic_stays_null(self):
+        got = self.slo("slo: traffic canary(v2)=0.192 stable(v1)=no data\n"
+                       "slo: error_rate canary(v2)=1.000 stable(v1)=no data\n")
+        self.assertEqual((got["error_rate"]["stable"], got["error_rate"]["delta"]), (None, None))
+        got = self.slo("slo: error_rate canary(v2)=no data stable(v1)=0.000\n")
+        self.assertIsNone(got["error_rate"]["canary"])
+
+    def test_latency_no_data_stays_null_even_with_traffic(self):
+        got = self.slo("slo: traffic canary(v2)=1.0 stable(v1)=1.0\n"
+                       "slo: latency_p95 canary(v2)=no data stable(v1)=0.1\n")
+        self.assertIsNone(got["latency_p95"]["canary"])
+
