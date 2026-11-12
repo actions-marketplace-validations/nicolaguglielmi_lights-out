@@ -75,6 +75,25 @@ jq -n \
     }
   }' > "$HOME/.gemini/settings.json"
 
+# The repository's MCP servers (docs/adr/0073 §8), only when run.sh found
+# some and wrote this harness's translation (adapters/gemini-cli/mcp.sh)
+# into CREW_MCP_DIR: mcpServers and mcp.allowed merged into the settings
+# above (neither key is there before). A server that fails is silent on
+# stderr at this pin; its real error goes only to GEMINI_DEBUG_LOG_FILE,
+# kept in this container's /tmp, and only its `[MCP error]` lines reach
+# CREW_OUT/mcp-errors.log below, which run.sh reads. CREW_MCP_ALLOW is the
+# guard's list (§9), set here where the model cannot change it, empty
+# without servers, so then every MCP call is denied.
+CREW_MCP_ALLOW=""
+if [ -n "${CREW_MCP_DIR:-}" ]; then
+  jq -s '.[0] * .[1]' "$HOME/.gemini/settings.json" "$CREW_MCP_DIR/gemini-mcp.json" > "$HOME/.gemini/settings.json.new"
+  mv "$HOME/.gemini/settings.json.new" "$HOME/.gemini/settings.json"
+  CREW_MCP_ALLOW=$(awk '{ printf "%s%s", sep, $1; sep = " " }' "$CREW_MCP_DIR/allow")
+  GEMINI_DEBUG_LOG_FILE=/tmp/gemini-debug.log
+  export GEMINI_DEBUG_LOG_FILE
+fi
+export CREW_MCP_ALLOW
+
 {
   cat "$TICKET_FILE"
   printf '\n---\n\n'
@@ -95,6 +114,10 @@ timeout "$TIMEOUT_S" gemini \
   --output-format stream-json \
   -m "$MODEL" \
   > "$CREW_OUT/transcript.jsonl" 2> "$CREW_OUT/stderr.log" || rc=$?
+
+if [ -n "${CREW_MCP_DIR:-}" ]; then
+  awk 'index($0, "[MCP error]")' /tmp/gemini-debug.log > "$CREW_OUT/mcp-errors.log" 2>/dev/null || :
+fi
 
 printf '%s' "$rc" > "$CREW_OUT/exit_code"
 exit "$rc"

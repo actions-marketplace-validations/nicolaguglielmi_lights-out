@@ -1,0 +1,1671 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lights-out/logbook/1.3",
+  "title": "lights-out logbook 1.3",
+  "description": "The one document the console reads and a consumer collects (docs/adr/0047 §2, §6; field by field in docs/plans/console.md). Assembled by core/logbook.sh, no clock of its own. An added optional field is a minor version; readers ignore fields they do not know. A source the reader could not read is {ok: false, error}, never a default. 1.1 (docs/adr/0055 §6) adds, all optional: each ticket's feature, priority, questions, product, tasks and timeline, the spec's verdict, line, criteria, by and at; each ticket's wait (ADR 0053's refused assign) and map (ADR 0054); and at the top level kanban, perimeters_held (ADR 0053's perimeters/held) and docs_to_realign (ADR 0054's docs tickets). 1.2 (docs/adr/0059 §3) adds, all optional: the project map's ADRs at the top level (adrs: {map_sha, items}, each with its status, text and the files, tickets and ADRs it is linked to), each ticket's adrs (the ADRs that govern its perimeter's files), and the request row's by and via (docs/adr/0059 §4). 1.3 (docs/adr/0071 §1) adds, all optional: each attempt's members (a network's workers), patch (capped, withheld as {ok: false, error} until its secrets gate said GO) and files; the gates of ci and of every rework entry, one {gate, verdict, line} per gate line; and each ticket's files, one row per path an attempt touched, with its perimeter glob, worker, attempts, tests, ADRs and holders. 1.3 also adds (docs/adr/0073 §10), all optional: agents at the top level, {lines}, what the local contract gives the agents in the wording ./go agents prints, unread when the contract is refused; each ticket's task.mcp (run.json's mcp: the declared servers, the calls the guard allowed and those it denied; null when nothing is declared, §9) and review.instructions ({file, sha256, base}, the reviewer's instructions read from the base, or null).",
+  "type": "object",
+  "required": [
+    "schema",
+    "source",
+    "tickets",
+    "releases",
+    "postmortems",
+    "thresholds",
+    "launch"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "pattern": "^lights-out/logbook/1\\.[0-9]+$"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "commit",
+        "level",
+        "workload",
+        "code_host"
+      ],
+      "properties": {
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "level": {
+          "type": "string"
+        },
+        "workload": {
+          "type": "string"
+        },
+        "code_host": {
+          "type": "string"
+        }
+      }
+    },
+    "tickets": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ticket"
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "releases": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/release"
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "postmortems": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/postmortem"
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "thresholds": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/threshold"
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "launch": {
+      "$ref": "#/$defs/launch"
+    },
+    "docs_to_realign": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ticket",
+              "merge_sha",
+              "docs_ticket",
+              "docs_ticket_state"
+            ],
+            "properties": {
+              "ticket": {
+                "type": "string"
+              },
+              "merge_sha": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "docs_ticket": {
+                "type": "string"
+              },
+              "docs_ticket_state": {
+                "$ref": "#/$defs/str_or_null"
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "kanban": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "state",
+              "tickets"
+            ],
+            "properties": {
+              "state": {
+                "type": "string"
+              },
+              "tickets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "perimeters_held": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ticket",
+              "globs",
+              "state",
+              "holding"
+            ],
+            "properties": {
+              "ticket": {
+                "type": "string"
+              },
+              "globs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "state": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "holding": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "adrs": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "map_sha",
+            "items"
+          ],
+          "properties": {
+            "map_sha": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/adr"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "agents": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "lines"
+          ],
+          "properties": {
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "unread": {
+      "type": "object",
+      "required": [
+        "ok",
+        "error"
+      ],
+      "properties": {
+        "ok": {
+          "const": false
+        },
+        "error": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "str_or_null": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ticket": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "origin",
+        "perimeter",
+        "state",
+        "attempt",
+        "opened_at",
+        "updated_at",
+        "outcome",
+        "spec",
+        "task",
+        "rework",
+        "pr",
+        "ci",
+        "review",
+        "merge",
+        "release",
+        "history"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "perimeter": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/$defs/unread"
+            }
+          ]
+        },
+        "state": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "opened_at": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "outcome": {
+          "type": "object",
+          "required": [
+            "verdict",
+            "judge",
+            "line"
+          ],
+          "properties": {
+            "verdict": {
+              "enum": [
+                "GO",
+                "NO-GO",
+                "pending",
+                "needs-human",
+                "stranded"
+              ]
+            },
+            "judge": {
+              "enum": [
+                "gates",
+                "review",
+                "verify",
+                "human",
+                "step",
+                null
+              ]
+            },
+            "line": {
+              "$ref": "#/$defs/str_or_null"
+            }
+          }
+        },
+        "spec": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "title": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "sha256": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "criteria": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "by": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "verdict": {
+              "enum": [
+                "GO",
+                "NO-GO",
+                null
+              ]
+            },
+            "line": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "at": {
+              "$ref": "#/$defs/str_or_null"
+            }
+          }
+        },
+        "task": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "role": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "harness": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "provider": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "model": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "thinking": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "turns": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tokens": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "duration_s": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "input_sha256": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "replayed": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "mcp": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "sha256",
+                "servers",
+                "calls"
+              ],
+              "properties": {
+                "sha256": {
+                  "type": "string"
+                },
+                "servers": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "unlisted": {
+                  "enum": [
+                    "hidden",
+                    "visible-denied"
+                  ]
+                },
+                "calls": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "server",
+                      "tool",
+                      "count"
+                    ],
+                    "properties": {
+                      "server": {
+                        "type": "string"
+                      },
+                      "tool": {
+                        "type": "string"
+                      },
+                      "count": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                },
+                "denied": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "rework": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "gates": {
+                "$ref": "#/$defs/gates"
+              }
+            }
+          }
+        },
+        "pr": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "number": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "url": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "base_sha": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "head_sha": {
+              "$ref": "#/$defs/str_or_null"
+            }
+          }
+        },
+        "ci": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "verdict": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "failed": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "risk_level": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "decision": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "line": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "details": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "head_sha": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "gates": {
+              "$ref": "#/$defs/gates"
+            }
+          }
+        },
+        "review": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "role": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "verdict": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "reason": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "harness": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "model": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "instructions": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "file",
+                "sha256",
+                "base"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "base": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "merge": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "sha": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "head_sha": {
+              "$ref": "#/$defs/str_or_null"
+            }
+          }
+        },
+        "release": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "version": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "image": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "verdict": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "numbers": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "question"
+            ],
+            "properties": {
+              "question": {
+                "type": "string"
+              },
+              "from": {
+                "enum": [
+                  "product",
+                  "spec"
+                ]
+              },
+              "asked_at": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "answer": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "answered_by": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "answered_via": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "answered_at": {
+                "$ref": "#/$defs/str_or_null"
+              }
+            }
+          }
+        },
+        "product": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "harness": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "provider": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "model": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "thinking": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "turns": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tokens": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "duration_s": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "input_sha256": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "replayed": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "consulted": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "why": {
+              "$ref": "#/$defs/str_or_null"
+            }
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "harness": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "provider": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "model": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "thinking": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "turns": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "tokens": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "duration_s": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "input_sha256": {
+                "$ref": "#/$defs/str_or_null"
+              },
+              "replayed": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "attempt": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "members": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/$defs/member"
+                },
+                "maxItems": 4
+              },
+              "patch": {
+                "$ref": "#/$defs/patch"
+              },
+              "files": {
+                "$ref": "#/$defs/changed"
+              }
+            }
+          }
+        },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/row"
+          }
+        },
+        "feature": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "priority": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2",
+            "P3",
+            null
+          ]
+        },
+        "wait": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "since",
+                "refusals",
+                "holders",
+                "record"
+              ],
+              "properties": {
+                "since": {
+                  "$ref": "#/$defs/str_or_null"
+                },
+                "refusals": {
+                  "type": "integer"
+                },
+                "holders": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "record": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "map": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "sha": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "docs_ticket": {
+              "$ref": "#/$defs/str_or_null"
+            }
+          }
+        },
+        "adrs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "glob",
+              "member",
+              "attempts",
+              "tests",
+              "adrs",
+              "held_by"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "glob": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "member": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "attempts": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "tests": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "adrs": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9]{4}$"
+                }
+              },
+              "held_by": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "required": [
+        "pct",
+        "verdict",
+        "numbers"
+      ],
+      "properties": {
+        "pct": {
+          "type": "integer"
+        },
+        "verdict": {
+          "type": "string"
+        },
+        "numbers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "required": [
+        "answer",
+        "by",
+        "via",
+        "at"
+      ],
+      "properties": {
+        "answer": {
+          "enum": [
+            "GO",
+            "NO-GO"
+          ]
+        },
+        "by": {
+          "type": "string"
+        },
+        "via": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "required": [
+        "version",
+        "stable",
+        "image",
+        "stages",
+        "verdict",
+        "held_at",
+        "at",
+        "ticket",
+        "answer",
+        "from"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "stable": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "image": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stage"
+          }
+        },
+        "verdict": {
+          "enum": [
+            "held",
+            "rolled-back"
+          ]
+        },
+        "held_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "ticket": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "answer": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/answer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from": {
+          "enum": [
+            "releases.jsonl",
+            "release.json"
+          ]
+        }
+      }
+    },
+    "postmortem": {
+      "type": "object",
+      "required": [
+        "name",
+        "title",
+        "window",
+        "release",
+        "chain",
+        "timeline",
+        "causes",
+        "actions",
+        "run"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "window": {
+          "type": "object",
+          "required": [
+            "from",
+            "to"
+          ]
+        },
+        "release": {
+          "type": "object"
+        },
+        "chain": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "event",
+              "anchor",
+              "evidence"
+            ]
+          }
+        },
+        "causes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "cause",
+              "evidence"
+            ]
+          }
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "n",
+              "title",
+              "ticket"
+            ]
+          }
+        },
+        "run": {
+          "type": "object",
+          "required": [
+            "provider",
+            "model",
+            "replayed"
+          ],
+          "properties": {
+            "provider": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "model": {
+              "$ref": "#/$defs/str_or_null"
+            },
+            "replayed": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "threshold": {
+      "type": "object",
+      "required": [
+        "key",
+        "value",
+        "file",
+        "overridden",
+        "judge",
+        "provenance"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "overridden": {
+          "type": "boolean"
+        },
+        "judge": {
+          "enum": [
+            "gates",
+            "verify",
+            "rework"
+          ]
+        },
+        "provenance": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "text"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "decision",
+                    "external",
+                    "measurement"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "launch": {
+      "type": "object",
+      "required": [
+        "record",
+        "plane",
+        "brief",
+        "pressable",
+        "preparable",
+        "disabled_reason"
+      ],
+      "properties": {
+        "record": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "version",
+                "verdict"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "stable": {
+                  "$ref": "#/$defs/str_or_null"
+                },
+                "image": {
+                  "$ref": "#/$defs/str_or_null"
+                },
+                "verdict": {
+                  "type": "string"
+                },
+                "held_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "stages": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/stage"
+                  }
+                },
+                "promoted": {
+                  "type": "object"
+                },
+                "rejected": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/unread"
+            }
+          ]
+        },
+        "plane": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "stable",
+                "canary",
+                "weight"
+              ],
+              "properties": {
+                "stable": {},
+                "canary": {},
+                "weight": {}
+              }
+            },
+            {
+              "$ref": "#/$defs/unread"
+            }
+          ]
+        },
+        "brief": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": [
+                "text",
+                "sha256",
+                "author"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "author": {
+                  "$ref": "#/$defs/str_or_null"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pressable": {
+          "type": "boolean"
+        },
+        "preparable": {
+          "type": "boolean"
+        },
+        "disabled_reason": {
+          "$ref": "#/$defs/str_or_null"
+        }
+      }
+    },
+    "row": {
+      "type": "object",
+      "required": [
+        "phase",
+        "at",
+        "verdict",
+        "line",
+        "record"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "request",
+            "open",
+            "product",
+            "question",
+            "answer",
+            "spec",
+            "assign",
+            "attempt",
+            "rework",
+            "gates",
+            "gate",
+            "review",
+            "merge",
+            "canary",
+            "release",
+            "sign-off",
+            "resume",
+            "outcome",
+            "clarify",
+            "ci",
+            "wait"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "verdict": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "line": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "record": {
+          "type": "string"
+        },
+        "perimeter": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/$defs/unread"
+            }
+          ]
+        },
+        "wait": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "refusals",
+                "since"
+              ],
+              "properties": {
+                "refusals": {
+                  "type": "integer"
+                },
+                "since": {
+                  "$ref": "#/$defs/str_or_null"
+                }
+              }
+            }
+          ]
+        },
+        "by": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "via": {
+          "$ref": "#/$defs/str_or_null"
+        }
+      }
+    },
+    "adr": {
+      "type": "object",
+      "required": [
+        "number",
+        "path",
+        "title",
+        "status",
+        "text",
+        "files",
+        "tickets",
+        "adrs"
+      ],
+      "properties": {
+        "number": {
+          "type": "string",
+          "pattern": "^[0-9]{4}$"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tickets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "adrs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{4}$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "gate_row": {
+      "type": "object",
+      "required": [
+        "gate",
+        "verdict",
+        "line"
+      ],
+      "properties": {
+        "gate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9-]+$"
+        },
+        "verdict": {
+          "enum": [
+            "GO",
+            "NO-GO",
+            null
+          ]
+        },
+        "line": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gates": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/$defs/gate_row"
+      }
+    },
+    "patch": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "text",
+            "bytes",
+            "truncated"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/unread"
+        }
+      ]
+    },
+    "changed": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "added",
+          "removed",
+          "member"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "added": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "removed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "member": {
+            "$ref": "#/$defs/str_or_null"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "member": {
+      "type": "object",
+      "required": [
+        "id",
+        "perimeter",
+        "hand_written",
+        "harness",
+        "model"
+      ],
+      "properties": {
+        "harness": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "provider": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "model": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "thinking": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "turns": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tokens": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "input_sha256": {
+          "$ref": "#/$defs/str_or_null"
+        },
+        "replayed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "perimeter": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hand_written": {
+          "enum": [
+            true,
+            null
+          ]
+        }
+      }
+    }
+  }
+}

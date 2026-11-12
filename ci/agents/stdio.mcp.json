@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "notes": {
+      "command": [
+        "python3",
+        ".lights-out/mcp/notes.py",
+        "--root",
+        "docs"
+      ],
+      "tools": [
+        "search_notes",
+        "get-note"
+      ]
+    }
+  }
+}

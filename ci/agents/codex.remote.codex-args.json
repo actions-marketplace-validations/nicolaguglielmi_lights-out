@@ -1,0 +1,10 @@
+{
+  "mcp_servers.docs.url": "https://mcp.example.com:443/mcp",
+  "mcp_servers.docs.bearer_token_env_var": "MCP_DOCS_TOKEN",
+  "mcp_servers.docs.enabled_tools": [
+    "search_docs"
+  ],
+  "mcp_servers.docs.required": true,
+  "mcp_servers.docs.startup_timeout_sec": 30,
+  "mcp_servers.docs.tool_timeout_sec": 30
+}

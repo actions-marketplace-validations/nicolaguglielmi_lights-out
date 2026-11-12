@@ -27,6 +27,11 @@ project's licence.
 git commit -s
 ```
 
+Use your own address, the one your GitHub account knows. A
+`users.noreply.github.com` address needs its account id
+(`<id>+<login>@users.noreply.github.com`): without the id it can belong to
+someone else's account. `./go ci` checks every commit (`ci/authors.sh`).
+
 There is no CLA. Contributions are licensed under Apache 2.0, like the
 rest of the repository (its §5).
 

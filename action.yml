@@ -15,7 +15,7 @@
 #     - uses: actions/checkout@v7
 #       with:
 #         fetch-depth: 0
-#     - uses: nicolaguglielmi/lights-out@v0.3.1
+#     - uses: nicolaguglielmi/lights-out@v0.4.0
 #
 # `gates: test-proof` or `gates: test-integrity` runs only those gates, as
 # the two standalone Actions in actions/ do. Up to v0.2.0 the path was
@@ -49,6 +49,10 @@ inputs:
     default: ""
   head:
     description: The head of the range judged. Default the checked-out commit.
+    required: false
+    default: ""
+  judged:
+    description: Commits whose trees were already judged, space-separated. Mutation skips the lines the head shares with any of them (docs/adr/0074). Default none, every changed line.
     required: false
     default: ""
   sha:
@@ -94,6 +98,7 @@ runs:
         LO_GATES: ${{ inputs.gates }}
         LO_BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
         LO_HEAD: ${{ inputs.head }}
+        LO_JUDGED: ${{ inputs.judged }}
         LO_PATH: ${{ inputs.path }}
         LO_OUT: ${{ runner.temp }}/lights-out
         LO_DRAFT: ${{ runner.temp }}/lights-out-draft
@@ -110,6 +115,13 @@ runs:
         [ -z "$LO_BASE" ] || set -- "$@" "BASE=$LO_BASE"
         head=${LO_HEAD:-$(git rev-parse HEAD)}
         set -- "$@" "HEAD=$head"
+        # Passed only when given: an image older than docs/adr/0074 refuses JUDGED=.
+        [ -z "$LO_JUDGED" ] || set -- "$@" "JUDGED=$LO_JUDGED"
+        # What this run judged, recorded on the check (docs/adr/0074 §2):
+        # full shas, the base as the image picks it (BASE, else HEAD~1).
+        range=$(printf '%s..%s' "$(git rev-parse -q --verify "${LO_BASE:-$head~1}^{commit}" 2>/dev/null)" \
+          "$(git rev-parse -q --verify "$head^{commit}" 2>/dev/null)")
+        case "$range" in ..*|*..) range="" ;; esac
         # The image refuses some ranges before it creates gates/ (the first
         # run among them): the line's own summary still needs a place.
         mkdir -p "$LO_OUT/gates"
@@ -127,6 +139,7 @@ runs:
         printf 'line=%s\n' "$line" >> "$GITHUB_OUTPUT"
         printf 'verdict=%s\n' "$verdict" >> "$GITHUB_OUTPUT"
         printf 'name=lights-out %s\n' "${cmd:-gates}" >> "$GITHUB_OUTPUT"
+        printf 'range=%s\n' "$range" >> "$GITHUB_OUTPUT"
         # The summary the image wrote, one line per gate; the line alone otherwise.
         summary="$LO_OUT/gates/summary.md"
         [ -s "$summary" ] || printf '### lights-out %s\n\n`%s`\n' "${cmd:-gates}" "$line" > "$summary.line"
@@ -200,6 +213,7 @@ runs:
         LO_LINE: ${{ steps.gates.outputs.line }}
         LO_VERDICT: ${{ steps.gates.outputs.verdict }}
         LO_SUMMARY: ${{ steps.gates.outputs.summary }}
+        LO_RANGE: ${{ steps.gates.outputs.range }}
       run: |
         set -u
         conclusion=failure
@@ -207,10 +221,11 @@ runs:
         # The checks API takes up to 65535 characters of summary.
         summary=$(head -c 65000 "$LO_SUMMARY" 2>/dev/null) || summary=$LO_LINE
         body=$(jq -n --arg name "$LO_NAME" --arg sha "$LO_SHA" --arg c "$conclusion" --arg line "$LO_LINE" \
-          --arg summary "$summary" \
+          --arg summary "$summary" --arg range "$LO_RANGE" \
           --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
           '{name: $name, head_sha: $sha, status: "completed", conclusion: $c,
-            details_url: $url, output: {title: ($line | .[0:255]), summary: $summary}}')
+            details_url: $url, output: {title: ($line | .[0:255]), summary: $summary}}
+           + (if $range == "" then {} else {external_id: $range} end)')
         resp=$(mktemp)
         code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST \
           -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \

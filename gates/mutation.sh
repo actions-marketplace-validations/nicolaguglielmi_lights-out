@@ -43,53 +43,111 @@ toolchain_preflight
 # is what --show-prefix gives.
 workload_prefix=$(git -C "$WORKLOAD" rev-parse --show-prefix) \
   || nogo "$WORKLOAD is not inside a git repository"
-mutation_lines=$(python3 - "$base" "$head" "$WORKLOAD" "$WORKLOAD_MUTATION_SCOPE" \
-  "$workload_prefix" "${WORKLOAD_TEST_ROOT:-}" <<'PY'
+
+# JUDGED (docs/adr/0074 §3-§4): commits whose trees were already judged,
+# space-separated, the caller's claim like BASE. A line HEAD shares with
+# any of them is not mutated again: only the lines HEAD adds against the
+# base AND against every judged tree are. Empty, the gate is today's.
+judged=""
+judged_short=""
+for j in ${JUDGED:-}; do
+  jc=$(git -C "$WORKLOAD" rev-parse -q --verify "$j^{commit}" 2>/dev/null) \
+    || nogo "JUDGED names $j, which is not a commit of the workload's repository (docs/adr/0074 §4)"
+  git -C "$WORKLOAD" merge-base --is-ancestor "$jc" "$head" \
+    || nogo "JUDGED names $j, which is not an ancestor of HEAD $head (docs/adr/0074 §4)"
+  judged="$judged $jc"
+  judged_short="$judged_short $(git -C "$WORKLOAD" rev-parse --short "$jc")"
+done
+judged_short=${judged_short# }
+
+# First line: how many changed lines a judged tree already holds; second:
+# the groups to mutate.
+# shellcheck disable=SC2086 # $judged is a list of shas, split on purpose
+lines_out=$(python3 - "$base" "$head" "$WORKLOAD" "$WORKLOAD_MUTATION_SCOPE" \
+  "$workload_prefix" "${WORKLOAD_TEST_ROOT:-}" $judged <<'PY'
 import re
 import subprocess
 import sys
 
 base, head, workload, scope, workload_prefix, test_root = sys.argv[1:7]
-diff = subprocess.run(
-    ["git", "-C", workload, "diff", "-U0", base, head, "--", scope],
-    capture_output=True, text=True, check=True,
-).stdout
+judged = sys.argv[7:]
 
 # A workload with no extra subdirectory (WORKLOAD_TEST_ROOT="", docs/adr/
 # 0030 §2) strips only the workload's own prefix -- never a trailing
 # double slash, never an accidental no-op strip.
 prefix = workload_prefix + test_root
 hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-file_ranges: dict[str, list[str]] = {}
-current = None
-for line in diff.splitlines():
-    if line.startswith("+++ "):
-        path = line[4:].split("\t", 1)[0]
-        if path == "/dev/null":
-            current = None
-            continue
-        if path.startswith("b/"):
-            path = path[2:]
-        current = path[len(prefix):] if path.startswith(prefix) else path
-    elif current and line.startswith("@@"):
-        m = hunk_re.match(line)
-        if not m:
-            continue
-        start = int(m.group(1))
-        count = int(m.group(2)) if m.group(2) is not None else 1
-        if count == 0:
-            continue
-        file_ranges.setdefault(current, []).append(f"{start}-{start + count - 1}")
 
-groups = [f"{path}={','.join(ranges)}" for path, ranges in sorted(file_ranges.items())]
+
+def added(old):
+    """{path: [(start, end), ...]}: the new side of each hunk of old..HEAD."""
+    diff = subprocess.run(
+        ["git", "-C", workload, "diff", "-U0", old, head, "--", scope],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    file_ranges: dict[str, list[tuple[int, int]]] = {}
+    current = None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            path = line[4:].split("\t", 1)[0]
+            if path == "/dev/null":
+                current = None
+                continue
+            if path.startswith("b/"):
+                path = path[2:]
+            current = path[len(prefix):] if path.startswith(prefix) else path
+        elif current and line.startswith("@@"):
+            m = hunk_re.match(line)
+            if not m:
+                continue
+            start = int(m.group(1))
+            count = int(m.group(2)) if m.group(2) is not None else 1
+            if count == 0:
+                continue
+            file_ranges.setdefault(current, []).append((start, start + count - 1))
+    return file_ranges
+
+
+file_ranges = added(base)
+skipped = 0
+if judged:
+    others = [added(j) for j in judged]
+    kept: dict[str, list[tuple[int, int]]] = {}
+    for path, ranges in file_ranges.items():
+        lines = {n for a, b in ranges for n in range(a, b + 1)}
+        before = len(lines)
+        for other in others:
+            lines &= {n for a, b in other.get(path, []) for n in range(a, b + 1)}
+        skipped += before - len(lines)
+        runs: list[list[int]] = []
+        for n in sorted(lines):
+            if runs and n == runs[-1][1] + 1:
+                runs[-1][1] = n
+            else:
+                runs.append([n, n])
+        if runs:
+            kept[path] = [(a, b) for a, b in runs]
+    file_ranges = kept
+
+groups = [f"{path}={','.join(f'{a}-{b}' for a, b in ranges)}"
+          for path, ranges in sorted(file_ranges.items())]
+print(skipped)
 print(" ".join(groups))
 PY
 ) || nogo "could not read the diff for $base..$head"
+skipped=$(printf '%s\n' "$lines_out" | sed -n 1p)
+mutation_lines=$(printf '%s\n' "$lines_out" | sed -n 2p)
+waived=""
+if [ -n "$judged" ]; then
+  waived=", $skipped lines judged at $judged_short"
+  printf 'mutation: %s changed line(s) of %s..%s already judged at %s (docs/adr/0074 §3)\n' \
+    "$skipped" "$base" "$head" "$judged_short" >&2
+fi
 
 if [ -z "$mutation_lines" ]; then
   printf 'mutation: 0 mutants on changed lines in %s..%s; GO by absence of subject, nothing ran\n' "$base" "$head" >&2
   printf '{"total": 0, "score": null}\n' > "$gates_out/mutation.json"
-  go_with "in $toolchain_where, nothing ran"
+  go_with "in $toolchain_where$waived, nothing ran"
 fi
 
 # MUTATION_BASELINE (measured, the workload's workload.env, docs/adr/0030
@@ -178,4 +236,4 @@ if [ "$ok" -ne 1 ]; then
   nogo "in $toolchain_where: $reason" "$@"
 fi
 
-go_with "in $toolchain_where"
+go_with "in $toolchain_where$waived"

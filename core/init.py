@@ -477,6 +477,10 @@ def write_draft(repo, out, stacks, today, commit):
             "policy.env and runners/ are replaced by this draft in the clone only",
             file=sys.stderr,
         )
+    # Nothing about a repository's review preferences or connectors can be
+    # inferred, so neither roles/ nor mcp.json is drafted (docs/adr/0073 §11).
+    print("init: agents: no role instructions, no MCP servers; see docs/use-on-your-repo.md#agents",
+          file=sys.stderr)
     return d["stack"]
 
 

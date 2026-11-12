@@ -246,7 +246,7 @@ nav .gh{font-size:14px;padding:9px 12px}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
 .shot{margin:0;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}
 .shot.wide{grid-column:1/-1}
-.shot img{display:block;width:100%;height:auto;background:#f6f7f9}
+.shot img,.shot video{display:block;width:100%;height:auto;background:#f6f7f9}
 .shot figcaption{padding:14px 16px 16px;font-size:14px;color:var(--mute)}
 .shot figcaption b{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
 @media (max-width:760px){.shots{grid-template-columns:1fr}}
@@ -340,9 +340,9 @@ html:not(.js) .scene:first-child{opacity:1;visibility:visible;transform:none}
 <header class="hero" id="top">
   <div class="field" aria-hidden="true"><svg id="runway" viewBox="0 0 1600 1000" preserveAspectRatio="xMaxYMid slice"></svg><div class="house"></div></div>
   <div class="wrap">
-    <div class="eyebrow"><span class="dot"></span>GO / NO-GO · v0.3.1 · Apache-2.0</div>
-    <h1>The safety system for a <em>dark factory</em> of AI coding agents.</h1>
-    <p class="lead">A lights-out factory runs in the dark because its safety systems are trusted. lights-out is that system: the guardrails for agents that write and ship code, with Claude Code, Gemini CLI or Codex at the keyboard.</p>
+    <div class="eyebrow"><span class="dot"></span>GO / NO-GO · v0.4.0 · Apache-2.0</div>
+    <h1>Your AI agents ship code. <em>Who checks it?</em></h1>
+    <p class="lead">Tests pass and CI is green, yet nobody verified that those tests prove anything. lights-out judges every pull request an agent opens with numbers, not opinions: the new tests must fail without the change, the mutants on the changed lines must die, nothing may leave the ticket's files. What passes takes 5% of the traffic, rolls itself back on errors, and waits for one human GO before 100%. With Claude Code, Codex or Gemini CLI at the keyboard.</p>
     <div class="cta">
       <button class="btn primary" type="button" data-play="overview" data-name="The tour" data-blurb="from ticket to rollback, on the board"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>Watch the tour<span data-len="overview"></span></button>
       <a class="btn" href="#try">Try it: <code>./go demo</code></a>
@@ -457,7 +457,7 @@ Then the response is not 500 …
         <li class="step on" id="how-1" data-step="1">
           <span class="n">01 · TICKET</span>
           <h3>A ticket draws the perimeter.</h3>
-          <p>A markdown file: the problem, Given/When/Then criteria and a <code>## Perimeter</code> listing the files the change may touch.</p>
+          <p>It starts as a request: a few lines in the console's editor or <code>./go request</code>. The product role asks what is missing, you answer, and the spec gate lets it through only with Given/When/Then criteria and a <code>## Perimeter</code> listing the files the change may touch.</p>
           <p>Every path the agent changes must match it, checked before a pull request exists. One file outside, and no PR is ever opened.</p>
           <span class="src">core/perimeter.sh</span>
         </li>
@@ -523,6 +523,12 @@ Then the response is not 500 …
         <img src="media/console-kanban.jpg" alt="The console's kanban: lists for the tower's states under four coloured bands, Spec, Build, Test and review, Release, the empty lists narrow; each card with its priority and feature labels, whose turn it is, an icon for who has the ball, how long it has been in its state and its rework attempts" loading="lazy">
         <figcaption><b>Kanban</b>One list per tower state, under four bands of the flow, the whole board on one screen. Every card says whose turn it is, a role's or yours with the one thing to do, and its badges show who has the ball, how long it has sat there and how many rework attempts it has used. "Your turn only" keeps what waits for you; search, filters, collapsed lists and the open card live in the link. A card moves only when the tower moves its ticket, and flies there when it does: there is no drag-and-drop.</figcaption>
       </figure>
+      <figure class="shot wide reveal" id="network">
+        <video controls muted playsinline preload="none" poster="media/network.jpg" aria-label="A replay of the console's network screen for ticket 0010: the tower, the six roles, two workers, eight gates lighting up, the mutation gate's NO-GO sending the first attempt back, the second attempt's eight GO, the reviewer, the canary at 5% and 25%, and a person's GO at the human gate">
+          <source src="media/network.mp4" type="video/mp4">
+        </video>
+        <figcaption><b>The governed network, replayed</b>One ticket's agent network from the logbook alone: the tower at the centre, the six roles, the attempt's workers with their harness and model, each gate lighting GO or NO-GO, the rework loop back to the dev-worker, the canary stages and the one human gate before 100%. Beside it every attempt with the gate lines that judged it and its patch; below, the files by perimeter with the tests and ADRs that cover them. This clip is a replay of ticket 0010 in the logbook the tests build, stub data rather than a real run: two workers, the mutation gate's NO-GO, a rework, eight GO, the reviewer, 5% and 25%, and a person's GO. Nothing is running in it. On your own run <code>./go console</code> lights each node as the tower moves the ticket, and <code>./go network</code> prints the same facts in the same words.</figcaption>
+      </figure>
       <figure class="shot reveal">
         <img src="media/console-card.jpg" alt="The back of card 0009 in the dark theme, a dialog over the dimmed board: its labels, Your turn to answer the spec gate's question with an Answer it button, the question itself, the strip of the four bands, and a compact timeline from the request to the spec gate's NO-GO" loading="lazy">
         <figcaption><b>A card's back</b>Click a card, or press Enter, and it turns over above the board: whose turn it is and the one thing to do, the open question itself, where it is in the four bands, and its timeline in a few lines. Esc puts it back. In the dark theme.</figcaption>
@@ -548,7 +554,7 @@ Then the response is not 500 …
         <figcaption><b>The project's decisions</b>This repository's own ADRs, from its project map: by number, title, status, text or a file one cites, each with its files, tickets and linked ADRs. In the dark theme.</figcaption>
       </figure>
     </div>
-    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.2.json</code>), which holds tickets in more states than one demo leaves; its model is a stub. The ADR search reads a logbook built in CI from this repository's own project map.</p>
+    <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.3.json</code>), which holds tickets in more states than one demo leaves; its model is a stub. The ADR search reads a logbook built in CI from this repository's own project map.</p>
     <div class="board-link reveal">
       <p><b>Open it on your own run.</b> After <code>./go demo</code>, <code>./go console</code> serves it on localhost:8098 over the live record.</p>
       <a class="btn" href="https://github.com/nicolaguglielmi/lights-out/tree/main/console">console/ ↗</a>
@@ -606,7 +612,7 @@ Then the response is not 500 …
       <div class="panel reveal">
         <h3>Gates on your repository</h3>
         <p>On every pull request, from <a href="https://github.com/marketplace/actions/lights-out-gates">the Action on the Marketplace</a>. With no <code>.lights-out/</code> contract yet, its first check is NO-GO and carries one drafted from your base, with the two commands that commit it.</p>
-        <div class="code"><button class="copy" type="button" data-copy="permissions:&#10;  contents: read&#10;  checks: write&#10;steps:&#10;  - uses: actions/checkout@v7&#10;    with:&#10;      fetch-depth: 0&#10;  - uses: nicolaguglielmi/lights-out@v0.3.1">copy</button>
+        <div class="code"><button class="copy" type="button" data-copy="permissions:&#10;  contents: read&#10;  checks: write&#10;steps:&#10;  - uses: actions/checkout@v7&#10;    with:&#10;      fetch-depth: 0&#10;  - uses: nicolaguglielmi/lights-out@v0.4.0">copy</button>
 <pre>permissions:
   contents: read
   checks: write
@@ -614,11 +620,11 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.1</pre></div>
+  - uses: nicolaguglielmi/lights-out@v0.4.0</pre></div>
         <p>The <code>lights-out</code> wrapper runs init and the gates from the same image, inside your repository, without cloning lights-out.</p>
-        <div class="code"><button class="copy" type="button" data-copy="mkdir -p ~/.local/bin&#10;curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.3.1/lights-out&#10;chmod +x ~/.local/bin/lights-out">copy</button>
+        <div class="code"><button class="copy" type="button" data-copy="mkdir -p ~/.local/bin&#10;curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.4.0/lights-out&#10;chmod +x ~/.local/bin/lights-out">copy</button>
 <pre><span class="p">$ </span>mkdir -p ~/.local/bin
-<span class="p">$ </span>curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.3.1/lights-out
+<span class="p">$ </span>curl -fsSL -o ~/.local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.4.0/lights-out
 <span class="p">$ </span>chmod +x ~/.local/bin/lights-out</pre></div>
         <div class="code"><button class="copy" type="button" data-copy="cd ~/code/your-repo&#10;lights-out doctor&#10;lights-out init&#10;cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/&#10;git add .lights-out &amp;&amp; git commit -m &quot;add lights-out contract&quot;&#10;lights-out gates">copy</button>
 <pre><span class="p">$ </span>cd ~/code/your-repo
@@ -627,7 +633,7 @@ steps:
 <span class="p">$ </span>cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
 <span class="p">$ </span>git add .lights-out &amp;&amp; git commit -m "add lights-out contract"
 <span class="p">$ </span>lights-out gates     <span class="m"># judges the last commit</span></pre></div>
-        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out-gates:0.3.1</code>, amd64 and arm64, 508 MB unpacked, signed keyless with Sigstore: <a href="https://github.com/nicolaguglielmi/lights-out#1-gates-on-your-repository">verify it, or pin it by digest</a>. <code>test-proof</code> and <code>test-integrity</code> are also Actions of their own.</p>
+        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out-gates:0.4.0</code>, amd64 and arm64, 508 MB unpacked, signed keyless with Sigstore: <a href="https://github.com/nicolaguglielmi/lights-out#1-gates-on-your-repository">verify it, or pin it by digest</a>. <code>test-proof</code> and <code>test-integrity</code> are also Actions of their own.</p>
         <p class="fine">No engine at hand? <code>uvx lights-out-gates --light</code> runs the gates that need only git and Python, in under a second, and names the ones it did not run.</p>
       </div>
     </div>

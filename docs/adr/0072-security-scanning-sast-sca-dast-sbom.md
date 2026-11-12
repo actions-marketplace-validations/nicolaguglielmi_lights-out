@@ -1,6 +1,6 @@
 # ADR 0072 — Security scanning: SAST judges the diff, a signed SBOM per release, a passive DAST at staging
 
-- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices; 2026-11-11, decision 1 (SAST on the diff), decision 2 (the SBOM) and decision 3 (DAST at staging, off by default) built the same day, decision 4 in part; see "Built" below
+- Status: proposed, deferred by the owner on 2026-11-11, then asked to be built the same day as M42 in three slices (renumbered M43 when it landed, M42 being ADR 0073's); 2026-11-11, decision 1 (SAST on the diff), decision 2 (the SBOM) and decision 3 (DAST at staging, off by default) built the same day, decision 4 in part; see "Built" below
 - Date: 2026-11-11
 - Would amend: ADR 0015 §4 and ADR 0030 §3 (the SAST verdict and the runner's output), ADR 0053 §6 (`sast` leaves the green-base check), ADR 0024 and 0026 (an optional fifth Delivery verb), ADR 0013 §4 (a check at staging), ADR 0025 §1 (`publish.sh` also attests)
 
@@ -155,7 +155,7 @@ argoproj.github.io/argo-rollouts/features/canary; Cloud Run tag URLs
 
 ## Built
 
-### Decision 1, 2026-11-11 (M42, first slice)
+### Decision 1, 2026-11-11 (M43, first slice)
 
 Built as decided, with four precisions found writing it. None changes the
 verdict.
@@ -192,7 +192,7 @@ side). `./go demo-gates` keeps the nine verdicts and has two fixtures on a
 base already red at `sast` (a `base/` directory of patches applied first):
 `sast-inherited` GO, `sast-added-on-red-base` NO-GO.
 
-### Decision 2, 2026-11-11 (M42, second slice)
+### Decision 2, 2026-11-11 (M43, second slice)
 
 Built as decided. osv-scanner 2.6.0, the pin, has `scan image --archive`
 and `--format spdx-2-3` (its `--help` in the workbench image), so no bump
@@ -237,7 +237,7 @@ and no new binary. Precisions:
   does not ship (measured 2026-11-11 on a saved image, no plane). syft
   stays unneeded.
 
-### Decisions 3 and 4, 2026-11-11 (M42, third slice)
+### Decisions 3 and 4, 2026-11-11 (M43, third slice)
 
 Built as decided, off by default (`DAST=off` in every profile). Precisions:
 

@@ -16,7 +16,14 @@ set -eu
 : "${ROLE:=dev-worker}"
 
 python3 core/assign.py "$TICKET"
-[ -z "${WORKLOAD_ATTACHED:-}" ] || sh core/base-gates.sh
+# On an attached repository the code host is bootstrapped first, so the
+# base judged is the commit core/crew.sh's own bootstrap leaves there and
+# the worker clones, and a fresh plane has something to fetch (ci/assign.sh
+# case h). Idempotent: crew.sh bootstraps again.
+if [ -n "${WORKLOAD_ATTACHED:-}" ]; then
+  sh "adapters/$CODE_HOST/bootstrap.sh" >&2 || { printf '[assign] %s bootstrap failed\n' "$CODE_HOST" >&2; exit 1; }
+  sh core/base-gates.sh
+fi
 
 crew_dir=".crew/$TICKET"
 TICKET="$TICKET" ROLE="$ROLE" sh core/crew.sh >&2
@@ -24,7 +31,7 @@ TICKET="$TICKET" ROLE="$ROLE" sh core/crew.sh >&2
 # shellcheck disable=SC1090,SC1091 # written by crew.sh just now
 . "$crew_dir/pr-opened.env"
 # Who ran it and what it cost (docs/adr/0047 §2, P1), from run.json.
-task=$(python3 core/tower.py task "$crew_dir/out/run.json")
+task=$(python3 core/tower.py task --patch "$crew_dir/out/run.json")
 spec_sha=$(sha256sum "$crew_dir/ticket.md" | cut -d' ' -f1)
 spec_title=$(head -n1 "$crew_dir/ticket.md" | sed 's/^# *//')
 

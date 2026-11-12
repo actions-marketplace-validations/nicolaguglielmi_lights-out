@@ -3,10 +3,53 @@
   "state": "assigned",
   "attempt": 1,
   "history": [
-    {"step": "open", "state": "opened", "at": "2026-11-03T09:00:00Z"},
-    {"step": "assign", "state": "assigned", "at": "2026-11-03T09:01:00Z", "attempt": 1},
-    {"step": "ci", "state": "assigned", "at": "2026-11-03T09:05:00Z", "attempt": 1, "error": "ci step failed: the gates did not run"}
+    {
+      "step": "open",
+      "state": "opened",
+      "at": "2026-11-03T09:00:00Z"
+    },
+    {
+      "step": "assign",
+      "state": "assigned",
+      "at": "2026-11-03T09:01:00Z",
+      "attempt": 1
+    },
+    {
+      "step": "ci",
+      "state": "assigned",
+      "at": "2026-11-03T09:05:00Z",
+      "attempt": 1,
+      "error": "ci step failed: the gates did not run"
+    }
   ],
-  "spec": {"title": "Rename a column", "sha256": "4444444444444444444444444444444444444444444444444444444444444444"},
-  "task": {"role": "dev-worker", "harness": "replay", "model": "stub-model"}
+  "spec": {
+    "title": "Rename a column",
+    "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "task": {
+    "role": "dev-worker",
+    "harness": "replay",
+    "model": "stub-model"
+  },
+  "tasks": [
+    {
+      "role": "dev-worker",
+      "harness": "replay",
+      "model": "stub-model",
+      "attempt": 1,
+      "patch": {
+        "text": "From d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4 Mon Sep 17 00:00:00 2001\nFrom: replay <replay@example.invalid>\nSubject: [PATCH] rename the column\n\n---\n app/backend/migrations/0002_rename.py | 1 +\n 1 file changed, 1 insertion(+)\n\ndiff --git a/app/backend/migrations/0002_rename.py b/app/backend/migrations/0002_rename.py\nnew file mode 100644\n--- /dev/null\n+++ b/app/backend/migrations/0002_rename.py\n@@ -0,0 +1 @@\n+RENAME = (\"name\", \"title\")\n--\n",
+        "bytes": 442,
+        "truncated": false
+      },
+      "files": [
+        {
+          "path": "app/backend/migrations/0002_rename.py",
+          "added": 1,
+          "removed": 0,
+          "member": null
+        }
+      ]
+    }
+  ]
 }

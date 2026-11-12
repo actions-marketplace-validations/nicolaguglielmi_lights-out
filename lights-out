@@ -8,7 +8,8 @@
 # clone's: git clone && ./go demo.
 #
 #   lights-out init [HEAD=]             draft .lights-out/ for this repository (or that commit), outside it
-#   lights-out gates [BASE= HEAD=]      judge the last commit, or a range; STAGED=1 judges what is staged
+#   lights-out gates [BASE= HEAD=]      judge the last commit, or a range; STAGED=1 judges what is staged;
+#                                       JUDGED="<sha> ..." names trees already judged, whose lines mutation skips (docs/adr/0074)
 #   lights-out test-proof [BASE= HEAD=]     only test and test-proof: the tests a change adds fail on its base
 #   lights-out test-integrity [BASE= HEAD=] only test-weakening and mutation: no test weakened, mutants killed
 #   lights-out triage ALERT=<file>      an alert in, an incident out (PROFILE=l1 and a key on your alerts)
@@ -27,7 +28,7 @@
 # your environment by name, never from a file.
 set -eu
 
-version=0.3.1
+version=0.4.0
 gates_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out-gates:$version}
 full_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out:$version}
 keys="GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY"
@@ -47,8 +48,8 @@ case "$cmd" in
 esac
 for a do
   case "$a" in
-    BASE=*|HEAD=*|STAGED=*|ALERT=*|INCIDENT=*|PROFILE=*|MODEL_PROVIDER=*|MODEL=*) ;;
-    *) die "'$a' is not an argument lights-out takes; one of BASE= HEAD= STAGED= ALERT= INCIDENT= PROFILE= MODEL_PROVIDER= MODEL=" ;;
+    BASE=*|HEAD=*|JUDGED=*|STAGED=*|ALERT=*|INCIDENT=*|PROFILE=*|MODEL_PROVIDER=*|MODEL=*) ;;
+    *) die "'$a' is not an argument lights-out takes; one of BASE= HEAD= JUDGED= STAGED= ALERT= INCIDENT= PROFILE= MODEL_PROVIDER= MODEL=" ;;
   esac
 done
 

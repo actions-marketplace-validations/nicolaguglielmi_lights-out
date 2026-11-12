@@ -42,7 +42,13 @@ export
 # are := and exported, never ?=, because demo-seam and demo-gates re-enter
 # make with a different WORKLOAD and export is what hands the parent's
 # values down to that recursive call.
-COMPOSE_FILE := compose.yaml:$(WORKLOAD_CONTRACT)/compose.yaml
+# A contract with the gates half only has no compose file (docs/adr/0042
+# §7), and the crew's own services must still load (ci/attach.sh case g).
+# The root file alone is not a project (envoy and prometheus depend on
+# `backend`), so such a contract gets the arrangement harness-conformance
+# uses: the smallest workload fragment that defines `backend`, never
+# started, since `make up` refuses a contract without its own compose.yaml.
+COMPOSE_FILE := compose.yaml:$(if $(wildcard $(WORKLOAD_CONTRACT)/compose.yaml),$(WORKLOAD_CONTRACT)/compose.yaml,workloads/minimal/.lights-out/compose.yaml)
 export COMPOSE_FILE
 FLAGS_FILE := $(WORKLOAD_CONTRACT)/flags/flags.json
 export FLAGS_FILE
@@ -215,7 +221,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin plan contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -303,14 +309,25 @@ board: ## The flight readiness board on localhost:8099: the pipeline explained, 
 logbook: ## Write the logbook, the record a client's console reads: [LOGBOOK_FILE=.crew/logbook.json] (docs/adr/0047 §2)
 	@sh core/logbook.sh
 
-# The console (docs/adr/0047, 0055, 0059): the client's ten screens over the
+# The governed network in text (docs/adr/0071 §4): the facts the console's
+# #network screen draws, in the same words, from the same logbook. Without
+# NETWORK_LOGBOOK it writes the logbook first, its line on stderr. A view,
+# not a gate: exit 1 when the logbook cannot be read, 2 for a TICKET or an
+# ATTEMPT it does not hold.
+.PHONY: network
+network: ## The agent network of one ticket in text: the graph, every attempt with its gate lines and patch, the files by perimeter: [TICKET=] [ATTEMPT=] [NETWORK_LOGBOOK=<file>] (docs/adr/0071)
+	@book="$(NETWORK_LOGBOOK)"; \
+	if [ -z "$$book" ]; then sh core/logbook.sh >&2 || exit 1; book="$${LOGBOOK_FILE:-.crew/logbook.json}"; fi; \
+	python3 core/network.py --logbook "$$book" --ticket "$(if $(filter file,$(origin TICKET)),,$(TICKET))" --attempt "$(ATTEMPT)"
+
+# The console (docs/adr/0047, 0055, 0059, 0071): the client's eleven screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the
 # answer to a ticket's open question through `make answer` and a new
 # request through `make request`; a spec check writes nothing. ./go publishes
 # it on the host's loopback, CONSOLE_PORT to move it; CONSOLE_SNAPSHOT=<file>
 # serves a logbook file with no plane behind it.
 .PHONY: console
-console: ## The console on localhost:8098: ten screens (kanban, specs, new request, ADR search, each ticket's timeline, go-for-launch, thresholds...), three writes (docs/adr/0047, 0055, 0059)
+console: ## The console on localhost:8098: eleven screens (kanban, the agent network, specs, new request, ADR search, each ticket's timeline, go-for-launch, thresholds...), three writes (docs/adr/0047, 0055, 0059)
 	@python3 console/serve.py
 
 # M11's acceptance (docs/adr/0047 §4): demo-launch's sequence, but the
@@ -437,7 +454,7 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk,
 	failed=""; failreason=""; \
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
-		out=$$(BASE="$$base" HEAD="$$head" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
+		out=$$(BASE="$$base" HEAD="$$head" JUDGED="$(JUDGED)" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
 		printf '%s\n' "$$out" >> "$(GATES_OUT)/lines"; \
 		case "$$out" in \
 			"GO: $$g"|"GO: $$g — "*) ;; \
@@ -1367,6 +1384,13 @@ demo-init: ## Prove attach, init and gates without the plane on workloads/minima
 init: ## Draft the attached repository's .lights-out/ in the clone, baseline measured, never in your repository: ./go init <path> (docs/adr/0042 §6)
 	@sh core/init.sh
 
+# What the workload's contract gives the agents (docs/adr/0073 §10): the
+# reviewers' role files and the dev-worker's MCP servers, one line each on
+# stderr, then the one contract line. No plane, no model, no engine.
+.PHONY: agents
+agents: ## What the contract gives the agents: the reviewers' role files, the dev-worker's MCP servers (docs/adr/0073)
+	@python3 core/agents.py gate --contract "$(WORKLOAD_CONTRACT)"
+
 # What `./go attach <path>` runs once the clone exists (docs/adr/0037 §1,
 # §7): the attached repository's contract, checked the way ci/workloads.sh
 # checks the ones in this checkout.
@@ -1441,11 +1465,12 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 # beside it; the worker image is built on the workbench, not the workload's
 # toolchain. CONFORMANCE_HARNESS=<name> runs one. The suite is proved first,
 # on a made-up harness and a stand-in for compose, to accept a good harness
-# and refuse thirty-three wrong ones, its probe proved one way out at a time
+# and refuse fifty-four wrong ones (two good runs), its probe proved one way out at a time
+# and its port picker under the proxy's load
 # (gates/harness-conformance/proof.sh): a
 # suite that cannot fail would say GO to everything.
 .PHONY: harness-conformance
-harness-conformance: ## Every CLI harness against a scripted model, ten cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
+harness-conformance: ## Every CLI harness against a scripted model, eleven cases, no key: [CONFORMANCE_HARNESS=<name>] (docs/adr/0041 §8)
 	@sh gates/harness-conformance/proof.sh
 	@CONFORMANCE=1 \
 		WORKLOAD=workloads/minimal WORKLOAD_CONTRACT=workloads/minimal/.lights-out \

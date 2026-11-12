@@ -23,7 +23,8 @@
 #              check-runs; jobs that use ./ hold at most contents: read +
 #              checks: write, and none still uses ./action; packages: write
 #              and id-token: write only package.yml's publish (v* tag or
-#              workflow_dispatch), which runs a keyless cosign sign; every job
+#              workflow_dispatch), which runs a keyless cosign sign, and
+#              id-token: write also its pypi job (ADR 0075 §2); every job
 #              has the github.com guard (ADR 0039).
 #   first run  (docs/adr/0064 §2, §4) the first-run reason, `the repository has no
 #              .lights-out/workload.env committed; lights-out init drafts one`,
@@ -324,7 +325,8 @@ def flaws(d):
         for n, j in (doc.get("jobs") or {}).items():
             p = j.get("permissions", doc.get("permissions"))
             for k in ("packages", "id-token"):
-                if perm(p, k) and not (path == PKG and n == "publish"):
+                # ADR 0075 §2: the pypi job holds id-token: write too, for trusted publishing; never packages: write.
+                if perm(p, k) and not (path == PKG and (n == "publish" or (n == "pypi" and k == "id-token"))):
                     # The one other id-token: write is a GitHub Pages deploy (pages: write, site.yml), which signs nothing.
                     if k == "id-token" and path != PKG and isinstance(p, dict) and p.get("pages") == "write":
                         continue
@@ -441,6 +443,8 @@ CASES = [
     ("another workflow holds id-token: write", lambda d: other(d, **{"id-token": "write"}), "holds id-token: write; only package.yml's publish"),
     ("a package.yml job holds pages: write and id-token: write", lambda d: Q(d).update(permissions={"pages": "write", "id-token": "write"}), "holds id-token: write; only package.yml's publish"),
     ("another workflow's job holds id-token: write and nothing for Pages", lambda d: other(d, **{"id-token": "write", "contents": "read"}), "holds id-token: write; only package.yml's publish"),
+    ("pypi holds packages: write", lambda d: J(d).setdefault("pypi", {"if": S, "steps": []}).update(permissions={"id-token": "write", "packages": "write"}), "job pypi holds packages: write; only package.yml's publish"),
+    ("a job named pypi in another workflow holds id-token: write", lambda d: Y(d).update({".github/workflows/o.yml": {"jobs": {"pypi": {"permissions": {"id-token": "write"}, "steps": []}}}}), "job pypi holds id-token: write; only package.yml's publish"),
     ("a workflow holds write-all", lambda d: Y(d)[PKG].update(permissions="write-all"), "only package.yml's publish"),
     ("publish runs on every push", lambda d: J(d)["publish"].update({"if": S}), "job publish: if"),
     ("publish: && and || ungrouped", lambda d: J(d)["publish"].update({"if": S + " && startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'"}), "job publish: if"),
@@ -539,7 +543,7 @@ try wrapper_flaws "semver" 'sed -i "s/^version=.*/version=1.2/" lights-out'
 try wrapper_flaws "semver" 'sed -i "/^version=/p" lights-out'
 try wrapper_flaws "unknown subcommand is not refused" 'sed -i "s/^  \*) die .unknown command.*/  *) ;;/" lights-out'
 try wrapper_flaws "is not refused before any engine, naming" 'sed -i "s/^    BASE=\*|/    *|BASE=*|/" lights-out'
-try wrapper_flaws "is not refused before any engine, naming" 'sed -i "s/ one of BASE= HEAD= STAGED= ALERT= INCIDENT= PROFILE= MODEL_PROVIDER= MODEL=//" lights-out'
+try wrapper_flaws "is not refused before any engine, naming" 'sed -i "s/ one of BASE= HEAD= JUDGED= STAGED= ALERT= INCIDENT= PROFILE= MODEL_PROVIDER= MODEL=//" lights-out'
 try wrapper_flaws "unknown subcommand is not refused" 'sed -i "1a podman info" lights-out'
 try wrapper_flaws "with no engine" 'sed -i "s/^  die .no container engine found.*/  echo no engine found; exit 1/" lights-out'
 try wrapper_flaws "with no engine" 'sed -i "s/^  die .no container engine found.*/  echo no engine found >\&2; exit 0/" lights-out'

@@ -41,20 +41,30 @@ wins when the two disagree. Decisions behind each step are in
 
 The third arc (plan §16) is built, except for the runs that are the
 owner's: the OpenAI recording, a committed Claude recording and the L1
-end-to-end on GitHub. Two things close before M24, each in
-a session of its own: egress for the harnesses, and the tower restoring
-`.lights-out/runners/` from the base.
+end-to-end on GitHub. The two things that had to close before M24 are on
+`main`: egress for the harnesses (ADR 0046), and the tower restoring
+`.lights-out/runners/` from the base (ADR 0033's 2026-11-04 amendment,
+proven by `ci/attach.sh` case f).
 
 - **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
   package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
   Marketplace. **0.3.1** (2026-11-10) ships the first run that drafts the
-  contract (ADR 0064); on the Marketplace too since 2026-11-10.
+  contract (ADR 0064); on the Marketplace too since 2026-11-10. **0.4.0**
+  (tagged 2026-11-12) ships the agent network (ADR 0071), per-role
+  instructions and MCP servers (ADR 0073), the toolbelt (ADR 0069), the
+  Trello-style kanban (ADR 0068), and `self` judged from its last green
+  ancestor with the mutants in shards (ADR 0074). The Marketplace and PyPI
+  steps are the owner's. Security scanning (ADR 0072) ships in 0.4.1.
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.
   The exit criterion is §14's: if at least two tickets in three do not
   reach a mergeable PR without a human touching the code, the thesis is
   weaker than expected.
+  First run, 2026-11-11, on jd/tenacity (sqlparse was dropped: it ended
+  its maintenance): five tests-only tickets on Anthropic, five PRs merged
+  at the first attempt with every gate GO. Gemini and OpenAI, and tickets
+  that change code, are still to run.
 - **M32 — outside adapters, other CIs, one more delivery** (ADR 0058). An
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
@@ -73,10 +83,16 @@ demo-loop`, the toolbelt, then the launch), is
   ticket, attempt, worker and threshold you changed. The console (M29)
   already shows the tickets, their timelines and the thresholds; its
   first slice (ADR 0063) says on each ticket whose turn it is.
-- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M42): all three slices are built: SAST judged on the diff as dependencies already are, a signed SBOM with every release, attested before the signature and carried by the release record and `./go audit`, and a passive DAST scan at staging (`./go demo-dast`), off by default until the owner turns it on. The console's timeline does not show the SBOM or the dast line yet.
+- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M43): all three slices are built: SAST judged on the diff as dependencies already are, a signed SBOM with every release, attested before the signature and carried by the release record and `./go audit`, and a passive DAST scan at staging (`./go demo-dast`), off by default until the owner turns it on. The console's timeline does not show the SBOM or the dast line yet.
 
 ## When someone needs it
 
+- **M44 — deploy on the main clouds** (planned 2026-11-11, nothing built):
+  connectors and installable plugins that deploy, release and operate the
+  repository lights-out is attached to on GCP, AWS, Azure, Hetzner and the
+  other main providers, each behind the same Delivery, Registry, Metrics and
+  Flags ports and its conformance suite, with no long-lived credential in
+  the repository. Started by the owner when a user needs it.
 - **M8 cloud track (L2)**: Google Cloud with Terraform and Cloud Deploy.
 - **M10 (L3)**: Agent Engine and the nightly self-test.
 

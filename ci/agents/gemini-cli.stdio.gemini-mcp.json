@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "notes": {
+      "command": "python3",
+      "args": [
+        ".lights-out/mcp/notes.py",
+        "--root",
+        "docs"
+      ],
+      "cwd": "/crew/0042/workspace",
+      "timeout": 30000,
+      "includeTools": [
+        "search_notes",
+        "get-note"
+      ]
+    }
+  },
+  "mcp": {
+    "allowed": [
+      "notes"
+    ]
+  }
+}
