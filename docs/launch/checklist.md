@@ -222,7 +222,7 @@ The agent network in the console and `./go network` (ADR 0071), per-role
 instructions and MCP servers for the dev-worker (ADR 0073, M42), the
 agent's toolbelt (ADR 0069, M39), the Trello-style kanban (ADR 0068),
 `self` judged from its last green ancestor (ADR 0074), the podman port
-fix, M24's fixes. Security scanning (ADR 0072) ships in 0.4.1.
+fix, M24's fixes. Security scanning (ADR 0072) ships in 0.5.0.
 
 - [x] **The release commit** (1626e63, landed on `main` as the merge
   0213078): `version=` in `lights-out`, `version` in `pyproject.toml`, the
@@ -241,6 +241,28 @@ fix, M24's fixes. Security scanning (ADR 0072) ships in 0.4.1.
   (owner, passkey).
 - [ ] **PyPI**: `lights-out-gates` 0.4.0, which adds `lights-out-gates mcp`
   and `spec` (owner, the token in the keychain).
+
+### Release 0.5.0 (2026-11-12)
+
+Security scanning (ADR 0072, M43): SAST judged on the diff, an SPDX SBOM
+attested per released image, passive DAST at staging, off by default. The
+first release cut by its own tag (ADR 0075), with the wiki rendered at the
+tag (ADR 0077), and the mutants that run only the tests that reach them
+(ADR 0076). Named 0.5.0, not 0.4.1: it adds features, and nothing in it is
+a fix of 0.4.0 alone.
+
+- [ ] **The release commit**: `version=` in `lights-out`, `version` in
+  `pyproject.toml`, the three plugin manifests and the landing page at
+  0.5.0, every usage pinned to `@v0.5.0`, the prose in
+  `docs/releases/v0.5.0.md`.
+- [ ] **Rehearsal**: `package.yml` dispatched on the release commit with
+  `dry_run`.
+- [ ] **The three one-time settings** of "Release automation" and the
+  wiki's first page (owner).
+- [ ] **Tag `v0.5.0`** on the merge on `main`; every job of `package.yml`
+  green.
+- [ ] **The three drafts `v0.5.0` published to the Marketplace** (owner,
+  passkey).
 
 ### The Python package on PyPI (M35)
 
