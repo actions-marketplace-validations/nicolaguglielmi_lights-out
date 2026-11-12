@@ -304,7 +304,7 @@ if git rev-parse -q --verify HEAD >/dev/null 2>&1 \
   git archive HEAD .lights-out/runners | tar -x -C "$t/self-committed"
   self_runners="$t/self-committed/.lights-out/runners"
 fi
-diff -r -x self-checks.sh stacks/python/runners "$self_runners" >"$t/diff" 2>&1 \
+diff -r -x self-checks.sh -x __pycache__ stacks/python/runners "$self_runners" >"$t/diff" 2>&1 \
   || { fail_case g-self "lights-out's own .lights-out/runners differs from stacks/python/runners"; cat "$t/diff" >&2; }
 
 # (h) a committed contract: the plane keys are kept, the rest is the draft's.
