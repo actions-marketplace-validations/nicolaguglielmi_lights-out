@@ -60,7 +60,9 @@ to prove it was not edited on the way.
    the first `kind: answer` line for that version after it and before the
    next `kind: release` line, which is the logbook's rule (ADR 0047 §2).
    The earlier releases of the same version are listed by line number
-   (`earlier_releases`), not packed.
+   (`earlier_releases`), not packed. Line numbers count every line of the file,
+   blank ones included. A line that is not JSON is a NO-GO that names it:
+   it could be the answer, and the pack never skips what it cannot read.
 
 3. **A versioned schema, `lights-out.evidence/1`, made of entries.** Every
    leaf is an entry, and an entry has exactly one of two shapes:
