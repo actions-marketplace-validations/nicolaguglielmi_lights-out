@@ -328,6 +328,12 @@ network: ## The agent network of one ticket in text: the graph, every attempt wi
 dora: ## The four delivery measures over a window, from the logbook: [WINDOW_DAYS=30] [DORA_LOGBOOK=<file>] [DORA_OUT=.crew/dora.json] (docs/adr/0082)
 	@WINDOW_DAYS="$(WINDOW_DAYS)" DORA_LOGBOOK="$(DORA_LOGBOOK)" DORA_OUT="$(DORA_OUT)" sh core/dora.sh
 
+# Cost and time per ticket (docs/adr/0083 §5): per ticket, role and day,
+# from every ticket's spend ledger; one contract line on stdout.
+.PHONY: spend
+spend: ## Cost and time per ticket, per role and per day, from the tower's spend ledger; a model with no price is cost unknown (docs/adr/0083)
+	@sh core/spend.sh
+
 # The console (docs/adr/0047, 0055, 0059, 0071): the client's eleven screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the
 # answer to a ticket's open question through `make answer` and a new

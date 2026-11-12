@@ -45,6 +45,16 @@ entry=$(jq -c --argjson n "$attempt" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
 }
 rework=$(jq -c --argjson e "$entry" '(.rework // []) + [$e]' "$DOC_FILE")
 
+# The spend budget (docs/adr/0083 §4): the tower sets SPEND_STOP to the
+# one-line reason when a limit is reached; the attempt is recorded as
+# always and the next one is not launched.
+if [ -n "${SPEND_STOP:-}" ]; then
+  printf '[rework] ticket %s: attempt %s rejected (%s); %s; a human is needed\n' \
+    "$TICKET" "$attempt" "$(printf '%s' "$entry" | jq -r .line)" "$SPEND_STOP" >&2
+  jq -cn --argjson rework "$rework" --arg line "$SPEND_STOP" '{state: "needs-human", rework: $rework, budget: {line: $line}}'
+  exit 0
+fi
+
 if [ "$attempt" -ge "$REWORK_MAX_ATTEMPTS" ]; then
   printf '[rework] ticket %s: attempt %s of %s rejected (%s); a human is needed\n' \
     "$TICKET" "$attempt" "$REWORK_MAX_ATTEMPTS" "$(printf '%s' "$entry" | jq -r .line)" >&2

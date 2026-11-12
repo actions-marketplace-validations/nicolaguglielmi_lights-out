@@ -35,9 +35,18 @@ person's ANSWER (ANSWER_BY, default `unauthenticated`; ANSWER_VIA, default
 `cli`) on the last question, which must be unanswered, then requests the
 `answer` step. A step result that carries `task` is also appended, with
 the document's attempt, to `tasks` (§5): every attempt's run is kept.
+
+Spend (docs/adr/0083): every run a step's result carries (`task`,
+`review`, `product`) is appended to `spend` with its cost from
+profiles/prices.json. Before `assign` and `rework` the spend is checked
+against policy/rework.env's SPEND_BUDGET_TICKET_USD and
+SPEND_BUDGET_DAY_USD: over a limit, `assign` is refused like a red main
+and `rework` runs with SPEND_STOP=<the line>, which ends the ticket at
+`needs-human`.
 """
 
 import fnmatch
+import glob
 import json
 import os
 import re
@@ -45,6 +54,11 @@ import subprocess  # nosec B404 - adapter verbs and steps are scripts (docs/adr/
 import sys
 import tempfile
 from datetime import datetime, timezone
+
+try:
+    from . import spend
+except ImportError:  # run as a script: core/ is on sys.path
+    import spend
 
 COLLECTION = "tickets"
 USAGE = ("usage: tower.sh open <ticket> | request <ticket> | answer <ticket> | step <ticket> <step>"
@@ -79,6 +93,9 @@ NEXT = {
 # Refused while main is red (docs/adr/0056 §5): the `mainline`/`main`
 # document core/mainline.py keeps.
 BLOCKED_BY_RED_MAIN = ("assign", "rework", "release")
+# The steps that launch a dev-worker attempt, checked against the spend
+# budget first (docs/adr/0083 §4).
+BUDGETED = ("assign", "rework")
 
 
 # The task fields copied from a role's run.json (docs/adr/0047 §2, P1):
@@ -228,10 +245,12 @@ class Tower:
         self.store_adapter = env["STATE_STORE"]
         self.bus = env["EVENT_BUS"]
         self.steps = env.get("TOWER_STEPS") or "core/steps"
+        self.tickets_dir = env.get("TICKETS_DIR") or "tickets"
 
-    def store_get(self):
+    def store_get(self, ticket=None):
         """The document, or None when the store has none (get.sh exit non-zero)."""
-        got = sh(f"adapters/{self.store_adapter}/get.sh", COLLECTION, self.ticket,
+        ticket = ticket or self.ticket
+        got = sh(f"adapters/{self.store_adapter}/get.sh", COLLECTION, ticket,
                  stdout=subprocess.PIPE, text=True)
         if got.returncode != 0:
             return None
@@ -240,8 +259,24 @@ class Tower:
         except ValueError:
             doc = None
         if not isinstance(doc, dict):
-            raise Refused(f"[tower] {self.ticket}: the stored document is not a JSON object")
+            raise Refused(f"[tower] {ticket}: the stored document is not a JSON object")
         return doc
+
+    def over_budget(self, doc):
+        """Why the next attempt is not launched (docs/adr/0083 §4), or "".
+        The day counts every ticket the Tracker lists, as the logbook reads them."""
+        lim = spend.limits()  # ValueError on a malformed limit: the caller refuses the step
+        today = []
+        if lim.get("SPEND_BUDGET_DAY_USD") is not None:
+            docs = {self.ticket: doc}
+            for path in sorted(glob.glob(os.path.join(self.tickets_dir, "*.md"))):
+                tid = os.path.basename(path)[:-3]
+                if tid not in docs:
+                    other = self.store_get(tid)
+                    if other is not None:
+                        docs[tid] = other
+            today = spend.on_day(docs, now()[:10])
+        return spend.stop(spend.ledger(doc), today, lim)
 
     def store_put(self, doc):
         put = sh(f"adapters/{self.store_adapter}/put.sh", COLLECTION, self.ticket,
@@ -340,12 +375,25 @@ class Tower:
             self.tell(f"{step} refused: {red}; state stays {have}")
             self.record_failure(doc, step, have, red)
             raise Refused(None)
+        try:
+            budget = self.over_budget(doc) if step in BUDGETED else ""
+        except ValueError as exc:
+            self.tell(f"{step} refused: {exc}; state stays {have}")
+            self.record_failure(doc, step, have, str(exc))
+            raise Refused(None) from None
+        if budget and step == "assign":
+            # No attempt yet: refused like a red main, resumable (docs/adr/0083 §4).
+            self.tell(f"{step} refused: {budget}; state stays {have}")
+            self.record_failure(doc, step, have, budget)
+            raise Refused(None)
+        if budget:
+            self.tell(budget)
 
         self.tell(f"{step} (state {have})")
         with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as doc_file:
             doc_file.write(compact(doc) + "\n")
             doc_file.flush()
-            env = dict(os.environ, TICKET=self.ticket, DOC_FILE=doc_file.name,
+            env = dict(os.environ, TICKET=self.ticket, DOC_FILE=doc_file.name, SPEND_STOP=budget,
                        PR_NUMBER=text(dig(doc, "pr", "number")),
                        BASE_SHA=text(dig(doc, "pr", "base_sha")),
                        HEAD_SHA=text(dig(doc, "pr", "head_sha")))
@@ -368,6 +416,10 @@ class Tower:
         updated = merge(doc, result)
         if isinstance(result.get("task"), dict):
             updated["tasks"] = (doc.get("tasks") or []) + [dict(result["task"], **attempt(updated))]
+        # Every run's cost beside its tokens, appended, never rewritten (docs/adr/0083 §3).
+        runs = spend.entries(step, result, updated.get("attempt"), now())
+        if runs:
+            updated["spend"] = spend.ledger(doc) + runs
         updated["history"] = (updated.get("history") or []) + [
             {"step": step, "state": result["state"], "at": now(), **attempt(updated)}]
         if not self.store_put(updated):
