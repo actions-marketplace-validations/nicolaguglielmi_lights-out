@@ -35,6 +35,12 @@
 # the score and the survivors are a single exec's (docs/adr/0074,
 # amendment of 2026-11-11).
 #
+# MUTATION_SELECT (on by default, or off): each mutant runs only the tests
+# that executed its statement in the clean run, recorded per test by
+# coverage.py through hook/sitecustomize.py; no test when none did, the
+# whole suite when the statement ran outside any test or the clean run
+# recorded no test (docs/adr/0076, select.py).
+#
 # timeout: 10 x the clean run measured here, floor 1 s before the factor
 # (docs/adr/0015 §3's rule, measured at every run instead of once because
 # the suite is not ours to know). The operators filter is the one
@@ -44,19 +50,24 @@ set -eu
 
 scope=${1:?usage: mutation.sh <scope> "<test command>"}
 test_cmd=${2:?usage: mutation.sh <scope> "<test command>"}
-here=$(dirname "$0")
+here=$(cd "$(dirname "$0")" && pwd)
 module=${scope%/}
 [ -d "$module" ] || { printf 'mutation.sh: %s is not a directory here (%s)\n' "$module" "$(pwd)" >&2; exit 1; }
 # MUTATION_SHARDS: how many shards run the mutants (see the exec below).
 shards=${MUTATION_SHARDS:-$(nproc 2>/dev/null || echo 1)}
 case "$shards" in ''|*[!0-9]*|0*) printf 'mutation.sh: MUTATION_SHARDS=%s is not a positive integer\n' "$shards" >&2; exit 1 ;; esac
+selection=${MUTATION_SELECT:-on}
+case "$selection" in on|off) ;; *) printf 'mutation.sh: MUTATION_SELECT=%s is not on or off\n' "$selection" >&2; exit 1 ;; esac
+# A runner started by a suite this runner measures measures nothing of it.
+unset LIGHTS_OUT_COV_DIR LIGHTS_OUT_COV_SITE LIGHTS_OUT_COV_CONTEXT LIGHTS_OUT_SELECT LIGHTS_OUT_SELECT_DIR
 
 tools=${LIGHTS_OUT_RUNNERS_ENV:-/tmp/lights-out-python-runners}
 UV_PROJECT_ENVIRONMENT="$tools" uv sync --locked --no-dev --project "$here" >&2
 bin="$tools/bin"
 
 config=$(mktemp -d)/cosmic-ray.toml
-session=${config%/*}/session.sqlite
+work=${config%/*}
+session=$work/session.sqlite
 
 mutation_lines=${MUTATION_LINES:-}
 scoped=false
@@ -65,9 +76,24 @@ if [ -n "$mutation_lines" ] && [ "$mutation_lines" != all ]; then
 fi
 
 # The clean run, timed: a red suite is not a mutation score, and the
-# timeout comes from this measurement.
+# timeout comes from this measurement. With selection on it records which
+# test executes which line (docs/adr/0076); a suite that fails only with
+# the hook runs again without it, and every mutant runs it whole.
 start=$(date +%s)
-if ! sh -c "$test_cmd" >&2; then
+measured=false
+if [ "$selection" = on ]; then
+  mkdir "$work/cov"
+  site=$("$bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+  if PYTHONPATH="$here/hook${PYTHONPATH:+:$PYTHONPATH}" LIGHTS_OUT_COV_DIR="$work/cov" \
+      LIGHTS_OUT_COV_SITE="$site" sh -c "$test_cmd" >&2; then
+    measured=true
+  else
+    printf 'mutation.sh: the suite fails with the coverage hook; every mutant runs the whole suite\n' >&2
+    selection=off
+    start=$(date +%s)
+  fi
+fi
+if [ "$measured" = false ] && ! sh -c "$test_cmd" >&2; then
   printf 'mutation.sh: the unmutated test suite does not pass (%s); not a mutation score\n' "$test_cmd" >&2
   exit 1
 fi
@@ -75,7 +101,31 @@ elapsed=$(( $(date +%s) - start ))
 [ "$elapsed" -ge 1 ] || elapsed=1
 timeout=$(( elapsed * 10 ))
 
-python3 - "$config" "$module" "$test_cmd" "$timeout" "$scoped" "$mutation_lines" <<'PY' >&2
+cr_cmd=$test_cmd
+if [ "$selection" = on ]; then
+  mkdir "$work/select"
+  rc=0
+  "$bin/python" "$here/select.py" map "$module" "$work/cov" "$work/select" >&2 || rc=$?
+  rm -rf "$work/cov"
+  case $rc in
+    0)
+      printf '%s\n' "$test_cmd" > "$work/select/command"
+      : > "$work/select/runs"
+      LIGHTS_OUT_SELECT_DIR=$work/select
+      export LIGHTS_OUT_SELECT_DIR
+      cr_cmd=$(python3 -c 'import shlex, sys; print(shlex.join(["python3", sys.argv[1], "run"]))' "$here/select.py") ;;
+    3)
+      printf 'mutation.sh: no per-test coverage from the clean run (no unittest.TestCase ran under the hook); every mutant runs the whole suite\n' >&2
+      selection=off ;;
+    *)
+      printf 'mutation.sh: select.py map failed (exit %s)\n' "$rc" >&2
+      exit 1 ;;
+  esac
+elif [ "${MUTATION_SELECT:-on}" = off ]; then
+  printf 'mutation.sh: MUTATION_SELECT=off: every mutant runs the whole suite\n' >&2
+fi
+
+python3 - "$config" "$module" "$cr_cmd" "$timeout" "$scoped" "$mutation_lines" <<'PY' >&2
 import sys
 
 config_path, module, test_cmd, timeout, scoped, mutation_lines = sys.argv[1:7]
@@ -154,7 +204,6 @@ if [ "$shards" -eq 1 ]; then
   "$bin/cosmic-ray" --verbosity=CRITICAL exec "$config" "$session" >&2
 else
   printf 'mutation.sh: %s pending mutants in %s shards\n' "$pending" "$shards" >&2
-  work=${config%/*}
   # The pending mutants by job id, read once: a mutant's shard is its rank
   # in this list modulo the number of shards.
   python3 - "$session" "$work/pending" <<'PY'
@@ -207,4 +256,9 @@ PY
   rm -rf "$work"/shard*
 fi
 
+if [ "$selection" = on ]; then
+  awk '$1 == "none" { n++ } $1 == "some" { s++ } $1 == "all" { a++ }
+    END { printf "mutation.sh: %d mutants ran no test, %d a selection, %d the whole suite\n", n, s, a }' \
+    "$work/select/runs" >&2
+fi
 "$bin/cosmic-ray" --verbosity=CRITICAL dump "$session" | python3 "$here/score.py"
