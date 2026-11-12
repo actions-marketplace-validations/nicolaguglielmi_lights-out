@@ -17,6 +17,7 @@
 #   ./go attach <path>  make a repository of yours the workload (its .lights-out/ is the contract, if it has one)
 #   ./go init [<path>]  draft the attached repository's .lights-out/ in the clone, baseline measured (ADR 0042)
 #   ./go gates          judge a range of the workload: BASE=<ref> HEAD=<ref>, default the last commit; no plane needed
+#   ./go agents         what the contract gives the agents: role files for the reviewers, MCP servers for the dev-worker (ADR 0073)
 #   ./go demo-init      prove attach, init and gates on the two example repositories, without the plane
 #   ./go detach         drop the attached repository; the workload is app/ again
 #   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)
@@ -38,6 +39,7 @@
 #   ./go board          the pipeline explained, live when the plane is up, on localhost:8099
 #   ./go console        the client's console on localhost:8098: the record, and go-for-launch from a browser (ADR 0047)
 #   ./go logbook        write the logbook, the one versioned record the console reads: [LOGBOOK_FILE=<file>]
+#   ./go network        one ticket's agent network in text, the console's #network in the same words: [TICKET=] [ATTEMPT=]
 #   ./go demo-console   prove go-for-launch pressed from the console: held canary, POST GO → 100%, then the un-promote
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
@@ -249,9 +251,9 @@ fi
 # a NO-GO naming it inside, never a silent in-process run.
 socket_flags=""
 socket_optional=""
-case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook) socket_optional=1 ;; esac
+case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook|network) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|demo-console|request|answer)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|network|demo-console|request|answer)
     sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}

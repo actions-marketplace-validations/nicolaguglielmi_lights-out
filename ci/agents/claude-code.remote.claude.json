@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "docs": {
+      "type": "http",
+      "url": "https://mcp.example.com:443/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_DOCS_TOKEN}"
+      },
+      "timeout": 30000
+    }
+  }
+}

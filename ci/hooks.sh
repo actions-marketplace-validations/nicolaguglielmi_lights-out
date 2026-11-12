@@ -50,6 +50,12 @@
 # through the shim, which must print a deny exactly when the case expects
 # one. And the shim's own rule: a tool it does not offer (search_web,
 # invoke_subagent) is denied by name, without reaching the guard.
+#
+# MCP calls (docs/adr/0073 §9) are cases of their own, written below rather
+# than in ci/hooks-cases/ because each needs its CREW_MCP_ALLOW: an allowed
+# qualified name passes in each vendor's naming, an unlisted one and any
+# `mcp_` name under an empty list are denied, and so is an MCP_* token name,
+# in a call's arguments or through the shell tool.
 set -eu
 name=hooks
 . ci/lib.sh
@@ -249,6 +255,132 @@ for shim in $shims; do
       printf 'ci-hooks: %s: %s is not denied as a tool the harness does not offer\n' "$shim" "$t" >&2
     fi
   done
+done
+
+# --- MCP calls (docs/adr/0073 §9): the guard denies a tool_name that
+# starts with `mcp_` and is not a word of CREW_MCP_ALLOW (empty when
+# nothing is declared), and denies `MCP_[A-Z0-9_]+` anywhere in a call.
+# Each case is rendered in each vendor's naming (ADR 0073 "Verified"):
+# claude-code and codex hand the hook mcp__<server>__<tool>, gemini-cli
+# mcp_<server>_<tool>, and tool_input is the call's arguments. The allow
+# list is what the entrypoint exports: notes/search_notes and
+# docs/search_docs in that vendor's naming. A `shell` case is a command
+# through the shell tool, rendered as the cases above are.
+# label|kind|server|tool or command|arguments|list|want
+# shellcheck disable=SC2016 # a literal $MCP_DOCS_TOKEN, for the guard to see
+mcp_cases='allowed|mcp|notes|search_notes|{"q":"venue rules"}|listed|allow
+allowed-second-word|mcp|docs|search_docs|{"query":"deploy steps"}|listed|allow
+built-in-with-an-empty-list|shell|-|ls -la app/backend/meetups|-|empty|allow
+unlisted|mcp|notes|count_notes|{}|listed|deny
+prefix-of-an-allowed-name|mcp|notes|search|{"q":"venue rules"}|listed|deny
+unlisted-server|mcp|wiki|search_notes|{"q":"venue rules"}|listed|deny
+empty-list|mcp|notes|search_notes|{"q":"venue rules"}|empty|deny
+token-name-in-arguments|mcp|notes|search_notes|{"q":"MCP_DOCS_TOKEN"}|listed|deny
+echo-token|shell|-|echo $MCP_DOCS_TOKEN|-|listed|deny'
+
+# mcp_name SHAPE SERVER TOOL: the qualified name that CLI gives the hook.
+mcp_name() {
+  case "$1" in
+    gemini) printf 'mcp_%s_%s' "$2" "$3" ;;
+    *) printf 'mcp__%s__%s' "$2" "$3" ;;
+  esac
+}
+
+# mcp_render SHAPE SERVER TOOL ARGS: the MCP call in that CLI's hook shape.
+# shellcheck disable=SC2016 # jq programs; their $names are jq's
+mcp_render() {
+  t=$(mcp_name "$1" "$2" "$3")
+  case "$1" in
+    gemini)
+      jq -nc --arg t "$t" --arg s "$2" --arg o "$3" --argjson a "$4" \
+        '{session_id: "s", cwd: "/crew/0001/workspace", hook_event_name: "BeforeTool",
+          transcript_path: "/tmp/crew-home/.gemini/tmp/s/chat.json",
+          tool_name: $t, tool_input: $a, mcp_context: {server_name: $s, tool_name: $o}}' ;;
+    claude)
+      jq -nc --arg t "$t" --argjson a "$4" \
+        '{session_id: "s", cwd: "/crew/0001/workspace", hook_event_name: "PreToolUse",
+          transcript_path: "/tmp/crew-home/.claude/projects/-crew/s.jsonl",
+          permission_mode: "acceptEdits", tool_use_id: "toolu_1", tool_name: $t, tool_input: $a}' ;;
+    codex)
+      jq -nc --arg t "$t" --argjson a "$4" \
+        '{session_id: "s", turn_id: "t1", cwd: "/crew/0001/workspace", hook_event_name: "PreToolUse",
+          transcript_path: "/tmp/crew-home/.codex/sessions/rollout-s.jsonl",
+          model: "m", permission_mode: "bypassPermissions", tool_use_id: "call_1",
+          tool_name: $t, tool_input: $a}' ;;
+  esac
+}
+
+# run_mcp_cases GUARD: every MCP case in every shape through GUARD; sets
+# mcp_total, mcp_bad and mcp_first (the first disagreement).
+run_mcp_cases() {
+  mcp_total=0
+  mcp_bad=0
+  mcp_first=""
+  for shape in gemini claude codex; do
+    while IFS='|' read -r label kind server tool args list want; do
+      [ -n "$label" ] || continue
+      if [ "$kind" = shell ]; then
+        jq -nc --arg c "$tool" '{tool_name: "run_shell_command", tool_input: {command: $c}}' > "$work/mcp-case.json"
+        render "$shape" "$work/mcp-case.json" > "$work/input.json"
+      else
+        mcp_render "$shape" "$server" "$tool" "$args" > "$work/input.json"
+      fi
+      sent=$(jq -r '.tool_name' "$work/input.json")
+      allow=""
+      [ "$list" != listed ] || allow="$(mcp_name "$shape" notes search_notes) $(mcp_name "$shape" docs search_docs)"
+      mcp_total=$((mcp_total + 1))
+      rm -f "$work/hooks.log"
+      rc=0
+      CREW_OUT="$work" CREW_MCP_ALLOW="$allow" sh "$1" < "$work/input.json" > /dev/null 2> "$work/stderr.log" || rc=$?
+      case "$rc" in
+        0) got=allow ;;
+        2) got=deny ;;
+        *) got="exit($rc)" ;;
+      esac
+      problem=""
+      if [ "$got" != "$want" ]; then
+        problem="want $want, got $got"
+      else
+        verdict=ALLOW
+        [ "$want" = deny ] && verdict=DENY
+        lines=0
+        [ -f "$work/hooks.log" ] && lines=$(awk 'END{print NR}' "$work/hooks.log")
+        if [ "$lines" -ne 1 ]; then
+          problem="hooks.log has $lines lines, want 1"
+        elif [ "$(awk '{print $1}' "$work/hooks.log")" != "$verdict" ] \
+          || [ "$(awk '{print $2}' "$work/hooks.log")" != "$sent" ]; then
+          problem="hooks.log says '$(cat "$work/hooks.log")', want $verdict for $sent"
+        fi
+      fi
+      if [ -n "$problem" ]; then
+        mcp_bad=$((mcp_bad + 1))
+        [ -n "$mcp_first" ] || mcp_first="mcp case $label as $shape ($problem)"
+        printf 'ci-hooks: %s: mcp case %s as %s: %s\n' "$1" "$label" "$shape" "$problem" >&2
+        cat "$work/stderr.log" >&2
+      fi
+    done <<CASES
+$mcp_cases
+CASES
+  done
+}
+
+# The MCP cases are proven first on a planted guard that allows every call
+# and logs it: the first deny case must be named.
+cat > "$work/planted-guard.sh" <<'PLANTED'
+t=$(jq -r '.tool_name')
+printf 'ALLOW %s -\n' "$t" >> "$CREW_OUT/hooks.log"
+PLANTED
+run_mcp_cases "$work/planted-guard.sh" 2> /dev/null
+case "$mcp_first" in
+  "mcp case unlisted as gemini "*) ;;
+  *) nogo "self-check: a planted guard that allows every MCP call was judged '${mcp_first:-in agreement}', want the case unlisted as gemini named" ;;
+esac
+
+for guard in $distinct; do
+  run_mcp_cases "$guard"
+  total=$((total + mcp_total))
+  bad=$((bad + mcp_bad))
+  [ -n "$first" ] || first=$mcp_first
 done
 
 [ "$bad" -eq 0 ] || nogo "$bad of $total guard runs disagree with their case; first: $first"

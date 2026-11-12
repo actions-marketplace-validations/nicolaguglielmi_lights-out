@@ -32,6 +32,29 @@
 # suite runs: each of its eight ways is opened alone and must be the one that
 # reads `open`.
 #
+# Case 10, agents (docs/adr/0073), is proved on the real core/agents.py: the
+# tree holds a contract, `c/` (WORKLOAD_CONTRACT=c), with an mcp.json and a
+# stand-in for the fixture server, notes.py, that speaks newline JSON-RPC
+# and answers search_notes and count_notes as the fixture does (the real one
+# lives with a workload, which nothing under gates/ names: ci/app-free.sh).
+# fake-cli honours mcp.json the way docs/adr/0073 §8-§9 asks: an mcp.sh that
+# writes its configuration and the allow file, the servers started in the
+# workspace, every tool of a declared server visible and the unnamed ones
+# denied by its guard (`visible-denied`), a server that did not come up a
+# one-line failure naming it and §8, run.json's .mcp from `agents.py calls`
+# over hooks.log. A second good run takes fake-cli's mcp.sh away, with an
+# adapter that is no CLI harness keeping one (replay's shape), so 10r, §8's
+# refusal, is proved too; its defects are planted in agents.py's mcp verb,
+# the one thing 10r judges. The contract sits at the tree's top so that a
+# server started in fake-cli's own directory, not the workspace, still
+# starts, and answers from the wrong place.
+#
+# The stand-ins listen on local ports the proof picks, and one picker serves
+# them all: it is proved first, under the load the proxy's own sockets put on
+# the kernel's port allocator, to hand out only ports its listeners can bind
+# (a picker that asked on 127.0.0.1 failed one podman run in twenty, the
+# stub's 60 s wait, and two docker ones, the proxy's).
+#
 # Run by `make harness-conformance` before the suite judges any real harness
 # (the judge is judged first, as ci/prompts.sh proves its checker on planted
 # files before reading roles/). Not a ci/ check: it starts the stub and
@@ -86,6 +109,19 @@ trap cleanup EXIT INT TERM
 # detached as an engine would run it (stdout and stdin closed, stderr in a file:
 # a child holding run.sh's pipe would hang the suite's `tee`).
 mkdir -p "$work/bin"
+# The one port picker, for every listener the proof starts (stub.py and
+# core/egress.py, both on 0.0.0.0). It asks the kernel for a port free on the
+# address the listener will bind, 0.0.0.0: a port picked on 127.0.0.1 can be
+# held, or in TIME_WAIT, on 127.0.0.2, where egress_wrap.py binds the proxy's
+# outgoing sockets from the same allocator, and the listener's bind then fails
+# with EADDRINUSE (the stub's 60 s wait in the suite, the proxy's 30 s in
+# core/egress.sh). A pick is only taken while no proxy runs, so nothing takes
+# the port between the pick and the bind. Proved below, under the proxy's load.
+cat > "$work/bin/freeport" <<'PICK'
+#!/bin/sh
+exec python3 -c 'import socket; s = socket.socket(); s.bind(("0.0.0.0", 0)); print(s.getsockname()[1])'
+PICK
+chmod +x "$work/bin/freeport"
 cat > "$work/bin/docker-compose" <<'SHIM'
 #!/bin/sh
 # Answers the suite's compose calls from the proof's tree (cwd), stub.py on a local port.
@@ -121,7 +157,7 @@ exec(code)' "$code" "$@" ;;
   *" up "*" egress "*)
     mkdir -p "$state" "$PWD/.crew/egress"
     alive && exit 0
-    port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    port=$("$(dirname "$0")/freeport")
     echo "$port" > "$state/egress.port"
     EGRESS_DIR="$PWD/.crew/egress" python3 proof-egress.py "$port" >/dev/null 2>>"$state/egress.err" </dev/null &
     echo $! > "$state/egress.pid" ;;
@@ -137,6 +173,8 @@ exec(code)' "$code" "$@" ;;
     [ ! -f "$PWD/.crew/conformance/stub.pid" ] || kill "$(cat "$PWD/.crew/conformance/stub.pid")" 2>/dev/null || : ;;
   *" logs "*" egress "*)
     sed 's/^/egress-1  | /' "$state/egress.err" 2>/dev/null || : ;;
+  *" logs "*" conformance-model "*)
+    sed 's/^/conformance-model-1  | /' "$PWD/.crew/conformance/stub.err" 2>/dev/null || : ;;
   *" build "*|*" logs "*) : ;;
   *)
     echo "docker-compose $*" >> "${PROOF_INVOKED:?}"
@@ -200,6 +238,22 @@ esac
 effort=$(grep "^ANTHROPIC_$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')=" "$here/thinking.env" | cut -d= -f2)
 mkdir -p "$OUT"
 [ "$defect" != key-in-probe-case ] || [ ! -f "$WORKSPACE/probe.py" ] || printf '%s\n' "$FAKE_KEY_VALUE" > "$OUT/leak.log"
+[ "$defect" != key-in-review ] || [ "$ROLE" != test-reviewer ] || printf '%s\n' "$FAKE_KEY_VALUE" > "$OUT/leak.log"
+
+# The repository's MCP servers (docs/adr/0073 §8), as core/crew.sh hands them
+# over: CREW_MCP holds decl.json; mcp.sh translates it into OUT/mcp, and the
+# guard gets the named tools' qualified names (what an entrypoint exports).
+CREW_MCP_DIR=""
+CREW_MCP_ALLOW=""
+if [ -n "${CREW_MCP:-}" ]; then
+  [ -f "$CREW_MCP/decl.json" ] || { printf 'harness-fake-cli: CREW_MCP=%s holds no decl.json (docs/adr/0073 §7)\n' "$CREW_MCP" >&2; exit 1; }
+  mkdir -p "$OUT/mcp"
+  cp "$CREW_MCP/decl.json" "$OUT/mcp/decl.json"
+  sh "$here/mcp.sh" "$OUT/mcp/decl.json" "$OUT/mcp" "$WORKSPACE" || exit 1
+  CREW_MCP_DIR=$OUT/mcp
+  CREW_MCP_ALLOW=$(awk '{ printf "%s%s", (NR > 1 ? " " : ""), $1 }' "$OUT/mcp/allow")
+fi
+export CREW_MCP_DIR CREW_MCP_ALLOW
 sha=$(sha256sum "$TICKET_FILE" | cut -d' ' -f1)
 start=$(date +%s)
 rc=0
@@ -221,24 +275,58 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
+# A declared server that did not come up fails the run, in one line naming it
+# and the section, before any pr.json (docs/adr/0073 §8).
+if [ -n "$CREW_MCP_DIR" ] && [ -s "$OUT/mcp/down" ] && [ "$defect" != mcp-down-ignored ]; then
+  [ "$defect" != mcp-down-late ] || printf '{"title": "late", "body": ""}\n' > "$OUT/pr.json"
+  if [ "$defect" = mcp-down-vague ]; then
+    printf 'harness-fake-cli: a tool server failed\n' >&2
+  else
+    printf 'harness-fake-cli: declared MCP server %s did not come up (ADR 0073 §8)\n' "$(awk '{ printf "%s%s", (NR > 1 ? ", " : ""), $0 }' "$OUT/mcp/down")" >&2
+  fi
+  exit 1
+fi
+
 final=$(jq -r '.final' "$OUT/transcript.json")
-printf '%s\n' "$final" > "$OUT/final.md"
+if [ "$defect" = final-md-header ]; then
+  printf 'Final answer:\n%s\n' "$final" > "$OUT/final.md"
+else
+  printf '%s\n' "$final" > "$OUT/final.md"
+fi
 title=$(printf '%s\n' "$final" | head -n1)
 body=$(printf '%s\n' "$final" | tail -n +2 | sed '/./,$!d')
 jq -n --arg title "$title" --arg body "$body" '{title: $title, body: $body}' > "$OUT/pr.json"
-git -C "$WORKSPACE" add -A
-git -C "$WORKSPACE" -c user.name=lights-out-crew -c user.email=crew@lights-out.invalid commit -q -m "$title" -m "$body"
+# The adapter commits what the model left, when it left something (a reviewer
+# changes nothing); `commit-always` commits regardless, and fails on a clean tree.
+if [ -n "$(git -C "$WORKSPACE" status --porcelain)" ] || [ "$defect" = commit-always ]; then
+  git -C "$WORKSPACE" add -A
+  git -C "$WORKSPACE" -c user.name=lights-out-crew -c user.email=crew@lights-out.invalid commit -q -m "$title" -m "$body"
+fi
 git -C "$WORKSPACE" format-patch --stdout "$BASE"..HEAD > "$OUT/patch"
+# run.json's mcp (docs/adr/0073 §9): null when nothing is declared; the calls
+# counted from hooks.log's ALLOW lines by core/agents.py calls.
+mcp=null
+if [ -n "$CREW_MCP_DIR" ] && [ "$defect" != mcp-null ]; then
+  hooks=$OUT/hooks.log
+  [ -f "$hooks" ] && [ "$defect" != mcp-calls-unread ] || hooks=/dev/null
+  calls=$(python3 core/agents.py calls --allow "$OUT/mcp/allow" --hooks "$hooks") \
+    || { printf 'harness-fake-cli: core/agents.py calls: %s\n' "$calls" >&2; exit 1; }
+  unlisted=visible-denied
+  [ "$defect" != mcp-says-hidden ] || unlisted=hidden
+  mcp=$(jq -c --argjson c "$calls" --arg unlisted "$unlisted" \
+    '{sha256, servers: [.servers[] | {name, transport} + (if .endpoint then {endpoint} else {} end) + {tools}],
+      unlisted: $unlisted, calls: $c.calls, denied: $c.denied}' "$OUT/mcp/decl.json")
+fi
 served=$(jq -r '.served' "$OUT/transcript.json")
 [ "$defect" != raw-model ] || served=$MODEL
 tokens=$(jq -r '.tokens' "$OUT/transcript.json")
 [ "$defect" != tokens-doubled ] || tokens=$((tokens * 2))
 jq -n --arg harness fake-cli --arg provider "$MODEL_PROVIDER" --arg model "$served" --arg thinking "$THINKING" \
   --argjson turns "$(jq '.turns' "$OUT/transcript.json")" --arg insha "$sha" --argjson tokens "$tokens" \
-  --argjson duration "$duration" --arg endpoint "${MODEL_BASE_URL:-}" \
+  --argjson duration "$duration" --arg endpoint "${MODEL_BASE_URL:-}" --argjson mcp "$mcp" \
   '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
     tokens: {input: ($tokens * 9 / 10 | floor), output: ($tokens / 10 | floor), total: $tokens},
-    duration_s: $duration, exit_code: 0, input_sha256: $insha, endpoint: $endpoint}' > "$OUT/run.json"
+    duration_s: $duration, exit_code: 0, input_sha256: $insha, endpoint: $endpoint, mcp: $mcp}' > "$OUT/run.json"
 if [ "$defect" = no-endpoint ]; then
   jq 'del(.endpoint)' "$OUT/run.json" > "$OUT/run.json.new"
   mv "$OUT/run.json.new" "$OUT/run.json"
@@ -275,8 +363,10 @@ signal.alarm(timeout_s)
 
 prompt = open("roles/%s/prompt.md" % env["ROLE"]).read()
 ticket = open(env["TICKET_FILE"]).read()
-system = None if defect == "no-prompt" else prompt
-messages = [{"role": "user", "content": ticket}]
+if defect == "input-cut":
+    ticket = "\n".join(ticket.splitlines()[:20])
+system = None if defect in ("no-prompt", "prompt-after-ticket") else prompt
+messages = [{"role": "user", "content": ticket + "\n\n" + prompt if defect == "prompt-after-ticket" else ticket}]
 tools = [{"name": n} for n in ("Bash", "Read", "Write")]
 tokens = turns = 0
 served = ""
@@ -285,6 +375,60 @@ secret = env["FAKE_KEY"]
 
 def host_path(p):
     return crew + "/" + p[len("/crew/"):] if p.startswith("/crew/") else p
+
+
+def container_path(text):
+    """What a container that mounts .crew at /crew would have printed."""
+    return text.replace(os.path.realpath(crew) + "/", "/crew/")
+
+
+# The repository's MCP servers (docs/adr/0073 §8): mcp.sh's fake-mcp.json, each
+# server started in its cwd (none: fake-cli's own) and asked for its tools over
+# newline JSON-RPC; one that does not answer is named in CREW_MCP_DIR/down and
+# the run goes on without it, as Claude Code does. Every tool of a server that
+# came up is offered to the model, the unnamed ones too: the guard denies those.
+mcp = {}  # qualified name -> (process, tool)
+
+
+def rpc(proc, rid, method, params):
+    proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}) + "\n")
+    proc.stdin.flush()
+    while True:
+        line = proc.stdout.readline()
+        if not line:
+            raise OSError("the server closed its output")
+        msg = json.loads(line)
+        if msg.get("id") == rid:
+            if "result" not in msg:
+                raise OSError("the server answered %s with an error" % method)
+            return msg["result"]
+
+
+if env.get("CREW_MCP_DIR"):
+    for s in json.load(open(os.path.join(env["CREW_MCP_DIR"], "fake-mcp.json")))["servers"]:
+        try:
+            proc = subprocess.Popen(s["command"], cwd=s.get("cwd"), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True)
+            rpc(proc, 1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                        "clientInfo": {"name": "fake-cli", "version": "1"}})
+            proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n")
+            listed = [t["name"] for t in rpc(proc, 2, "tools/list", {})["tools"]]
+        except (OSError, ValueError, KeyError, TypeError):
+            with open(os.path.join(env["CREW_MCP_DIR"], "down"), "a") as f:
+                f.write(s["name"] + "\n")
+            continue
+        for t in listed:
+            mcp["mcp__%s__%s" % (s["name"], t)] = (proc, t)
+    if defect == "mcp-undeclared":
+        mcp.clear()
+    tools += [{"name": q} for q in mcp]
+
+
+def run_mcp(name, tool_input):
+    proc, tool = mcp[name]
+    got = rpc(proc, 3 + turns, "tools/call", {"name": tool, "arguments": tool_input})
+    text = "".join(c.get("text", "") for c in got.get("content", []))
+    return "ok" if defect == "mcp-no-result" else container_path(text)
 
 
 def guarded(name, tool_input):
@@ -354,12 +498,19 @@ while True:
     messages.append({"role": "assistant", "content": resp["content"]})
     results = []
     for u in uses:
+        if u["name"].startswith("mcp_") and u["name"] not in mcp:
+            # A tool this run never offered: the CLI says so, before any hook.
+            results.append({"type": "tool_result", "tool_use_id": u["id"], "is_error": True,
+                            "content": "No such tool available: " + u["name"]})
+            continue
         denied, why = (False, "")
         if defect != "no-hook":
             denied, why = guarded(u["name"], u["input"])
-        if defect == "log-only":
+        if defect == "log-only" or (defect == "mcp-log-only" and u["name"] in mcp):
             denied = False
-        if denied:
+        if u["name"] in mcp and not denied:
+            results.append({"type": "tool_result", "tool_use_id": u["id"], "content": run_mcp(u["name"], u["input"])})
+        elif denied:
             results.append({"type": "tool_result", "tool_use_id": u["id"], "is_error": True,
                             "content": "PreToolUse hook error: " + why})
         else:
@@ -385,6 +536,15 @@ deny() {
   printf 'denied: matched %s\n' "$1" >&2
   exit 2
 }
+# docs/adr/0073 §9: an MCP tool the repository's mcp.json does not name is denied
+# (`mcp-guard-open` lets every one through).
+case $tool in
+  mcp_*)
+    case " ${CREW_MCP_ALLOW:-} " in
+      *" $tool "*) ;;
+      *) [ "${FAKE_DEFECT:-}" = mcp-guard-open ] || deny "mcp tool not named by mcp.json" ;;
+    esac ;;
+esac
 case $input in
   *git*push*) deny "git push" ;;
   *.env*) deny ".env" ;;
@@ -395,6 +555,86 @@ esac
 printf 'ALLOW %s -\n' "$tool" >> "$log"
 exit 0
 GUARD
+
+# fake-cli's mcp.sh (docs/adr/0073 §8's contract): decl.json in, its own
+# configuration (fake-mcp.json: each server's command and cwd, the workspace) and
+# the allow file out. `mcp-own-cwd` leaves the cwd out: the server starts where
+# fake-cli runs.
+cat > "$fake/mcp.sh" <<'MCP'
+#!/bin/sh
+set -eu
+decl=$1
+outdir=$2
+mkdir -p "$outdir"
+jq --arg cwd "$3" --arg defect "${FAKE_DEFECT:-}" \
+  '{servers: [.servers[] | {name, command} + (if $defect == "mcp-own-cwd" then {} else {cwd: $cwd} end)]}' \
+  "$decl" > "$outdir/fake-mcp.json" || { echo "harness-fake-cli: $decl is not a declaration" >&2; exit 1; }
+jq -r '.servers[] | .name as $s | .tools[] | "mcp__\($s)__\(.) \($s) \(.)"' "$decl" > "$outdir/allow"
+MCP
+
+# The stand-in for case 10's fixture server: stdio, newline JSON-RPC, the same
+# two tools and answers, nothing on stderr.
+cat > "$fake/notes.py" <<'PY'
+import json, os, sys
+
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    try:
+        m = json.loads(line)
+    except ValueError:
+        continue
+    if "id" not in m:
+        continue
+    method, p = m.get("method"), m.get("params") or {}
+    if method == "initialize":
+        r = {"protocolVersion": p.get("protocolVersion"), "capabilities": {"tools": {}},
+             "serverInfo": {"name": "notes", "version": "1"}}
+    elif method == "tools/list":
+        r = {"tools": [{"name": t, "inputSchema": {"type": "object"}} for t in ("search_notes", "count_notes")]}
+    elif method == "tools/call" and p.get("name") in ("search_notes", "count_notes"):
+        a = p.get("arguments") or {}
+        text = "notes-hit:%s:%s" % (a.get("q"), os.getcwd()) if p["name"] == "search_notes" else "notes-count-canary"
+        r = {"content": [{"type": "text", "text": text}]}
+    else:
+        sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": m["id"], "error": {"code": -32601, "message": "no"}}) + "\n")
+        sys.stdout.flush()
+        continue
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}) + "\n")
+    sys.stdout.flush()
+PY
+
+# core/agents.py with one defect planted in its mcp verb (FAKE_DEFECT), every
+# other verb the real module's (core/agents_real.py in the tree): case 10r judges
+# only that refusal.
+cat > "$fake/agents_shim.py" <<'PY'
+import os, subprocess, sys
+
+here = os.path.dirname(os.path.abspath(__file__))
+defect = os.environ.get("FAKE_DEFECT", "")
+argv = sys.argv[1:]
+real = [sys.executable, os.path.join(here, "agents_real.py")] + argv
+if not argv or argv[0] != "mcp":
+    os.execv(sys.executable, real)
+r = subprocess.run(real, capture_output=True, text=True)
+out = r.stdout
+if defect == "agents-mcp-accepts":
+    sys.exit(0)
+if defect == "agents-mcp-chatty":
+    out += "see docs/adr/0073\n"
+if defect == "agents-mcp-other-words":
+    out = "NO-GO: agents — no MCP servers on this harness\n"
+if defect == "agents-mcp-wrong-list":
+    out = out.rstrip("\n") + " fake-cli\n"
+if defect == "agents-mcp-writes-decl":
+    d = argv[argv.index("--out") + 1]
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "decl.json"), "w").write("{}\n")
+sys.stdout.write(out)
+sys.stderr.write(r.stderr)
+sys.exit(r.returncode)
+PY
 
 # --- the stand-ins for what an engine gives the harness and the proxy ----------------
 # The proxy: core/egress.py itself, with the names an engine's DNS would answer
@@ -487,10 +727,15 @@ build_tree() {
   cp gates/harness-conformance.sh "$t/gates/"
   cp -R gates/harness-conformance "$t/gates/harness-conformance"
   cp ci/lib.sh "$t/ci/"
-  cp core/harness-check.sh core/egress.sh core/egress.py "$t/core/"
+  cp core/harness-check.sh core/egress.sh core/egress.py core/agents.py core/map.py core/tower.py "$t/core/"
   cp "$fake/egress_wrap.py" "$t/proof-egress.py"
   cp -R roles/dev-worker "$t/roles/dev-worker"
-  cp "$fake/run.sh" "$fake/fake_cli.py" "$t/adapters/fake-cli/"
+  cp -R roles/test-reviewer "$t/roles/test-reviewer"
+  cp "$fake/run.sh" "$fake/fake_cli.py" "$fake/mcp.sh" "$t/adapters/fake-cli/"
+  # Case 10's contract (WORKLOAD_CONTRACT=c): the server, and mcp.json naming search_notes only.
+  mkdir -p "$t/c/mcp"
+  cp "$fake/notes.py" "$t/c/mcp/notes.py"
+  printf '{"servers": {"notes": {"command": ["python3", "c/mcp/notes.py"], "tools": ["search_notes"]}}}\n' > "$t/c/mcp.json"
   cp -R "$fake/netshim" "$t/adapters/fake-cli/netshim"
   cp "$fake/guard.sh" "$t/adapters/fake-cli/hooks/guard.sh"
   printf '{}\n' > "$t/adapters/fake-cli/package-lock.json"
@@ -499,15 +744,57 @@ build_tree() {
   printf 'PROVIDER=anthropic\nMODEL=fake-model-1\nKEY_VAR=FAKE_KEY_VALUE\nTHINKING_PATH=.output_config.effort\nEGRESS=api.fake-provider.example:443\n' > "$t/adapters/fake-cli/conformance.env"
 }
 
+# --- the port picker, under the proxy's load -------------------------------------
+# Every port the picker hands out must bind the way its listener binds it
+# (stub.py: ThreadingHTTPServer on 0.0.0.0; core/egress.py: SO_REUSEADDR on
+# 0.0.0.0) while the proxy's outgoing sockets hold ports on 127.0.0.2. The load
+# is planted as the proxy leaves it: connections from ("127.0.0.2", 0) that close
+# first, so each stays in TIME_WAIT for the kernel's 60 s. How much and how many
+# picks (decisions, against a measurement in the workbench on 2026-11-11): a
+# quarter of the ephemeral range, which bind(0) fills on one parity first, so
+# about half of the ports a pick is offered are held; a picker that asks on
+# 127.0.0.1 then landed on a held port 95 times in 200 picks, so 20 picks miss
+# that defect with a chance near one in a million. The planting took 0.4 s.
+freeport() {
+  "$work/bin/freeport"
+}
+
+python3 -I - "$work/bin/freeport" <<'PY' || nogo "the port picker handed out a port its listener cannot bind (the proof's freeport)"
+import socket, subprocess, sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+lo, hi = map(int, open("/proc/sys/net/ipv4/ip_local_port_range").read().split())
+sink = socket.socket()
+sink.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sink.bind(("127.0.0.1", 0))
+sink.listen(128)
+held = set()
+for _ in range((hi - lo + 1) // 4):
+    c = socket.create_connection(sink.getsockname(), 5, ("127.0.0.2", 0))
+    held.add(c.getsockname()[1])
+    a, _ = sink.accept()
+    c.close()
+    a.close()
+sink.close()
+for i in range(20):
+    port = int(subprocess.run([sys.argv[1]], capture_output=True, text=True, check=True).stdout)
+    try:
+        ThreadingHTTPServer(("0.0.0.0", port), BaseHTTPRequestHandler).server_close()
+        s = socket.socket()
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("0.0.0.0", port))
+        s.close()
+    except OSError as e:
+        sys.exit("pick %d of 20: port %d, %s the %d the proxy's sockets hold: %s"
+                 % (i + 1, port, "one of" if port in held else "not one of", len(held), e))
+PY
+
 # --- the probe, one way out at a time -------------------------------------------
 # Without the suite: the real stub and the real proxy (egress_wrap.py) on local
 # ports, the probe under the stand-in network, one hole opened at a time. The
 # expected output is exact: eight lines, and nothing else, never what the probe
 # read. This is what keeps each of the probe's eight ways honest; the suite-level
 # defects further down only need one hole each.
-freeport() {
-  python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
-}
 
 probe_secret="probe-secret-$$-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 
@@ -597,9 +884,9 @@ prove() {
   rm -f "$work/invoked"
   proved=$((proved + 1))
   errfile=$work/run-$proved.err
-  port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  port=$(freeport)
   verdict=$(cd "$t" && PATH="$work/bin:$PATH" PROOF_INVOKED="$work/invoked" CONFORMANCE=1 CONFORMANCE_PORT="$port" \
-    CONFORMANCE_TIMEOUT_S=2 PROOF_COMPOSE_JSON="${compose_json:-}" WORKBENCH_IMAGE=proof COMPOSE_FILE=compose.yaml WORKLOAD=w WORKLOAD_CONTRACT=w/c \
+    CONFORMANCE_TIMEOUT_S=2 PROOF_COMPOSE_JSON="${compose_json:-}" WORKBENCH_IMAGE=proof COMPOSE_FILE=compose.yaml WORKLOAD=w WORKLOAD_CONTRACT=c \
     FAKE_DEFECT="$2" sh gates/harness-conformance.sh 2> "$errfile") && rc=0 || rc=$?
   # Whatever the verdict, the suite leaves no proxy behind (docs/adr/0046: it removes
   # `egress` on exit, like the scripted model).
@@ -618,7 +905,8 @@ prove() {
       [ "$rc" -eq 1 ] || nogo "the suite accepted a harness that is wrong ($1): exit $rc" "$verdict"
       case "$verdict" in
         "NO-GO: harness-conformance — "*"$3"*) ;;
-        *) nogo "the suite refused '$1' for another reason than expected" "wanted: $3" "got: $verdict" ;;
+        *) nogo "the suite refused '$1' for another reason than expected" "wanted: $3" "got: $verdict" \
+             "--- the suite's stderr, last 30 lines" "$(tail -n 30 "$errfile")" ;;
       esac ;;
   esac
 }
@@ -700,5 +988,51 @@ prove "a project with no egress service" "" "has no service egress"
 compose_json='{"services":{"conformance-model":{},"egress":{},"fake-cli":{}}}'
 prove "a scripted model with no sink alias" "" "no alias conformance-sink"
 compose_json=""
+
+# Case 10 (docs/adr/0073). 10a, the reviewer's role file: the good fake above
+# passed it; each defect leaves case 1 standing and breaks 10a alone.
+prove "commits even when the reviewer changed nothing" commit-always "fake-cli case 10a: run.sh exited 1, want 0"
+prove "puts the role prompt after the ticket" prompt-after-ticket "fake-cli case 10a: the first request holds the role prompt, the role file's marker and the restated output contract out of order"
+prove "sends the input's first twenty lines only" input-cut "fake-cli case 10a: the first request lacks the restated output contract"
+prove "writes final.md under a heading of its own" final-md-header "fake-cli case 10a: final.md's first line is 'Final answer:', want APPROVED"
+# 10b, the dev-worker's calls.
+prove "offers the model no MCP tool" mcp-undeclared "fake-cli case 10b: the first request declares no tool ending with search_notes"
+prove "says the unnamed tools are hidden while offering them" mcp-says-hidden "fake-cli case 10b: run.json says the unnamed tools are hidden, and the first request declares count_notes"
+prove "writes no mcp into run.json" mcp-null "fake-cli case 10b: run.json .mcp.unlisted is 'absent'"
+prove "a guard that lets an unnamed MCP tool through" mcp-guard-open "fake-cli case 10b: hooks.log has no DENY for count_notes"
+prove "logs the denial of an unnamed MCP tool and calls it anyway" mcp-log-only "fake-cli case 10b: count_notes's answer reached the model"
+prove "hands the model no server answer" mcp-no-result "fake-cli case 10b: no request's tool result carries notes-hit:"
+prove "starts the server in its own directory, not the workspace" mcp-own-cwd "fake-cli case 10b: the tool result does not name the workspace"
+prove "counts the calls without reading hooks.log" mcp-calls-unread "fake-cli case 10b: run.json .mcp.calls is [], want"
+# 10c, a server that exits at start.
+prove "goes on without a server that did not start" mcp-down-ignored "fake-cli case 10c: run.sh exited 0 with a server that exits at start, want 1"
+prove "fails without naming the server or ADR 0073 §8" mcp-down-vague "fake-cli case 10c: run.sh's stderr has no line naming the server notes and ADR 0073 §8"
+prove "fails after writing pr.json" mcp-down-late "fake-cli case 10c: a run whose declared server did not start left OUT/pr.json"
+# Case 8 reads case 10's artefacts too.
+prove "the key in an artefact of the reviewer's run alone" key-in-review "fake-cli case 8: the key canary is in the artefacts"
+
+# 10r: a harness with no mcp.sh, beside an adapter that is no CLI harness and has
+# one (replay's shape). Good, then agents.py's refusal wrong each way 10r reads it.
+# shellcheck disable=SC2329 # invoked by name through $tweak in prove
+no_mcp_sh() {
+  rm "$1/adapters/fake-cli/mcp.sh"
+  mkdir -p "$1/adapters/fake-replay"
+  cp "$fake/mcp.sh" "$1/adapters/fake-replay/mcp.sh"
+}
+# shellcheck disable=SC2329 # invoked by name through $tweak in prove
+agents_shim() {
+  no_mcp_sh "$1"
+  mv "$1/core/agents.py" "$1/core/agents_real.py"
+  cp "$fake/agents_shim.py" "$1/core/agents.py"
+}
+tweak=no_mcp_sh
+prove "fake-cli without an mcp.sh" "" GO
+tweak=agents_shim
+prove "agents.py accepts a harness with no mcp.sh" agents-mcp-accepts "fake-cli case 10r: core/agents.py mcp --harness fake-cli exited 0 for a harness with no mcp.sh, want 1"
+prove "agents.py's refusal has a second line" agents-mcp-chatty "fake-cli case 10r: core/agents.py mcp's refusal is 2 lines on stdout, want one"
+prove "agents.py refuses in other words" agents-mcp-other-words "fake-cli case 10r: core/agents.py mcp's refusal is not ADR 0073 §8's line"
+prove "agents.py names a harness with no mcp.sh" agents-mcp-wrong-list "fake-cli case 10r: the refusal lists 'fake-cli fake-replay', want the harnesses that have adapters/<name>/mcp.sh: 'fake-replay'"
+prove "agents.py refuses and writes decl.json" agents-mcp-writes-decl "fake-cli case 10r: core/agents.py mcp refused and still wrote decl.json"
+tweak=""
 
 go

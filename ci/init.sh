@@ -294,7 +294,17 @@ python3 core/init.py --set-baseline "$t/py-out/workload.env" 0.5 "re-measured by
 # its TEST_CMD.
 diff -r stacks/javascript/runners workloads/minimal-js/.lights-out/runners >"$t/diff" 2>&1 \
   || { fail_case g-runners "workloads/minimal-js/.lights-out/runners differs from stacks/javascript/runners"; cat "$t/diff" >&2; }
-diff -r -x self-checks.sh stacks/python/runners .lights-out/runners >"$t/diff" 2>&1 \
+# The committed copy, when there is a commit: under `self` the working tree's
+# .lights-out/ is the base's (docs/adr/0033), so a change to the runners
+# would differ from it by construction (run 43092177964).
+self_runners=.lights-out/runners
+if git rev-parse -q --verify HEAD >/dev/null 2>&1 \
+  && git cat-file -e HEAD:.lights-out/runners 2>/dev/null; then
+  mkdir -p "$t/self-committed"
+  git archive HEAD .lights-out/runners | tar -x -C "$t/self-committed"
+  self_runners="$t/self-committed/.lights-out/runners"
+fi
+diff -r -x self-checks.sh stacks/python/runners "$self_runners" >"$t/diff" 2>&1 \
   || { fail_case g-self "lights-out's own .lights-out/runners differs from stacks/python/runners"; cat "$t/diff" >&2; }
 
 # (h) a committed contract: the plane keys are kept, the rest is the draft's.

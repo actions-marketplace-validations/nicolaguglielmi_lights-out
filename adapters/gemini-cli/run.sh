@@ -84,6 +84,21 @@ for p in "$WORKSPACE" "$TICKET_FILE"; do
 done
 mkdir -p "$crew_root/.uv-cache"
 
+# The repository's MCP servers for the dev-worker (docs/adr/0073 §8): set
+# by core/crew.sh only when the base declares some, as CREW_MCP, a
+# directory holding agents.py's decl.json. The declaration is copied into
+# OUT (the one directory the container sees) and translated there by
+# mcp.sh, which refuses a remote server on this harness, so no token is
+# ever passed here.
+set --
+if [ -n "${CREW_MCP:-}" ]; then
+  [ -f "$CREW_MCP/decl.json" ] || { printf 'harness-gemini-cli: CREW_MCP=%s holds no decl.json (docs/adr/0073 §7)\n' "$CREW_MCP" >&2; exit 1; }
+  mkdir -p "$OUT/mcp"
+  [ "$CREW_MCP" = "$OUT/mcp" ] || cp "$CREW_MCP/decl.json" "$OUT/mcp/decl.json"
+  sh "$here/mcp.sh" "$OUT/mcp/decl.json" "$OUT/mcp" "$(to_container "$WORKSPACE")" || exit 1
+  set -- -e CREW_MCP_DIR="$(to_container "$OUT/mcp")"
+fi
+
 # MODEL_BASE_URL is the one seam gates/harness-conformance.sh sets, to
 # drive this CLI against its scripted model (docs/adr/0041 §7); unset
 # everywhere else. Gemini CLI reads GOOGLE_GEMINI_BASE_URL (verified
@@ -114,6 +129,7 @@ docker-compose --profile crew run --rm --build \
   -e THINKING -e MAX_TURNS -e TIMEOUT_S -e TOKEN_BUDGET \
   -e MODEL -e GEMINI_THINKING_LEVEL \
   -e GOOGLE_GEMINI_BASE_URL="$gemini_base_url" \
+  "$@" \
   -v "$run_dir:$(to_container "$run_dir")" \
   -v "$crew_root/.uv-cache:/crew/.uv-cache" \
   gemini-cli >&2 || container_rc=$?
@@ -180,8 +196,8 @@ response=$(jq -rs '
 # (`gemini-3-flash-preview`, 7,624 of 1,394,455 tokens), so `keys | first`
 # — alphabetical — would have named the helper; the model that answered
 # is the one that spent the most tokens.
-stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null || echo '{}')
-turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null || echo null)
+stats=$(jq -cs '[.[] | select(.type == "result")] | last | .stats // {}' "$OUT/transcript.jsonl" 2>/dev/null) || stats='{}'
+turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length' "$OUT/transcript.jsonl" 2>/dev/null) || turns=null
 tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
 tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
 tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
@@ -193,18 +209,55 @@ model_served=$(printf '%s' "$stats" | jq -r '(.models // {}) | to_entries | max_
 # of a CLI bump (docs/adr/0018 §3), and it must not depend on the model
 # finishing. Overwritten below unchanged; the patch is the only artefact a
 # run without a final message never gets.
+#
+# `mcp` is what the run used of the repository's MCP servers (docs/adr/0073
+# §9), null when none was declared: the calls counted from hooks.log, the
+# one record every harness writes in one shape (a Gemini tool_result has no
+# name). includeTools hides the unnamed tools.
+mcp=null
+calls_err=""
+if [ -n "${CREW_MCP:-}" ]; then
+  hooks_log=$OUT/hooks.log
+  [ -f "$hooks_log" ] || hooks_log=/dev/null
+  calls=$(python3 core/agents.py calls --allow "$OUT/mcp/allow" --hooks "$hooks_log") || { calls_err=$calls; calls='{"calls": null, "denied": null}'; }
+  mcp=$(jq -c --argjson c "$calls" --arg unlisted hidden \
+    '{sha256, servers: [.servers[] | {name, transport} + (if .endpoint then {endpoint} else {} end) + {tools}],
+      unlisted: $unlisted, calls: $c.calls, denied: $c.denied}' "$OUT/mcp/decl.json")
+fi
 write_run_json() {
   jq -n \
     --arg harness gemini-cli --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
     --argjson turns "$turns" --arg insha "$input_sha256" \
     --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
     --argjson duration "$duration" --argjson exitCode "$container_rc" --arg endpoint "$endpoint" \
+    --argjson mcp "$mcp" \
     '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
       tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
       duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
-      + (if $endpoint == "" then {} else {endpoint: $endpoint} end)' > "$OUT/run.json"
+      + (if $endpoint == "" then {} else {endpoint: $endpoint} end) + {mcp: $mcp}' > "$OUT/run.json"
 }
 write_run_json
+
+# A declared server that did not come up fails the run (docs/adr/0073 §8).
+# This CLI goes on without it and says nothing on stderr or in the
+# transcript; the entrypoint copied the debug log's `[MCP error]` lines
+# (`Error during discovery for MCP server '<n>'`) into mcp-errors.log, and
+# any line there fails the run, naming the declared servers it mentions.
+if [ -n "${CREW_MCP:-}" ]; then
+  [ -z "$calls_err" ] || { printf 'harness-gemini-cli: core/agents.py calls: %s\n' "$calls_err" >&2; exit 1; }
+  if [ -s "$OUT/mcp-errors.log" ]; then
+    first=$(head -n 1 "$OUT/mcp-errors.log")
+    down=""
+    for s in $(jq -r '.servers[].name' "$OUT/mcp/decl.json"); do
+      if awk -v s="'$s'" 'index($0, s) { found = 1 } END { exit !found }' "$OUT/mcp-errors.log"; then
+        down="$down${down:+, }$s"
+      fi
+    done
+    [ -n "$down" ] || down=$(jq -r '[.servers[].name] | join(", ")' "$OUT/mcp/decl.json")
+    printf 'harness-gemini-cli: declared MCP server %s did not come up (ADR 0073 §8): %s\n' "$down" "$first" >&2
+    exit 1
+  fi
+fi
 
 # The adapter commits, not the model (docs/adr/0017 §1): whatever the
 # model left uncommitted is staged and committed here, under the crew

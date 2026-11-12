@@ -43,7 +43,10 @@
 #   (g) its crew-egress.txt, if it has one (the package indexes the worker may
 #       reach, docs/adr/0046 §5), lists name:port entries in the shape an
 #       adapter's EGRESS has (egress_flaw, ci/lib.sh), comment lines aside;
-#       the shape is planted-defect checked here too.
+#       the shape is planted-defect checked here too;
+#   (h) what it gives the agents passes core/agents.py check: its roles/
+#       files for the two reviewers and its mcp.json for the dev-worker,
+#       each remote host on its own crew-egress.txt (docs/adr/0073 §10).
 # The contract is the workload's directory for one inside this checkout
 # (app/), and its .lights-out/ for a repository laid out to be attached:
 # workloads/*/ here, or the attached clone itself, named as the one
@@ -612,6 +615,11 @@ PY
     reason=$(crew_egress_flaw "$cd_/crew-egress.txt")
     [ -z "$reason" ] || nogo "$cd_/crew-egress.txt: $reason (docs/adr/0046 §5)"
   fi
+
+  # (h) the reviewers' role files and the dev-worker's MCP servers, through
+  # the one reader crew.sh and review.sh use (docs/adr/0073 §10).
+  reason=$(python3 core/agents.py check --contract "$cd_") \
+    || nogo "$cd_: ${reason#NO-GO: agents — }"
 
   # (e) the thresholds, through the one reader the gates use; a looser
   # override is reported on stderr, not refused.
