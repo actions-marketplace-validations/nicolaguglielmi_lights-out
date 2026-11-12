@@ -44,7 +44,7 @@ jobs:
     needs: plan
     if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       # ./go hands workbench podman's API socket; the runner does not start
