@@ -435,6 +435,30 @@ Each release, then:
   - `actions` stops with success when the tag already holds the same
     files, and fails, without moving anything, when it holds other files.
   - An existing draft is left as it is.
+  - `wiki` pushes nothing when the pages are unchanged.
+
+### The wiki (ADR 0077)
+
+From the next tag, the release's last job, `wiki`, renders the wiki from
+the repository at the tag (`package/wiki.py`: the README, the tutorial,
+the guide, the reference, production, the architecture, one row per ADR,
+the releases) and pushes it with the workflow's own `GITHUB_TOKEN`. There
+is no secret to add. Nobody edits the wiki: every release replaces every
+page, and each page links the file it comes from.
+
+- [ ] **Save a first page in the Wiki tab**, once, before the next tag.
+  GitHub creates the wiki's git repository only then, and no API does it:
+  this repository → Wiki → "Create the first page" → leave the title
+  `Home`, any text → Save page. The tag replaces it. Until then, the tag's
+  `wiki` job fails and says so; the rest of the release is already done.
+- [ ] **Keep "Restrict editing to collaborators only" ticked**: this
+  repository → Settings → General → Features → Wikis. It is GitHub's
+  default for a public repository.
+- [ ] **After the first tag, read the `wiki` job.** GitHub does not
+  document whether `GITHUB_TOKEN` may push to a wiki; widely used wiki
+  Actions do it with `contents: write`, which the job holds. If the job
+  fails with a 403 from `lights-out.wiki.git`, the job needs a token, and
+  that is an amendment to ADR 0077, not a setting.
 
 ### The README's front page
 
@@ -538,4 +562,5 @@ there happens once, so it waits for the prerequisites.
 | The README states what is real, recorded, hand-written and not yet published | `README.md`, "What is real and what is recorded" |
 | The image and the Action built and tested on every push; `publish` only on a `v*` tag or a dispatch | `.github/workflows/package.yml` |
 | The release on a `v*` tag: the wheel checked, the images signed and verified, PyPI by trusted publishing, the two Action repositories synced and tagged, three draft releases; a dispatch is a dry run (ADR 0075) | `.github/workflows/package.yml`, `package/sync-action.sh`, `package/release-notes.sh`, `ci/release.sh` |
+| The wiki rendered from the repository at the tag and pushed by the release; a dispatch renders and lists the pages (ADR 0077) | `.github/workflows/package.yml`, `package/wiki.py`, `package/sync-wiki.sh`, `ci/wiki.sh` |
 | The nightly against GitHub, skipping with a notice while its variable is unset | `.github/workflows/nightly-github.yml` |

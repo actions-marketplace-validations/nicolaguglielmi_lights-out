@@ -6,6 +6,8 @@
   (the Action repositories are refreshed by the workflow, not by hand);
   ADR 0065 §1 (`package.yml`'s release jobs are not gated on `plan`, as
   `publish` is not)
+- Amended by: ADR 0077 (a sixth job, `wiki`, after `release`: the wiki
+  rendered from the repository at the tag)
 
 ## Context
 

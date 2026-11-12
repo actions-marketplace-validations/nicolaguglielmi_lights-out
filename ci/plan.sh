@@ -8,9 +8,10 @@
 # every job of ci, stranger, self, podman and package but plan and publish
 # needs plan and runs only on its outputs (§1, §4): run for every job,
 # full too for every job a docs-only push skips. package.yml's release jobs,
-# dist, pypi, actions and release, are exempt like publish (docs/adr/0075
-# §1): they run on a v* tag or a dispatch, never on a branch push, and a
-# tag on a commit already green would otherwise skip its own release. The
+# dist, pypi, actions, release and wiki, are exempt like publish
+# (docs/adr/0075 §1, 0077 §4): they run on a v* tag or a dispatch, never on
+# a branch push, and a tag on a commit already green would otherwise skip
+# its own release. The
 # exemption names that file only. The check first proves each half can fail.
 set -eu
 name=plan
@@ -43,7 +44,7 @@ done
 cat > "$t/gated.py" <<'PY'
 import sys, yaml
 FULL_KEEP = {("ci.yml", "ci"), ("self.yml", "gates")}
-RELEASE = {("package.yml", n) for n in ("dist", "pypi", "actions", "release")}
+RELEASE = {("package.yml", n) for n in ("dist", "pypi", "actions", "release", "wiki")}
 def flaws(root, names):
     for f in names:
         d = yaml.safe_load(open(f"{root}/.github/workflows/{f}"))
