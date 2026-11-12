@@ -221,7 +221,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -921,6 +921,14 @@ demo-network: ## Prove a network of members on ticket 0012: one PR, gated, merge
 .PHONY: audit
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
+
+# The evidence pack of one release (docs/adr/0081): the release record, its
+# stages, every gate line of its PR, the rework, the review, the spec, the
+# digests and the human answer, each entry naming its source and every gap
+# named; signed with the plane's cosign key and verified in the same run.
+.PHONY: evidence
+evidence: ## Build, sign and verify the evidence pack of a release: VERSION=<v> → .crew/evidence/<v>.json (docs/adr/0081)
+	@VERSION="$(VERSION)" sh core/evidence.sh
 
 # A ticket whose last step failed stays at that step's starting state
 # with nothing queued (docs/adr/0034). resume asks the tower to request

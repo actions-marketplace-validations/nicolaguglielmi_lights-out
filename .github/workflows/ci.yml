@@ -76,6 +76,21 @@ jobs:
             and ([.timeline[].phase] | index("spec") != null) and .state == "rolled-back"' .crew/logbook-demo.json
           jq -e '[.kanban[] | select(.tickets | index("0001")) | .state] == ["rolled-back"]' .crew/logbook-demo.json
           jq -r '.tickets[] | select(.id == "0001") | .timeline[] | "\(.phase)\t\(.verdict // "-")\t\(.line // "" | .[0:100])"' .crew/logbook-demo.json
+      # The evidence pack of e2e's release (docs/adr/0081 §7): the last
+      # release in the log is ticket 0001's rolled-back canary. Built,
+      # signed with the plane's key and verified by ./go evidence; then the
+      # pack must tie the PR's gate lines and spec, and name the human
+      # answer as missing. Not part of ./go demo: the demo is unchanged.
+      - name: the evidence pack of the demo's release
+        run: |
+          v=$(jq -r 'select(.kind == "release") | .record.version' .crew/releases.jsonl | tail -n 1)
+          ./go evidence VERSION="$v"
+          jq -e '.schema == "lights-out.evidence/1" and .release.ticket.value == "0001"
+            and (.prs[0].gates.lines.value | length > 0) and (.prs[0].spec.sha256.value | length > 0)
+            and (.answer.missing | test("rolled back")) and (.missing | index("answer") != null)' ".crew/evidence/$v.json"
+          jq -c .missing ".crew/evidence/$v.json"
+        env:
+          CONTAINER_ENGINE: docker
       # The console over that logbook in snapshot mode, on the runner's own
       # Python (the console is standard library), and one screenshot per
       # screen with the runner's preinstalled Chrome. Evidence for a human,
@@ -98,6 +113,7 @@ jobs:
           name: console-snapshot
           path: |
             .crew/logbook-demo.json
+            .crew/evidence/
             console-shots/
           if-no-files-found: warn
       # The tower's documents outlive the plane (docs/adr/0060 §1, §8): down
@@ -212,6 +228,23 @@ jobs:
       - run: ./go demo-console
         env:
           CONTAINER_ENGINE: docker
+      # The evidence pack of the release the console just answered (docs/adr/0081
+      # §7): the human answer with who, when and via, signed and verified.
+      # demo-console releases directly, so the pack names its PR as missing.
+      - name: the evidence pack of an answered release
+        run: |
+          v=$(jq -r 'select(.kind == "release") | .record.version' .crew/releases.jsonl | tail -n 1)
+          ./go evidence VERSION="$v"
+          jq -e '.answer.answer.value == "GO" and .answer.via.value == "console" and (.answer.by.value | length > 0)
+            and (.answer.at.value | length > 0) and (.prs.missing | test("no ticket"))' ".crew/evidence/$v.json"
+        env:
+          CONTAINER_ENGINE: docker
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-answered
+          path: .crew/evidence/
+          if-no-files-found: warn
       # The CodeHost port's conformance suite (docs/adr/0043 §5) against the
       # plane's Gitea, the reference adapter: no new job and no second plane
       # boot, the plane is up. Gitea's bootstrap pushes this checkout's HEAD
