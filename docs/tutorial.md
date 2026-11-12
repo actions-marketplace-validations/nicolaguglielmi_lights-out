@@ -308,6 +308,38 @@ spec: the sha256 of the ticket file as the agent read it. `harness
 replay, model gemini-3.8-flash` says the PR was replayed, and which model
 wrote the recording. The image digest is the one the launchpad verified.
 
+### `./go evidence`: the release, packed and signed
+
+```sh
+./go evidence VERSION=0.2.0-waitlist
+```
+
+The audit answers about a ticket on your screen. The evidence pack
+answers about a release, in a file you can hand to someone else
+(ADR 0081). It writes `.crew/evidence/<version>.json`, signs it with the
+plane's cosign key and verifies the signature in the same command. It is
+not a stage of `./go demo`. Run after the demo, it packs e2e's release:
+
+<!-- source: local run on podman, commit 38e7d23, 2026-11-12, after ./go demo; left out: cosign's own progress lines and its tlog warnings -->
+```
+missing: release.held_at
+missing: stages[0].started_at
+missing: stages[0].judged_at
+missing: artefacts.dast
+missing: answer
+missing: prs[0].review
+evidence: verify with: cosign verify-blob --key .crew/cosign.pub --insecure-ignore-tlog --bundle .crew/evidence/0.2.0-waitlist.json.bundle .crew/evidence/0.2.0-waitlist.json
+GO: evidence — .crew/evidence/0.2.0-waitlist.json signed and verified; 6 missing
+```
+
+Every value in the pack says where it came from, for example
+`{"source": "state store sqlite: tickets/0001 .ci.lines", "value": ["GO: risk", "GO: secrets", …]}`.
+The six gaps are named, never filled in. The release was not held, so it
+has no hold and no human answer. DAST was off. The gates decided
+auto-merge, so no review was asked for. The stage times arrive with a
+later milestone. Change one byte of the file and the verify command
+fails.
+
 ## 2. The short looks
 
 Each of these is a separate command, not a stage of `./go demo`.
