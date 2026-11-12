@@ -2511,7 +2511,7 @@ def aa_why(browser, bases, golden):
     mine = next(c for c in tab.page.evaluate(CARD_OPENERS_JS) if c["id"] == "0003")
     need(len(mine["openers"]) == 1 and mine["openers"][0]["attempt"] == str(t3["ci"]["why"]["attempt"]),
          f"aa: card 0003 has {mine['openers']}, want one button.why-open for attempt {t3['ci']['why']['attempt']}")
-    now_text = one_now(tab, ".card[data-id='0003']", "aa, card 0003")["text"]
+    now_text = one_now(tab, ".card[data-id='0003'] .now", "aa, card 0003")["text"]
     opener = tab.page.locator(".card[data-id='0003'] button.why-open")
     for how, closing in (("click", "esc"), ("enter", "esc"), ("click", "button")):
         see_why(tab, opener, golden, t3, t3["ci"]["why"]["attempt"], now_text, "card 0003", how, closing)
