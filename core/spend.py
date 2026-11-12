@@ -199,7 +199,8 @@ def add(row, e):
         row["unknown"] += 1
     else:
         row["cost_usd"] = round(row["cost_usd"] + e["cost_usd"], 6)
-    if "agent_s" in row and isinstance(e.get("duration_s"), (int, float)):
+    # A replayed run reports the recorded run's duration, not its own (§5).
+    if "agent_s" in row and e.get("replayed") is not True and isinstance(e.get("duration_s"), (int, float)):
         row["agent_s"] += e["duration_s"]
 
 
