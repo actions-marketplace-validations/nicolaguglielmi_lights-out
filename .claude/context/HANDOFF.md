@@ -60,3 +60,5 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
 - `fix/mutation-shards`: the bootstrap, ADR 0074's judge and the mutants in shards, landed with the release as 0213078
 - Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) waits for 0.4.1
+- `claude/release-automation-005454`: ADR 0075, a `v*` tag runs the whole release from the release after 0.4.0, once the owner has set up three things (checklist, "Release automation"); merged as 28eaa07, [handoffs/claude-release-automation-005454.md](handoffs/claude-release-automation-005454.md)
+- `claude/mutation-coverage`: a mutant runs the tests that reach it, ADR 0076 (0075 on its branch, renumbered at the merge); core/ mutation from 3,467 s to 251 s, same score and survivors; merged as fc1ff59, [handoffs/claude-mutation-coverage.md](handoffs/claude-mutation-coverage.md)
