@@ -5,9 +5,9 @@ requires-python = "==3.13.*"
 dependencies = [
   "fastapi==0.141.1",
   "uvicorn==0.53.0",
-  "opentelemetry-sdk==1.45.1",
-  "opentelemetry-instrumentation-fastapi==0.66b1",
-  "opentelemetry-exporter-prometheus==0.66b1",
+  "opentelemetry-sdk==1.45.2",
+  "opentelemetry-instrumentation-fastapi==0.66b2",
+  "opentelemetry-exporter-prometheus==0.66b2",
   "openfeature-sdk==0.10.0",
   "openfeature-provider-flagd==0.5.2",
 ]
