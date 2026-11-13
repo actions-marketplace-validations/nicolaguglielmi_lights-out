@@ -435,13 +435,15 @@ lights-out/
     spec.py                 # M29: the spec gate and the product role's step before the ticket (ADR 0055); `draft` turns the request editor's fields into a ticket file (ADR 0059)
     logbook/1.0.schema.json # M11: the logbook's schema, one file per minor (1.0, 1.1, 1.2, 1.3)
     risk.py                 # risk classifier: rules-based PR scoring
-    tests/                  # unit tests for risk.py
+    gates/                  # M51: the gates' logic, one module per gate, run by the wrappers in gates/ through `verdict` (ADR 0084)
+    toolchain-run.sh        # M51: a workload's command where TOOLCHAIN_IMAGE says, for a gate's Python (ADR 0084 §4)
+    tests/                  # unit tests, unittest, written from the ADRs: what ./go ci and the self gate run
 
   policy/
     merge.env               # policy-as-code: risk levels, mutation baseline and margin
 
-  gates/                    # PR gates: risk, test-weakening, deps, sast, test, mutation, test-proof
-    *.sh                    # individual gate scripts (read WORKLOAD_* from active workload)
+  gates/                    # PR gates: risk, test-weakening, deps, sast, test, mutation, test-proof; the conformance suites
+    *.sh                    # one wrapper per gate: guards, then the one line from core/gates/<x>.py (ADR 0084)
 
   profiles/
     l0.env                  # L0: podman, no key, no account

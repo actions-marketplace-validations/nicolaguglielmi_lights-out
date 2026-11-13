@@ -45,6 +45,37 @@ nogo() {
   exit 1
 }
 
+# verdict MODULE [ARG...]: a gate whose logic is Python (docs/adr/0084 §3).
+# Runs `python3 -m MODULE ARG...` from the repository root, its stderr
+# streaming. Exit 0 is GO, with the first stdout line as the detail when
+# there is one; exit 1 is NO-GO, the first line the reason and each further
+# line a detail; any other exit, or a 1 with nothing on stdout (an uncaught
+# exception), is NO-GO naming the module.
+verdict() {
+  verdict_module=$1
+  shift
+  verdict_rc=0
+  verdict_out=$(python3 -m "$verdict_module" "$@") || verdict_rc=$?
+  verdict_first=$(printf '%s\n' "$verdict_out" | head -n 1)
+  if [ "$verdict_rc" -eq 0 ]; then
+    [ -z "$verdict_first" ] || go_with "$verdict_first"
+    go
+  fi
+  if [ "$verdict_rc" -ne 1 ] || [ -z "$verdict_first" ]; then
+    nogo "$verdict_module failed (exit $verdict_rc) without a verdict; see stderr"
+  fi
+  verdict_rest=$(printf '%s\n' "$verdict_out" | tail -n +2)
+  verdict_ifs=$IFS
+  IFS='
+'
+  set -f
+  # shellcheck disable=SC2086 # one detail per line, split on newlines only
+  set -- $verdict_rest
+  set +f
+  IFS=$verdict_ifs
+  nogo "$verdict_first" "$@"
+}
+
 # record_check SCRIPT NAME: run a check as `ci-NAME` does. When CI_RECORDS
 # names a directory, which only `./go ci` sets (docs/adr/0062 §1-§2), the
 # run leaves its record there for ci/contract.sh to judge instead of a
