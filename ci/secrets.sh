@@ -78,7 +78,7 @@ if [ -n "${WORKLOAD_ATTACHED:-}" ] && [ -n "${BASE:-}" ] && [ -n "${HEAD:-}" ]; 
   go
 fi
 
-# Four allowlisted local paths (ci/gitleaks-worktree.toml): the cosign key
+# Five allowlisted local paths (ci/gitleaks-worktree.toml): the cosign key
 # ./go up generates; the GEMINI_API_KEY line of .env, where .env.example
 # tells the user to put their key (amended 2026-11-02: that line made
 # ./go demo NO-GO for anyone who followed the example); and .attached/,
@@ -86,8 +86,10 @@ fi
 # own range gate scans above, not this checkout's self-check; and
 # .crew/cache, the uv and npm caches the workbench toolchain form keeps
 # (docs/adr/0042 §2), third-party sources whose test fixtures look like
-# keys. Four paths, then.
-for exempt in .crew/cosign.key .env .attached .crew/cache; do
+# keys; and .crew/logbook.json, whose threshold rows name policy keys
+# (docs/adr/0083, amendment §6: only those rows, only that rule). Five
+# paths, then.
+for exempt in .crew/cosign.key .env .attached .crew/cache .crew/logbook.json; do
   if git ls-files --error-unmatch -- "$exempt" >/dev/null 2>&1; then
     nogo "$exempt is tracked or staged; a real secret must never be committed — fix .gitignore and unstage it (git rm --cached)"
   fi

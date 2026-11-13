@@ -41,3 +41,11 @@ paths = ['''^\.attached/''']
 [[allowlists]]
 description = "the uv and npm caches core/toolchain.sh keeps under .crew/cache/ for the workbench form (docs/adr/0042 §2): third-party sources and tarballs, gitignored, never committed; ci/secrets.sh proves the path ignored and untracked first"
 paths = ['''^\.crew/cache/''']
+
+[[allowlists]]
+description = "the logbook ./go logbook and ./go dora write at .crew/logbook.json (docs/adr/0047 §2): its threshold rows name a policy key (the row whose key is LATENCY_P95_MAX_DELTA), which generic-api-key reads as a key (entropy 3.65, gitleaks 8.30.1, 2026-11-13). Scoped like the cosign entry (docs/adr/0083, amendment §6): that rule only, that path AND a line that is exactly an upper-snake key row; the same row elsewhere, any other rule and any other value in the file are still findings. ci/secrets.sh proves the path ignored and untracked first"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^\.crew/logbook\.json$''']
+regexes = ['''^\s*"key": "[A-Z][A-Z0-9_]*",?$''']
+regexTarget = "line"

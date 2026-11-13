@@ -324,5 +324,9 @@
     "numbers": [
       "slo: error_rate canary(0.2.5-n)=0.000 stable(0.1.0)=0.000"
     ]
-  }
+  },
+  "spend": [
+    {"step": "assign", "attempt": 1, "role": "dev-worker", "harness": "replay", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": true, "tokens": {"input": 40000, "output": 2110, "total": 42110}, "duration_s": 48, "cost_usd": 0, "cost_unknown": null, "at": "2026-11-02T06:10:00Z"},
+    {"step": "review", "attempt": 1, "role": "test-reviewer", "harness": "stub-harness", "provider": "prov", "model": "model-x", "replayed": false, "tokens": {"input": 30000, "output": 900, "total": 30900}, "duration_s": 30, "cost_usd": null, "cost_unknown": "no price for prov/model-x on 2026-11-02", "at": "2026-11-02T06:40:00Z"}
+  ]
 }

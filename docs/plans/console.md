@@ -639,3 +639,20 @@ target and a button. Both, and `#launch`'s GO and NO-GO, open
 release is in progress: one `.canary-stage` row per stage, the running one
 `[data-running]` with the time left against `read_at`, and
 `#canary-rollback` with the reason on a rolled-back record.
+
+## 1.5: delivery and spend (ADR 0082, ADR 0083, amendments of 2026-11-13)
+
+All optional; the schema is `core/logbook/1.5.schema.json`.
+
+| Field | From | Rule |
+|---|---|---|
+| `dora` | the logbook's own `releases` and `tickets`, through `core/dora.py`'s `measures` | `{schema: "dora/1", window_days, from, to, measures, lines}`; `WINDOW_DAYS` as `./go dora` reads it (default 30); the window ends at the record's last event (the latest history `at`, release `at` or answer `at`), never a clock; `lines` are `./go dora`'s stderr lines without `[dora] `; `{ok: false, error}` for a bad `WINDOW_DAYS` or a record with no time |
+| `spend` | the tower documents read for `tickets`, through `core/spend.py`'s `report`; `policy/rework.env` | `{tickets, roles, days, total, limits, lines, summary}`; `limits` the two `SPEND_BUDGET_*` (a number or `null`), or `{ok: false, error}` naming a malformed key; `lines` are `./go spend`'s stderr lines without `[spend] `, the budget line last; `summary` its stdout detail; the tickets' error when they are unread |
+| `tickets[].outcome.stop` | the tower document of a `needs-human` ticket | `"budget"` when it carries `budget.line`, and then `line` is that line; `"cap"` otherwise; absent on any other state |
+
+The Overview draws `section#dora` (`#dora-window`, one `.dora-measure` per
+measure with `data-key` and `data-measured`) and `section#spend`
+(`#spend-summary`, `ul#spend-tickets`, `ul#spend-roles`, `ul#spend-days`,
+`#spend-budget`) after "Where the tickets are". Every word is the
+command's own: the page formats no number. A logbook before 1.5 says it
+has neither.
