@@ -277,8 +277,12 @@ Overview panels for the last two. Named 0.6.0: it adds features.
 - [x] **The release commit**: the wrapper, `pyproject.toml`, the three
   plugin manifests and the landing page at 0.6.0, every usage pinned to
   `@v0.6.0`, the prose in `docs/releases/v0.6.0.md`.
-- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
-- [ ] **Tag `v0.6.0`** on the release merge, every job green.
+- [x] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`):
+  run 43414295511, every job green, `pypi` skipped as a dry run does.
+- [x] **Tag `v0.6.0`** on the release merge 397e08d: `package.yml` run
+  43414807364, all ten jobs green; `lights-out-gates` 0.6.0 on PyPI by
+  trusted publishing, both Action repositories tagged with a draft each,
+  the wiki rendered.
 - [ ] **The three drafts `v0.6.0` published to the Marketplace** (owner,
   passkey).
 
