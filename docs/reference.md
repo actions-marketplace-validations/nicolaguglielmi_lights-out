@@ -32,6 +32,7 @@ Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M21 (GitHu
 | gates without a container | M35 | ✓ `lights-out-gates --light`, the package `lights-out-gates` (from a clone `python3 -m core gates --light`): a Python package, standard library only, from a root `pyproject.toml` mapping `lights_out` onto `core/`; risk and test-weakening by default, perimeter and spec with `TICKET=`, test and test-proof on the host with `TEST_ON_HOST=1`; one line that names the gates that did not run and never says `GO: gates`; 0.14 s on this repository; `ci/gates-light.sh` proves it agrees with the full gates on the fixtures; the `--light` hook recipes verified once against Claude Code, Codex and Gemini CLI with the scripted model. On PyPI as `lights-out-gates` 0.3.0 since 2026-11-09 (ADR 0061 and its amendment) |
 | the agent's toolbelt, first slice | M39 | ✓ the Claude Code plugin `plugins/lights-out/` with this repository as its marketplace (`.claude-plugin/marketplace.json`): `/lights-out:gates`, `/lights-out:spec`, a pre-commit hook, and `lights-out-gates mcp`, a read-only MCP server (four tools over the project map and the spec gate); the package's `spec`, `map` and `mcp` commands; `ci/plugin.sh` and `core/tests/test_mcp.py` in `./go ci`; verified once in Claude Code 2.1.311 with the scripted model. The Codex plugin `plugins/lights-out-codex/` and the Gemini CLI extension `plugins/lights-out-gemini/` (amendment 2026-11-11), each verified once in its pinned CLI. Not listed anywhere (ADR 0069) |
 | gates anywhere | M20 | ✓ `./go init [<path>]` drafts the gates half of `.lights-out/` in the clone (eleven keys, the three `TOOLCHAIN_IMAGE` forms, a measured `MUTATION_BASELINE`); `./go gates` judges the last commit with no engine socket on the workbench form; `./go demo-init` proves it on `workloads/minimal` and `workloads/minimal-js` without the plane, 32 s and 7 s for init plus gates, measured warm on 2026-11-03 (ADR 0042) |
+| outside adapters, GitLab, Jenkins | M32 | ✓ `ADAPTERS_PATH` and `outside/<name>`, admitted by the sha256 of the tree and a conformance GO on record (proven for `STATE_STORE` only, `ci/outside.sh`; `CODE_HOST`, `DELIVERY` and `EVENT_BUS` not proven, `AGENT_HARNESS` left); `adapters/gitlab/` proved by `./go gitlab-conformance` (the full tower on GitLab not proven); `surfaces/jenkins/Jenkinsfile` proved by `./go demo-jenkins` with Jenkinsfile Runner (a real Jenkins controller not proven; GitLab CI and CircleCI recipes not written); Flagger left (ADR 0058) |
 | GitHub code host | M21 | ✓ implemented: `adapters/github/` with the eight CodeHost verbs, an attached repository's merge built, signed and released by the release step at any code host, `./go codehost-conformance` (Gitea on every push, GitHub nightly once the owner sets the throwaway repository). Not yet run: `./go e2e CODE_HOST=github PROFILE=l1` (ADR 0043) |
 
 | | |
@@ -145,6 +146,9 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go package         # build the full image as localhost/lights-out:dev, for the lights-out wrapper (ADR 0045 §1)
 ./go package-gates   # build the gates image as localhost/lights-out-gates:dev (ADR 0057 §3)
 ./go demo-package    # prove the wrapper: build the gates image, workloads/minimal as its own repository, init, commit the draft, gates GO in the workbench under 300 s, then a staged break NO-GO at test; test-proof and test-integrity GO and NO-GO (ADR 0045 §8, 0057)
+./go gitlab-conformance # the ten codehost cases on adapters/gitlab: GitLab CE in a compose project of its own, started and removed; KEEP_GITLAB=1 keeps it, GITLAB_PORT moves it (default 8929); about 224 s to serve, 2.4 GB resident (ADR 0058 §8); not part of ./go ci or demo
+./go statestore-conformance # also delivery-, eventbus- and codehost-conformance: with STATE_STORE=outside/<name> (and the port's own variable) the proof of an outside adapter, recorded in .crew/adapters/register on GO (ADR 0058 §3)
+./go demo-jenkins    # prove Jenkins as a surface, host-side: a Gitea of its own, workloads/minimal as a repository, a PR, Jenkinsfile Runner runs lights-out gates and posts lights-out/jenkins; GO when Gitea shows that status on the PR head (ADR 0058 §7); not part of ./go ci or demo
 ./go help            # list all targets
 ./go shell           # interactive shell inside workbench
 ./go clean           # remove the workbench image
@@ -368,6 +372,8 @@ A workload can also live in a repository of its own (ADR 0037). `./go attach <pa
 
 Profiles: `./go demo PROFILE=l2` selects `profiles/l2.env`. Secrets go in `.env` (gitignored, template `.env.example`). L0 needs no `.env`. Two optional keys serve `./go verify` on your own metrics (ADR 0044): `METRICS_URL`, the base that `/api/v1/query` is appended to, and `METRICS_AUTH_HEADER`, one header line such as `Authorization: Bearer …`, never printed. `./go demo` and the plane's own judge ignore both.
 
+Outside adapters (ADR 0058): `ADAPTERS_PATH=<absolute dir>` in `.env` or a profile names a directory whose subdirectories are adapters; `./go` mounts it read-only at its own path. A port set to `outside/<name>` (`<name>` matches `[a-z0-9][a-z0-9-]*`) runs `$ADAPTERS_PATH/<name>` only when the register `.crew/adapters/register` holds a GO of that port's conformance suite for the sha256 of the adapter's whole tree and the suite file as it is now. The register is local to a checkout, append-only, and written only by `core/adapters.py register` after a suite's GO. Wired: `CODE_HOST`, `DELIVERY`, `STATE_STORE`, `EVENT_BUS`; `AGENT_HARNESS` is refused (naming `harness-conformance`), as are `TRACKER`, `ORCHESTRATOR`, `METRICS`, `FLAGS` and `REGISTRY`, which have no suite. Without a proof every `./go` goal stops in one line, for example `STATE_STORE=outside/json-files is refused: sha256 267adb317a89 has no statestore-conformance GO on record for its suite as it is; run ./go statestore-conformance STATE_STORE=outside/json-files`. Verbs run with the lights-out checkout as working directory. An outside code host names the secret for the suite's case 10 as `CODEHOST_SECRET` in its `env.sh`. `ci/outside.sh` (`./go ci-outside`) proves the refusal and the admission on a test StateStore, `fixtures/outside-adapters/json-files/`. The gitlab code host takes `KEEP_GITLAB=1` and `GITLAB_PORT` on `./go gitlab-conformance`; `demo-jenkins` posts to `LIGHTS_OUT_STATUSES` with `LIGHTS_OUT_STATUS_TOKEN` (see `surfaces/jenkins/Jenkinsfile`).
+
 Two more keys serve the GitHub code host (ADR 0043): `GITHUB_REPO=<owner>/<name>` and `GITHUB_TOKEN`, a fine-grained token for that one repository with Contents, Pull requests and Commit statuses, read and write. `CODE_HOST=github` goes on the command line, never in `.env`, because in `.env` it would also redirect `./go demo`. The token reaches curl on stdin and git through a credential helper the Makefile adds as env-scoped config; it is in no argv, no `.git/config` and no model container.
 
 ### Workflows
@@ -460,6 +466,7 @@ lights-out/
     help.sh                 # make help exits 0
     docs-drift.sh           # every path, ./go command and NAME= key a page cites exists (ADR 0054 §3)
     map.sh                  # the project map end to end: this repository, workloads/minimal, a stale map refused, a docs ticket (ADR 0054)
+    outside.sh              # an adapter outside the repository: refused with no proof, admitted after its suite's GO, refused again on one changed byte; a symlink, a port with no suite and AGENT_HARNESS refused (ADR 0058 §5)
     codehost.sh             # every code host adapter: the eight verbs and ready.sh, credential.sh answers, the Makefile's git config index, the token never in argv (curl and git replaced by recorders, `date` by a clock that moves a second per read; no network, no fake GitHub; ADR 0043 §5)
     profiles.sh             # profiles are plain KEY=value, same keys
     store-bus.sh            # the StateStore and EventBus suites on sqlite and spool, and each suite failing on a broken adapter (ADR 0060 §4)
@@ -516,6 +523,7 @@ lights-out/
       fixtures/gates/        # gate fixture for this workload (at least one required)
     minimal-js/              # a second workload, javascript, gates half only: the gates on a repository with no plane (ADR 0042 §9)
 
+  surfaces/                 # M32: recipes for another CI to show the gates' line as its own commit status; jenkins/ holds the Jenkinsfile and the demo (ADR 0058 §6-§7)
   stacks/                   # the gate runners ./go init copies into a repository, one directory per stack, each with its lockfile (ADR 0042 §7)
   compose.yaml               # the L0 plane: workload + Gitea, Zot, Envoy, Prometheus, flagd; the emulators opt-in
 
@@ -525,6 +533,7 @@ lights-out/
     prometheus/             # Containerfile, prometheus.yml, ready.sh, query.sh (calls promql with http://$PLANE_HOST:9090)
     promql/                 # M22: query.sh, any Prometheus-compatible endpoint at METRICS_URL
     gitea/                  # ready.sh and the eight CodeHost verbs; no runner (ADR 0060)
+    gitlab/                 # M32: the eight CodeHost verbs, ready.sh, env.sh, instance.sh; GitLab CE 19.5.5-ce.0 in a compose project of its own, proved by ./go gitlab-conformance (ADR 0058 §8)
     github/                 # M21: the eight CodeHost verbs, ready.sh, env.sh, credential.sh; GitHub's REST API, an attached repository only (ADR 0043)
     flagd/                  # ready.sh
     zot/                    # ready.sh, publish.sh, verify.sh, sbom.sh (the Registry verbs; ADR 0072 §2)

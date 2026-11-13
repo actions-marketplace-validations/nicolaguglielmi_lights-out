@@ -86,7 +86,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | Porta | Adapter | Note |
 |---|---|---|
 | `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
-| `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |
+| `CodeHost` | `gitea`, `github`, `gitlab` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |; `gitlab` da M32 (ADR 0058), provato dalla sua suite di conformità |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
 | `EventBus` | `spool`, `pubsub-emulator`, `pubsub` | `spool` (default a L0 e L1, ADR 0060): una coda in un file SQLite sotto `.crew/`; gli emulatori opt-in; `pubsub` stesso codice dell'emulatore, cambia l'endpoint |
 | `StateStore` | `sqlite`, `firestore-emulator`, `firestore` | stato del workflow, idempotenza; `sqlite` (default a L0 e L1, ADR 0060): un file sotto `.crew/` che sopravvive a `./go down` |
@@ -105,6 +105,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `artifact-registry`, `cloud-deploy`, `managed-prometheus`, flagd su Cloud Run | Registry, Delivery, Metrics, Flags | M8, track cloud (il percorso di rilascio su GCP) |
 | `pubsub`, `firestore`, `github-issues`, `cloud-workflows` | EventBus, StateStore, Tracker, Orchestrator | M10 (la tower gira su GCP) |
 | `github` | CodeHost | M21 (GitHub come code host, ADR 0043) |
+| `gitlab` | CodeHost | M32 (GitLab CE, ADR 0058) |
 | `grafana`, `cloud-monitoring` | Charts | M11 (console) |
 | `antigravity-sdk`, `linear`, `unleash` | AgentHarness, Tracker, Flags | da assegnare: ognuno con un ADR e la sua suite di conformità |
 | `argo-rollouts` | Delivery | M25 (Kubernetes con Argo Rollouts, ADR 0051) |
@@ -118,6 +119,8 @@ Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud D
 *Emendamento 2026-11-03 (ADR 0037):* un workload può stare in un repository suo. `./go attach <path>` lo clona in `.attached/`, che diventa il `WORKLOAD` di default; il contratto di un workload attaccato sta in `.lights-out/` alla radice del suo repository (`workload.env`, frammento compose, `flags/`, `smoke.sh`, `load.sh`, `fixtures/gates/`, `worker.md`, `policy.env`, `tickets/`), quello di un workload dentro lights-out resta nella sua cartella (`app/`). La riga `Workload` della tabella vale per entrambi; `workloads/minimal` è ora un repo attaccabile, provato da `./go demo-seam`.
 
 *Emendamento 2026-11-07 (ADR 0050):* `AgentHarness` guadagna `antigravity-cli`, Antigravity CLI (`agy`) 1.5.1, solo Gemini, **opzionale e sperimentale**: si sceglie solo con `AGENT_HARNESS=antigravity-cli`, e `gemini-cli` resta il default per `gemini` finché un run live di agy sul ticket 0001 non passa i gate. Un provider può quindi avere più di un harness (emenda ADR 0041 §2). Il binario è proprietario e senza licenza: pinnato per versione e sha256 per architettura in `release.env`, scaricato solo al build dell'immagine, mai pubblicato; il proxy di egress nega telemetria e auto-update, ed è questo a tenere fermo il pin. Il guard è lo stesso `guard.sh`, dietro uno shim, con un nome di hook casuale a ogni run; passa `./go harness-conformance` (casi 0–9) contro il modello scriptato. **Buco aperto, registrato e non chiuso:** gli hook `SessionStart` e `PreToolUse` del `.agents/hooks.json` del repository girano dentro il container, fuori dal guard; non possono spegnerlo né scavalcarne il deny, ma girano (ADR 0050 §7).
+
+*Emendamento 2026-11-13 (ADR 0058):* un adapter può stare fuori dal repository. `ADAPTERS_PATH` nomina una directory assoluta, una porta si imposta a `outside/<nome>`, e l'adapter gira solo se la suite di conformità della sua porta ha dato GO sui suoi byte esatti (sha256 dell'albero, registrato in `.crew/adapters/register`, locale a ogni checkout); senza prova ogni obiettivo di `./go` si ferma in una riga. Porte cablate: `CodeHost`, `Delivery`, `StateStore`, `EventBus`. `AgentHarness` fuori è rifiutato; le porte senza suite (`Tracker`, `Orchestrator`, `Metrics`, `Flags`, `Registry`) pure. La tabella resta il catalogo dei nostri.
 
 ---
 
@@ -807,6 +810,8 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - `./go demo-jenkins` pubblica la riga di `lights-out gates` su una PR locale;
   - `gates/codehost-conformance.sh` è GO su GitLab;
   - `./go demo` resta invariato.
+
+*Stato 2026-11-13:* costruito (ADR 0058). Adapter fuori dal repo: `ADAPTERS_PATH`, `outside/<nome>`, hash dell'albero, registro locale, rifiuto in una riga; quattro porte cablate (CodeHost, Delivery, StateStore, EventBus), provato con uno StateStore di prova (`ci/outside.sh`, in `./go ci`). `adapters/gitlab/` con `./go gitlab-conformance`, job CI `gitlab`. `surfaces/jenkins/Jenkinsfile` con `./go demo-jenkins` (Gitea a sé, Jenkinsfile Runner, stato `lights-out/jenkins`), job CI `jenkins`. Verificato prima di scrivere: l'immagine ufficiale di Jenkinsfile Runner è ferma al 2022, solo amd64, Java 8, e l'ultima release è la 1.0-beta-32 del 2023-11; GitLab CE 19.5.5 gira senza account ma occupa 2,4 GB e impiega 224 s a rispondere, quindi non sta accanto al piano; Flagger v1.45.0 esiste, non costruito, lasciato. Non provato: un adapter esterno su CodeHost, Delivery o EventBus; la torre intera su GitLab; Jenkins su un controller vero. Non scritte: le ricette per GitLab CI e CircleCI. Lasciato: `AgentHarness` fuori dal repo.
 
 ### M33 — La console come banco di lavoro: kanban interattiva, tema, ADR, spec (ADR 0059)
 
