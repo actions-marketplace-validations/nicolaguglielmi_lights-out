@@ -189,3 +189,56 @@ exit 1.
   turns recovery time on with no change here.
 - The console panel is the sprint's final slice, after stream A lands;
   it can embed `dora.json` in the logbook or read the same file.
+
+## Amendment 2026-11-13: the measures in the logbook (1.5) and on the Overview
+
+The sprint's console slice (docs/PLAN.md, sprint 2026-11-12, "Fetta
+finale"): the four measures on the console's Overview. The console reads
+the logbook and nothing behind it (ADR 0047 §2), and the logbook has no
+clock: equal sources give equal bytes. The measures need a window's end.
+
+1. **`dora`, top level of logbook 1.5** (the same minor as ADR 0083's
+   amendment, additions only): `core/dora.py`'s `measures` over the
+   logbook's own `releases` and `tickets`, with `WINDOW_DAYS` as `./go
+   dora` reads it (default 30), plus `lines`, the four measure lines and
+   the window line `./go dora` prints, without their `[dora] ` prefix, in
+   its order. The same object `.crew/dora.json` holds, with `lines`.
+2. **The window ends at the record's last event**, not at a clock: the
+   latest of the tickets' history `at`, the releases' `at` and their
+   answers' `at`. The console's ages already take that reference in a
+   snapshot (ADR 0068 §2). `./go dora` run at that moment prints the same
+   measures; run later, its window ends later, and a release can leave
+   it. The panel says which end it used. A record with no time at all,
+   or a `WINDOW_DAYS` that is not a whole number of 1 or more, makes
+   `dora` `{ok: false, error}` with the reason (`./go dora`'s own words
+   for the window).
+3. **The panel.** The Overview gains `section#dora`, before
+   `section#spend`: `#dora-window` holds the window line, then one
+   `.dora-measure[data-key=<key>][data-measured=true|false]` per measure
+   in §5's order, its text the measure's line verbatim. A measure not
+   measured says so with the reason, as the command does. The page
+   formats no number of its own. `dora` unread shows its error; a
+   logbook before 1.5 says it has no measures.
+
+### Tests, from this amendment
+
+- `core/tests/test_logbook.py`, over the stub sources (the window ends
+  at 0009's last history entry, 2026-11-07T08:10:07Z; 30 days from
+  2026-10-08T08:10:07Z), by hand: deployment frequency 2 (0.2.5-n and
+  0.3.0-b's GO), 2/30 per day; lead time 0010 07:45 − 06:00 = 6,300 s,
+  0002 10:30 − 08:00 = 9,000 s, median 7,650 s, 2 samples, 0 without a
+  ticket; change fail rate 2 of 4 decided (0.2.0-a rolled back, 0.4.0-c
+  answered NO-GO), 0.5, 0 pending (0.5.0-d has no `at`); recovery time
+  0.2.0-a 09:29:00 − 09:27:30 = 90 s, 1 sample, 1 unmeasured (0.4.0-c's
+  stage has no `started_at`). `lines` equal `dora.lines` of that result
+  without the prefix. `WINDOW_DAYS=0` and `x`: `dora` an error naming
+  `WINDOW_DAYS`. A store with no ticket and an empty release log: an
+  error saying the record has no time. The releases unread: four not
+  measured, as §4.
+- `ci/logbook.sh`: the same numbers checked by hand on the golden, each
+  run again with one fact planted wrong.
+- `ci/console-ui.py`: over the golden, `section#dora` on `#overview`,
+  its window line and its four measures equal `dora.lines`, each with its
+  key and `data-measured`; a derived logbook with one measure not
+  measured shows the reason; `dora` unread shows the error; a 1.4
+  logbook, the no-measures sentence.
