@@ -135,8 +135,11 @@ tower=$(awk '!/^[[:space:]]*#/ && /adapters\/\$CODE_HOST\/status\.sh"/ {
     for (i = 1; i <= NF; i++) if ($i == "\"$status\"") { print $(i + 1); break }
   }' core/*.sh core/steps/*.sh | sort -u)
 [ -n "$tower" ] || nogo "b: found no context the tower posts in core/; the check reads nothing"
-# The tower reads no commit status at all: no core file awaits one.
-readers=$(grep -rlE 'await\.sh|/statuses' core --include='*.sh' --include='*.py' 2>/dev/null || :)
+# The tower reads no commit status at all: no core file awaits one. The
+# conformance suites in core/gates/ drive await.sh to prove it, and are not
+# the tower (docs/adr/0084); nor are the tests.
+readers=$(grep -rlE 'await\.sh|/statuses' core --include='*.sh' --include='*.py' \
+  --exclude-dir=gates --exclude-dir=tests --exclude-dir=__pycache__ 2>/dev/null || :)
 [ -z "$readers" ] || nogo "b: core/ reads commit statuses, where a surface's verdict could become the tower's: $readers"
 ctx=$(sed -n 's/.*"context":"\([^"]*\)".*/\1/p' "$jf" | sort -u)
 [ "$ctx" = lights-out/jenkins ] || nogo "b: $jf posts under [$ctx], want lights-out/jenkins only"
