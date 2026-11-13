@@ -6,7 +6,7 @@ Branch `claude/m32-adapters-ci-87ebd8`, cut from main at d1390ba. Not merged.
 
 - Outside adapter refused, then accepted: `./go ci-outside` →
   `GO: outside — an outside StateStore refused, proven, admitted, refused again on one byte; Jenkins posts under lights-out/jenkins, the tower under gates review`.
-  The refusal, by hand: `Makefile:51: *** STATE_STORE=outside/json-files is refused: sha256 267adb317a89 has no statestore-conformance GO on record; run ./go statestore-conformance STATE_STORE=outside/json-files.  Stop.`
+  The refusal, by hand: `Makefile:51: *** STATE_STORE=outside/json-files is refused: sha256 267adb317a89 has no statestore-conformance GO on record for its suite as it is; run ./go statestore-conformance STATE_STORE=outside/json-files.  Stop.`
 - `./go demo-jenkins` →
   `GO: demo-jenkins — Jenkinsfile Runner posted [GO: gates — risk low, auto-merge, in workbench] as lights-out/jenkins on PR #1, 239s` (agent image cached).
 - `./go gitlab-conformance` (cold instance) →

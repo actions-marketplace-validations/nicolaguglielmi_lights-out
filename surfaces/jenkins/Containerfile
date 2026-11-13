@@ -13,6 +13,10 @@ FROM docker.io/jenkins/jenkinsfile-runner@sha256:1510739cb658772e733899a56e7abab
 RUN apt-get update -qq \
  && apt-get install -y -qq --no-install-recommends git curl ca-certificates jq >/dev/null \
  && rm -rf /var/lib/apt/lists/*
+# The runner runs as root on a workspace the agent's user owns (uid 1001 on
+# a GitHub runner): git refuses it as dubious ownership. An agent that runs
+# as the workspace's owner needs none of this.
+RUN git config --system --add safe.directory '*'
 
 # The docker CLI only, from Docker's static release. Docker publishes no
 # checksum file: the sha256 is the one computed on download, 2026-11-13.
