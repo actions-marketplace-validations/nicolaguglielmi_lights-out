@@ -18,7 +18,7 @@ name=vendor-free
 
 [ -d core ] || nogo "core/ not found"
 
-words='envoy|cloud[ _-]?deploy|argo|rollouts|flagd|unleash|gitea|github'
+words='envoy|cloud[ _-]?deploy|argo|rollouts|flagd|unleash|gitea|github|gitlab'
 
 hits=$(grep -rniE "$words" core --include='*.sh' --include='*.py' --include='*.md' \
   --exclude-dir=__pycache__ --exclude-dir=.pytest_cache || true)

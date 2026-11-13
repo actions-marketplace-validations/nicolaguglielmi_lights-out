@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// lights-out gates on Jenkins (docs/adr/0058 §6): a surface, never a judge.
+// The agent runs the lights-out wrapper on the checked-out change, as
+// action.yml does on GitHub, prints the one GO/NO-GO line, and posts it as a
+// commit status under its own context, lights-out/jenkins: never `gates` or
+// `review`, the contexts the tower posts and awaits, so the tower never reads
+// this verdict (docs/adr/0033). Proven by `./go demo-jenkins` with
+// Jenkinsfile Runner against Gitea; a real controller is not proven.
+//
+// The agent needs git, curl, iconv, a container engine (docker or podman)
+// and the wrapper on PATH as `lights-out`:
+//   curl -fsSLo /usr/local/bin/lights-out https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.6.0/lights-out
+// and the checkout's full history (the base must be in it). The status goes
+// to a GitHub-shaped statuses endpoint, GitHub's or Gitea's, without the sha:
+//   LIGHTS_OUT_STATUSES=https://api.github.com/repos/<owner>/<repo>/statuses
+//   LIGHTS_OUT_STATUSES=https://<gitea>/api/v1/repos/<owner>/<repo>/statuses
+// with the token as LIGHTS_OUT_STATUS_TOKEN (a credentials binding sets it on
+// a controller). Optional: LIGHTS_OUT_BASE, default origin/<the change
+// target>, else the head's parent; LIGHTS_OUT_HEAD, default the checked-out
+// commit. All four are environment variables of the agent or the job, not
+// build parameters: Jenkins drops the parameters of a job's first run, before
+// it knows them (seen with Jenkinsfile Runner, 2026-11-13). No endpoint, no
+// post: the build's own result still carries the verdict.
+pipeline {
+  agent any
+  stages {
+    stage('lights-out gates') {
+      steps {
+        sh '''#!/bin/sh
+set -u
+head=${LIGHTS_OUT_HEAD:-$(git rev-parse HEAD)}
+base=${LIGHTS_OUT_BASE:-}
+if [ -z "$base" ] && [ -n "${CHANGE_TARGET:-}" ]; then base=$(git rev-parse -q --verify "origin/$CHANGE_TARGET") || base=""; fi
+set -- "HEAD=$head"
+[ -z "$base" ] || set -- "BASE=$base" "$@"
+# What the wrapper writes goes beside the workspace, a path the engine sees.
+export LIGHTS_OUT_OUT="${LIGHTS_OUT_OUT:-$WORKSPACE@tmp/lights-out}"
+line=$(lights-out gates "$@") || :
+[ -n "$line" ] || line="NO-GO: gates — lights-out gave no verdict; see the log above"
+case "$line" in GO:*) state=success ;; *) state=failure ;; esac
+printf 'lights-out line: %s\\n' "$line"
+if [ -n "${LIGHTS_OUT_STATUSES:-}" ]; then
+  # 140 characters, GitHub's limit (docs/adr/0043 §3); iconv drops a
+  # character the cut split in two.
+  desc=$(printf '%s' "$line" | cut -c1-140 | iconv -f UTF-8 -t UTF-8 -c | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')
+  body=$(printf '{"state":"%s","context":"lights-out/jenkins","description":"%s"}' "$state" "$desc")
+  printf 'Authorization: token %s\\n' "${LIGHTS_OUT_STATUS_TOKEN:-}" \\
+    | curl -fsS -o /dev/null -H @- -H 'Content-Type: application/json' -d "$body" "$LIGHTS_OUT_STATUSES/$head" \\
+    || printf 'lights-out: the status was not posted on %s\\n' "$head" >&2
+fi
+[ "$state" = success ]
+'''
+      }
+    }
+  }
+}

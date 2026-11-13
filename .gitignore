@@ -14,3 +14,5 @@ dist/
 # What building the package (pyproject.toml, docs/adr/0061) leaves in the tree
 /build/
 /lights_out.egg-info/
+# Outside adapters, linked by core/adapters.py admit (docs/adr/0058 §4)
+/adapters/outside/

@@ -75,6 +75,11 @@ proven by `ci/attach.sh` case f).
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
   GitLab proven locally; one more delivery adapter when someone needs it.
+  Built 2026-11-13: `ADAPTERS_PATH` and `outside/<name>`, proven for a
+  StateStore; `adapters/gitlab/`, proven by `./go gitlab-conformance`; the
+  Jenkins recipe, proven with Jenkinsfile Runner by `./go demo-jenkins`.
+  Left: Flagger, an outside AgentHarness, recipes for GitLab CI and
+  CircleCI, and the full tower on GitLab and on a real Jenkins.
 
 The adoption roadmap behind M31, M34 and M35, with what to drop, what to
 change and the sequence after them (attestation, the jury, `./go

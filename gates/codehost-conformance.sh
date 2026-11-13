@@ -38,8 +38,9 @@
 #
 # Case 10 reads what the suite captured: the stdout and stderr of every verb
 # and of every git command it ran. It looks for GITHUB_TOKEN when that is set,
-# and for the Gitea adapter's password when CODE_HOST=gitea, both read here
-# and handed over in CONFORMANCE_SECRETS. That password is
+# for the Gitea adapter's password when CODE_HOST=gitea, and for
+# CODEHOST_SECRET when the caller or the adapter's env.sh sets it (docs/adr/
+# 0058 §8), all read here and handed over in CONFORMANCE_SECRETS. The password is
 # a published, low-entropy constant (adapters/gitea/env.sh); the case still
 # proves that git's own output, which redacts the userinfo of a URL it prints,
 # and the adapter's messages never carry it. Before it looks, the scan is
@@ -79,5 +80,15 @@ if [ "${CODE_HOST:-}" = gitea ]; then
   CONFORMANCE_SECRETS="$CONFORMANCE_SECRETS
 $password"
 fi
+# Any other host names its own (docs/adr/0058 §8): CODEHOST_SECRET, the
+# caller's, else the one the adapter's env.sh sets (GitLab's token, an outside
+# host's own), read in a subshell.
+secret=${CODEHOST_SECRET:-}
+if [ -z "$secret" ] && [ -f "adapters/${CODE_HOST:-}/env.sh" ]; then
+  # shellcheck disable=SC1090 # the adapter's env.sh, known only at run time
+  secret=$(. "adapters/$CODE_HOST/env.sh" >/dev/null 2>&1; printf '%s' "${CODEHOST_SECRET:-}") || secret=""
+fi
+CONFORMANCE_SECRETS="$CONFORMANCE_SECRETS
+$secret"
 export CONFORMANCE_SECRETS
 verdict core.gates.codehost

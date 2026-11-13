@@ -27,6 +27,8 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The light tier, `lights-out-gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the eleven fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. On PyPI as `lights-out-gates` since 2026-11-09, and `uvx lights-out-gates --light` from PyPI answered GO on this repository that day |
 | The Claude Code plugin and `lights-out-gates mcp` (ADR 0069) | **Verified** once on 2026-11-10, Claude Code 2.1.311 with the scripted model, the plugin from a local marketplace directory: `claude plugin validate --strict` passed, `/lights-out:gates` answered its line, the MCP server answered a tool call, the hook stopped a commit that weakened a test. Not listed anywhere yet; `/lights-out:spec` and the MCP server need the next release of the package (section 5) |
 | The Codex plugin and the Gemini CLI extension (ADR 0069, amendment 2026-11-11) | **Verified** once on 2026-11-11, Codex 0.166.0 and Gemini CLI 0.61.0-preview.0 with the scripted model, each from a local copy of this repository: the gates line reached the model, and the hook stopped a commit that weakened a test. Not listed anywhere yet; the trust steps a person takes were not run |
+| An adapter outside the repository, admitted by the hash of its tree and a conformance GO (ADR 0058) | Proven for a StateStore, by `ci/outside.sh` in `./go ci`. Not proven for `CODE_HOST`, `DELIVERY` or `EVENT_BUS`; `AGENT_HARNESS` is refused |
+| Jenkins as a surface: the line posted as `lights-out/jenkins` | Proven with Jenkinsfile Runner by `./go demo-jenkins`. Not proven on a real Jenkins controller |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
 Known limits today, before you start:
@@ -1075,6 +1077,70 @@ Limits:
 - What a CLI does when a hook times out was not verified.
 - The Action is the real gate. The hook is a convenience, and the light tier
   is not the judge.
+
+## Your own adapter, outside the repository
+
+A port is a plugin, and you can keep yours in a directory of your own
+(ADR 0058). Put its directory under one parent, set that parent in `.env`
+as an absolute path, and name the adapter on the port:
+
+```sh
+ADAPTERS_PATH=/home/you/adapters       # in .env, with STATE_STORE=outside/json-files
+./go statestore-conformance            # the proof, recorded on GO
+```
+
+From then on every `./go` goal runs with it.
+
+The name matches `[a-z0-9][a-z0-9-]*`. The adapter runs only after its
+port's conformance suite said GO on its exact bytes. The proof is the
+sha256 of the whole tree, written to `.crew/adapters/register` in this
+checkout. Change one byte and it is refused again. Without a proof, every
+`./go` goal stops in one line:
+
+```
+STATE_STORE=outside/json-files is refused: sha256 267adb317a89 has no statestore-conformance GO on record for its suite as it is; run ./go statestore-conformance STATE_STORE=outside/json-files
+```
+
+The suites are `codehost-`, `delivery-`, `statestore-` and
+`eventbus-conformance`, one per wired port (`CODE_HOST`, `DELIVERY`,
+`STATE_STORE`, `EVENT_BUS`). `./go` mounts `ADAPTERS_PATH` read-only, and
+your verbs run with the lights-out checkout as their working directory. A
+code host names the secret for the suite's case 10 as `CODEHOST_SECRET` in
+its `env.sh`. A symlink anywhere in the tree is refused.
+
+What is proven: a test StateStore, `fixtures/outside-adapters/json-files/`,
+by `ci/outside.sh` in `./go ci`. Not proven: an outside `CODE_HOST`,
+`DELIVERY` or `EVENT_BUS`. An outside `AGENT_HARNESS` is refused, and so is
+`outside/` on a port with no suite (`TRACKER`, `ORCHESTRATOR`, `METRICS`,
+`FLAGS`, `REGISTRY`). The register guards against mistakes and drift, not
+against whoever owns the checkout.
+
+## Your CI as a surface: Jenkins
+
+Another CI can show the gates' verdict. It never gives it (ADR 0033, ADR
+0058 §6). [`surfaces/jenkins/Jenkinsfile`](../surfaces/jenkins/Jenkinsfile)
+is the recipe. The agent runs `lights-out gates`, prints the line, and
+posts it as the commit status `lights-out/jenkins`. It never posts `gates`
+or `review`, the contexts the tower posts, and the tower reads no commit
+status at all (`ci/outside.sh` checks both), so it never reads this one.
+
+The agent needs:
+
+- the `lights-out` wrapper on its PATH, and git, curl and iconv;
+- a container engine for the wrapper, podman or docker;
+- in its environment, `LIGHTS_OUT_STATUSES`, the statuses endpoint of a
+  GitHub-shaped API (GitHub or Gitea), and the token as
+  `LIGHTS_OUT_STATUS_TOKEN`. Environment variables, not build parameters:
+  Jenkins drops the parameters of a job's first run.
+
+The status description is cut to 140 characters.
+
+`./go demo-jenkins` proves the recipe on your machine. It starts a Gitea of
+its own, makes `workloads/minimal` a repository with a PR, and has
+Jenkinsfile Runner judge it. It prints GO when Gitea shows the status on
+the PR head. The only official Jenkinsfile Runner image is old (2022, amd64,
+Java 8), so on arm64 it runs under emulation. Not proven: a real Jenkins
+controller. The recipes for GitLab CI and CircleCI are not written.
 
 ## When something does not fit
 
