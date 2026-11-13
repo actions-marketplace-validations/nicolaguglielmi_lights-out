@@ -110,6 +110,13 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 .placeholder { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; color: var(--muted); }
 .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .count { font-size: 24px; font-weight: 700; }
+/* Delivery and spend (docs/adr/0082, 0083, amendments of 2026-11-13). */
+.dora-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 8px 0 0; }
+.dora-measure { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; }
+.dora-measure[data-measured="false"] { border-style: dashed; color: var(--muted); }
+.spend-lines { margin: 4px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+.spend-lines li { margin: 2px 0; }
+#spend-summary { font-weight: 700; margin: 0 0 8px; }
 /* The board fits the flow (docs/adr/0063 §1): the columns, in the logbook's
    order, under four bands; a column with no card in the view is narrow and
    the columns with cards share the width. Provenance, decision: 40 px holds
@@ -557,6 +564,9 @@ function now(t) {
   const q = openQuestion(t);
   if (q) return {turn: "you", text: "Your turn: answer the " + (q.from === "spec" ? "spec gate's" : "product role's") + " question",
     href: "#ticket/" + encodeURIComponent(id), act: "Answer it"};
+  // The spend budget stopped the next attempt: its own line (docs/adr/0083, amendment §4).
+  if (t.state === "needs-human" && out.stop === "budget" && out.line) return {turn: "you", text: "Your turn: " + out.line + "; a person decides",
+    href: "#ticket/" + encodeURIComponent(id), act: "See the attempts"};
   if (t.state === "needs-human") return {turn: "you", text: "Your turn: " + shown(n) + " attempts used, the last stopped by the " + (out.judge === "review" ? "reviewer" : shown(out.judge)) + "; a person decides",
     href: "#ticket/" + encodeURIComponent(id), act: "See the attempts"};
   if (t.state === "held") {
@@ -753,6 +763,41 @@ function titled(t, q) {
   return h("span", {cls: "title"}, at < 0 ? name : [name.slice(0, at), h("mark", {}, name.slice(at, at + q.length)), name.slice(at + q.length)]);
 }
 
+// --- delivery and spend (docs/adr/0082, 0083, amendments of 2026-11-13) --
+// The words are the commands' own, carried by logbook 1.5: `./go dora` and
+// `./go spend` print the same lines. The page formats no number.
+const DORA_KEYS = ["deployment_frequency", "lead_time", "change_fail_rate", "recovery_time"];
+function doraPanel() {
+  const d = book.dora;
+  const lines = d && Array.isArray(d.lines) ? d.lines.map(String) : [];
+  const body = d === undefined || d === null ? h("p", {cls: "muted"}, "This logbook has no delivery measures: ./go logbook writes them from logbook 1.5.")
+    : unread(d) ? err(d)
+    : [h("p", {id: "dora-window"}, lines[0] || ""),
+      h("p", {cls: "muted"}, "The window ends at the record's last event, not at a clock; ./go dora ends it now."),
+      h("div", {cls: "dora-grid"}, DORA_KEYS.map((k, i) => {
+        const line = lines[i + 1] || "", at = line.indexOf(": ");
+        const m = (d.measures || {})[k] || {};
+        return h("div", {cls: "dora-measure", "data-key": k, "data-measured": m.measured === true ? "true" : "false"},
+          at < 0 ? line : [h("b", {}, line.slice(0, at)), line.slice(at)]);
+      }))];
+  return h("section", {id: "dora"}, h("h2", {}, "Delivery, the four keys (./go dora, ADR 0082)"), h("div", {cls: "panel"}, body));
+}
+function spendPanel() {
+  const s = book.spend;
+  let body;
+  if (s === undefined || s === null) body = h("p", {cls: "muted"}, "This logbook has no spend: ./go logbook writes it from logbook 1.5.");
+  else if (unread(s)) body = err(s);
+  else {
+    const lines = Array.isArray(s.lines) ? s.lines.map(String) : [];
+    const kind = (w) => lines.filter((l) => l.startsWith(w + " "));
+    const list = (id, title, rows) => h("div", {}, h("b", {}, title), h("ul", {id: id, cls: "spend-lines"}, rows.map((l) => h("li", {}, l))));
+    body = [h("p", {id: "spend-summary"}, shown(s.summary)),
+      h("div", {cls: "grid3"}, list("spend-tickets", "Per ticket", kind("ticket")), list("spend-roles", "Per role", kind("role")), list("spend-days", "Per day (UTC)", kind("day"))),
+      h("p", {id: "spend-budget", cls: "muted"}, lines.filter((l) => l.startsWith("budget: ")).pop() || "")];
+  }
+  return h("section", {id: "spend"}, h("h2", {}, "Spend, cost and time (./go spend, ADR 0083)"), h("div", {cls: "panel"}, body));
+}
+
 // --- overview (docs/adr/0055 §6) --------------------------------------
 const ORDER = ["requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
   "needs-human", "merged", "main-green", "held", "rolled-back"];
@@ -762,7 +807,7 @@ function waitLine(w) {
 }
 function screenOverview() {
   const out = [h("h1", {}, "Overview"),
-    h("p", {cls: "lede"}, "What waits for a person first; then every ticket the tower holds, by where it is in the flow; the files open tickets hold; the docs a merge left to realign. ",
+    h("p", {cls: "lede"}, "What waits for a person first; then every ticket the tower holds, by where it is in the flow; the delivery measures and the spend; the files open tickets hold; the docs a merge left to realign. ",
       h("a", {href: "#kanban"}, "The kanban →"))];
   if (unread(book.tickets)) return out.concat(h("div", {cls: "panel"}, err(book.tickets)));
   const all = ticketsList();
@@ -783,6 +828,7 @@ function screenOverview() {
       b.states.filter((st) => inState(st).length).map((st) => h("div", {},
         h("div", {cls: "muted"}, st + " · " + inState(st).length),
         inState(st).map((t) => h("div", {}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, named(t)))))))))));
+  out.push(doraPanel(), spendPanel());
   const held = book.perimeters_held;
   out.push(h("h2", {}, "Perimeters held (perimeters/held, ADR 0053)"), h("div", {cls: "panel"},
     unread(held) ? err(held) : !Array.isArray(held) ? h("p", {cls: "muted"}, "This logbook has no perimeters_held.")
