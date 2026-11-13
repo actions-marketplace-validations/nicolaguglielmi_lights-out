@@ -12,7 +12,7 @@ job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 Written from docs/adr/0059 and the DOM contract it names (and, for t-z, from
 docs/adr/0071; for `agents`, from docs/adr/0073), not from console/index.html.
 It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.4.json, and drives it with Playwright:
+fixtures/logbook/golden-1.5.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -151,6 +151,17 @@ from the golden's own fields at run time):
      too and never call window.confirm; Esc and button.close close it and the focus
      returns to the opener.
 
+  ad. the Overview's two panels (docs/adr/0082 and 0083, amendments of 2026-11-13): over
+     the golden, section#dora before section#spend, #dora-window and one
+     .dora-measure[data-key][data-measured] per measure in the ADR's order, each text the
+     logbook's dora.lines verbatim; #spend-summary, ul#spend-tickets, ul#spend-roles,
+     ul#spend-days (one li per line, in order) and #spend-budget, each the logbook's spend
+     words verbatim; over logbooks derived from it, a measure not measured with
+     data-measured=false and its reason, dora and spend unread with their errors and no
+     rows, a 1.4 logbook (golden-1.4.json) with the sentence naming 1.5 and no rows, and
+     ticket 0007 stopped by the budget with the budget's line in its now line in #your-turn;
+     nothing POSTed.
+
   agents. the Thresholds screen's Agents panel prints the logbook's lines
      (docs/adr/0073 §10), and each card's back shows its task's MCP calls and
      its review's instructions, and no such row when they are null.
@@ -174,7 +185,8 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.4.json"
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.5.json"
+GOLDEN_14 = ROOT / "fixtures" / "logbook" / "golden-1.4.json"
 SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds", "network", "network/0010"]
 THEME_KEY = "lights-out.theme"
 TIMEOUT_MS = 5000
@@ -1206,7 +1218,9 @@ def expected_now(t, launch, max_attempts, who=None):
         who_asked = "spec gate's" if questions[-1].get("from") == "spec" else "product role's"
         return {"turn": "you", "contains": [who_asked], "starts": None, "href": f"#ticket/{ident}"}
     if state == "needs-human":
-        return {"turn": "you", "contains": [], "starts": None, "href": f"#ticket/{ident}"}
+        # docs/adr/0083, amendment §4: a budget stop says the budget's line.
+        said = [out["line"]] if out.get("stop") == "budget" and out.get("line") else []
+        return {"turn": "you", "contains": said, "starts": None, "href": f"#ticket/{ident}"}
     if state == "held" and out.get("judge") == "human":
         return {"turn": "done", "contains": [], "starts": None, "href": None}
     record = (launch or {}).get("record") or {}
@@ -1464,6 +1478,157 @@ def i_overview(browser, bases, golden, books):
         need(sorted(got) == want, f"i ({name}): #your-turn lists {sorted(got)}, the tickets whose turn is a person's are {want}")
         tab.audit(f"i ({name})")
         ctx.close()
+
+
+# --- ad. the delivery and spend panels (docs/adr/0082, 0083, amendments of 2026-11-13) ---------
+
+DORA_KEYS = ["deployment_frequency", "lead_time", "change_fail_rate", "recovery_time"]
+PANELS_JS = """() => {
+  const txt = (el) => el ? el.textContent.replace(/\\s+/g, ' ').trim() : null;
+  const all = [...document.querySelectorAll('main section, main .panel, main h2')];
+  const dora = document.querySelector('main section#dora'), spend = document.querySelector('main section#spend');
+  const lis = (id) => [...document.querySelectorAll('#' + id + ' > li')].map(txt);
+  return {
+    dora: !!dora, spend: !!spend,
+    order: dora && spend ? all.indexOf(dora) < all.indexOf(spend) : null,
+    after_you: dora ? all.indexOf(dora) > all.indexOf(document.getElementById('your-turn')) : null,
+    dora_text: txt(dora), spend_text: txt(spend),
+    window: txt(document.getElementById('dora-window')),
+    measures: [...document.querySelectorAll('section#dora .dora-measure')].map((m) => ({key: m.dataset.key, measured: m.dataset.measured, text: txt(m)})),
+    summary: txt(document.getElementById('spend-summary')),
+    tickets: lis('spend-tickets'), roles: lis('spend-roles'), days: lis('spend-days'),
+    budget: txt(document.getElementById('spend-budget')),
+  };
+}"""
+
+NOW_0007_JS = """() => {
+  const n = document.querySelector('#your-turn li[data-id="0007"] .now');
+  return n ? n.textContent.replace(/\\s+/g, ' ').trim() : null;
+}"""
+
+
+def panel_expect(book):
+    """What the two panels must hold over BOOK, from its own fields (the ADR's DOM contract)."""
+    dora, spend = book.get("dora"), book.get("spend")
+    out = {"dora": None, "spend": None}
+    if isinstance(dora, dict) and dora.get("ok") is False:
+        out["dora"] = {"error": dora["error"]}
+    elif isinstance(dora, dict):
+        out["dora"] = {"window": dora["lines"][0],
+                       "measures": [{"key": k, "measured": "true" if dora["measures"][k]["measured"] else "false", "text": line}
+                                    for k, line in zip(DORA_KEYS, dora["lines"][1:])]}
+    else:
+        out["dora"] = {"old": True}
+    if isinstance(spend, dict) and spend.get("ok") is False:
+        out["spend"] = {"error": spend["error"]}
+    elif isinstance(spend, dict):
+        kind = lambda word: [line for line in spend["lines"] if line.startswith(word + " ")]  # noqa: E731
+        out["spend"] = {"summary": spend["summary"], "tickets": kind("ticket"), "roles": kind("role"), "days": kind("day"),
+                        "budget": spend["lines"][-1]}
+    else:
+        out["spend"] = {"old": True}
+    return out
+
+
+def panel_problems(info, exp):
+    """Why the panels INFO are not EXP, or None."""
+    if not info["dora"] or not info["spend"]:
+        return f"section#dora {info['dora']}, section#spend {info['spend']}: both must be on #overview"
+    if not info["order"]:
+        return "section#dora is not before section#spend"
+    if not info["after_you"]:
+        return "section#dora is not after #your-turn"
+    d, s = exp["dora"], exp["spend"]
+    if "error" in d:
+        if d["error"] not in (info["dora_text"] or "") or info["measures"] or info["window"]:
+            return f"dora unread: section#dora says {info['dora_text']!r} with {len(info['measures'])} measure(s), want the error {d['error']!r} and none"
+    elif "old" in d:
+        if "1.5" not in (info["dora_text"] or "") or info["measures"]:
+            return f"a logbook before 1.5: section#dora says {info['dora_text']!r}, want the sentence naming 1.5 and no measure"
+    else:
+        if info["window"] != d["window"]:
+            return f"#dora-window is {info['window']!r}, the logbook's line is {d['window']!r}"
+        if info["measures"] != d["measures"]:
+            return f"the measures are {info['measures']}, the logbook gives {d['measures']}"
+    if "error" in s:
+        if s["error"] not in (info["spend_text"] or "") or info["tickets"] or info["summary"]:
+            return f"spend unread: section#spend says {info['spend_text']!r}, want the error {s['error']!r} and no line"
+    elif "old" in s:
+        if "1.5" not in (info["spend_text"] or "") or info["tickets"] or info["summary"]:
+            return f"a logbook before 1.5: section#spend says {info['spend_text']!r}, want the sentence naming 1.5 and no line"
+    else:
+        for key in ("summary", "tickets", "roles", "days", "budget"):
+            if info[key] != s[key]:
+                return f"spend's {key} is {info[key]!r}, the logbook's words are {s[key]!r}"
+    return None
+
+
+def panel_books(golden):
+    """Logbooks derived from the golden for ad: one measure not measured, both unread, and 0007 stopped
+    by the budget."""
+    unmeasured = json.loads(json.dumps(golden))
+    why = "no failed release in the window carries its last stage's started_at (docs/adr/0080 adds it)"
+    unmeasured["dora"]["measures"]["recovery_time"] = {"measured": False, "why": why}
+    unmeasured["dora"]["lines"][4] = f"recovery time: not measured — {why}"
+    unread_ = json.loads(json.dumps(golden))
+    unread_["dora"] = {"ok": False, "error": "WINDOW_DAYS='x' is not a whole number of days, 1 or more"}
+    unread_["spend"] = {"ok": False, "error": "adapters/stub-state/get.sh tickets 0003 exited 3: broken"}
+    budget = json.loads(json.dumps(golden))
+    line = "spend budget: this ticket spent $4.20, at or over SPEND_BUDGET_TICKET_USD=$4.00; the next attempt is not launched"
+    seven = next(t for t in budget["tickets"] if t["id"] == "0007")
+    seven["outcome"] = dict(seven["outcome"], stop="budget", line=line)
+    return {"unmeasured": unmeasured, "unread": unread_, "budget": budget}, line
+
+
+def self_checks_panels(golden):
+    need(isinstance(golden.get("dora"), dict) and isinstance(golden.get("spend"), dict), "ad: the golden has no dora or no spend")
+    exp = panel_expect(golden)
+    good = {"dora": True, "spend": True, "order": True, "after_you": True, "dora_text": "", "spend_text": "",
+            "window": exp["dora"]["window"], "measures": exp["dora"]["measures"], **{k: exp["spend"][k] for k in exp["spend"]}}
+    need(panel_problems(good, exp) is None, f"ad self-check: a right panel is refused: {panel_problems(good, exp)}")
+    for name, change in (("the order", {"order": False}), ("a measure's key", {"measures": [dict(m, key="x") for m in good["measures"]]}),
+                         ("measured", {"measures": [dict(m, measured="true") for m in good["measures"][:3]] + [dict(good["measures"][3], measured="false")]}),
+                         ("a line", {"tickets": good["tickets"][1:]}), ("the budget", {"budget": "budget: none"}),
+                         ("the summary", {"summary": "9 tickets"}), ("the window", {"window": "window: 7 days"}),
+                         ("no spend", {"spend": False})):
+        need(panel_problems(dict(good, **change), exp) is not None, f"ad self-check: a panel with {name} wrong is accepted")
+    books, _ = panel_books(golden)
+    bad = dict(good, dora_text="", spend_text="")
+    need(panel_problems(bad, panel_expect(books["unread"])) is not None, "ad self-check: unread panels showing rows are accepted")
+    old = dict(good, measures=[], window=None, tickets=[], summary=None, dora_text="no measures", spend_text="no spend")
+    need(panel_problems(old, panel_expect({})) is not None, "ad self-check: a 1.4 sentence that names no 1.5 is accepted")
+
+
+def ad_panels(browser, golden, tmp):
+    books, line = panel_books(golden)
+    paths = {"golden": GOLDEN, "old": GOLDEN_14}
+    for name, book in books.items():
+        paths[name] = tmp / f"ad-{name}.json"
+        paths[name].write_text(json.dumps(book), encoding="utf-8")
+    old = json.loads(GOLDEN_14.read_text(encoding="utf-8"))
+    for name, book in (("golden", golden), ("unmeasured", books["unmeasured"]), ("unread", books["unread"]), ("old", old),
+                       ("budget", books["budget"])):
+        with Console(paths[name]) as c:
+            for size in (DESKTOP, PHONE):
+                ctx = browser.new_context(viewport=size)
+                tab = Tab(ctx, c.base)
+                tab.load("#overview")
+                wait_for(tab, "section#spend", f"ad ({name})")
+                tab.page.wait_for_timeout(300)
+                info = tab.page.evaluate(PANELS_JS)
+                bad = panel_problems(info, panel_expect(book))
+                need(bad is None, f"ad ({name}, {size['width']} px): {bad}")
+                if name == "unmeasured":
+                    need(info["measures"][3]["measured"] == "false", "ad (unmeasured): recovery_time is not data-measured=false")
+                if name == "budget":
+                    said = tab.page.evaluate(NOW_0007_JS)
+                    need((said or "").startswith(f"Your turn: {line}; a person decides"),
+                         f"ad (budget): 0007's now line in #your-turn is {said!r}, want it to say the budget's line")
+                if size is PHONE:
+                    wide = tab.page.evaluate("() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
+                    need(not wide, f"ad ({name}): the Overview scrolls sideways at 390 px")
+                tab.audit(f"ad ({name})")
+                ctx.close()
 
 
 # --- j. the timeline ----------------------------------------------------------------------------
@@ -4580,11 +4745,13 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(golden.get("schema") == "lights-out/logbook/1.4", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.4")
+        need(golden.get("schema") == "lights-out/logbook/1.5", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.5")
+        need(GOLDEN_14.is_file(), f"{GOLDEN_14.relative_to(ROOT)} not found: the 1.4 degradation (ad) reads it")
         need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 or later logbook")
         need(GOLDEN_12.is_file(), f"{GOLDEN_12.relative_to(ROOT)} not found: the 1.2 degradation (z) reads it")
         book12 = json.loads(GOLDEN_12.read_text(encoding="utf-8"))
         self_checks()
+        self_checks_panels(golden)
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser = p.chromium.launch()
@@ -4631,6 +4798,7 @@ def main():
                         i_overview(browser, bases, golden, books)
                         j_timeline(browser, bases, golden)
                         k_editor(browser, bases)
+                    ad_panels(browser, golden, pathlib.Path(tmp))
             finally:
                 browser.close()
         line, code = f"GO: {NAME}", 0

@@ -540,7 +540,7 @@ class Reader(unittest.TestCase):
     never a default). Each case changes one fact of the tower's documents and
     reads what docs/adr/0071 §1 says follows."""
 
-    def read(self, mutate=None):
+    def read(self, mutate=None, extra=None):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "adapters" / "stub-state").mkdir(parents=True)
@@ -554,6 +554,8 @@ class Reader(unittest.TestCase):
                 mutate(root)
             env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
             env.update(ENV)
+            env.pop("WINDOW_DAYS", None)
+            env.update(extra or {})
             ran = subprocess.run([sys.executable, "core/logbook.py", "--out", "out.json"], cwd=root, env=env,
                                  capture_output=True, text=True)
             self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
@@ -585,8 +587,9 @@ class Reader(unittest.TestCase):
             Reader.book = self.read()
         return Reader.book
 
-    def test_the_schema_is_1_4(self):
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.4")
+    def test_the_schema_is_1_5(self):
+        # 1.5 adds dora and spend (docs/adr/0082, 0083, amendments of 2026-11-13); additions only.
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.5")
 
     def test_ci_and_rework_carry_gates_and_not_the_raw_lines(self):
         t = self.ticket(self.base())
@@ -733,8 +736,8 @@ class WhyOfAnEntry(unittest.TestCase):
         base.update(more)
         return base
 
-    def test_the_schema_is_1_4(self):
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.4")
+    def test_the_schema_is_1_5(self):
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.5")
 
     def test_a_ci_that_failed_a_gate_after_secrets_said_go(self):
         self.assertEqual(logbook.why(self.entry(), 2, "gates"),
@@ -863,8 +866,9 @@ class WhyInTheLogbook(unittest.TestCase):
     def gate_rows(self, t):
         return [r for r in t["timeline"] if r["phase"] == "gate"]
 
-    def test_the_schema_is_1_4(self):
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.4")
+    def test_the_schema_is_1_5(self):
+        # 1.5 adds dora and spend (docs/adr/0082, 0083, amendments of 2026-11-13); additions only.
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.5")
 
     def test_0003s_current_ci_why(self):
         t = self.ticket(self.base(), "0003")
@@ -1019,6 +1023,167 @@ class WhyInTheLogbook(unittest.TestCase):
         self.assertEqual(old["schema"], "lights-out/logbook/1.3")
         for t in old["tickets"]:
             self.assertNotIn("why", t.get("ci") or {}, t["id"])
+
+
+class SpendInTheLogbook(unittest.TestCase):
+    """Logbook 1.5's `spend` and the needs-human outcome's `stop`, over the stub
+    sources, by hand from docs/adr/0083's amendment of 2026-11-13."""
+
+    read = Reader.read
+    edit = Reader.edit
+    state = Reader.state
+    ticket = Reader.ticket
+    source = Reader.source
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if SpendInTheLogbook.book is None:
+            SpendInTheLogbook.book = self.read()
+        return SpendInTheLogbook.book
+
+    def row(self, row, usd, runs, unknown, **more):
+        self.assertAlmostEqual(row["cost_usd"], usd)
+        self.assertEqual((row["runs"], row["unknown"]), (runs, unknown))
+        for key, value in more.items():
+            self.assertEqual(row[key], value, key)
+
+    def test_per_ticket(self):
+        t = self.base()["spend"]["tickets"]
+        self.row(t["0003"], 1.1625, 2, 0, agent_s=420, elapsed_s=1200)
+        self.row(t["0010"], 0, 2, 1, agent_s=30, elapsed_s=5400)
+        elapsed = {"0001": 1800, "0002": 7200, "0004": 300, "0005": 60, "0007": 3000, "0008": 2400, "0009": 607}
+        for tid, secs in elapsed.items():
+            self.row(t[tid], 0, 0, 0, agent_s=0, elapsed_s=secs)
+        self.assertEqual(sorted(t), sorted(list(elapsed) + ["0003", "0010"]))
+
+    def test_per_role_and_per_day_and_in_all(self):
+        s = self.base()["spend"]
+        self.assertEqual(sorted(s["roles"]), ["dev-worker", "test-reviewer"])
+        self.row(s["roles"]["dev-worker"], 1.1625, 3, 0, agent_s=420)
+        self.row(s["roles"]["test-reviewer"], 0, 1, 1, agent_s=30)
+        self.assertEqual(sorted(s["days"]), ["2026-11-02", "2026-11-03"])
+        self.row(s["days"]["2026-11-02"], 0, 2, 1)
+        self.row(s["days"]["2026-11-03"], 1.1625, 2, 0)
+        self.row(s["total"], 1.1625, 4, 1)
+
+    def test_the_commands_words_and_the_limits(self):
+        s = self.base()["spend"]
+        self.assertEqual(s["summary"], "9 tickets, 4 runs, $1.16 known, 1 of cost unknown")
+        self.assertEqual(s["limits"], {"SPEND_BUDGET_TICKET_USD": 1.0, "SPEND_BUDGET_DAY_USD": None})
+        self.assertEqual(s["lines"][-1], "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit")
+        self.assertIn("ticket 0003: $1.16 over 2 run(s); agents 0h07m00s, elapsed 0h20m00s", s["lines"])
+        self.assertIn("role test-reviewer: $0.00 over 1 run(s), 1 of cost unknown; 0h00m30s", s["lines"])
+        self.assertIn("day 2026-11-03: $1.16 over 2 run(s)", s["lines"])
+        kinds = [line.split(" ")[0] for line in s["lines"]]
+        self.assertEqual(kinds, ["ticket"] * 9 + ["role"] * 2 + ["day"] * 2 + ["budget:"])
+
+    def test_the_cap_is_the_stop_of_0007_with_its_1_4_line(self):
+        t = self.ticket(self.base(), "0007")
+        self.assertEqual(t["outcome"]["verdict"], "needs-human")
+        self.assertEqual(t["outcome"]["stop"], "cap")
+        src = self.source("0007")
+        self.assertEqual(t["outcome"]["line"], src["rework"][-1]["line"])
+        self.assertEqual(t["outcome"]["judge"], src["rework"][-1].get("judge"))
+
+    def test_the_budget_is_the_stop_and_its_line_the_outcomes(self):
+        line = "spend budget: this ticket spent $4.20, at or over SPEND_BUDGET_TICKET_USD=$4.00; the next attempt is not launched"
+        book = self.read(self.edit("0007", lambda d: d.update(budget={"line": line})))
+        t = self.ticket(book, "0007")
+        src = self.source("0007")
+        self.assertEqual((t["outcome"]["verdict"], t["outcome"]["stop"], t["outcome"]["line"]), ("needs-human", "budget", line))
+        self.assertEqual(t["outcome"]["judge"], src["rework"][-1].get("judge"))
+
+    def test_no_stop_but_at_needs_human(self):
+        for t in self.base()["tickets"]:
+            if t["state"] != "needs-human":
+                self.assertNotIn("stop", t["outcome"], t["id"])
+
+    def test_tickets_unread_make_spend_the_same_error(self):
+        book = self.read(lambda root: (root / "adapters" / "stub-state" / "get.sh").write_text("#!/bin/sh\necho broken >&2\nexit 3\n"))
+        self.assertEqual(book["tickets"], {"ok": False, "error": "broken"})
+        self.assertEqual(book["spend"], book["tickets"])
+
+    def test_a_malformed_limit_is_an_error_naming_the_key_and_the_report_stays(self):
+        def bad(root):
+            path = root / "policy" / "rework.env"
+            path.write_text(path.read_text(encoding="utf-8").replace("SPEND_BUDGET_DAY_USD=", "SPEND_BUDGET_DAY_USD=x"))
+        s = self.read(bad)["spend"]
+        self.assertIs(s["limits"]["ok"], False)
+        self.assertIn("SPEND_BUDGET_DAY_USD", s["limits"]["error"])
+        self.assertEqual(s["lines"][-1], "budget: " + s["limits"]["error"])
+        self.assertEqual(s["total"]["runs"], 4)
+
+
+class DoraInTheLogbook(unittest.TestCase):
+    """Logbook 1.5's `dora`, over the stub sources, by hand from docs/adr/0082's
+    amendment of 2026-11-13: the window ends at the record's last event."""
+
+    read = Reader.read
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if DoraInTheLogbook.book is None:
+            DoraInTheLogbook.book = self.read()
+        return DoraInTheLogbook.book
+
+    def test_the_window_ends_at_the_last_event(self):
+        d = self.base()["dora"]
+        self.assertEqual((d["schema"], d["window_days"], d["from"], d["to"]),
+                         ("dora/1", 30, "2026-10-08T08:10:07Z", "2026-11-07T08:10:07Z"))
+
+    def test_the_four_measures_by_hand(self):
+        m = self.base()["dora"]["measures"]
+        f = m["deployment_frequency"]
+        self.assertEqual((f["measured"], f["count"]), (True, 2))
+        self.assertAlmostEqual(f["per_day"], 2 / 30)
+        self.assertEqual(m["lead_time"], {"measured": True, "median_s": 7650, "n": 2, "without_ticket": 0})
+        self.assertEqual(m["change_fail_rate"], {"measured": True, "rate": 0.5, "failed": 2, "decided": 4, "pending": 0})
+        self.assertEqual(m["recovery_time"], {"measured": True, "median_s": 90, "n": 1, "unmeasured": 1})
+
+    def test_the_lines_are_the_commands(self):
+        from core import dora
+        d = self.base()["dora"]
+        self.assertEqual(d["lines"], [line[len("[dora] "):] for line in dora.lines(d)])
+        self.assertEqual(len(d["lines"]), 5)
+
+    def test_a_window_that_is_not_a_whole_number_is_an_error_naming_it(self):
+        for bad in ("0", "x"):
+            d = self.read(extra={"WINDOW_DAYS": bad})["dora"]
+            self.assertIs(d["ok"], False, bad)
+            self.assertIn("WINDOW_DAYS", d["error"], bad)
+
+    def test_another_window(self):
+        d = self.read(extra={"WINDOW_DAYS": "7"})["dora"]
+        self.assertEqual((d["window_days"], d["from"]), (7, "2026-10-31T08:10:07Z"))
+
+    def test_a_record_with_no_time_is_an_error(self):
+        def empty(root):
+            for doc in (root / "state").glob("tickets.*.json"):
+                doc.unlink()
+            (root / "releases.jsonl").write_text("")
+        d = self.read(empty)["dora"]
+        self.assertIs(d["ok"], False)
+        self.assertIn("no time", d["error"])
+
+    def test_releases_unread_make_four_not_measured(self):
+        book = self.read(lambda root: (root / "releases.jsonl").write_text("not json\n"))
+        self.assertIs(book["releases"]["ok"], False)
+        m = book["dora"]["measures"]
+        for key in ("deployment_frequency", "lead_time", "change_fail_rate", "recovery_time"):
+            self.assertIs(m[key]["measured"], False, key)
+            self.assertIn(book["releases"]["error"], m[key]["why"], key)
+
+    def test_the_old_golden_has_neither(self):
+        old = json.loads((ROOT / "fixtures" / "logbook" / "golden-1.4.json").read_text(encoding="utf-8"))
+        self.assertEqual(old["schema"], "lights-out/logbook/1.4")
+        self.assertNotIn("dora", old)
+        self.assertNotIn("spend", old)
 
 
 if __name__ == "__main__":

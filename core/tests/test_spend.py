@@ -351,5 +351,49 @@ class Command(unittest.TestCase):
         self.assertTrue(ran.stdout.startswith("NO-GO: spend — "), ran.stdout)
 
 
+class Lines(unittest.TestCase):
+    """The amendment of 2026-11-13, §3: the command's words, which the logbook
+    carries for the console; the budget line last."""
+
+    NONE = {"SPEND_BUDGET_TICKET_USD": None, "SPEND_BUDGET_DAY_USD": None}
+
+    def test_the_report_lines_in_order_then_the_budget(self):
+        got = spend.lines(spend.report(DOCS), self.NONE)
+        self.assertEqual(got, [
+            "ticket 0201: $4.20 over 3 run(s); agents 0h09m20s, elapsed 25h00m00s",
+            "ticket 0202: $0.00 over 2 run(s), 1 of cost unknown; agents 0h00m50s, elapsed 1h30m00s",
+            "role dev-worker: $3.70 over 3 run(s), 1 of cost unknown; 0h09m10s",
+            "role test-reviewer: $0.50 over 2 run(s); 0h01m00s",
+            "day 2026-11-10: $3.00 over 2 run(s)",
+            "day 2026-11-11: $1.20 over 3 run(s), 1 of cost unknown",
+            "budget: SPEND_BUDGET_TICKET_USD no limit, SPEND_BUDGET_DAY_USD no limit",
+        ])
+
+    def test_a_ticket_limit_is_named_with_its_value(self):
+        lim = dict(self.NONE, SPEND_BUDGET_TICKET_USD=1.0)
+        self.assertEqual(spend.lines(spend.report({}), lim),
+                         ["budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"])
+
+    def test_a_malformed_limit_is_the_budget_line(self):
+        try:
+            spend.parse_limits("SPEND_BUDGET_DAY_USD=x\n")
+        except ValueError as exc:
+            why = str(exc)
+        self.assertIn("SPEND_BUDGET_DAY_USD", why)
+        self.assertEqual(spend.lines(spend.report({}), why), [f"budget: {why}"])
+
+    def test_the_summary_is_the_stdout_detail(self):
+        self.assertEqual(spend.summary(spend.report(DOCS)), "2 tickets, 5 runs, $4.20 known, 1 of cost unknown")
+
+    def test_the_command_ends_stderr_with_the_budget_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ran = subprocess.run(["sh", "core/spend.sh"], cwd=REPO, env=dict(os.environ, STATE_STORE="sqlite", TICKETS_DIR=tmp),
+                                 capture_output=True, text=True, check=False)  # nosec B603 B607 - a fixed argv
+        self.assertEqual(ran.returncode, 0, ran.stderr)
+        self.assertEqual(ran.stdout, "GO: spend — 0 tickets, 0 runs, $0.00 known, 0 of cost unknown\n")
+        last = [l for l in ran.stderr.splitlines() if l.startswith("[spend] ")][-1]
+        self.assertTrue(last.startswith("[spend] budget: SPEND_BUDGET_TICKET_USD"), ran.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
