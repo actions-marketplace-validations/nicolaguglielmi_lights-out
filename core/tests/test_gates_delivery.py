@@ -83,7 +83,7 @@ class DeliveryTest(unittest.TestCase):
         os.makedirs("adapters/canary")
         with open("adapters/canary/rollback.sh", "w") as fh:
             fh.write("echo rollback\n")
-        self.env = {"DELIVERY": "canary", "FLAGS": "flagd", "WORKLOAD_KILL_SWITCH": "kill", "CANARY_VERSION": "2.0.0",
+        self.env = {"DELIVERY": "canary", "FLAGS": "switches", "WORKLOAD_KILL_SWITCH": "kill", "CANARY_VERSION": "2.0.0",
                     "CANARY_TAG": "sha-1234", "RELEASE_RECORD": "release.json", "CONFORMANCE_DIR": "records"}
 
     def suite(self, plane=None, **env):
@@ -124,7 +124,7 @@ class DeliveryTest(unittest.TestCase):
     def test_preflight_names_the_fix(self):
         plane = FakePlane("release.json")
         plane.freeze = True
-        self.assertIn("run: sh adapters/flagd/set.sh release-freeze off", self.suite(plane)[1])
+        self.assertIn("run: sh adapters/switches/set.sh release-freeze off", self.suite(plane)[1])
         plane = FakePlane("release.json")
         plane.ks_on = False
         self.assertIn("kill 2.0.0 already evaluates false, want true", self.suite(plane)[1])

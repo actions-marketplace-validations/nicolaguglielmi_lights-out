@@ -20,7 +20,7 @@ Branch `claude/m51-python-gates-7e292c`, cut from `main` at d1390ba. Pushed, no 
   | risk | `risk.py` (the inline Python heredoc gone) | 25 → 8 |
   | statestore-conformance | `statestore.py` | 134 → 7 |
   | eventbus-conformance | `eventbus.py` | 156 → 7 |
-  | codehost-conformance | `codehost.py` | 234 → 7 |
+  | codehost-conformance | `codehost.py`; the wrapper reads the secrets case 10 looks for, since `core/` may name no vendor (`ci/vendor-free.sh`) | 234 → 15 |
   | delivery-conformance | `delivery.py` (writes the conformance record with `readiness.adapter_hash`) | 200 → 7 |
   | test-weakening | `core.testdiff` through `verdict` | 21 → 12 |
 

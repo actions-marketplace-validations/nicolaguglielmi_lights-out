@@ -122,8 +122,8 @@ class CodeHostTest(unittest.TestCase):
         with contextlib.redirect_stderr(err):
             try:
                 got = ("GO", codehost.judge([], env=dict({"CODE_HOST": "fake", "WORKLOAD": self.repo.dir,
-                                                          "GITHUB_TOKEN": TOKEN}, **env),
-                                            verb=host, sleep=self.sleeps.append, password=lambda: ""))
+                                                          "CONFORMANCE_SECRETS": f"{TOKEN}\nother-secret"}, **env),
+                                            verb=host, sleep=self.sleeps.append))
             except NoGo as no:
                 got = ("NO-GO", no.reason)
         self.err = err.getvalue()
@@ -160,12 +160,12 @@ class CodeHostTest(unittest.TestCase):
                 return super().merge(number, sha, env)
         host = Busy(self, self.repo.dir)
         with contextlib.redirect_stderr(io.StringIO()):
-            got = codehost.judge([], env={"CODE_HOST": "fake", "WORKLOAD": self.repo.dir, "GITHUB_TOKEN": TOKEN},
-                                 verb=host, sleep=lambda s: None, password=lambda: "")
+            got = codehost.judge([], env={"CODE_HOST": "fake", "WORKLOAD": self.repo.dir, "CONFORMANCE_SECRETS": TOKEN},
+                                 verb=host, sleep=lambda s: None)
         self.assertEqual(got, "fake, PR #7 merged")
 
     def test_no_secret_known_is_no_go(self):
-        verdict, reason = self.suite(GITHUB_TOKEN="")
+        verdict, reason = self.suite(CONFORMANCE_SECRETS="\n")
         self.assertIn("no secret is known for case 10", reason)
 
     def test_preconditions(self):

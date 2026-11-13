@@ -14,7 +14,7 @@ in this order, the first disagreement a NO-GO naming the case:
    3 push.sh of conformance/<run id>, one commit adding one file
    4 open-pr.sh twice, which must return the same PR number
    5 status.sh pending, then a 200-character success (longer than the 140
-     GitHub accepts, ADR 0043 §3), then await.sh -> success; await.sh gets
+     the largest host accepts, ADR 0043 §3), then await.sh -> success; await.sh gets
      2 s for the pending status, which must not end it, and 60 s for the
      success
    6 pr.sh: exactly number, state, merged, head_sha, merge_sha: open, not
@@ -29,8 +29,9 @@ in this order, the first disagreement a NO-GO naming the case:
      default branch (docs/adr/0019 §5)
    9 the same merge again prints the same line (docs/adr/0019 §9)
   10 no secret appears in anything the suite captured from the verbs and
-     its git commands: GITHUB_TOKEN when set, the Gitea adapter's password
-     when CODE_HOST=gitea; the scan is first shown to find a secret it is
+     its git commands: the values CONFORMANCE_SECRETS holds, one a line,
+     which the wrapper sets because only it may name a host (docs/adr/0024
+     §1, ci/vendor-free.sh); the scan is first shown to find a secret it is
      handed and none in a file that holds none.
 The numbers are decisions of this suite, none a measurement. Every run
 leaves its branch, its PR and its merge commit on the host; cleanup is the
@@ -50,14 +51,6 @@ VERBS = ("bootstrap", "clone-url", "push", "open-pr", "status", "await", "pr", "
 GIT_ENV = {"GIT_TERMINAL_PROMPT": "0", "GIT_AUTHOR_NAME": "conformance", "GIT_AUTHOR_EMAIL": "conformance@localhost",
            "GIT_COMMITTER_NAME": "conformance", "GIT_COMMITTER_EMAIL": "conformance@localhost"}
 UNSET = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY")
-
-
-def gitea_password():
-    """The Gitea adapter's password, as its env.sh sets it (a constant script)."""
-    got = proc(["sh", "-c", '. adapters/gitea/env.sh && printf %s "$GITEA_PASSWORD"'], stdout=PIPE, text=True)
-    if got.returncode != 0:
-        raise NoGo("adapters/gitea/env.sh could not be read for the password case 10 looks for")
-    return got.stdout
 
 
 def same(a, b):
@@ -308,7 +301,7 @@ class Suite:
             raise NoGo(f"case10: a secret appears in the output of: {' '.join(where)}")
 
 
-def judge(argv, env=None, verb=None, sleep=time.sleep, password=gitea_password):
+def judge(argv, env=None, verb=None, sleep=time.sleep):
     env = os.environ if env is None else env
     host = env.get("CODE_HOST", "")
     if not host:
@@ -320,10 +313,10 @@ def judge(argv, env=None, verb=None, sleep=time.sleep, password=gitea_password):
         verb = adapter(f"adapters/{host}")
     if not env.get("WORKLOAD"):
         raise NoGo("WORKLOAD is not set; run this via ./go codehost-conformance")
-    secrets = [env.get("GITHUB_TOKEN", ""), password() if host == "gitea" else ""]
-    if not any(secrets):
-        raise NoGo(f"CODE_HOST={host}: no secret is known for case 10 to look for (GITHUB_TOKEN is empty and the "
-                   "suite knows no password of this host); the case would prove nothing")
+    secrets = [s for s in env.get("CONFORMANCE_SECRETS", "").splitlines() if s]
+    if not secrets:
+        raise NoGo(f"CODE_HOST={host}: no secret is known for case 10 to look for (CONFORMANCE_SECRETS is empty); "
+                   "the case would prove nothing")
     work = tempfile.mkdtemp()
     try:
         return Suite(host, verb, env["WORKLOAD"], secrets, work, sleep).run()

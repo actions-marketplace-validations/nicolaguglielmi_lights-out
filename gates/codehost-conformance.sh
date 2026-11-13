@@ -38,7 +38,8 @@
 #
 # Case 10 reads what the suite captured: the stdout and stderr of every verb
 # and of every git command it ran. It looks for GITHUB_TOKEN when that is set,
-# and for the Gitea adapter's password when CODE_HOST=gitea. That password is
+# and for the Gitea adapter's password when CODE_HOST=gitea, both read here
+# and handed over in CONFORMANCE_SECRETS. That password is
 # a published, low-entropy constant (adapters/gitea/env.sh); the case still
 # proves that git's own output, which redacts the userinfo of a URL it prints,
 # and the adapter's messages never carry it. Before it looks, the scan is
@@ -67,4 +68,16 @@ name=codehost-conformance
 if [ "${CONFORMANCE:-}" != "1" ]; then
   nogo "set CONFORMANCE=1: this suite pushes a branch, opens a PR and merges it on the code host (./go codehost-conformance)"
 fi
+
+# The secrets case 10 looks for, one a line. Naming a host is this file's,
+# never core/'s (docs/adr/0024 §1, ci/vendor-free.sh).
+CONFORMANCE_SECRETS=${GITHUB_TOKEN:-}
+if [ "${CODE_HOST:-}" = gitea ]; then
+  # shellcheck source=adapters/gitea/env.sh
+  password=$(. adapters/gitea/env.sh; printf '%s' "$GITEA_PASSWORD") \
+    || nogo "adapters/gitea/env.sh could not be read for the password case 10 looks for"
+  CONFORMANCE_SECRETS="$CONFORMANCE_SECRETS
+$password"
+fi
+export CONFORMANCE_SECRETS
 verdict core.gates.codehost

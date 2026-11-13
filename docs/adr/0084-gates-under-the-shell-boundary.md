@@ -58,6 +58,11 @@ scans `core/` only, so it saw none of it.
      default runs `sh adapters/<name>/<verb>.sh` through `proc`. The
      tests hand it a fake port in Python, broken one behaviour at a time,
      so a suite is proved to fail without an engine or a subprocess.
+   - A module never names a vendor: `core/` is vendor-free (ADR 0024 §1,
+     `ci/vendor-free.sh`). What a suite needs from one host's adapter
+     stays in its wrapper, under `gates/`, and reaches the module in the
+     environment: the codehost wrapper reads `GITHUB_TOKEN` and the Gitea
+     adapter's password and hands them over as `CONFORMANCE_SECRETS`.
 3. **The wrapper is `verdict`**, one function added to `ci/lib.sh`:
    `verdict MODULE [ARG...]` runs `python3 -m MODULE ARG...`; exit 0 is
    `go`, or `go_with` the first stdout line when there is one; exit 1 is
@@ -80,8 +85,8 @@ scans `core/` only, so it saw none of it.
 5. **The ratchet, `ci/shell-boundary.sh`, scans `core/` and `gates/`**
    with ADR 0052 §4's rule unchanged: at most **30 code lines** per shell
    file (provenance: the owner's decision of 2026-11-06, ADR 0052 §4;
-   checked again 2026-11-13: every wrapper this slice leaves is 7 to 26
-   code lines), files over it named with their exact count, NO-GO when a
+   checked again 2026-11-13, a measurement: every gate wrapper this slice
+   leaves is 4 to 22 code lines), files over it named with their exact count, NO-GO when a
    listed file grows, shrinks without its entry lowered, or is gone, and
    when an unlisted file is over. The check's own proof on a temp tree
    gains a planted `gates/` file over the limit and a `gates/` entry

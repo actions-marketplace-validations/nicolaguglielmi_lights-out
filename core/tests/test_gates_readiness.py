@@ -41,7 +41,7 @@ class Tree:
 
 
 GOOD_ENV = {
-    "DELIVERY": "argo",
+    "DELIVERY": "stagehand",
     "METRICS": "promql",
     "METRICS_URL": "http://prom:9090",
     "CONSOLE_AUTH": "proxy",
@@ -55,14 +55,14 @@ GOOD_ENV = {
 class ReadinessTest(unittest.TestCase):
     def setUp(self):
         self.t = Tree(self)
-        self.t.write("adapters/argo/rollback.sh", "echo rollback\n")
-        self.t.write("adapters/argo/deploy.sh", "echo deploy\n")
-        self.t.write("prod.env", "APP_PORT=9000\nGEMINI_API_KEY=\nGITHUB_TOKEN=replace-me\n")
+        self.t.write("adapters/stagehand/rollback.sh", "echo rollback\n")
+        self.t.write("adapters/stagehand/deploy.sh", "echo deploy\n")
+        self.t.write("prod.env", "APP_PORT=9000\nGEMINI_API_KEY=\nVCS_TOKEN=replace-me\n")
         self.record()
 
     def record(self, digest=None, at="2026-11-13T10:00:00Z"):
-        digest = readiness.adapter_hash("adapters/argo") if digest is None else digest
-        self.t.write("records/delivery-argo.env", f"ADAPTER=argo\nHASH={digest}\nAT={at}\n")
+        digest = readiness.adapter_hash("adapters/stagehand") if digest is None else digest
+        self.t.write("records/delivery-stagehand.env", f"ADAPTER=stagehand\nHASH={digest}\nAT={at}\n")
 
     def run_gate(self, env=None, answer=promql("2")):
         env = dict(GOOD_ENV if env is None else env)
@@ -83,7 +83,7 @@ class ReadinessTest(unittest.TestCase):
     def test_all_four_hold_is_go_naming_each(self):
         verdict, text, err = self.run_gate()
         self.assertEqual(verdict, "GO", text)
-        self.assertIn("delivery argo, conformance passed 2026-11-13T10:00:00Z", text)
+        self.assertIn("delivery stagehand, conformance passed 2026-11-13T10:00:00Z", text)
         self.assertIn("2 target_info series", text)
         self.assertIn("launchers ada,grace", text)
         self.assertEqual(err.count("ok, "), 4, err)
@@ -101,15 +101,15 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("DELIVERY is not set", self.assert_fails(["delivery"], dict(GOOD_ENV, DELIVERY="")))
 
     def test_delivery_without_rollback(self):
-        os.remove("adapters/argo/rollback.sh")
+        os.remove("adapters/stagehand/rollback.sh")
         self.record()
-        self.assertIn("no adapters/argo/rollback.sh", self.assert_fails(["delivery"]))
+        self.assertIn("no adapters/stagehand/rollback.sh", self.assert_fails(["delivery"]))
 
     def test_delivery_naming_no_adapter(self):
         self.assert_fails(["delivery"], dict(GOOD_ENV, DELIVERY="nosuch"))
 
     def test_delivery_without_record(self):
-        os.remove("records/delivery-argo.env")
+        os.remove("records/delivery-stagehand.env")
         self.assertIn("has not passed here", self.assert_fails(["delivery"]))
 
     def test_record_of_another_hash(self):
@@ -117,11 +117,11 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("changed since its conformance passed at 2026-11-13T10:00:00Z", self.assert_fails(["delivery"]))
 
     def test_record_without_hash(self):
-        self.t.write("records/delivery-argo.env", "ADAPTER=argo\nAT=x\n")
+        self.t.write("records/delivery-stagehand.env", "ADAPTER=stagehand\nAT=x\n")
         self.assert_fails(["delivery"])
 
     def test_adapter_changed_after_its_record(self):
-        self.t.write("adapters/argo/deploy.sh", "echo deploy\n# changed\n")
+        self.t.write("adapters/stagehand/deploy.sh", "echo deploy\n# changed\n")
         self.assert_fails(["delivery"])
 
     def test_metrics_not_promql(self):
@@ -139,13 +139,13 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("5 target_info series", self.run_gate(answer=promql("2", "3"))[1])
 
     def test_each_secret_suffix_and_the_auth_header(self):
-        for key in ("OPENAI_API_KEY", "GITHUB_TOKEN", "APP_SECRET", "DB_PASSWORD", "METRICS_AUTH_HEADER"):
+        for key in ("OPENAI_API_KEY", "VCS_TOKEN", "APP_SECRET", "DB_PASSWORD", "METRICS_AUTH_HEADER"):
             with self.subTest(key=key):
                 self.t.write("prod.env", f"APP_PORT=9000\n{key}=real-value\n")
                 self.assertIn(f"prod.env holds {key};", self.assert_fails(["secrets"]))
 
     def test_a_secret_value_never_reaches_the_verdict(self):
-        self.t.write("prod.env", "GITHUB_TOKEN=ghp_very_secret\n")
+        self.t.write("prod.env", "VCS_TOKEN=ghp_very_secret\n")
         verdict, text, err = self.run_gate()
         self.assertNotIn("ghp_very_secret", text + err)
 

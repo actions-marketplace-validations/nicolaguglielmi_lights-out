@@ -9,7 +9,7 @@ each through `make release` / `make promote`, never an adapter script by
 hand (ADR 0024 §2); cases 5-6 stage nothing and sit last. Every assertion
 goes through adapters/$DELIVERY/status.sh (§2's three keys: stable a
 string, canary a string or null, weight an integer 0-100) and
-$APP_URL/healthz (10 GETs, ADR 0013 §4's count), never Envoy's admin API.
+$APP_URL/healthz (10 GETs, ADR 0013 §4's count), never a vendor's admin API.
 `make release` reports a failed recipe as 2, whatever the launchpad's own
 exit, so a refused release is 2.
 
