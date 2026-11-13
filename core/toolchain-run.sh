@@ -15,9 +15,12 @@
 set -u
 name=toolchain-run
 here=$(dirname "$0")
+# shellcheck source=ci/lib.sh
 . "$here/../ci/lib.sh"
+# shellcheck source=core/toolchain.sh
 . "$here/toolchain.sh"
 if [ "${1:-}" = --preflight ]; then
+  # shellcheck disable=SC2329 # replaces ci/lib.sh's nogo for toolchain_preflight
   nogo() { printf '%s\n' "$1"; exit 1; }
   toolchain_preflight
   printf '%s\n' "$toolchain_where"
