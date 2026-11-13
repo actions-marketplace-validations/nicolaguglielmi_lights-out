@@ -262,8 +262,9 @@ a fix of 0.4.0 alone.
 - [x] **Tag `v0.5.0`** on cf2955c: `package.yml` run 43309065223, all
   nine jobs green; `lights-out-gates` 0.5.0 on PyPI by trusted publishing,
   both Action repositories tagged with a draft each, the wiki rendered.
-- [ ] **The three drafts `v0.5.0` published to the Marketplace** (owner,
-  passkey).
+- [x] **The three drafts `v0.5.0` published to the Marketplace** (owner,
+  passkey, 2026-11-13): `lights-out`, `test-integrity` and `test-proof`
+  each show 0.5.0 as Latest, and their three Marketplace pages list v0.5.0.
 
 ### The Python package on PyPI (M35)
 
