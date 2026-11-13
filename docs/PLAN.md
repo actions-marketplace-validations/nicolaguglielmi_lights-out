@@ -1080,6 +1080,8 @@ Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, da
   - `./go ci` GO e `./go demo` verde da un clone pieno sotto `.crew/`, tempo non peggiore di main; docs-drift GO; tutti i workflow GitHub verdi sul branch.
   - Le righe shell di `gates/` prima e dopo, per directory, nel commit e nel handoff.
 
+*Stato 2026-11-13 (sessione M51, branch `claude/m51-python-gates-7e292c`):* ADR 0084 scritta; dieci gate in `core/gates/` dietro `verdict`, la coppia harness nella lista del debito (693 e 738). Shell in `gates/` da 4.074 a 2.489 righe (codice da 2.670 a 1.539; gli undici wrapper toccati da 1.210 a 87). 103 test unitari nuovi. `./go ci` verde da clone pieno; i cinque workflow verdi su e0e6db3, con le suite codehost, statestore, eventbus, delivery e harness girate davvero in Actions. Demo in Actions 856 e 841 s contro 696–826 s di main sullo stesso tipo di runner: l'unica differenza costante sono i test nuovi (+4–6 s); in locale 1.235 s su una VM appena ripresa da un blocco, non ripetibile con il piano occupato da un'altra sessione.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

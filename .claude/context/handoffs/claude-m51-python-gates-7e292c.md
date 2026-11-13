@@ -22,7 +22,7 @@ Branch `claude/m51-python-gates-7e292c`, cut from `main` at d1390ba. Pushed, no 
   | eventbus-conformance | `eventbus.py` | 156 → 7 |
   | codehost-conformance | `codehost.py`; the wrapper reads the secrets case 10 looks for, since `core/` may name no vendor (`ci/vendor-free.sh`) | 234 → 15 |
   | delivery-conformance | `delivery.py` (writes the conformance record with `readiness.adapter_hash`) | 200 → 7 |
-  | test-weakening | `core.testdiff` through `verdict` | 21 → 12 |
+  | test-weakening | `core.testdiff` through `verdict` | 21 → 11 |
 
   `spec.sh` (7) and `test.sh` (22) unchanged.
 - **Not moved, on the debt list:** `gates/harness-conformance.sh` 693 and `gates/harness-conformance/proof.sh` 738 code lines. Only `./go harness-conformance` on a real engine proves a rewrite of them: the next slice.
@@ -45,8 +45,11 @@ Python: `core/gates/` 1,943 lines, its tests 1,494; all `.py` 33,035 → 36,475.
 
 ## Verified
 
-- On the host: `python3 -m unittest discover -s core/tests -t .`: 1,294 tests OK. `sh ci/readiness.sh`, `sh ci/store-bus.sh` (sqlite and spool adapters for real, every stub break), `sh ci/shell-boundary.sh`: GO. `core/tests/test_gate_range.py` drives `gates/test-proof.sh` end to end through `core/toolchain-run.sh`: OK.
-- Not yet on this machine: `./go ci` and `./go demo` from `.crew/m51`. The podman VM hung at about 16:45 (an M32 GitLab run beside an emulated build); see the commit or PR notes for the Actions runs that stand in.
+- **`./go ci` GO** from a full clone at `.crew/m51` (e0e6db3), 448 s, `contract` included. Three earlier runs caught what host runs could not: shellcheck on `core/toolchain-run.sh`'s computed source paths, `ci/vendor-free.sh` (the codehost suite named Gitea and GitHub inside `core/`: the wrapper now reads those secrets, ADR 0084 §2), `ci/model-free.sh` (a test key name), and `ci/tower.sh`'s hand-built host tree, which lacked `core/gates/`.
+- **GitHub Actions on e0e6db3, all five workflows green**: ci 43459416602 (engine-compat `GO: demo, milestone M9, 856s` and, rerun, `841s`; `GO: codehost-conformance — gitea, PR #1 merged`; `GO: statestore-conformance — firestore-emulator, 8 cases`; `GO: eventbus-conformance — pubsub-emulator, 5 cases`; argo's delivery suite and `production-readiness` GO on its record; `GO: harness-conformance — antigravity-cli claude-code codex gemini-cli, 393 s`), self 43459416461 (`GO: gates — risk high, review, in workbench`: mutation and bandit on the new `core/gates/` lines), stranger 43459416453 (a fresh runner's `./go demo`), package 43459416590, podman 43459416668.
+- **Demo time.** Main's engine-compat demos on Actions fall on two runner profiles: 696 s and 719 s (fast), 826 s (slow, run 43401715906). Both branch runs landed on the slow one. Check by check against that run, the only consistent difference is `core-tests`, +4 to 6 s for the 103 new unit tests; the end-to-end part that runs the moved gates (`audit`, `launchpad`) is within ±3 s. Locally `./go demo` reached the rollback in 1,235 s, over the 900 s budget, on a VM that had just recovered from a hang with other projects' containers and an M32 run beside it; a second local run was not possible (another session took the plane slot). Main's last local figure is 660 s (e86d52f, quiet machine).
+- On the host: 1,294 unit tests OK; `ci/readiness.sh`, `ci/store-bus.sh`, `ci/shell-boundary.sh`, `ci/vendor-free.sh`, `ci/app-free.sh`, `ci/model-free.sh`, `ci/prompts.sh`, `ci/plugin.sh`, `ci/gates-light.sh` GO; docs-drift GO with `MAP_EXCLUDE='docs/PLAN.md docs/plans/* .claude/*'`.
+- The ratchet fails on a planted `gates/planted.sh` of 31 code lines and on one line added to `gates/harness-conformance/proof.sh`, then is GO again.
 
 ## Next
 
