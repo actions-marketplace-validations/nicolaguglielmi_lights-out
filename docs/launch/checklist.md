@@ -283,8 +283,9 @@ Overview panels for the last two. Named 0.6.0: it adds features.
   43414807364, all ten jobs green; `lights-out-gates` 0.6.0 on PyPI by
   trusted publishing, both Action repositories tagged with a draft each,
   the wiki rendered.
-- [ ] **The three drafts `v0.6.0` published to the Marketplace** (owner,
-  passkey).
+- [x] **The three drafts `v0.6.0` published to the Marketplace** (owner,
+  passkey, 2026-11-13): `lights-out`, `test-integrity` and `test-proof`
+  each show 0.6.0 as Latest, and their three Marketplace pages list v0.6.0.
 
 ### The Python package on PyPI (M35)
 
