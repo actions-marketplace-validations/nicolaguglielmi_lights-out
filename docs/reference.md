@@ -18,7 +18,7 @@ Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M21 (GitHu
 | PR gates | M4 | ✓ six fixture PRs prove risk, SAST, deps, test, mutation, secrets |
 | ticket → PR | M5 | ✓ crew driver, six roles, one real run recorded, replay at L0 |
 | e2e | M6 | ✓ ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
-| ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.9.1; adk eval in ci; replay at L0 |
+| ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.14.0; adk eval in ci; replay at L0 |
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
 | review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |
 | seam | M12 | ✓ Workload port (ADR 0030) lets the platform operate on any workload, not just the app; app is the default (`WORKLOAD=app`) |
@@ -271,7 +271,7 @@ Local first, cloud optional (ADR 0022): L0 and L1 are the whole product, no capa
 | **Metrics** | `promql` on `METRICS_URL`; `prometheus` is its case at `http://$PLANE_HOST:9090` | idem | Managed Prometheus + Cloud Monitoring | idem |
 | **Flags** | flagd (file) | flagd | flagd on Cloud Run or Unleash | idem |
 | **Events and state** | `spool` + `sqlite`, files under `.crew/` (ADR 0060) | idem | Pub/Sub + Firestore | + adapter Cloud Workflows |
-| **Agent ADK** | Replay of recorded model responses (`fixtures/adk/`) | ADK 2.9.1 in workbench on the profile's model: Gemini natively, Claude and OpenAI through ADK's `LiteLlm` (`litellm` 1.106.6), thinking per role mapped in `adapters/adk/thinking.env` | ADK on Cloud Run | Agent Engine + BigQuery analytics |
+| **Agent ADK** | Replay of recorded model responses (`fixtures/adk/`) | ADK 2.14.0 in workbench on the profile's model: Gemini natively, Claude and OpenAI through ADK's `LiteLlm` (`litellm` 1.106.6), thinking per role mapped in `adapters/adk/thinking.env` | ADK on Cloud Run | Agent Engine + BigQuery analytics |
 | **Time to first rollback** | < 15 min | < 20 min | ~45 min (terraform apply) | ~90 min |
 
 *Note: Google renamed Vertex AI to Gemini Enterprise Agent Platform in April–May 2026. The endpoints, `GOOGLE_GENAI_USE_VERTEXAI` environment variable, and `aiplatform.googleapis.com` remain unchanged; `vertex` still appears in env vars and Terraform.*
