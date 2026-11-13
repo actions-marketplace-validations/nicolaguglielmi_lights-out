@@ -14,12 +14,12 @@ Branch `claude/m32-adapters-ci-87ebd8`, cut from main at d1390ba. Not merged.
 - `./go ci` → GO (52 checks).
 - `./go demo` → `GO: demo, milestone M9, 759s to rollback`, then `663s` on a second run; main at d1390ba, run between the two on the same VM, `732s`. Noise from other sessions on the VM, not this branch: its demo-path cost is `ci-outside`, under 2 s.
 
-GitHub at 8768d89: package, self, podman, stranger green; ci green in every
-job (gitlab and jenkins included) except `init`, NO-GO at deps on
-GHSA-mf5v-w3w3-f6cg (opentelemetry-api <= 1.45.1, fixed 1.45.2), published
-2026-11-13 16:43Z: workloads/minimal locks 1.45.1, so `init` is red on every
-branch, main included. Not this milestone's; a lock bump in workloads/minimal
-(and app/backend, 1.44.0) fixes it.
+GitHub at 8ad72aa, after merging main at b75dea8 (M51 and the opentelemetry
+1.45.2 fix): package, self, podman, stranger and ci green, every ci job
+included (gitlab, now through core.gates.codehost, and jenkins). The merge's
+one conflict was gates/codehost-conformance.sh: M51's wrapper, which now also
+hands CODEHOST_SECRET to the suite in CONFORMANCE_SECRETS (21 code lines);
+ci/outside.sh's "the tower reads no status" excludes core/gates/, the suites.
 
 ## What changed
 
@@ -41,5 +41,4 @@ branch, main included. Not this milestone's; a lock bump in workloads/minimal
 ## Next
 
 - Wire an outside CodeHost/Delivery/EventBus adapter through its suite once (they are "not proven").
-- The OTel advisory above, before any merge (it reddens main's `init` too).
 - Merge conflicts to expect: Makefile CI_CHECKS line, the conformance targets (M51 moves gates/ to Python), docs/PLAN.md notes, README "Toward production".
