@@ -763,7 +763,7 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.5.0
+  - uses: nicolaguglielmi/lights-out@v0.6.0
 ```
 
 **Proven on one outside repository.** With `@v0.3.0` published, the Action

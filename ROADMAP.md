@@ -56,7 +56,11 @@ proven by `ci/attach.sh` case f).
   ancestor with the mutants in shards (ADR 0074). The Marketplace and PyPI
   steps are the owner's. **0.5.0** ships security scanning (ADR 0072):
   SAST on the diff, a signed SBOM, passive DAST at staging; it is the
-  first release cut by its own tag (ADR 0075).
+  first release cut by its own tag (ADR 0075). **0.6.0** ships the
+  sprint of 2026-11-12: the why of a NO-GO (ADR 0078), the human gate on
+  the card (ADR 0079), the live canary (ADR 0080), the evidence pack per
+  release (ADR 0081), `./go dora` (ADR 0082) and `./go spend` with a
+  budget (ADR 0083).
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.
