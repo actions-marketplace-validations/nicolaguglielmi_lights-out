@@ -2,14 +2,16 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.4` (core/logbook/1.4.schema.json) from the
+Assembles `lights-out/logbook/1.5` (core/logbook/1.5.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
 project map's ADRs and tests (MAP_FILE, docs/adr/0059 §3, docs/adr/0071 §1), what the
 contract gives the agents (core/agents.py, docs/adr/0073 §10), and per ticket
 what its last run used: the task's `mcp` and the review's `instructions`
-(docs/adr/0073 §10, the ticket's back). Every rule
+(docs/adr/0073 §10, the ticket's back), the spend per ticket, role and day
+and the delivery measures in the words `./go spend` and `./go dora` print
+(docs/adr/0083 and 0082, amendments of 2026-11-13). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -40,14 +42,18 @@ try:
     from .assign import HOLDING, overlaps
     from .map import SCHEMA as MAP_SCHEMA
     from . import agents as contract_agents
+    from . import dora as delivery
+    from . import spend as ledger
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
     from assign import HOLDING, overlaps
     from map import SCHEMA as MAP_SCHEMA
     import agents as contract_agents
+    import dora as delivery
+    import spend as ledger
 
-SCHEMA = "lights-out/logbook/1.4"
+SCHEMA = "lights-out/logbook/1.5"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -301,8 +307,13 @@ def outcome(doc, tid, rels):
     if isinstance(last, dict) and last.get("error"):
         return {"verdict": "stranded", "judge": "step", "line": last["error"]}
     if state == "needs-human":
+        # The budget's reason, when it is what stopped the next attempt (docs/adr/0083,
+        # amendment §4); the judge stays the one that rejected the last attempt.
         r = (doc.get("rework") or [{}])[-1]
-        return {"verdict": "needs-human", "judge": r.get("judge"), "line": r.get("line")}
+        budget = doc.get("budget") if isinstance(doc.get("budget"), dict) else {}
+        if budget.get("line"):
+            return {"verdict": "needs-human", "judge": r.get("judge"), "line": budget["line"], "stop": "budget"}
+        return {"verdict": "needs-human", "judge": r.get("judge"), "line": r.get("line"), "stop": "cap"}
     release = doc.get("release") or {}
     if state == "rolled-back":
         return {"verdict": "NO-GO", "judge": "verify", "line": release.get("verdict")}
@@ -329,7 +340,8 @@ def outcome(doc, tid, rels):
     return {"verdict": "pending", "judge": None, "line": None}
 
 
-def tickets(rels):
+def tickets(rels, docs=None):
+    """The tickets the tower holds; DOCS, when given, collects each one's tower document by id."""
     store = env("STATE_STORE")
     if not store:
         return unread("STATE_STORE not set; run this via ./go logbook")
@@ -346,6 +358,8 @@ def tickets(rels):
             doc = json.loads(stdout)
         except ValueError:
             return unread(f"{get} printed no JSON for {tid}")
+        if docs is not None and isinstance(doc, dict):
+            docs[tid] = doc
         file_title, origin = ticket_file_facts(path)
         with open(path, encoding="utf-8") as fh:
             declared = fields(fh.read())
@@ -379,6 +393,47 @@ def tickets(rels):
             "timeline": timeline(doc, tid, rels, perimeter(path)),
         })
     return out
+
+
+def spend(held, docs):
+    """`./go spend`'s report and words over the documents read for `tickets`
+    (docs/adr/0083, amendment §2); the tickets' error when they are unread."""
+    if is_unread(held):
+        return held
+    got = ledger.report(docs)
+    try:
+        lim = ledger.limits()
+    except ValueError as exc:
+        lim = str(exc)
+    got.update(limits=unread(lim) if isinstance(lim, str) else lim, lines=ledger.lines(got, lim),
+               summary=ledger.summary(got))
+    return got
+
+
+def last_event(rels, held):
+    """The record's last time: the tickets' history, the releases and their answers."""
+    times = []
+    for t in held if isinstance(held, list) else []:
+        times += [h.get("at") for h in t.get("history") or [] if isinstance(h, dict)]
+    for r in rels if isinstance(rels, list) else []:
+        times += [r.get("at"), (r.get("answer") or {}).get("at")]
+    moments = [m for m in (delivery.when(x) for x in times) if m is not None]
+    return max(moments) if moments else None
+
+
+def dora(rels, held):
+    """`./go dora`'s measures over the logbook's own releases and tickets, the
+    window ending at the record's last event, not a clock (docs/adr/0082,
+    amendment §1-§2)."""
+    raw = env("WINDOW_DAYS") or "30"
+    if not raw.isdigit() or int(raw) < 1:
+        return unread(f"WINDOW_DAYS={raw!r} is not a whole number of days, 1 or more")
+    end = last_event(rels, held)
+    if end is None:
+        return unread("no time in the record to end the window at: no ticket history and no release")
+    got = delivery.measures({"releases": rels, "tickets": held}, int(raw), end)
+    got["lines"] = [line[len("[dora] "):] for line in delivery.lines(got)]
+    return got
 
 
 def ci_entry(doc):
@@ -885,7 +940,8 @@ def main(argv):
 
     record = read_json(env("RELEASE_RECORD", ".crew/release.json"))
     rels = releases(record)
-    held = tickets(rels)
+    docs = {}
+    held = tickets(rels, docs)
     holds = perimeters_held(held)
     for t in held if isinstance(held, list) else []:
         t["wait"] = waiting(t, holds)
@@ -908,6 +964,8 @@ def main(argv):
         "perimeters_held": holds,
         "docs_to_realign": docs_to_realign(held),
         "adrs": decisions,
+        "spend": spend(held, docs),
+        "dora": dora(rels, held),
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"

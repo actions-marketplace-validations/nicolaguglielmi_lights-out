@@ -235,6 +235,29 @@ def money(row):
     return f"${row['cost_usd']:.2f} over {row['runs']} run(s){tail}"
 
 
+def budget_line(lim):
+    """The limits as one line; LIM is limits()'s dict, or the error of a malformed value."""
+    if isinstance(lim, str):
+        return f"budget: {lim}"
+    return "budget: " + ", ".join(f"{key}=${lim[key]:.2f}" if lim.get(key) is not None else f"{key} no limit"
+                                  for key in LIMIT_KEYS)
+
+
+def lines(got, lim):
+    """The words of ./go spend, without the [spend] prefix (amendment 2026-11-13, §2-§3): per
+    ticket, per role, per day, then the budget. The logbook carries them for the console."""
+    out = [f"ticket {tid}: {money(row)}; agents {hms(row['agent_s'])}, elapsed {hms(row['elapsed_s'])}"
+           for tid, row in got["tickets"].items()]
+    out += [f"role {role}: {money(row)}; {hms(row['agent_s'])}" for role, row in sorted(got["roles"].items())]
+    out += [f"day {day}: {money(row)}" for day, row in sorted(got["days"].items())]
+    return out + [budget_line(lim)]
+
+
+def summary(got):
+    t = got["total"]
+    return f"{len(got['tickets'])} tickets, {t['runs']} runs, ${t['cost_usd']:.2f} known, {t['unknown']} of cost unknown"
+
+
 def store_docs(store, tickets_dir):
     """{id: doc} for every ticket of TICKETS_DIR the store holds; ValueError on a store error."""
     docs = {}
@@ -271,18 +294,13 @@ def main(argv, env=None):
         print(exc)
         return 1
     got = report(docs)
-
-    def say(line):
+    try:
+        lim = limits()
+    except ValueError as exc:
+        lim = str(exc)
+    for line in lines(got, lim):
         print(f"[spend] {line}", file=sys.stderr)
-
-    for tid, row in got["tickets"].items():
-        say(f"ticket {tid}: {money(row)}; agents {hms(row['agent_s'])}, elapsed {hms(row['elapsed_s'])}")
-    for role, row in sorted(got["roles"].items()):
-        say(f"role {role}: {money(row)}; {hms(row['agent_s'])}")
-    for day, row in sorted(got["days"].items()):
-        say(f"day {day}: {money(row)}")
-    t = got["total"]
-    print(f"{len(got['tickets'])} tickets, {t['runs']} runs, ${t['cost_usd']:.2f} known, {t['unknown']} of cost unknown")
+    print(summary(got))
     return 0
 
 

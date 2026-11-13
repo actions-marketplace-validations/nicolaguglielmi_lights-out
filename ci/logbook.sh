@@ -2095,7 +2095,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.4.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.5.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -2105,7 +2105,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.4.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.5.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"
