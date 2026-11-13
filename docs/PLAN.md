@@ -1060,6 +1060,8 @@ Nessun codice di misure di consegna esiste; i tempi ci sono per ticket (history)
 
 Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, dal logbook 1.4 o da un suo emendamento; un solo branch, dopo che A è atterrato.
 
+*Nota 2026-11-13 (fetta costruita, branch `claude/sprint-console-panels-af00df`).* Il logbook passa a 1.5 (emendamenti di ADR 0082 e 0083): `dora` con la finestra che finisce all'ultimo evento del record, non a un orologio, e `spend` con il budget; entrambi portano le righe dei due comandi, e i pannelli le stampano tali e quali. Un ticket fermato dal budget mostra la riga del budget. Il falso positivo di gitleaks su `.crew/logbook.json` è chiuso da un'eccezione limitata a quella regola, quel percorso e quelle righe. Resta fuori il run del ruolo di rilascio nel ledger: serve un ADR suo (ADR 0079 §2 vieta una nuova strada di scrittura).
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

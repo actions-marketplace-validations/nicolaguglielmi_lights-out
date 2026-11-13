@@ -340,6 +340,43 @@ auto-merge, so no review was asked for. The stage times arrive with a
 later milestone. Change one byte of the file and the verify command
 fails.
 
+### `./go dora` and `./go spend`: how delivery went, and what it cost
+
+```sh
+./go dora
+./go spend
+```
+
+`./go dora` reads the logbook and prints DORA's four delivery measures
+over the last `WINDOW_DAYS` days (ADR 0082). `./go spend` adds up every
+run the tower priced into each ticket's ledger, per ticket, per role and
+per day, and names the budget (ADR 0083). Run after the demo:
+
+<!-- source: local run on podman, commit 37ca51a, 2026-11-13, after ./go demo -->
+```
+[dora] window: 30 days, 2026-10-14T08:59:42Z to 2026-11-13T08:59:42Z
+[dora] deployment frequency: 0 promoted to 100%, 0.000 per day
+[dora] lead time: not measured — no release of a ticket reached 100% in the window
+[dora] change fail rate: 100%: 2 of 2 decided release(s) rolled back, 0 pending
+[dora] recovery time: median 1 min from the failing stage's start to the rollback over 2 release(s), 0 unmeasured
+GO: dora — .crew/dora.json, 3 of 4 measured over 30 days
+[spend] ticket 0001: $0.00 over 1 run(s); agents 0h00m00s, elapsed 0h03m51s
+[spend] role dev-worker: $0.00 over 1 run(s); 0h00m00s
+[spend] day 2026-11-13: $0.00 over 1 run(s)
+[spend] budget: SPEND_BUDGET_TICKET_USD no limit, SPEND_BUDGET_DAY_USD no limit
+GO: spend — 1 tickets, 1 runs, $0.00 known, 0 of cost unknown
+```
+
+Nothing reached 100%, so there is no lead time to measure, and the
+command says so instead of guessing. Both canaries the demo ran were
+rolled back. The run was replayed at L0, so it cost nothing and its
+agents' time is not counted. Set `SPEND_BUDGET_TICKET_USD` or
+`SPEND_BUDGET_DAY_USD` in `policy/rework.env` and the tower launches no
+attempt past the limit: the ticket goes to `needs-human` with the
+budget's line. The console's Overview shows the same lines, read from
+the logbook. Its window ends at the record's last event, not at the
+moment you look.
+
 ## 2. The short looks
 
 Each of these is a separate command, not a stage of `./go demo`.
