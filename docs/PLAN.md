@@ -1062,6 +1062,26 @@ Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, da
 
 *Nota 2026-11-13 (fetta costruita, branch `claude/sprint-console-panels-af00df`).* Il logbook passa a 1.5 (emendamenti di ADR 0082 e 0083): `dora` con la finestra che finisce all'ultimo evento del record, non a un orologio, e `spend` con il budget; entrambi portano le righe dei due comandi, e i pannelli le stampano tali e quali. Un ticket fermato dal budget mostra la riga del budget. Il falso positivo di gitleaks su `.crew/logbook.json` è chiuso da un'eccezione limitata a quella regola, quel percorso e quelle righe. Resta fuori il run del ruolo di rilascio nel ledger: serve un ADR suo (ADR 0079 §2 vieta una nuova strada di scrittura).
 
+### M51 — Il confine della shell in `gates/` (ADR 0084)
+
+*Aggiunto 2026-11-13, decisione dell'owner.* Il primo feedback esterno nomina "troppa logica in shell"; l'owner chiede meno shell e più Python. Misurato il 2026-11-13 sui file tracciati: 31.175 righe `.sh` (ci/ 17.043, adapters/ 4.730, gates/ 4.074, core/ 2.107) contro 33.035 di Python; in `gates/` 2.670 righe di codice shell in 18 file, 916 righe di Python. ADR 0052 ha messo `core/` sotto la regola delle 30 righe; `gates/` ne restava fuori, con programmi Python dentro heredoc, filtri `jq` e intere suite di conformità scritte in `sh`.
+
+- **Il confine, esteso.** `gates/` entra sotto la regola di ADR 0052: resta shell il wrapper del gate che fa `. ci/lib.sh` e stampa l'unica riga, la colla che lancia processi (`core/toolchain.sh`, `require_range`, `effective_policy`). La logica va in un pacchetto Python `core/gates/`, solo libreria standard, eseguito come `python3 -m core.gates.<x>` dalla radice del repository, fuori dal wheel `lights-out-gates`.
+- **Un solo aiuto nuovo**, `verdict` in `ci/lib.sh`: esegue il modulo e trasforma la sua uscita in `go`/`go_with`/`nogo` (0 GO con la prima riga come dettaglio, 1 NO-GO con la prima riga come motivo e le altre come dettagli). Un gate che usa la toolchain la chiama da Python attraverso `sh core/toolchain-run.sh`, un entry point di poche righe sopra `core/toolchain.sh`, che resta shell (debito di `core/`, una fetta sua).
+- **Questa fetta:** `production-readiness`, `deps`, `sast`, `mutation`, `test-proof`, `risk` e le quattro suite di conformità delle porte (`statestore`, `eventbus`, `codehost`, `delivery`). `spec`, `test`, `test-weakening` sono già sotto le 30 righe. La coppia `harness-conformance.sh` e `harness-conformance/proof.sh` (1.431 righe di codice, orchestrazione di compose e del finto harness) resta nella lista del debito col conteggio esatto: la prossima fetta.
+- **Il controllo** `ci/shell-boundary.sh` guarda anche `gates/`: stessa soglia di 30 righe di codice (decisione dell'owner, ADR 0052 §4), stessa lista del debito che può solo scendere, provata su un albero temporaneo con una violazione piantata in `gates/`.
+- **Fuori scope:** `ci/` (le nostre verifiche, una fetta successiva) e `adapters/` (una sessione M32 in parallelo).
+
+- **Criteri di accettazione:**
+  - ADR 0084 scritta, con la provenienza di ogni soglia; ADR 0052 rimanda a lei.
+  - Ogni gate migrato tiene percorso, argomenti, ambiente, riga su stdout e file in `.gates-out/` di prima; i chiamanti (`Makefile`, `./go`, `ci/*.sh`) non cambiano, tranne i link degli alberi temporanei che devono vedere `core/`.
+  - Test `unittest` in `core/tests/` scritti dalle ADR e dalle intestazioni dei gate, mai traducendo la shell: ogni regola dichiarata nell'intestazione ha almeno un test.
+  - `ci/shell-boundary.sh` GO e mostrato fallire su un file di `gates/` piantato oltre 30 righe e su un debito di `gates/` alzato; `ci/contract.sh` GO.
+  - `./go ci` GO e `./go demo` verde da un clone pieno sotto `.crew/`, tempo non peggiore di main; docs-drift GO; tutti i workflow GitHub verdi sul branch.
+  - Le righe shell di `gates/` prima e dopo, per directory, nel commit e nel handoff.
+
+*Stato 2026-11-13 (sessione M51, branch `claude/m51-python-gates-7e292c`):* ADR 0084 scritta; dieci gate in `core/gates/` dietro `verdict`, la coppia harness nella lista del debito (693 e 738). Shell in `gates/` da 4.074 a 2.489 righe (codice da 2.670 a 1.539; gli undici wrapper toccati da 1.210 a 87). 103 test unitari nuovi. `./go ci` verde da clone pieno; i cinque workflow verdi su e0e6db3, con le suite codehost, statestore, eventbus, delivery e harness girate davvero in Actions. Demo in Actions 856 e 841 s contro 696–826 s di main sullo stesso tipo di runner: l'unica differenza costante sono i test nuovi (+4–6 s); in locale 1.235 s su una VM appena ripresa da un blocco, non ripetibile con il piano occupato da un'altra sessione.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

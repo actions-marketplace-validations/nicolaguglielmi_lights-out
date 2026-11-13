@@ -11,9 +11,10 @@
 #      (a decision of ADR 0060 §4: a redelivery `./go ci` can wait for): its
 #      GO line with all six cases, so case 5 ran; run beside c, judged after
 #   c  each suite can fail. A temporary tree holds symlinks to this repo's
-#      gates/ and ci/, so the suites run unchanged from its root, and one
-#      stub StateStore and one stub EventBus in sh over plain files, each with
-#      a BREAK=<n> switch that breaks exactly one behaviour. Each stub with
+#      gates/, ci/ and core/ (where the suites' cases are, docs/adr/0084),
+#      so the suites run unchanged from its root, and one stub StateStore
+#      and one stub EventBus in sh over plain files, each with a BREAK=<n>
+#      switch that breaks exactly one behaviour. Each stub with
 #      BREAK unset must get GO (a fair baseline), each break a NO-GO naming
 #      the case it breaks, and the suites must have cleaned up after
 #      themselves, a NO-GO or not. A message that is not the suite's must
@@ -92,6 +93,7 @@ root=$tmp/tree
 mkdir -p "$root/adapters/stub-state" "$root/adapters/stub-bus"
 ln -s "$repo/gates" "$root/gates"
 ln -s "$repo/ci" "$root/ci"
+ln -s "$repo/core" "$root/core"
 reset() { rm -rf "$root/state" "$root/bus"; mkdir "$root/state" "$root/bus"; }
 # empty LABEL DIR EXT: the suite left no DIR/*.EXT behind.
 empty() {

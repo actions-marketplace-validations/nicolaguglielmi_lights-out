@@ -157,18 +157,24 @@ def main(argv):
     if len(argv) != 8 or argv[0] != "diff":
         print(USAGE, file=sys.stderr)
         return 2
-    out, where, prefix, head_root, head_line, base_root, base_line = argv[1:]
+    rc, line = diff(*argv[1:], sys.stdin.read())
+    print(line)
+    return rc
+
+
+def diff(out, where, prefix, head_root, head_line, base_root, base_line, moved):
+    """`diff`'s judgement, MOVED the base..HEAD `git diff -M --name-status -z`:
+    (0, "none new (N inherited)"), (1, the NO-GO reason) or (2, why it could
+    not compare). sast.json is written to OUT, the lists go to stderr."""
     try:
         n, head_items = runner_line(read_file(head_line))
         base_items = [] if base_line == "-" else runner_line(read_file(base_line))[1]
     except (Malformed, OSError) as e:
-        print(e)
-        return 2
+        return 2, str(e)
     if head_items is None or base_items is None:
-        print("a runner line has no items; gates/sast.sh judges HEAD whole")
-        return 2
+        return 2, "a runner line has no items; gates/sast.sh judges HEAD whole"
     head = fingerprints(head_items, head_root, prefix)
-    base = fingerprints(base_items, base_root, prefix, renames(sys.stdin.read()))
+    base = fingerprints(base_items, base_root, prefix, renames(moved))
     new, inherited = judge(head, base)
     with open(out, "w", encoding="utf-8") as f:
         json.dump({"findings": n, "where": where, "new": new, "inherited": inherited}, f)
@@ -181,11 +187,8 @@ def main(argv):
         print(f"sast: {len(new)} finding(s) introduced by this diff:", file=sys.stderr)
         for item in new:
             print(show(item), file=sys.stderr)
-        print(f"this diff introduces {len(new)} finding(s); list on stderr")
-        return 1
-    print(f"none new ({len(inherited)} inherited)")
-    return 0
-
+        return 1, f"this diff introduces {len(new)} finding(s); list on stderr"
+    return 0, f"none new ({len(inherited)} inherited)"
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

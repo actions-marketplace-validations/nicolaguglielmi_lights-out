@@ -731,7 +731,10 @@ if [ -z "$mismatch" ]; then
   printf '#!/bin/sh\nname=go-demo\n. ci/lib.sh\ngo_with "planted, always GO"\n' > "$g/host/gates/go-demo.sh"
   printf '#!/bin/sh\nname=nogo-demo\n. ci/lib.sh\nnogo "planted, always NO-GO" "a detail line"\n' > "$g/host/gates/nogo-demo.sh"
   cp ci/lib.sh "$g/host/ci/"
-  cp core/risk.py core/policy.py core/perimeter.sh "$g/host/core/"
+  cp core/__init__.py core/risk.py core/policy.py core/perimeter.sh "$g/host/core/"
+  # gates/risk.sh judges through core/gates/ (docs/adr/0084).
+  cp -R core/gates "$g/host/core/"
+  rm -rf "$g/host/core/gates/__pycache__"
   cp core/steps/ci.sh "$g/host/core/steps/"
   cp policy/merge.env "$g/host/policy/"
   (

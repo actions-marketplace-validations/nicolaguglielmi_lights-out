@@ -103,7 +103,8 @@ Nothing stopped the shell half from growing.
    its slice changes them. Then `ci/` and `gates/` suites: their logic
    moves to Python tests, the wrapper stays, and the check's scope grows
    to each directory as it is paid down. `adapters/` change only behind
-   their verbs, never the verbs.
+   their verbs, never the verbs. *Amended 2026-11-13:* `gates/` is under
+   this rule since ADR 0084, its logic in `core/gates/`.
 
 ## Alternatives rejected
 
