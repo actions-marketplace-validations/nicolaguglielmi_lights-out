@@ -46,14 +46,16 @@ scans `core/` only, so it saw none of it.
    it. Tests in `core/tests/test_gates_<x>.py`, `unittest`, written from
    the gate's header and the ADRs it cites, never by translating the
    shell.
-   - `core/gates/__init__.py` holds the two things every module shares,
-     and nothing else: `NoGo(reason, *details)` and `main(judge)`, which
+   - `core/gates/__init__.py` holds what every module shares, and
+     nothing else: `NoGo(reason, *details)` and `main(judge)`, which
      prints the verdict (a GO detail, or the reason and then one detail a
-     line) and returns 0 or 1; and `proc(argv, ...)`, the package's one
-     process call, an argument list, never a shell line, excused for
-     bandit (B404, B603, B607) on that line and the import with its
-     reason, as `core/tower.py`'s `sh()` is (ADR 0052 §3). A second
-     process call elsewhere in the package is a finding again.
+     line) and returns 0 or 1; `say`, a line on stderr; `proc(argv,
+     ...)`, the package's one process call, an argument list, never a
+     shell line, excused for bandit (B404, B603, B607) on that line and
+     the import with its reason, as `core/tower.py`'s `sh()` is (ADR 0052
+     §3), so a second process call elsewhere in the package is a finding
+     again; `adapter(directory)`, a port's verbs over `proc`; and
+     `run_id()`, the suites' date-and-random run id.
    - A suite drives its port through a `verb` callable it is given; the
      default runs `sh adapters/<name>/<verb>.sh` through `proc`. The
      tests hand it a fake port in Python, broken one behaviour at a time,
@@ -75,20 +77,24 @@ scans `core/` only, so it saw none of it.
    calls `verdict`. The guards stay shell so that the cold run starts no
    Python.
 4. **A gate that runs the workload's command** (`sast`, `mutation`,
-   `test-proof`) still has its toolchain checked by the wrapper
-   (`toolchain_preflight`), and its module runs the command through
-   `sh core/toolchain-run.sh CMD`: an entry point of a few lines that
-   sources `core/toolchain.sh` and calls `run_in_toolchain`, its exit
-   CMD's or 125, a contract error a line on stderr and 125, never a
-   contract line on stdout. `core/toolchain.sh` stays shell, on
-   ADR 0052's debt list, its own slice.
+   `test-proof`) runs it from its module through `sh
+   core/toolchain-run.sh CMD`: an entry point of a few lines that sources
+   `core/toolchain.sh` and calls `run_in_toolchain`, its exit CMD's or
+   125, a contract error a line on stderr and 125, never a contract line
+   on stdout. The toolchain's preflight keeps its place in each gate:
+   `sast` and `mutation` run `toolchain_preflight` in the wrapper, after
+   their guards; `test-proof` runs `sh core/toolchain-run.sh --preflight`
+   from its module (its `$toolchain_where` on stdout, or the preflight's
+   reason and exit 1), after a GO by absence of subject, which needs no
+   engine. `core/toolchain.sh` stays shell, on ADR 0052's debt list, its
+   own slice.
 5. **The ratchet, `ci/shell-boundary.sh`, scans `core/` and `gates/`**
    with ADR 0052 §4's rule unchanged: at most **30 code lines** per shell
    file (provenance: the owner's decision of 2026-11-06, ADR 0052 §4;
-   checked again 2026-11-13, a measurement: every gate wrapper this slice
-   leaves is 4 to 22 code lines), files over it named with their exact count, NO-GO when a
-   listed file grows, shrinks without its entry lowered, or is gone, and
-   when an unlisted file is over. The check's own proof on a temp tree
+   checked again 2026-11-13, a measurement: every gate wrapper this
+   slice leaves is 4 to 22 code lines), files over it named with their
+   exact count, NO-GO when a listed file grows, shrinks without its entry
+   lowered, or is gone, and when an unlisted file is over. The check's own proof on a temp tree
    gains a planted `gates/` file over the limit and a `gates/` entry
    raised, so it is shown to fail in the new directory too.
 6. **This slice** moves `production-readiness`, `deps`, `sast`,
@@ -96,7 +102,9 @@ scans `core/` only, so it saw none of it.
    (`statestore`, `eventbus`, `codehost`, `delivery`). Callers do not
    change: same paths, arguments, environment, stdout line, files in
    `$GATES_OUT`, and the stderr lines the `ci/` suites read. `spec`,
-   `test` and `test-weakening` were already under 30. The harness suite,
+   `test` and `test-weakening` were already under 30; `test-weakening`
+   now ends in `verdict core.testdiff` instead of splitting the module's
+   output itself. The harness suite,
    `gates/harness-conformance.sh` and `gates/harness-conformance/proof.sh`
    (693 and 738 code lines on 2026-11-13, a measurement), stays on the
    debt list with its exact count: it drives compose, a scripted model,
@@ -132,7 +140,14 @@ scans `core/` only, so it saw none of it.
   self gate on every push (ADR 0049); a rule a test does not reach is a
   surviving mutant on the change that wrote it.
 - `ci/lib.sh` gains `verdict`; `core/` gains `core/gates/` and
-  `core/toolchain-run.sh`.
+  `core/toolchain-run.sh`; `core/sastdiff.py` gains `diff()`, which its
+  command line calls, unchanged.
+- The conformance record's digest (ADR 0057 §9) is written by the
+  delivery suite and read by production-readiness through one Python
+  function, `core/gates/readiness.py`'s `adapter_hash`. `ci/lib.sh` keeps
+  its shell `adapter_hash` for `ci/readiness.sh`, which builds records
+  with it; a unit test holds the two equal on every adapter and on a
+  tree with subdirectories and `__pycache__`.
 - The cold `ci/` suites that build a tree of symlinks to run a gate from
   (`ci/store-bus.sh`) link `core/` too.
 - A change to a harness suite file must keep or lower its count and
