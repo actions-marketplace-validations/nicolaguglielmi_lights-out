@@ -52,6 +52,7 @@
 #   ./go harness-conformance  every CLI harness against a scripted model, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041)
 #   ./go argo-conformance  the Delivery suite on adapters/argo-rollouts, a local k3s beside the plane (ADR 0051)
 #   ./go codehost-conformance  ten cases on the CODE_HOST set: Gitea with the plane up, or CODE_HOST=github on an attached repository (ADR 0043)
+#   ./go gitlab-conformance  the same ten cases on adapters/gitlab, GitLab CE in a container beside the plane, no plane needed (ADR 0058)
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go doctor         engine, versions, ports, the key: one line each, then GO or NO-GO (host-side)
 #   ./go doctor --level <l0|l1|l2|l3>   what that level still lacks, one line per item (host-side, ADR 0057)
@@ -59,6 +60,7 @@
 #   ./go package        build the full lights-out image, localhost/lights-out:dev (host-side)
 #   ./go package-gates  build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (host-side)
 #   ./go demo-package   prove the wrapper: init, gates, test-proof and test-integrity from the gates image on workloads/minimal
+#   ./go demo-jenkins   prove Jenkins as a surface: Jenkinsfile Runner posts the gates line on a local Gitea PR (ADR 0058)
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
 #
@@ -224,6 +226,12 @@ fi
 if [ "$cmd" = demo-package ]; then
   CONTAINER_ENGINE="$engine" exec sh "$here/package/demo.sh"
 fi
+# Another CI as a surface (docs/adr/0058 §7): Jenkinsfile Runner judges a PR
+# on a Gitea of its own, through the wrapper and the host engine, as a
+# Jenkins agent would.
+if [ "$cmd" = demo-jenkins ]; then
+  CONTAINER_ENGINE="$engine" exec sh "$here/surfaces/jenkins/demo.sh"
+fi
 
 # 2. Build the workbench image once per Containerfile revision. A run
 # that has to build it is a first run: demo reports its time instead of
@@ -257,7 +265,7 @@ socket_flags=""
 socket_optional=""
 case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook|network|dora) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-dast|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|network|dora|demo-console|request|answer)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-dast|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|gitlab-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|network|dora|demo-console|request|answer)
     sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
@@ -320,6 +328,20 @@ fi
 for v in $(awk '/^[A-Za-z0-9_]*(_KEY|_TOKEN|_SECRET|_PASSWORD)=/ || /^METRICS_AUTH_HEADER=/ { sub(/=.*/, ""); print }' "$here/.env.example" | sort -u); do
   if env | grep -q "^$v="; then port_flags="$port_flags -e $v"; fi
 done
+
+# Adapters outside the repository (docs/adr/0058 §1): ADAPTERS_PATH, from
+# this environment, else .env, else the profile, is mounted read-only at
+# its own path, where make finds it and core/adapters.py links from it.
+adapters_path=${ADAPTERS_PATH:-}
+for f in "$here/.env" "$here/profiles/${PROFILE:-l0}.env"; do
+  [ -z "$adapters_path" ] && [ -f "$f" ] || continue
+  adapters_path=$(awk -F= '/^ADAPTERS_PATH=/ { sub(/^ADAPTERS_PATH=/, ""); v = $0 } END { print v }' "$f")
+done
+if [ -n "$adapters_path" ]; then
+  case "$adapters_path" in /*) ;; *) die "ADAPTERS_PATH=$adapters_path is not an absolute path (docs/adr/0058 §1)" ;; esac
+  [ -d "$adapters_path" ] || die "ADAPTERS_PATH=$adapters_path is not a directory"
+  port_flags="$port_flags -e ADAPTERS_PATH=$adapters_path -v $adapters_path:$adapters_path:ro$(printf '%s' "$label" | tr ':' ',')"
+fi
 
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
 run() {

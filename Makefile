@@ -38,6 +38,21 @@ include $(WORKLOAD_CONTRACT)/workload.env
 endif
 export
 
+# Adapters outside the repository (docs/adr/0058 §4): a port set to
+# outside/<name> runs $(ADAPTERS_PATH)/<name> only if its port's suite said
+# GO on those exact bytes, on record in .crew/adapters/register. Refused, make
+# stops here, before any goal, in one line. A command line of *-conformance
+# goals only tries the adapter instead: its recipe goes through `conform`.
+OUTSIDE_PORTS := AGENT_HARNESS CODE_HOST DELIVERY STATE_STORE EVENT_BUS TRACKER ORCHESTRATOR METRICS FLAGS REGISTRY
+ifneq ($(filter outside/%,$(foreach p,$(OUTSIDE_PORTS),$($(p)))),)
+ifneq ($(filter-out %-conformance,$(or $(MAKECMDGOALS),help)),)
+ADMIT := $(shell python3 core/adapters.py admit 2>&1)
+ifneq ($(ADMIT),)
+$(error $(ADMIT))
+endif
+endif
+endif
+
 # COMPOSE_FILE merges the workload's compose file after the plane's; these
 # are := and exported, never ?=, because demo-seam and demo-gates re-enter
 # make with a different WORKLOAD and export is what hands the parent's
@@ -210,18 +225,19 @@ help: ## List the targets
 	@printf 'lights-out  (profile: %s)\n\n' "$(PROFILE)"
 	@awk 'BEGIN{FS=":.*## "} /^[a-z][a-z0-9-]*:.*## /{printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
-	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
+	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
 		doctor "engine, versions, ports, the key: one line each, then GO or NO-GO; --level <l0|l1|l2|l3>: what that level lacks (docs/adr/0045 §4, 0057 §8)" \
 		package "build the full lights-out image, localhost/lights-out:dev (docs/adr/0045 §1)" \
 		package-gates "build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (docs/adr/0057 §3)" \
 		demo-package "prove the wrapper from the gates image: init, gates, test-proof and test-integrity on workloads/minimal (docs/adr/0045 §8, 0057)" \
+		demo-jenkins "prove Jenkins as a surface: Jenkinsfile Runner posts the gates line on a local Gitea PR (docs/adr/0058 §7)" \
 		attach "clone a repository and make it the workload; with a .lights-out/ contract it is checked: ./go attach <path> (docs/adr/0037, 0042)" \
 		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -1452,9 +1468,25 @@ attached: ## Check the attached repository's .lights-out/ contract (docs/adr/003
 # sets CONFORMANCE=1, so ci/contract.sh's cold run stays instant. At L0
 # against Gitea (ci.yml's launch job, plane up); with CODE_HOST=github
 # against the attached throwaway repository (the nightly).
+# conform PORT,SUITE: the suite's gate on PORT's adapter. One of ours runs
+# as it always did; an outside one (docs/adr/0058 §3) goes on trial first,
+# linked unproven with its hash recorded, the makes the suite starts admit
+# it on that hash (ADAPTERS_TRIAL), and only a GO on the same bytes is
+# registered; GO or NO-GO, the trial ends with the suite. stdout stays the gate's one line, or one NO-GO of this glue.
+define conform
+	@python3 core/adapters.py trial $(1) >&2 \
+		|| { printf 'NO-GO: %s — %s=%s could not go on trial; see the line above\n' '$(2)' '$(1)' '$($(1))'; exit 1; }; \
+	line=$$(ADAPTERS_TRIAL=$(1) CONFORMANCE=1 sh gates/$(2).sh); rc=$$?; \
+	if [ "$$rc" -ne 0 ]; then python3 core/adapters.py untrial $(1); \
+	elif ! python3 core/adapters.py register $(1) $(2) >&2; then \
+		printf 'NO-GO: %s — %s=%s changed while the suite ran; nothing registered\n' '$(2)' '$(1)' '$($(1))'; exit 1; \
+	fi; \
+	printf '%s\n' "$$line"; exit "$$rc"
+endef
+
 .PHONY: codehost-conformance
 codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST set: Gitea at L0 (plane up), CODE_HOST=github on an attached throwaway repository (docs/adr/0043 §5)
-	@CONFORMANCE=1 sh gates/codehost-conformance.sh
+	$(call conform,CODE_HOST,codehost-conformance)
 
 # The M8 acceptance command (docs/adr/0026 §4): the suite refuses to run by
 # accident (ci/contract.sh's cold run of every gates/*.sh sees CONFORMANCE
@@ -1469,13 +1501,13 @@ codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST se
 # with it named first. The bus suite refuses a bus that is not idle.
 .PHONY: statestore-conformance eventbus-conformance
 statestore-conformance: ## Eight-case StateStore conformance suite on the STATE_STORE set: sqlite at L0, no plane (docs/adr/0060 §4)
-	@CONFORMANCE=1 sh gates/statestore-conformance.sh
+	$(call conform,STATE_STORE,statestore-conformance)
 eventbus-conformance: ## Six-case EventBus conformance suite on the EVENT_BUS set, an idle bus: spool at L0, no plane; the redelivery case needs CONFORMANCE_ACK_DEADLINE (docs/adr/0060 §4)
-	@CONFORMANCE=1 sh gates/eventbus-conformance.sh
+	$(call conform,EVENT_BUS,eventbus-conformance)
 
 .PHONY: delivery-conformance
 delivery-conformance: ## Six-case Delivery/Flags conformance suite, real releases on the plane (docs/adr/0026)
-	@CONFORMANCE=1 sh gates/delivery-conformance.sh
+	$(call conform,DELIVERY,delivery-conformance)
 
 # The argo-rollouts Delivery adapter's proof (docs/adr/0051 §6): the same
 # six-case suite, unchanged, with DELIVERY=argo-rollouts and APP_URL on
@@ -1499,6 +1531,21 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 		|| { printf 'NO-GO: delivery-conformance — argo-rollouts: the local cluster did not come up\n'; exit 1; }; \
 	$(MAKE) --no-print-directory delivery-conformance DELIVERY=argo-rollouts \
 		APP_URL=http://$(PLANE_HOST):$(ARGO_APP_PORT) KUBECONFIG=$(CURDIR)/.crew/argo/kubeconfig
+
+# The gitlab CodeHost adapter's proof (docs/adr/0058 §8): the same ten-case
+# suite, unchanged, with CODE_HOST=gitlab, against GitLab CE in its own
+# compose project beside the plane (adapters/gitlab/instance.sh), which it
+# takes down after the suite; KEEP_GITLAB=1 leaves it up for a look. No
+# plane needed, and none beside it on a small VM: the instance alone holds
+# 2.4 GB (measured 2026-11-13). Not part of ./go demo.
+GITLAB_PORT ?= 8929
+export GITLAB_PORT
+.PHONY: gitlab-conformance
+gitlab-conformance: ## The CodeHost conformance suite on adapters/gitlab, against GitLab CE beside the plane, no plane needed (docs/adr/0058 §8)
+	@[ -n "$(KEEP_GITLAB)" ] || trap 'sh adapters/gitlab/instance.sh down' EXIT; \
+	sh adapters/gitlab/instance.sh up >&2 \
+		|| { printf 'NO-GO: codehost-conformance — gitlab: the instance did not come up\n'; exit 1; }; \
+	$(MAKE) --no-print-directory codehost-conformance CODE_HOST=gitlab
 
 # Every CLI harness against a scripted model (docs/adr/0041 §8): its image is
 # built, its run.sh driven nine ways, no key, no account. CONFORMANCE=1 for

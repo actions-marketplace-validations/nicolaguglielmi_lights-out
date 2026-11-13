@@ -38,7 +38,9 @@
 #
 # Case 10 reads what the suite captured: the stdout and stderr of every verb
 # and of every git command it ran. It looks for GITHUB_TOKEN when that is set,
-# and for the Gitea adapter's password when CODE_HOST=gitea. That password is
+# for the Gitea adapter's password when CODE_HOST=gitea, and for
+# CODEHOST_SECRET when the caller or the adapter's env.sh sets it (docs/adr/
+# 0058 §8: GitLab's token, an outside host's own). The Gitea password is
 # a published, low-entropy constant (adapters/gitea/env.sh); the case still
 # proves that git's own output, which redacts the userinfo of a URL it prints,
 # and the adapter's messages never carry it. Before it looks, the scan is
@@ -84,8 +86,15 @@ if [ "$CODE_HOST" = gitea ]; then
   gitea_password=$(. adapters/gitea/env.sh; printf '%s' "$GITEA_PASSWORD") \
     || nogo "adapters/gitea/env.sh could not be read for the password case 10 looks for"
 fi
-[ -n "${GITHUB_TOKEN:-}" ] || [ -n "$gitea_password" ] \
-  || nogo "CODE_HOST=$CODE_HOST: no secret is known for case 10 to look for (GITHUB_TOKEN is empty and the suite knows no password of this host); the case would prove nothing"
+# Any other host names its own (docs/adr/0058 §8): CODEHOST_SECRET, set by
+# the caller or by the adapter's env.sh, read in a subshell.
+codehost_secret=${CODEHOST_SECRET:-}
+if [ -z "$codehost_secret" ] && [ -f "$ch/env.sh" ]; then
+  # shellcheck disable=SC1091 # the adapter's env.sh, known only at run time
+  codehost_secret=$( . "$ch/env.sh" >/dev/null 2>&1; printf '%s' "${CODEHOST_SECRET:-}") || codehost_secret=""
+fi
+[ -n "${GITHUB_TOKEN:-}" ] || [ -n "$gitea_password" ] || [ -n "$codehost_secret" ] \
+  || nogo "CODE_HOST=$CODE_HOST: no secret is known for case 10 to look for (GITHUB_TOKEN is empty, the suite knows no password of this host and nothing sets CODEHOST_SECRET); the case would prove nothing"
 
 # A prompt would hang a CI job; an identity is needed for the commits only.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
@@ -151,6 +160,7 @@ lines_of() { awk 'END{print NR}' "$1"; }
 leaked() {
   if [ -n "${GITHUB_TOKEN:-}" ] && grep -qF -- "$GITHUB_TOKEN" "$1"; then return 0; fi
   if [ -n "$gitea_password" ] && grep -qF -- "$gitea_password" "$1"; then return 0; fi
+  if [ -n "$codehost_secret" ] && grep -qF -- "$codehost_secret" "$1"; then return 0; fi
   return 1
 }
 
@@ -366,6 +376,10 @@ fi
 if [ -n "$gitea_password" ]; then
   printf 'before %s after\n' "$gitea_password" > "$work/probe"
   leaked "$work/probe" || nogo "case10: the scan did not find the Gitea password in a file that holds it"
+fi
+if [ -n "$codehost_secret" ]; then
+  printf 'before %s after\n' "$codehost_secret" > "$work/probe"
+  leaked "$work/probe" || nogo "case10: the scan did not find CODEHOST_SECRET in a file that holds it"
 fi
 printf 'nothing to see\n' > "$work/probe"
 if leaked "$work/probe"; then nogo "case10: the scan found a secret in a file that holds none"; fi

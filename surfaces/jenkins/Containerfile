@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Jenkins agent `./go demo-jenkins` runs (docs/adr/0058 §7): Jenkinsfile
+# Runner, which is Jenkins' pipeline engine in one process, plus what the
+# recipe needs on an agent: git, curl, iconv (in the base) and a container
+# engine's CLI, which drives the host engine through its socket; jq is the
+# demo's, to read Gitea's answers. The base
+# is the only official image, pinned by digest: last pushed 2022-07-29,
+# amd64 only, Ubuntu 18.04, Java 8 (checked 2026-11-13; the project's last
+# release is 1.0-beta-32, 2023-11). It runs under emulation on arm64.
+FROM docker.io/jenkins/jenkinsfile-runner@sha256:1510739cb658772e733899a56e7ababb44cc113ee7fa22ec915c5fd0e7bff7a2
+
+RUN apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends git curl ca-certificates jq >/dev/null \
+ && rm -rf /var/lib/apt/lists/*
+
+# The docker CLI only, from Docker's static release. Docker publishes no
+# checksum file: the sha256 is the one computed on download, 2026-11-13.
+ARG DOCKER_VERSION=29.9.3
+ARG DOCKER_SHA256=3fb5d1f13014c18cc54945bc177c58a9056a482dada031e17d12cf2e6922c973
+RUN curl -fsSL -o /tmp/docker.tgz "https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_VERSION}.tgz" \
+ && echo "${DOCKER_SHA256}  /tmp/docker.tgz" | sha256sum -c - >/dev/null \
+ && tar -xzf /tmp/docker.tgz -C /tmp docker/docker \
+ && mv /tmp/docker/docker /usr/local/bin/docker \
+ && rm -rf /tmp/docker.tgz /tmp/docker \
+ && docker --version

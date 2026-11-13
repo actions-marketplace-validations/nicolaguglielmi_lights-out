@@ -383,3 +383,33 @@ jobs:
       - run: ./go harness-conformance
         env:
           CONTAINER_ENGINE: docker
+
+  # M32 (docs/adr/0058 §8): the CodeHost suite on adapters/gitlab, GitLab CE
+  # in its own compose project beside the plane, no plane: about four minutes
+  # of boot on a runner, which is why it is a job of its own.
+  gitlab:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: ./go gitlab-conformance
+        env:
+          CONTAINER_ENGINE: docker
+
+  # M32 (docs/adr/0058 §7): another CI as a surface. Jenkinsfile Runner
+  # judges a PR on a Gitea of its own through the wrapper and posts the line
+  # as the lights-out/jenkins status. Host-side, like demo-package.
+  jenkins:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: ./go demo-jenkins
+        env:
+          CONTAINER_ENGINE: docker
