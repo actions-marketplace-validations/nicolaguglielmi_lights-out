@@ -141,10 +141,19 @@ set -- --jenkins-war /app/jenkins --plugins /usr/share/jenkins/ref/plugins \
   --file /workspace/Jenkinsfile --runWorkspace "$ws"
 image_flag=""
 [ -z "${LIGHTS_OUT_IMAGE:-}" ] || image_flag="-e LIGHTS_OUT_IMAGE"
+# Under docker the agent runs as the workspace's owner, as ./go runs the
+# workbench, with the socket's group: the wrapper inside asks for a gates
+# container as that user, and git there refuses a repository another user
+# owns (docs/adr/0058 §7). Rootless podman maps the owner to root already.
+user_flags=""
+if [ "$engine" = docker ]; then
+  sock_gid=$(stat -c %g "$sock" 2>/dev/null || stat -f %g "$sock")
+  user_flags="--user $(id -u):$(id -g) -e HOME=/tmp --group-add $sock_gid"
+fi
 export LIGHTS_OUT_STATUS_TOKEN="$token" LIGHTS_OUT_BASE="$base" LIGHTS_OUT_HEAD="$head" \
   LIGHTS_OUT_STATUSES="$api/repos/lights-out/minimal/statuses"
-# shellcheck disable=SC2086 # image_flag is one flag or none
-if "$engine" run --rm --platform linux/amd64 --network "$net" --security-opt label=disable \
+# shellcheck disable=SC2086 # image_flag and user_flags are flag strings, split on purpose
+if "$engine" run --rm --platform linux/amd64 --network "$net" --security-opt label=disable $user_flags \
     -v "$sock:/var/run/docker.sock" -e DOCKER_HOST=unix:///var/run/docker.sock -e CONTAINER_ENGINE=docker \
     -v "$work:$work" -v "$here/lights-out:/usr/local/bin/lights-out:ro" \
     -v "$here/surfaces/jenkins/Jenkinsfile:/workspace/Jenkinsfile:ro" \
