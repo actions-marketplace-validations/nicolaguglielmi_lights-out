@@ -1,0 +1,71 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:35.317Z",
+        "reason": "Agent: the product is lights-out and its glows are lit lamps - the GO/NO-GO lights, status LEDs, step markers, the hero's lit window and lit headline word; the page's metaphor, not elevation"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "board/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:35.333Z",
+        "reason": "Agent: lit status LEDs on a flight readiness board (live dot, gate lights), the board's own subject"
+      },
+      {
+        "rule": "hero-eyebrow-chip",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:35.349Z",
+        "reason": "Agent: the eyebrow carries the release version and licence that ci/docs-drift.sh checks against the wrapper's version (ADR 0054, amendment 2026-11-09)"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:35.365Z",
+        "reason": "Agent: false positives - .bar2 is a traffic meter whose fill is meant to touch its edges (label inset 12px, vertically centred) and .chart's child is the full-bleed SVG plot"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "board/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:35.397Z",
+        "reason": "Agent: the .say bar's left rule marks the board's narration line, one of its accent edges with .detail's and .tour's top rules"
+      },
+      {
+        "rule": "tiny-text",
+        "value": "*",
+        "files": [
+          "board/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:35.413Z",
+        "reason": "Agent: an Operate-mode instrument board in monospace; its 11px labels and meta lines meet the detector's own 11px functional floor and the dense layout is the board's design"
+      },
+      {
+        "rule": "marquee",
+        "value": "*",
+        "files": [
+          "site/index.html"
+        ],
+        "createdAt": "2026-11-13T21:01:43.812Z",
+        "reason": "Agent: the .ticker is a decorative, aria-hidden sample of the line format the gates print, the page's terminal texture; it pauses on hover and stops under prefers-reduced-motion"
+      }
+    ]
+  }
+}
