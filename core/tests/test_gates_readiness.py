@@ -57,7 +57,7 @@ class ReadinessTest(unittest.TestCase):
         self.t = Tree(self)
         self.t.write("adapters/stagehand/rollback.sh", "echo rollback\n")
         self.t.write("adapters/stagehand/deploy.sh", "echo deploy\n")
-        self.t.write("prod.env", "APP_PORT=9000\nGEMINI_API_KEY=\nVCS_TOKEN=replace-me\n")
+        self.t.write("prod.env", "APP_PORT=9000\nSERVICE_KEY=\nVCS_TOKEN=replace-me\n")
         self.record()
 
     def record(self, digest=None, at="2026-11-13T10:00:00Z"):
@@ -139,7 +139,7 @@ class ReadinessTest(unittest.TestCase):
         self.assertIn("5 target_info series", self.run_gate(answer=promql("2", "3"))[1])
 
     def test_each_secret_suffix_and_the_auth_header(self):
-        for key in ("OPENAI_API_KEY", "VCS_TOKEN", "APP_SECRET", "DB_PASSWORD", "METRICS_AUTH_HEADER"):
+        for key in ("SERVICE_KEY", "VCS_TOKEN", "APP_SECRET", "DB_PASSWORD", "METRICS_AUTH_HEADER"):
             with self.subTest(key=key):
                 self.t.write("prod.env", f"APP_PORT=9000\n{key}=real-value\n")
                 self.assertIn(f"prod.env holds {key};", self.assert_fails(["secrets"]))
