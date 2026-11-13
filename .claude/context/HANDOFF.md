@@ -44,6 +44,10 @@ A GitHub glitch left runs on bf618fa queued with no jobs, and cancelling them re
 
 Security scanning (ADR 0072) landed as M43, not M42: main had given M42 to ADR 0073. The merge of the new main into `claude/security-scanning` turned `self` red at `secrets`: the branch's last green ancestor carried the excuse that names the pre-rewrite 3fb56bf. It landed instead as a merge with main as its first parent (1387a74), judged from 09bbd37. The `dast` job flaked once (run 43236481626): ZAP 2.17's passive scanner on its default threads; fixed on one thread and landed as 9772522. The version is 0.5.0, not 0.4.1. The release commit is the first one for ADR 0075's tag, which waits for the owner's three settings and the wiki's first page (checklist, "Release automation" and "The wiki").
 
+## Release 0.6.0, 2026-11-13
+
+The sprint of 2026-11-12 landed in three merges: streams B and C (a741bf0), stream A (8d36f9f) and the console's DORA and spend panels on logbook 1.5 (563ecbf), each with every workflow green on its landing branch. 0.5.0's three drafts were published to the Marketplace by the owner the same morning. The release commit bumps the same files as 0.5.0's; the tag waits for the owner's go.
+
 ## Branches landed, one handoff each
 
 Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/context/handoffs/`; this file is the coordinator's: the state of the integration branch and one line per branch landed.

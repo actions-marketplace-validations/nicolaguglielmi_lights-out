@@ -266,6 +266,22 @@ a fix of 0.4.0 alone.
   passkey, 2026-11-13): `lights-out`, `test-integrity` and `test-proof`
   each show 0.5.0 as Latest, and their three Marketplace pages list v0.5.0.
 
+### Release 0.6.0 (2026-11-13)
+
+The sprint of 2026-11-12 (M45–M50): the why of a NO-GO (ADR 0078), the
+human gate on the card (ADR 0079), the live canary (ADR 0080), the
+evidence pack per release (ADR 0081), the delivery measures (ADR 0082),
+cost and time per ticket with a budget (ADR 0083), and the console's
+Overview panels for the last two. Named 0.6.0: it adds features.
+
+- [x] **The release commit**: the wrapper, `pyproject.toml`, the three
+  plugin manifests and the landing page at 0.6.0, every usage pinned to
+  `@v0.6.0`, the prose in `docs/releases/v0.6.0.md`.
+- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
+- [ ] **Tag `v0.6.0`** on the release merge, every job green.
+- [ ] **The three drafts `v0.6.0` published to the Marketplace** (owner,
+  passkey).
+
 ### The Python package on PyPI (M35)
 
 The light tier, `lights-out-gates --light`, is a Python package built from
