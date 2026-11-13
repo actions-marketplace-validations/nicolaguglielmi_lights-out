@@ -5,7 +5,8 @@
     GET  /                   console/index.html, five screens
     GET  /v1/logbook.json    the logbook, as core/logbook.sh wrote it, with an ETag
     GET  /v1/console.json    this console and this request: mode, auth, identity
-    POST /v1/go-for-launch   the first write: core/promote.sh, as ./go promote runs it
+    POST /v1/go-for-launch   the first write: core/promote.sh, as ./go promote runs it, with
+                             the human's reason, required for a rollback (docs/adr/0079 §2)
     POST /v1/answer          the second: ./go answer's recipe (docs/adr/0055 §2)
     POST /v1/spec-check      writes nothing: a draft request through gates/spec.sh (docs/adr/0059 §4)
     POST /v1/request         the third: the draft as TICKETS_DIR/<id>.md, then ./go request's recipe
@@ -232,10 +233,15 @@ class Handler(BaseHTTPRequestHandler):
             answer = body["answer"]
             version, held_at = body["version"], body["held_at"]
             sha = body.get("brief_sha256")
+            reason = body.get("reason")
             assert answer in ("GO", "NO-GO", "PREPARE") and isinstance(version, str)
             assert answer == "PREPARE" or isinstance(sha, str)
+            assert reason is None or isinstance(reason, str)
         except (ValueError, KeyError, TypeError, AssertionError):
-            return self.send(400, {"error": "the body must be {answer: GO|NO-GO|PREPARE, version, held_at, brief_sha256}"})
+            return self.send(400, {"error": "the body must be {answer: GO|NO-GO|PREPARE, version, held_at, brief_sha256, reason}"})
+        reason = (reason or "").strip()
+        if answer == "NO-GO" and not reason:
+            return self.send(400, {"error": "a rollback needs a reason (docs/adr/0079 §2); nothing moved"})
         if not press.acquire(blocking=False):
             return self.send(409, {"error": "another press is running"})
         try:
@@ -251,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
             env = {k: v for k, v in os.environ.items() if not k.startswith("GO_FOR_LAUNCH")}
             env.update(GO_FOR_LAUNCH_BY=who, GO_FOR_LAUNCH_VIA="console")
             if answer != "PREPARE":
-                env.update(GO_FOR_LAUNCH=answer, GO_FOR_LAUNCH_BRIEF_SHA256=sha)
+                env.update(GO_FOR_LAUNCH=answer, GO_FOR_LAUNCH_BRIEF_SHA256=sha, GO_FOR_LAUNCH_REASON=reason)
             p = subprocess.run(["sh", "core/promote.sh"], cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
                                capture_output=True, text=True, timeout=600)
             sys.stderr.write(p.stderr)

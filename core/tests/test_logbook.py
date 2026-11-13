@@ -4,6 +4,9 @@ one row per phase in the history's order, each naming its record, and no
 row for a phase with no record. ci/logbook.sh proves the whole document
 against its golden; these pin each rule on its own.
 
+The 1.4 additions (docs/adr/0078 §2, §3) are in the last two classes: `why`,
+withheld until the same attempt's secrets gate said GO.
+
 The 1.3 additions (docs/adr/0071 §1, §8) are at the end: the `gates` parse,
 the rule that withholds a patch the secrets gate did not pass, the `files`
 rows of a ticket, and the reader run over the stub sources with one fact
@@ -119,7 +122,8 @@ class After(unittest.TestCase):
             "tasks": [{"attempt": 1, "harness": "replay", "turns": 3, "tokens": {"total": 10}},
                       {"attempt": 2, "harness": "replay", "turns": 5, "tokens": {"total": 20}}],
             "rework": [{"attempt": 1, "judge": "gates", "line": "NO-GO: mutation — 0.5"}],
-            "ci": {"verdict": "GO", "line": "GO: gates", "details": ["GO: risk", "GO: test"]},
+            "ci": {"verdict": "GO", "line": "GO: gates", "details": ["GO: risk", "GO: test"],
+                   "lines": ["GO: risk", "GO: secrets", "GO: test"]},
             "merge": {"sha": "m1"},
             "release": {"version": "v2", "verdict": "NO-GO: launchpad — 5%: error_rate → rolled back"},
         }
@@ -581,8 +585,8 @@ class Reader(unittest.TestCase):
             Reader.book = self.read()
         return Reader.book
 
-    def test_the_schema_is_1_3(self):
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.3")
+    def test_the_schema_is_1_4(self):
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.4")
 
     def test_ci_and_rework_carry_gates_and_not_the_raw_lines(self):
         t = self.ticket(self.base())
@@ -599,7 +603,7 @@ class Reader(unittest.TestCase):
     def test_a_ticket_with_no_lines_has_gates_null_not_missing(self):
         book = self.base()
         for t in book["tickets"]:
-            if t["id"] == "0010" or not isinstance(t.get("ci"), dict):
+            if t["id"] in ("0010", "0003") or not isinstance(t.get("ci"), dict):
                 continue
             self.assertIn("gates", t["ci"], t["id"])
             self.assertIsNone(t["ci"]["gates"], t["id"])
@@ -706,6 +710,315 @@ class Reader(unittest.TestCase):
 
     def test_two_runs_over_the_same_sources_write_the_same_bytes(self):
         self.assertEqual(json.dumps(self.read(), sort_keys=True), json.dumps(self.base(), sort_keys=True))
+
+
+# --- 1.4 (docs/adr/0078): the why of a NO-GO ---------------------------------
+
+def withheld(n):
+    return {"ok": False, "error": f"withheld: the secrets gate did not say GO on attempt {n}"}
+
+
+class WhyOfAnEntry(unittest.TestCase):
+    """logbook.why(entry, attempt, judge), ADR 0078 §2 and §3: the entry as the
+    tower stores it (keys line, failed, details, sast, lines, judge), the
+    attempt it belongs to, and the judge to say when the entry names none."""
+
+    SAST = "NO-GO: sast — in the workbench: this diff introduces 1 finding(s); list on stderr"
+    NEW = [{"rule": "B602", "file": "a.py", "line": 7}]
+
+    def entry(self, **more):
+        base = {"line": "NO-GO: gates — test: NO-GO: test — 2 failed", "failed": "test",
+                "details": ["FAILED t::one", "FAILED t::two"], "sast": None,
+                "lines": ["GO: risk — low, review", "GO: secrets", "NO-GO: test — 2 failed"]}
+        base.update(more)
+        return base
+
+    def test_the_schema_is_1_4(self):
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.4")
+
+    def test_a_ci_that_failed_a_gate_after_secrets_said_go(self):
+        self.assertEqual(logbook.why(self.entry(), 2, "gates"),
+                         {"attempt": 2, "judge": "gates", "gate": "test",
+                          "line": "NO-GO: gates — test: NO-GO: test — 2 failed",
+                          "details": ["FAILED t::one", "FAILED t::two"], "sast": None})
+
+    def test_the_result_has_those_six_keys_and_changes_nothing_in_the_entry(self):
+        e = self.entry()
+        before = json.dumps(e, sort_keys=True)
+        self.assertEqual(set(logbook.why(e, 1, "gates")), {"attempt", "judge", "gate", "line", "details", "sast"})
+        self.assertEqual(json.dumps(e, sort_keys=True), before)
+
+    def test_the_entrys_judge_wins_over_the_default(self):
+        self.assertEqual(logbook.why(self.entry(judge="base"), 1, "gates")["judge"], "base")
+
+    def test_the_default_judge_is_used_when_the_entry_names_none(self):
+        self.assertEqual(logbook.why(self.entry(), 1, "gates")["judge"], "gates")
+        self.assertEqual(logbook.why(self.entry(), 1, "main")["judge"], "main")
+
+    def test_the_failed_gate_the_record_names_wins_over_the_lines(self):
+        self.assertEqual(logbook.why(self.entry(failed="sast"), 1, "gates")["gate"], "sast")
+
+    def test_without_a_failed_the_first_no_go_row_names_the_gate(self):
+        for failed in (None, ""):
+            e = self.entry(failed=failed, lines=["GO: secrets", "NO-GO: deps — x", "NO-GO: test — y"])
+            self.assertEqual(logbook.why(e, 1, "gates")["gate"], "deps", repr(failed))
+        e = self.entry()
+        del e["failed"]
+        self.assertEqual(logbook.why(e, 1, "gates")["gate"], "test")
+
+    def test_a_no_go_gate_name_is_read_by_the_output_contract(self):
+        e = self.entry(failed=None, lines=["GO: secrets", "NO-GO: test-weakening — a test lost an assert"])
+        self.assertEqual(logbook.why(e, 1, "gates")["gate"], "test-weakening")
+
+    def test_a_line_off_the_contract_names_no_gate(self):
+        e = self.entry(failed=None, lines=["GO: secrets", "make: *** [test] Error 1", "NO-GO test"])
+        self.assertIsNone(logbook.why(e, 1, "gates")["gate"])
+
+    def test_no_no_go_row_and_no_failed_is_gate_none(self):
+        e = self.entry(failed=None, lines=["GO: secrets", "GO: test"])
+        self.assertIsNone(logbook.why(e, 1, "gates")["gate"])
+
+    def test_a_review_entry_has_its_reason_lines_shown_and_no_gate(self):
+        e = {"line": "NO-GO: review — too broad", "details": ["too broad", "second line"], "judge": "review",
+             "lines": ["GO: risk — low, review", "GO: secrets", "GO: test"]}
+        got = logbook.why(e, 4, "gates")
+        self.assertEqual((got["judge"], got["gate"], got["details"], got["attempt"]),
+                         ("review", None, ["too broad", "second line"], 4))
+        self.assertEqual(got["line"], "NO-GO: review — too broad")
+
+    def test_secrets_go_with_a_suffix_still_says_go(self):
+        e = self.entry(lines=["GO: secrets — 0 findings", "NO-GO: test — 2 failed"])
+        self.assertEqual(logbook.why(e, 1, "gates")["details"], ["FAILED t::one", "FAILED t::two"])
+
+    def test_secrets_no_go_withholds_details_with_the_attempt_in_the_reason(self):
+        e = self.entry(lines=["GO: risk — low, review", "NO-GO: secrets — a key in notify/send.py"])
+        got = logbook.why(e, 3, "gates")
+        self.assertEqual(got["details"], withheld(3))
+        self.assertEqual(got["gate"], "test")  # the record's `failed` still names it
+        self.assertEqual(got["line"], e["line"])
+
+    def test_secrets_not_run_withholds(self):
+        e = self.entry(failed=None, lines=["NO-GO: perimeter — src/other.py is outside the ticket's perimeter"])
+        got = logbook.why(e, 1, "gates")
+        self.assertEqual(got["details"], withheld(1))
+        self.assertEqual(got["gate"], "perimeter")
+
+    def test_a_gate_whose_name_only_starts_with_secrets_is_not_secrets(self):
+        e = self.entry(lines=["GO: secrets-extra", "NO-GO: test — 2 failed"])
+        self.assertEqual(logbook.why(e, 1, "gates")["details"], withheld(1))
+
+    def test_no_lines_at_all_withholds(self):
+        for e in (self.entry(lines=[]), self.entry(lines=None)):
+            self.assertEqual(logbook.why(e, 2, "gates")["details"], withheld(2))
+        e = self.entry()
+        del e["lines"]
+        self.assertEqual(logbook.why(e, 2, "gates")["details"], withheld(2))
+
+    def test_a_withheld_details_leaves_no_text_in_the_result(self):
+        e = self.entry(details=["assert 'sk-live-123' == 'x'"], lines=[])
+        self.assertNotIn("sk-live-123", json.dumps(logbook.why(e, 1, "gates")))
+
+    def test_sast_findings_are_shown_with_secrets_go(self):
+        e = self.entry(failed="sast", sast=self.NEW, lines=["GO: secrets", self.SAST])
+        got = logbook.why(e, 1, "gates")
+        self.assertEqual(got["sast"], self.NEW)
+        self.assertEqual(got["gate"], "sast")
+
+    def test_sast_findings_are_withheld_with_secrets_no_go(self):
+        e = self.entry(failed="sast", sast=self.NEW, lines=["NO-GO: secrets — a key"])
+        got = logbook.why(e, 1, "gates")
+        self.assertEqual(got["sast"], withheld(1))
+        self.assertEqual(got["details"], withheld(1))
+        self.assertNotIn("B602", json.dumps(got))
+
+    def test_a_sast_that_is_none_stays_none_even_when_withheld(self):
+        for lines in ([], ["GO: secrets"], ["NO-GO: secrets — a key"]):
+            self.assertIsNone(logbook.why(self.entry(sast=None, lines=lines), 1, "gates")["sast"], lines)
+
+    def test_an_entry_with_no_sast_key_says_none(self):
+        e = self.entry()
+        del e["sast"]
+        self.assertIsNone(logbook.why(e, 1, "gates")["sast"])
+
+
+class WhyInTheLogbook(unittest.TestCase):
+    """`why` in the assembled ticket, over the stub's tower documents with one
+    fact changed (ADR 0078 §2, §3, §5)."""
+
+    read = Reader.read
+    edit = Reader.edit
+    state = Reader.state
+    ticket = Reader.ticket
+    source = Reader.source
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if WhyInTheLogbook.book is None:
+            WhyInTheLogbook.book = self.read()
+        return WhyInTheLogbook.book
+
+    def gate_rows(self, t):
+        return [r for r in t["timeline"] if r["phase"] == "gate"]
+
+    def test_the_schema_is_1_4(self):
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.4")
+
+    def test_0003s_current_ci_why(self):
+        t = self.ticket(self.base(), "0003")
+        src = self.source("0003")
+        self.assertEqual(t["ci"]["why"],
+                         {"attempt": 2, "judge": "gates", "gate": "test",
+                          "line": "NO-GO: gates — test: NO-GO: test — 2 failed",
+                          "details": ["FAILED tests/a.py::one", "FAILED tests/a.py::two"], "sast": None})
+        self.assertEqual(t["ci"]["why"]["line"], src["ci"]["line"])
+        self.assertEqual(t["ci"]["why"]["details"], src["ci"]["details"])
+        self.assertEqual(t["ci"]["details"], src["ci"]["details"])  # the 1.3 field, shown as it was
+
+    def test_0003s_first_rework_entry_why_carries_the_sast_findings(self):
+        t = self.ticket(self.base(), "0003")
+        src = self.source("0003")["rework"][0]
+        self.assertEqual(t["rework"][0]["why"],
+                         {"attempt": 1, "judge": "gates", "gate": "sast", "line": src["line"],
+                          "details": ["new: B602 README.md:7", "new: B105 README.md:9"],
+                          "sast": [{"rule": "B602", "file": "README.md", "line": 7},
+                                   {"rule": "B105", "file": "README.md", "line": 9}]})
+        self.assertEqual(t["rework"][0]["details"], src["details"])
+
+    def test_0003s_attempt_and_timeline_follow_the_new_stub(self):
+        t = self.ticket(self.base(), "0003")
+        self.assertEqual(t["attempt"], 2)
+        self.assertEqual([r["line"] for r in self.gate_rows(t)], self.source("0003")["ci"]["details"])
+
+    def test_ticket_0002s_recorded_no_gate_lines_so_its_details_are_withheld(self):
+        t = self.ticket(self.base(), "0002")
+        self.assertEqual(t["rework"][0]["why"]["details"], withheld(1))
+        self.assertEqual(t["rework"][0]["why"]["line"], "NO-GO: tests — 1 failed")
+        self.assertIsNone(t["rework"][0]["details"])
+        self.assertNotIn("test_join", json.dumps(t["rework"][0]))
+
+    def test_0010s_rejected_attempt_is_shown_whole(self):
+        t = self.ticket(self.base(), "0010")
+        src = self.source("0010")["rework"][0]
+        w = t["rework"][0]["why"]
+        self.assertEqual((w["attempt"], w["judge"], w["gate"], w["line"], w["details"], w["sast"]),
+                         (1, "gates", "mutation", src["line"], src["details"], None))
+        self.assertEqual(t["rework"][0]["details"], src["details"])
+
+    def test_a_ci_that_said_go_has_why_none_but_the_key_is_there(self):
+        seen = 0
+        for t in self.base()["tickets"]:
+            if isinstance(t.get("ci"), dict) and t["ci"].get("verdict") == "GO":
+                seen += 1
+                self.assertIn("why", t["ci"], t["id"])
+                self.assertIsNone(t["ci"]["why"], t["id"])
+        self.assertGreaterEqual(seen, 2)
+
+    def test_ci_why_is_set_only_for_a_no_go(self):
+        for t in self.base()["tickets"]:
+            ci = t.get("ci")
+            if isinstance(ci, dict) and "why" in ci:
+                self.assertEqual(ci["why"] is not None, ci.get("verdict") == "NO-GO", t["id"])
+
+    def test_flipping_a_ci_to_go_takes_its_why_away(self):
+        def change(doc):
+            doc["ci"]["verdict"] = "GO"
+        self.assertIsNone(self.ticket(self.read(self.edit("0003", change)), "0003")["ci"]["why"])
+
+    def test_every_rework_entry_has_a_why_with_its_own_attempt_and_judge(self):
+        seen = 0
+        for t in self.base()["tickets"]:
+            for r in t.get("rework") or []:
+                seen += 1
+                self.assertIsInstance(r.get("why"), dict, t["id"])
+                self.assertEqual(r["why"]["attempt"], r["attempt"], t["id"])
+                self.assertEqual(r["why"]["judge"], r["judge"], t["id"])
+                self.assertEqual(r["why"]["line"], r["line"], t["id"])
+        self.assertGreaterEqual(seen, 5)
+
+    def test_a_review_entry_without_gate_lines_is_withheld_and_names_no_gate(self):
+        t = self.ticket(self.base(), "0007")
+        w = t["rework"][1]["why"]
+        self.assertEqual((w["judge"], w["gate"], w["attempt"]), ("review", None, 4))
+        self.assertEqual(w["details"], withheld(4))
+        self.assertIsNone(t["rework"][1]["details"])
+        # the stub records no gate lines on either of 0007's entries
+        self.assertEqual(t["rework"][0]["why"]["details"], withheld(3))
+        self.assertIsNone(t["rework"][0]["details"])
+
+    def test_a_review_entry_whose_gates_said_secrets_go_shows_the_reason_lines(self):
+        def change(doc):
+            doc["rework"][1]["lines"] = ["GO: risk — low, review", "GO: secrets", "GO: test"]
+        t = self.ticket(self.read(self.edit("0007", change)), "0007")
+        w = t["rework"][1]["why"]
+        self.assertEqual((w["judge"], w["gate"], w["details"]), ("review", None, ["too broad", "second line"]))
+        self.assertEqual(t["rework"][1]["details"], ["too broad", "second line"])
+
+    def test_secrets_no_go_on_the_current_ci_withholds_its_details_everywhere(self):
+        def change(doc):
+            doc["ci"]["lines"][1] = "NO-GO: secrets — a key in README.md"
+        t = self.ticket(self.read(self.edit("0003", change)), "0003")
+        self.assertEqual(t["ci"]["why"]["details"], withheld(2))
+        self.assertIsNone(t["ci"]["why"]["sast"])  # null in the record: nothing to withhold
+        self.assertIsNone(t["ci"]["details"])
+        self.assertEqual(self.gate_rows(t), [])
+        self.assertNotIn("FAILED tests/a.py", json.dumps(t))
+        # the first rejected attempt is judged on its own gate lines
+        self.assertEqual(t["rework"][0]["why"]["details"], ["new: B602 README.md:7", "new: B105 README.md:9"])
+
+    def test_secrets_no_go_on_a_rework_attempt_withholds_that_attempts_details_and_findings_only(self):
+        def change(doc):
+            doc["rework"][0]["lines"][1] = "NO-GO: secrets — a key in README.md"
+        t = self.ticket(self.read(self.edit("0003", change)), "0003")
+        w = t["rework"][0]["why"]
+        self.assertEqual((w["details"], w["sast"]), (withheld(1), withheld(1)))
+        self.assertEqual(w["gate"], "sast")
+        self.assertIsNone(t["rework"][0]["details"])
+        self.assertNotIn("B602", json.dumps(t["rework"][0]))
+        self.assertEqual(t["ci"]["why"]["details"], self.source("0003")["ci"]["details"])
+        self.assertEqual(len(self.gate_rows(t)), 2)
+
+    def test_secrets_not_run_withholds_the_ci_details(self):
+        def change(doc):
+            doc["ci"]["lines"] = ["NO-GO: perimeter — README.md is outside the ticket's perimeter"]
+        t = self.ticket(self.read(self.edit("0003", change)), "0003")
+        self.assertEqual(t["ci"]["why"]["details"], withheld(2))
+        self.assertEqual(self.gate_rows(t), [])
+
+    def test_a_ci_with_no_lines_withholds_where_1_3_showed(self):
+        def change(doc):
+            del doc["ci"]["lines"]
+        t = self.ticket(self.read(self.edit("0003", change)), "0003")
+        self.assertEqual(t["ci"]["why"]["details"], withheld(2))
+        self.assertIsNone(t["ci"]["details"])
+        self.assertEqual(self.gate_rows(t), [])
+        self.assertEqual(t["ci"]["why"]["line"], self.source("0003")["ci"]["line"])  # the line stays
+
+    def test_the_gate_comes_from_the_lines_when_the_record_names_none(self):
+        def change(doc):
+            del doc["ci"]["failed"]
+        t = self.ticket(self.read(self.edit("0003", change)), "0003")
+        self.assertEqual(t["ci"]["why"]["gate"], "test")
+
+    def test_the_ci_why_attempt_is_the_tickets_attempt(self):
+        def change(doc):
+            doc["attempt"] = 3
+        self.assertEqual(self.ticket(self.read(self.edit("0003", change)), "0003")["ci"]["why"]["attempt"], 3)
+
+    def test_shown_details_are_one_gate_row_each_in_the_timeline(self):
+        t = self.ticket(self.base(), "0003")
+        rows = self.gate_rows(t)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([r["line"] for r in rows], t["ci"]["why"]["details"])
+
+    def test_the_old_golden_has_no_why(self):
+        # A 1.3 logbook stays readable: why is an addition, never a requirement.
+        old = json.loads((ROOT / "fixtures" / "logbook" / "golden-1.3.json").read_text(encoding="utf-8"))
+        self.assertEqual(old["schema"], "lights-out/logbook/1.3")
+        for t in old["tickets"]:
+            self.assertNotIn("why", t.get("ci") or {}, t["id"])
 
 
 if __name__ == "__main__":

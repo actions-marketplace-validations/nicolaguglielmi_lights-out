@@ -354,7 +354,7 @@ console: ## The console on localhost:8098: eleven screens (kanban, the agent net
 # runs first in CI) is removed first: this run prepares its own.
 DEMO_CONSOLE_PORT ?= 18098
 .PHONY: demo-console
-demo-console: ## Prove go-for-launch pressed from the console: held canary, brief, POST GO → 100%, via console, then the un-promote (docs/adr/0047 §4)
+demo-console: ## Prove go-for-launch pressed from the console: a held canary rolled back with a reason, a second promoted with one, via console, then the un-promote (docs/adr/0047 §4, 0079 §5)
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
 	restore() { [ -f "$$backup" ] || return 0; cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"; }; \
@@ -369,34 +369,56 @@ demo-console: ## Prove go-for-launch pressed from the console: held canary, brie
 	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
 	printf '[demo-console] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
-	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
-		printf 'NO-GO: demo-console — release rolled back; expected a hold at 25%%\n'; exit 1; \
-	fi; \
 	post() { curl -sS --max-time 600 -X POST "$$url/v1/go-for-launch" -H 'Content-Type: application/json' -H "Origin: $$url" -d "$$1"; }; \
 	launch() { curl -fsS --max-time 10 "$$url/v1/logbook.json" | jq -c .launch; }; \
-	i=0; l=""; \
-	while [ "$$i" -lt 60 ]; do \
-		l=$$(launch 2>/dev/null) || l=""; \
-		[ "$$(printf '%s' "$$l" | jq -r '.record.verdict // empty' 2>/dev/null)" = held ] && break; \
-		i=$$((i + 1)); sleep 1; \
-	done; \
-	[ "$$(printf '%s' "$$l" | jq -r .preparable)" = true ] \
-		|| { printf 'NO-GO: demo-console — the console offers no brief to prepare: %s\n' "$$(printf '%s' "$$l" | jq -r '.disabled_reason // "no logbook"')"; cat .crew/demo-console.log >&2; exit 1; }; \
-	v=$$(printf '%s' "$$l" | jq -r .record.version); held=$$(printf '%s' "$$l" | jq -r .record.held_at); \
-	r=$$(post "{\"answer\":\"PREPARE\",\"version\":\"$$v\",\"held_at\":$$held}"); \
-	printf '[demo-console] prepare the brief: %s\n' "$$(printf '%s' "$$r" | jq -r '.line // .error')" >&2; \
-	l=$$(launch); \
-	[ "$$(printf '%s' "$$l" | jq -r .pressable)" = true ] \
-		|| { printf 'NO-GO: demo-console — the button is disabled: %s\n' "$$(printf '%s' "$$l" | jq -r .disabled_reason)"; exit 1; }; \
-	sha=$$(printf '%s' "$$l" | jq -r .brief.sha256); \
-	printf '[demo-console] the brief for %s, sha256 %s, by %s; pressing GO\n' "$$v" "$$sha" "$$(printf '%s' "$$l" | jq -r .brief.author)" >&2; \
-	r=$$(post "{\"answer\":\"GO\",\"version\":\"$$v\",\"held_at\":$$held,\"brief_sha256\":\"$$sha\"}"); \
-	line=$$(printf '%s' "$$r" | jq -r '.line // ("refused: " + .error)'); \
+	held() { \
+		rm -rf "$${PROMOTE_OUT:-.crew/promote}"; \
+		$(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION) \
+			|| { printf 'NO-GO: demo-console — release rolled back; expected a hold at 25%%\n'; exit 1; }; \
+		i=0; l=""; \
+		while [ "$$i" -lt 60 ]; do \
+			l=$$(launch 2>/dev/null) || l=""; \
+			[ "$$(printf '%s' "$$l" | jq -r '.record.verdict // empty' 2>/dev/null)" = held ] \
+				&& [ "$$(printf '%s' "$$l" | jq -r '.record | has("promoted") or has("rejected")' 2>/dev/null)" = false ] \
+				&& [ "$$(printf '%s' "$$l" | jq -r .preparable 2>/dev/null)" = true ] && break; \
+			i=$$((i + 1)); sleep 1; \
+		done; \
+		[ "$$(printf '%s' "$$l" | jq -r .preparable)" = true ] \
+			|| { printf 'NO-GO: demo-console — the console offers no brief to prepare: %s\n' "$$(printf '%s' "$$l" | jq -r '.disabled_reason // "no logbook"')"; cat .crew/demo-console.log >&2; exit 1; }; \
+		v=$$(printf '%s' "$$l" | jq -r .record.version); held=$$(printf '%s' "$$l" | jq -r .record.held_at); \
+		r=$$(post "{\"answer\":\"PREPARE\",\"version\":\"$$v\",\"held_at\":$$held}"); \
+		printf '[demo-console] prepare the brief: %s\n' "$$(printf '%s' "$$r" | jq -r '.line // .error')" >&2; \
+		l=$$(launch); \
+		[ "$$(printf '%s' "$$l" | jq -r .pressable)" = true ] \
+			|| { printf 'NO-GO: demo-console — the button is disabled: %s\n' "$$(printf '%s' "$$l" | jq -r .disabled_reason)"; exit 1; }; \
+		sha=$$(printf '%s' "$$l" | jq -r .brief.sha256); author=$$(printf '%s' "$$l" | jq -r .brief.author); \
+	}; \
+	answered() { \
+		got=$$(jq -c --arg f "$$1" '.[$$f] | {via, reason, brief_sha256, brief_author}' "$(RELEASE_RECORD)"); \
+		want=$$(jq -cn --arg r "$$3" --arg s "$$sha" --arg a "$$author" '{via: "console", reason: $$r, brief_sha256: $$s, brief_author: $$a}'); \
+		[ "$$got" = "$$want" ] || { printf 'NO-GO: demo-console — the record'"'"'s %s is %s, want %s\n' "$$1" "$$got" "$$want"; exit 1; }; \
+		got=$$(tail -n 1 "$(RELEASES_LOG)" | jq -c '{kind, answer, via, reason, brief_sha256}'); \
+		want=$$(jq -cn --arg a "$$2" --arg r "$$3" --arg s "$$sha" '{kind: "answer", answer: $$a, via: "console", reason: $$r, brief_sha256: $$s}'); \
+		[ "$$got" = "$$want" ] || { printf 'NO-GO: demo-console — the release log ends with %s, want %s\n' "$$got" "$$want"; exit 1; }; \
+	}; \
+	body() { jq -cn --arg a "$$1" --arg v "$$v" --argjson h "$$held" --arg s "$$sha" --arg r "$$2" '{answer: $$a, version: $$v, held_at: $$h, brief_sha256: $$s} + (if $$r == "" then {} else {reason: $$r} end)'; }; \
+	held; \
+	r=$$(post "$$(body NO-GO "")"); \
+	[ -n "$$(printf '%s' "$$r" | jq -r '.error // empty')" ] || { printf 'NO-GO: demo-console — a rollback with no reason was not refused: %s\n' "$$r"; exit 1; }; \
+	why="the rollback the card's drag confirms, proved first"; \
+	printf '[demo-console] the brief for %s, sha256 %s; rolling back with a reason: %s\n' "$$v" "$$sha" "$$why" >&2; \
+	line=$$(post "$$(body NO-GO "$$why")" | jq -r '.line // ("refused: " + .error)'); \
+	case "$$line" in "NO-GO: go-for-launch — human said NO-GO"*) : ;; *) printf 'NO-GO: demo-console — the console answered: %s\n' "$$line"; cat .crew/demo-console.log >&2; exit 1 ;; esac; \
+	answered rejected NO-GO "$$why"; \
+	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
+	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-console — Envoy reports weights.canary=%s after the console'"'"'s rollback, want 0\n' "$$canary_w"; exit 1; }; \
+	printf '[demo-console] rolled back, the reason on the record; a second release, to promote\n' >&2; \
+	held; \
+	why="every stage passed verify; the card's drag confirms the promotion"; \
+	printf '[demo-console] the brief for %s, sha256 %s, by %s; pressing GO\n' "$$v" "$$sha" "$$author" >&2; \
+	line=$$(post "$$(body GO "$$why")" | jq -r '.line // ("refused: " + .error)'); \
 	[ "$$line" = "GO: go-for-launch" ] || { printf 'NO-GO: demo-console — the console answered: %s\n' "$$line"; cat .crew/demo-console.log >&2; exit 1; }; \
-	via=$$(jq -r '.promoted.via // empty' "$(RELEASE_RECORD)"); \
-	[ "$$via" = console ] || { printf 'NO-GO: demo-console — the record says promoted via %s, want console\n' "$${via:-nothing}"; exit 1; }; \
-	logged=$$(tail -n 1 "$(RELEASES_LOG)" | jq -r '"\(.kind) \(.answer) \(.via)"'); \
-	[ "$$logged" = "answer GO console" ] || { printf 'NO-GO: demo-console — the release log ends with %s, want the console'"'"'s GO\n' "$$logged"; exit 1; }; \
+	answered promoted GO "$$why"; \
 	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
 	[ "$$canary_w" = "100" ] || { printf 'NO-GO: demo-console — Envoy reports weights.canary=%s after the press, want 100\n' "$$canary_w"; exit 1; }; \
 	ok=0; total=10; i=0; \

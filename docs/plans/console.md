@@ -593,3 +593,49 @@ when `ci.head_sha` is the PR's head.
 and from `releases[]` (its stages and the human answer); `./go network`
 prints the same facts in the same words, from the table
 `core/network.py --table` that the page embeds as `#network-words`.
+
+## 1.4: the why of a NO-GO (ADR 0078, 2026-11-12)
+
+All optional; the schema is `core/logbook/1.4.schema.json`.
+
+| Field | From | Rule |
+|---|---|---|
+| `tickets[].ci.sast`, `tickets[].rework[].sast` | `sast.json`'s `new`, copied by `core/steps/ci.sh` on a `sast` NO-GO, carried by `core/steps/rework.sh` | `[{rule, file, line}]`, or `null` for any other gate |
+| `tickets[].rework[].failed` | the ci's `failed`, carried by `core/steps/rework.sh` | the gate's name, `null` for a review or main's check |
+| `tickets[].ci.why`, `tickets[].rework[].why` | the entry itself | `{attempt, judge, gate, line, details, sast}`; `null` on a ci that is not NO-GO; `details` and `sast` withheld as `{ok: false, error: "withheld: …"}` unless the entry's gate lines hold `GO: secrets`, and then the entry's 1.3 `details` is `null` |
+
+A click, Enter or Space on a red gate (the card's NO-GO chip, the back's and
+the timeline's `gates` and `rework` rows, `#network`'s NO-GO gate node and
+stream line) opens `dialog#why`: the line, the gate and judge, the details
+or why they are withheld, the new SAST findings, the attempt, the attempts
+left on `REWORK_MAX_ATTEMPTS` and the next move. It writes nothing.
+
+### 1.4: the human gate on the card (ADR 0079, 2026-11-12)
+
+| Field | From | Rule |
+|---|---|---|
+| `releases[].answer.reason`, `.brief_sha256`, `.brief_author` | the release log's `answer` line, written by `core/releases.py answer` | the human's reason (`GO_FOR_LAUNCH_REASON`, `null` when none), the sha256 and the author of the brief answered; `null` on a line from before |
+| `launch.record.promoted`, `.rejected` | `RELEASE_RECORD` | the same three fields beside `by`, `via`, `at` |
+| `tickets[].timeline[]` `sign-off` row's `reason` | the answer | as above |
+
+The held release's card (its `release.version` is `launch.record.version`,
+held, unanswered, pressable or preparable) is the one `draggable` card;
+`#launch-drop` holds `#drop-promote` and `#drop-rollback`, each a drop
+target and a button. Both, and `#launch`'s GO and NO-GO, open
+`dialog#launch-confirm`; `POST /v1/go-for-launch` takes an optional
+`reason`, required non-blank for NO-GO (400 otherwise, nothing run).
+
+### 1.4: the live canary (ADR 0080, 2026-11-12)
+
+| Field | From | Rule |
+|---|---|---|
+| `releases[].stages[].started_at`, `.judged_at` | `core/launchpad.sh` through `core/releases.py stage` | when the shift took; when verify answered |
+| `releases[].stages[].slo` | the stage's `slo:` lines | `[{query, canary, stable, delta, max_delta}]`; `null` for `no data`; `max_delta` the effective policy's for `error_rate` and `latency_p95`, `null` for `traffic` |
+| `releases[].reason`, `launch.record.reason` | `fail_stage` in `core/launchpad.sh` | `<stage>: <why>` on a rolled-back record, `null` otherwise |
+| `launch.record.running` | `core/releases.py running`, at each stage once the shift took | `{pct, started_at, judge_after_s}` while `in-progress`; absent on a final record |
+| `tickets[].timeline[]` `canary` rows | the stage | `at` is `judged_at` when present; `slo` as above |
+
+`section#canary` on `#launch`, and at the top of the overview while a
+release is in progress: one `.canary-stage` row per stage, the running one
+`[data-running]` with the time left against `read_at`, and
+`#canary-rollback` with the reason on a rolled-back record.

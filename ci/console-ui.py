@@ -12,7 +12,7 @@ job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 Written from docs/adr/0059 and the DOM contract it names (and, for t-z, from
 docs/adr/0071; for `agents`, from docs/adr/0073), not from console/index.html.
 It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.3.json, and drives it with Playwright:
+fixtures/logbook/golden-1.4.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -69,8 +69,20 @@ fixtures/logbook/golden-1.3.json, and drives it with Playwright:
      fill), every control the keyboard reaches there at 2 px and 3:1, and the
      replay label;
   r. the phone's band bar (§5);
-  s. no drag: no draggable attribute, no drag or drop listener registered, on the
-     board and on #network (which sends no POST either);
+  s. no drag but the held release's (docs/adr/0079 §3, which amends ADR 0059 §1 for
+     that one gesture): over the golden no draggable attribute and no drag or drop
+     handler or listener, on the board and on #network (which sends no POST either);
+     over a logbook derived from it where the held release has a ticket (LIVE,
+     simulated), only on that card and on the two targets;
+
+  ac. the live canary (docs/adr/0080 §5): over the golden `section#canary` on #launch
+     with one `.canary-stage[data-pct]` row per stage of the held record, `data-within`
+     by delta <= max_delta, no running row, no #canary-rollback; over records derived at
+     run time (a LIVE console SIMULATED as o does): the running row with the time left
+     against read_at (and never below zero), "judged after N s" in a snapshot, the
+     overview's section#canary at the top only while in progress, and on a rolled-back
+     record #canary-rollback with the reason (the last stage's verdict when none) and the
+     deciding stage marked data-decided; nothing POSTed;
 
 ADR 0071, the governed network (every expectation is worked out from the golden's
 own fields at run time; the CLI is core/network.py run as a subprocess):
@@ -110,6 +122,35 @@ own fields at run time; the CLI is core/network.py run as a subprocess):
 ADR 0073, what the contract gives the agents (every expectation is worked out
 from the golden's own fields at run time):
 
+  aa. ADR 0078 §4, the why of a NO-GO (every expectation is worked out from the
+     golden's own fields at run time, the attempts left from its thresholds, the next
+     move from the card's own now line): `button.why-open` on a NO-GO card and in the
+     verdict cell of the timeline's `gates` and `rework` rows, the SVG `g.net-gate`
+     and the stream's `li.net-line` of a NO-GO on #network (class why-open,
+     role=button, tabindex=0, data-ticket, data-attempt) open the one modal
+     dialog#why, by click and by focus + Enter, holding #why-line, #why-gate,
+     #why-details (li, or one .withheld), #why-sast (tr with three td, or one
+     .withheld; absent when the record has no sast list), #why-attempt, #why-left
+     and #why-next; Esc and button.close close it and the focus returns to the
+     opener; no POST; a card whose outcome is not NO-GO has no opener. Ticket 0003
+     holds the sast and the test NO-GO, ticket 0002's withheld case opens from
+     #network/0002?attempt=1.
+
+  ab. ADR 0079 §3-§5, the human gate on the card, on a LIVE console SIMULATED in the
+     browser over a logbook derived from the golden where ticket 0002's release is the
+     held record's: over the golden no card drags (its pressable record has no ticket);
+     over the derived one exactly one `.card[draggable="true"]` carries `data-launch`
+     (0002's) and `#launch-drop` holds `button#drop-promote` and `button#drop-rollback`;
+     Playwright's drag_to from the card onto the Rollback target opens the modal
+     dialog#launch-confirm holding #lc-brief, #lc-thresholds (a data row per threshold
+     judged by verify), #lc-stages (a row per stage), #lc-risk and #lc-gates; #lc-confirm
+     is disabled while textarea#lc-reason is empty or blank for a rollback; no POST is
+     sent before the confirmation, and the one sent then is {answer: NO-GO, version,
+     held_at, brief_sha256, reason}; Enter on #drop-promote opens the same panel for GO,
+     confirmable with no reason; the launch screen's #launch-go and #launch-nogo open it
+     too and never call window.confirm; Esc and button.close close it and the focus
+     returns to the opener.
+
   agents. the Thresholds screen's Agents panel prints the logbook's lines
      (docs/adr/0073 §10), and each card's back shows its task's MCP calls and
      its review's instructions, and no such row when they are null.
@@ -133,7 +174,7 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.3.json"
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.4.json"
 SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds", "network", "network/0010"]
 THEME_KEY = "lights-out.theme"
 TIMEOUT_MS = 5000
@@ -2289,15 +2330,19 @@ def drag_problems(events, draggable):
     return bad
 
 
-def s_nodrag(browser, bases):
+def s_nodrag(browser, bases, held):
     ctx = browser.new_context(viewport=DESKTOP)
     ctx.add_init_script(RECORD_EVENTS)
+    ctx.add_init_script(RECORD_DRAG)
     probe = ctx.new_page()
     probe.goto(bases["golden"] + "/v1/console.json")
     probe.evaluate("() => { document.addEventListener('dragstart', () => {}); document.addEventListener('drop', () => {}); }")
     seen = probe.evaluate("window.__events")
     need("dragstart" in seen and "drop" in seen, f"s: the listener recorder did not see a dragstart and a drop registered: {seen}")
     need(drag_problems(seen, 0), "s: a session that registered dragstart and drop is accepted")
+    need(len(probe.evaluate("window.__dragl")) == 2, "s: the drag recorder did not see a dragstart and a drop registered")
+    probe.evaluate("() => { const e = document.createElement('div'); e.ondrop = () => {}; e.setAttribute('draggable', 'true'); document.body.append(e); }")
+    need(drag_scan_problems(probe.evaluate(DRAG_SCAN_JS)), "s: a page with a draggable element and an ondrop handler is accepted")
     tab = Tab(ctx, bases["golden"])
     draw_kanban(tab, "s")
     tab.page.wait_for_timeout(300)
@@ -2312,8 +2357,891 @@ def s_nodrag(browser, bases):
     need(len(events) > 5, f"s: the recorder saw {len(events)} registrations in a whole session: it is not recording")
     bad = drag_problems(events, tab.page.evaluate("document.querySelectorAll('[draggable=true]').length"))
     need(not bad, f"s: {bad[0] if bad else ''}", *bad)
+    bad = drag_scan_problems(tab.page.evaluate(DRAG_SCAN_JS))
+    need(not bad, f"s: over the golden, {bad[0] if bad else ''}", *bad)
     tab.audit("s")
     ctx.close()
+    # ADR 0079 §3: over the logbook where the held release has a ticket, the card and the two targets alone.
+    book = launch_book(held)
+    version = book["launch"]["record"]["version"]
+    ctx, tab = launch_tab(browser, bases, book, [])
+    draw_kanban(tab, "s, the held card")
+    wait_for(tab, ".card[draggable='true']", "s, the held card")
+    tab.page.wait_for_timeout(2500)  # a poll of the live console redraws the board: the rule holds across it
+    open_back(tab, "0009")
+    tab.page.keyboard.press("Escape")
+    tab.wait(CLOSED_JS, None, "s, the held card: the back never closed")
+    scan = tab.page.evaluate(DRAG_SCAN_JS)
+    need(scan["draggable"] and scan["handlers"] + scan["listeners"], f"s, the held card: the page shows nothing that drags: {scan}")
+    bad = drag_scan_problems(scan, version)
+    need(not bad, f"s, the held card: {bad[0] if bad else ''}", *bad)
+    tab.audit("s, the held card")
+    ctx.close()
+
+
+# --- aa. the why of a NO-GO (docs/adr/0078 §4) ---------------------------------------------------
+
+WHY_WITHHELD = "withheld: the secrets gate did not say GO on attempt {}"  # ADR 0078 §3, word for word
+WHY_OPEN_JS = "() => { const d = document.querySelector('dialog#why'); return !!d && d.open; }"
+WHY_CLOSED_JS = "() => { const d = document.querySelector('dialog#why'); return !d || !d.open; }"
+WHY_JS = """() => {
+  const d = document.querySelector('dialog#why');
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const q = (s) => (d ? d.querySelector(s) : null);
+  const a = document.activeElement;
+  const back = document.querySelector('dialog#card-back');
+  const sast = q('#why-sast');
+  return {count: document.querySelectorAll('dialog#why').length, open: !!d && d.open, modal: !!d && d.matches(':modal'),
+    inside: !!d && d.contains(a), close: !!q('button.close'), card_back_open: !!back && back.open,
+    line: txt(q('#why-line')), gate: txt(q('#why-gate')),
+    details: d ? [...d.querySelectorAll('#why-details li:not(.withheld)')].map(txt) : [],
+    details_withheld: d ? [...d.querySelectorAll('#why-details .withheld')].map(txt) : [],
+    sast: sast ? {rows: [...sast.querySelectorAll('tr')].filter((r) => r.querySelector('td') && !r.querySelector('.withheld') && !r.classList.contains('withheld'))
+                        .map((r) => [...r.querySelectorAll('td')].map(txt)),
+                  withheld: [...sast.querySelectorAll('.withheld')].map(txt)} : null,
+    attempt: txt(q('#why-attempt')), left: txt(q('#why-left')), next: txt(q('#why-next')),
+    active: a ? {tag: a.tagName.toLowerCase(), ticket: a.dataset.ticket || null, attempt: a.dataset.attempt || null,
+                 why: a.classList.contains('why-open'), scope: a.closest('tr[data-phase]') ? a.closest('tr[data-phase]').dataset.phase : null} : null};
+}"""
+OPENER_JS = """(el) => ({tag: el.tagName.toLowerCase(), ticket: el.dataset.ticket || null, attempt: el.dataset.attempt || null, why: el.classList.contains('why-open'),
+  scope: el.closest('tr[data-phase]') ? el.closest('tr[data-phase]').dataset.phase : null})"""
+NET_OPENERS_JS = """() => [...document.querySelectorAll('g.net-gate, li.net-line')].map((e) => ({kind: e.tagName.toLowerCase(), gate: e.dataset.gate || null,
+  verdict: e.dataset.verdict || null, why: e.classList.contains('why-open'), role: e.getAttribute('role'), tabindex: e.getAttribute('tabindex'),
+  ticket: e.dataset.ticket || null, attempt: e.dataset.attempt || null}))"""
+ROW_OPENERS_JS = """() => [...document.querySelectorAll('tr[data-phase] .why-open')].map((b) => ({phase: b.closest('tr[data-phase]').dataset.phase,
+  tag: b.tagName.toLowerCase(), ticket: b.dataset.ticket || null, attempt: b.dataset.attempt || null}))"""
+CARD_OPENERS_JS = """() => [...document.querySelectorAll('.card[data-id]')].map((c) => ({id: c.dataset.id,
+  openers: [...c.querySelectorAll('.why-open')].map((b) => ({tag: b.tagName.toLowerCase(), ticket: b.dataset.ticket || null, attempt: b.dataset.attempt || null}))}))"""
+
+
+def why_record(t, n):
+    """The logbook's `why` of ticket T's attempt N: a rework entry's, or the ci's when it is that attempt's."""
+    for r in t.get("rework") or []:
+        if r.get("attempt") == n and isinstance(r.get("why"), dict):
+            return r["why"]
+    ci = t.get("ci")
+    if isinstance(ci, dict) and isinstance(ci.get("why"), dict) and ci["why"].get("attempt") == n:
+        return ci["why"]
+    return None
+
+
+def why_expect(book, t, n, now_text):
+    """What the panel must say for ticket T's attempt N (ADR 0078 §4), worked out from the golden's own fields."""
+    w = why_record(t, n)
+    if w is None:
+        return None
+    top = max_attempts_of(book)
+    details = w["details"]
+    sast = w.get("sast")
+    if isinstance(sast, list):
+        sast = {"rows": [[x["rule"], x["file"], str(x["line"])] for x in sast], "withheld": []}
+    elif isinstance(sast, dict):
+        sast = {"rows": [], "withheld": [sast["error"]]}
+    else:
+        sast = None
+    return {"line": w["line"], "gate": w["gate"], "judge": w["judge"], "attempt": f"attempt {n}",
+            "left": f"{max(0, top - n)} of {top} attempts left",
+            "next": now_text if n == t.get("attempt") else f"sent back to the dev-worker: attempt {n + 1}",
+            "details": [] if isinstance(details, dict) else list(details or []),
+            "details_withheld": [details["error"]] if isinstance(details, dict) else [],
+            "sast": sast}
+
+
+def why_problems(info, exp):
+    """Why the panel INFO (WHY_JS) is not what EXP says, or []."""
+    bad = []
+    if info["count"] != 1 or not info["open"]:
+        bad.append(f"{info['count']} dialog#why, open={info['open']}: want exactly one, open")
+    if not info["modal"]:
+        bad.append("dialog#why is not modal (:modal)")
+    if not info["inside"]:
+        bad.append("the focus is not inside dialog#why")
+    if not info["close"]:
+        bad.append("dialog#why has no button.close")
+    if info["card_back_open"]:
+        bad.append("dialog#card-back opened too")
+    if info["line"] != exp["line"]:
+        bad.append(f"#why-line is {info['line']!r}, want {exp['line']!r}")
+    names = [x for x in (exp["gate"], exp["judge"]) if x]
+    if not info["gate"] or any(x not in info["gate"] for x in names):
+        bad.append(f"#why-gate is {info['gate']!r}, want it to name {names}")
+    if info["details"] != exp["details"]:
+        bad.append(f"#why-details lists {info['details']}, want {exp['details']}")
+    if info["details_withheld"] != exp["details_withheld"]:
+        bad.append(f"#why-details withheld {info['details_withheld']}, want {exp['details_withheld']}")
+    if exp["sast"] is None:
+        if info["sast"] is not None:
+            bad.append("#why-sast is present, but the record has no sast list")
+    elif info["sast"] != exp["sast"]:
+        bad.append(f"#why-sast is {info['sast']}, want {exp['sast']}")
+    if info["attempt"] != exp["attempt"]:
+        bad.append(f"#why-attempt is {info['attempt']!r}, want {exp['attempt']!r}")
+    if info["left"] != exp["left"]:
+        bad.append(f"#why-left is {info['left']!r}, want {exp['left']!r}")
+    if not info["next"] or exp["next"] not in info["next"]:
+        bad.append(f"#why-next is {info['next']!r}, want it to contain {exp['next']!r}")
+    return bad
+
+
+def timeline_openers(t):
+    """(phase, ticket, attempt) of each opener the timeline of T must draw, in order: a `gates` row of a rejected
+    attempt opens that attempt; a `rework` row (attempt n) names the rejection that sent it back, n-1."""
+    out = []
+    for row in t.get("timeline") or []:
+        n = row.get("attempt")
+        if not isinstance(n, int):
+            continue
+        if row["phase"] == "gates" and row.get("verdict") in ("ci-failed", "NO-GO") and why_record(t, n):
+            out.append(("gates", t["id"], str(n)))
+        elif row["phase"] == "rework" and why_record(t, n - 1):
+            out.append(("rework", t["id"], str(n - 1)))
+    return out
+
+
+def net_opener_problems(rows, ident):
+    """Every NO-GO gate node and stream line is an opener, and every opener is a NO-GO (ADR 0078 §4)."""
+    bad = []
+    for r in rows:
+        nogo = r["verdict"] == "NO-GO"
+        if nogo != r["why"]:
+            bad.append(f"{r['kind']} (gate {r['gate']}, attempt {r['attempt']}) has data-verdict {r['verdict']!r} and why-open={r['why']}")
+        if r["why"] and (r["role"] != "button" or r["tabindex"] != "0" or r["ticket"] != ident or not (r["attempt"] or "").isdigit()):
+            bad.append(f"{r['kind']} opener is role={r['role']!r} tabindex={r['tabindex']!r} data-ticket={r['ticket']!r} data-attempt={r['attempt']!r}")
+    return bad
+
+
+def open_why(tab, loc, what, how):
+    """Open dialog#why from the element LOC by a click, or by focus + Enter; the opener's signature and the panel."""
+    sig = loc.evaluate(OPENER_JS)
+    if how == "click":
+        loc.click()
+    else:
+        loc.focus()
+        tab.page.keyboard.press("Enter")
+    tab.wait(WHY_OPEN_JS, None, f"aa, {what}: dialog#why never opened ({how})")
+    tab.page.wait_for_timeout(300)
+    return sig, tab.page.evaluate(WHY_JS)
+
+
+def close_why(tab, how, sig, what):
+    if how == "esc":
+        tab.page.keyboard.press("Escape")
+    else:
+        tab.page.click("dialog#why button.close")
+    tab.wait(WHY_CLOSED_JS, None, f"aa, {what}: dialog#why never closed ({how})")
+    active = tab.page.evaluate(WHY_JS)["active"]
+    need(active == {"tag": sig["tag"], "ticket": sig["ticket"], "attempt": sig["attempt"], "why": True, "scope": sig["scope"]},
+         f"aa, {what}: after {how} the focus is on {active}, want the opener {sig}")
+
+
+def see_why(tab, loc, book, t, n, now_text, what, how, closing):
+    exp = why_expect(book, t, n, now_text)
+    need(exp is not None, f"aa, {what}: the golden has no why for {t['id']} attempt {n}")
+    sig, info = open_why(tab, loc, what, how)
+    need(sig["ticket"] == t["id"] and sig["attempt"] == str(n), f"aa, {what}: the opener says ticket {sig['ticket']} attempt {sig['attempt']}, want {t['id']} {n}")
+    bad = why_problems(info, exp)
+    need(not bad, f"aa, {what} ({how}): {bad[0] if bad else ''}", *bad)
+    close_why(tab, closing, sig, what)
+
+
+def aa_why(browser, bases, golden):
+    by_id = {t["id"]: t for t in golden["tickets"]}
+    t3, t2 = by_id["0003"], by_id["0002"]
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    # The card: only a NO-GO outcome has an opener, and it names its own ticket.
+    draw_kanban(tab, "aa")
+    tab.page.wait_for_timeout(300)
+    for card in tab.page.evaluate(CARD_OPENERS_JS):
+        verdict = (by_id[card["id"]].get("outcome") or {}).get("verdict")
+        need(verdict == "NO-GO" or not card["openers"], f"aa: card {card['id']}'s outcome is {verdict!r}, but it has {len(card['openers'])} why-open")
+        need(len(card["openers"]) <= 1 and all(o["tag"] == "button" and o["ticket"] == card["id"] for o in card["openers"]),
+             f"aa: card {card['id']}'s openers are {card['openers']}: want at most one button.why-open with its own data-ticket")
+    mine = next(c for c in tab.page.evaluate(CARD_OPENERS_JS) if c["id"] == "0003")
+    need(len(mine["openers"]) == 1 and mine["openers"][0]["attempt"] == str(t3["ci"]["why"]["attempt"]),
+         f"aa: card 0003 has {mine['openers']}, want one button.why-open for attempt {t3['ci']['why']['attempt']}")
+    now_text = one_now(tab, ".card[data-id='0003'] .now", "aa, card 0003")["text"]
+    opener = tab.page.locator(".card[data-id='0003'] button.why-open")
+    for how, closing in (("click", "esc"), ("enter", "esc"), ("click", "button")):
+        see_why(tab, opener, golden, t3, t3["ci"]["why"]["attempt"], now_text, "card 0003", how, closing)
+    # The timeline: openers in the verdict cell of the gates and rework rows, in the logbook's order.
+    for ident in ("0003", "0002", "0010"):
+        tab.page.goto("about:blank")
+        tab.load(f"#ticket/{ident}")
+        wait_for(tab, "tr[data-phase]", f"aa, {ident}")
+        got = [(o["phase"], o["ticket"], o["attempt"]) for o in tab.page.evaluate(ROW_OPENERS_JS)]
+        want = timeline_openers(by_id[ident])
+        need(got == want, f"aa, #ticket/{ident}: the openers are {got}, want {want}")
+        need(all(o["tag"] == "button" for o in tab.page.evaluate(ROW_OPENERS_JS)), f"aa, #ticket/{ident}: an opener is not a button")
+    need(timeline_openers(t2) == [], "aa: ticket 0002's history has no ci or rework step, but the golden's timeline wants openers")
+    tab.page.goto("about:blank")
+    tab.load("#ticket/0003")
+    wait_for(tab, "tr[data-phase]", "aa, 0003")
+    rows = tab.page.locator("tr[data-phase] button.why-open")
+    for index, how in ((0, "click"), (1, "enter"), (2, "click")):  # gates:1, rework (opens 1), gates:2
+        n = int(timeline_openers(t3)[index][2])
+        see_why(tab, rows.nth(index), golden, t3, n, now_text, f"timeline row {index}", how, "esc" if index != 2 else "button")
+    # The network: the node and the line are the openers themselves; ticket 0002's withheld case opens from its summary node.
+    for ident in ("0003", "0010", "0002"):
+        net_open(tab, f"#network/{ident}", f"aa, {ident}")
+        bad = net_opener_problems(tab.page.evaluate(NET_OPENERS_JS), ident)
+        need(not bad, f"aa, #network/{ident}: {bad[0] if bad else ''}", *bad)
+    net_open(tab, "#network/0003", "aa, 0003")
+    lines = sorted(r["attempt"] for r in tab.page.evaluate(NET_OPENERS_JS) if r["kind"] == "li" and r["why"])
+    want = sorted(str(w["attempt"]) for w in [r.get("why") for r in t3["rework"]] + [t3["ci"]["why"]] if w)
+    need(lines == want, f"aa, #network/0003: the stream's openers are for attempts {lines}, want {want}")
+    nodes = [(r["gate"], r["attempt"]) for r in tab.page.evaluate(NET_OPENERS_JS) if r["kind"] == "g" and r["why"]]
+    need(("test", "2") in nodes, f"aa, #network/0003: the gate nodes that open are {nodes}, want test at attempt 2")
+    see_why(tab, tab.page.locator("li.net-line.why-open[data-attempt='1']"), golden, t3, 1, now_text, "network line, attempt 1", "click", "esc")
+    see_why(tab, tab.page.locator("g.net-gate.why-open[data-gate='test'][data-attempt='2']"), golden, t3, 2, now_text, "network node, attempt 2", "enter", "esc")
+    net_open(tab, "#network/0002?attempt=1", "aa, 0002")
+    node = tab.page.locator("g.net-gate.why-open[data-gate='gates'][data-attempt='1']")
+    need(node.count() == 1, f"aa, #network/0002?attempt=1: {node.count()} openers g.net-gate[data-gate=gates][data-attempt=1], want one")
+    sig, info = open_why(tab, node, "network node, 0002", "enter")
+    need(info["details"] == [] and info["details_withheld"] == [WHY_WITHHELD.format(1)],
+         f"aa, ticket 0002 attempt 1: #why-details is {info['details']} / withheld {info['details_withheld']}, want one .withheld {WHY_WITHHELD.format(1)!r}")
+    bad = why_problems(info, why_expect(golden, t2, 1, now_text))
+    need(not bad, f"aa, ticket 0002 attempt 1: {bad[0] if bad else ''}", *bad)
+    close_why(tab, "esc", sig, "network node, 0002")
+    tab.audit("aa")
+    ctx.close()
+
+
+def self_checks_why(book):
+    """aa's own comparisons, each shown to fail on a wrong input."""
+    by_id = {t["id"]: t for t in book["tickets"]}
+    t3, t2 = by_id["0003"], by_id["0002"]
+    need(why_record(t3, 2) is not None and why_record(t3, 1) is not None and why_record(t2, 1) is not None,
+         "the golden holds no why for 0003 attempts 1 and 2 or 0002 attempt 1: it is not a 1.4 logbook")
+    need(timeline_openers(t3) == [("gates", "0003", "1"), ("rework", "0003", "1"), ("gates", "0003", "2")],
+         f"0003's timeline openers are {timeline_openers(t3)}, want gates 1, rework (opens 1), gates 2")
+    need(timeline_openers(t2) == [], "0002's timeline has openers")
+    now = "Waiting for the dev-worker: attempt 3 of 4"
+    first, second, old = why_expect(book, t3, 1, now), why_expect(book, t3, 2, now), why_expect(book, t2, 1, now)
+    need(first["sast"] == {"rows": [["B602", "README.md", "7"], ["B105", "README.md", "9"]], "withheld": []} and first["left"] == "3 of 4 attempts left"
+         and first["next"] == "sent back to the dev-worker: attempt 2", f"attempt 1's expectation is {first}")
+    need(second["sast"] is None and second["left"] == "2 of 4 attempts left" and second["next"] == now and len(second["details"]) == 2,
+         f"attempt 2's expectation is {second}")
+    need(old["details_withheld"] == [WHY_WITHHELD.format(1)] and old["details"] == [], f"0002's expectation is {old}")
+
+    def good(exp):
+        return {"count": 1, "open": True, "modal": True, "inside": True, "close": True, "card_back_open": False, "line": exp["line"],
+                "gate": f"{exp['gate'] or ''} {exp['judge']}", "details": list(exp["details"]), "details_withheld": list(exp["details_withheld"]),
+                "sast": None if exp["sast"] is None else {"rows": [list(r) for r in exp["sast"]["rows"]], "withheld": list(exp["sast"]["withheld"])},
+                "attempt": exp["attempt"], "left": exp["left"], "next": "Next: " + exp["next"], "active": None}
+    for exp in (first, second, old):
+        need(not why_problems(good(exp), exp), f"a good panel is refused: {why_problems(good(exp), exp)}")
+    for what, change in (("another line", {"line": "NO-GO: x"}), ("no details", {"details": []}), ("an extra detail", {"details": ["a", "b", "c"]}),
+                         ("a withheld nobody asked for", {"details_withheld": ["withheld"]}), ("no sast table", {"sast": None}),
+                         ("a sast row changed", {"sast": {"rows": [["B602", "README.md", "8"], ["B105", "README.md", "9"]], "withheld": []}}),
+                         ("another attempt", {"attempt": "attempt 3"}), ("no attempts left", {"left": None}), ("another count left", {"left": "1 of 4 attempts left"}),
+                         ("another next move", {"next": "nothing"}), ("the dialog closed", {"open": False}), ("a second dialog", {"count": 2}),
+                         ("a non-modal dialog", {"modal": False}), ("the focus outside", {"inside": False}), ("no close button", {"close": False}),
+                         ("the card's back opened too", {"card_back_open": True}), ("no gate named", {"gate": ""})):
+        need(why_problems({**good(first), **change}, first), f"a panel with {what} is accepted for attempt 1")
+    need(why_problems({**good(second), "sast": {"rows": [], "withheld": []}}, second), "a sast table is accepted where the record has no sast list")
+    need(why_problems({**good(old), "details": ["FAILED tests/test_w.py::test_join"], "details_withheld": []}, old), "shown details are accepted where they are withheld")
+    row = {"kind": "li", "gate": "test", "verdict": "NO-GO", "why": True, "role": "button", "tabindex": "0", "ticket": "0003", "attempt": "2"}
+    need(not net_opener_problems([row, {**row, "verdict": "GO", "why": False}], "0003"), "good network openers are refused")
+    need(net_opener_problems([{**row, "why": False}], "0003"), "a NO-GO line with no opener is accepted")
+    need(net_opener_problems([{**row, "verdict": "GO"}], "0003"), "an opener on a GO line is accepted")
+    need(net_opener_problems([{**row, "role": None}], "0003") and net_opener_problems([{**row, "tabindex": None}], "0003")
+         and net_opener_problems([{**row, "ticket": "0001"}], "0003") and net_opener_problems([{**row, "attempt": None}], "0003"),
+         "an opener without its role, its tabindex, its ticket or its attempt is accepted")
+
+
+# --- ab. the human gate on the card (docs/adr/0079 §3, §4, §5) ------------------------------------
+# Written from docs/adr/0079 and the DOM contract the task names, not from console/index.html.
+
+HELD_ID = "0002"
+DRAG_NAMES = ["drag", "dragstart", "dragend", "dragenter", "dragover", "dragleave", "drop"]
+# Records every drag or drop listener registered with addEventListener, with the object it was put on.
+RECORD_DRAG = """(() => { window.__dragl = []; const orig = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, ...rest) {
+    if (/^(drag|drop)/.test(String(type))) window.__dragl.push({type: String(type), target: this});
+    return orig.call(this, type, ...rest); }; })();"""
+# Every element with a draggable attribute, every one with an on-drag/drop property or attribute, every
+# registered drag or drop listener: what each is, by id, card and data-launch.
+DRAG_SCAN_JS = """() => {
+  const names = %s;
+  const desc = (e) => (e && e.nodeType === 1 ? {tag: e.tagName.toLowerCase(), id: e.id || null,
+    card: e.classList.contains('card') ? (e.dataset.id || null) : null, launch: e.dataset.launch || null} : {tag: String(e), id: null, card: null, launch: null});
+  const draggable = [], handlers = [];
+  for (const e of document.querySelectorAll('*')) {
+    if (e.hasAttribute('draggable')) draggable.push({...desc(e), value: e.getAttribute('draggable')});
+    if (names.some((n) => e['on' + n] || e.hasAttribute('on' + n))) handlers.push(desc(e));
+  }
+  return {draggable, handlers, listeners: (window.__dragl || []).map((r) => ({type: r.type, ...desc(r.target)}))};
+}""" % json.dumps(DRAG_NAMES)
+
+
+def drag_scan_problems(scan, version=None):
+    """Why a page's drag surface is wrong. VERSION None: any draggable, drag handler or drag listener is a
+    problem. Else (ADR 0079 §3): `draggable="true"` only on the card HELD_ID with data-launch VERSION, and drag
+    or drop handlers and listeners only on that card and on #drop-promote and #drop-rollback."""
+    def card(d):
+        return version is not None and d["card"] == HELD_ID and d["launch"] == version
+
+    def target(d):
+        return version is not None and d["id"] in ("drop-promote", "drop-rollback") and d["tag"] == "button"
+
+    bad = []
+    for d in scan["draggable"]:
+        if not (card(d) and d["value"] == "true"):
+            bad.append(f"draggable={d['value']!r} on {d}")
+    for kind in ("handlers", "listeners"):
+        for d in scan[kind]:
+            if not (card(d) or target(d)):
+                bad.append(f"a drag or drop {kind[:-1]} on {d}" + (f" ({d['type']})" if "type" in d else ""))
+    return bad
+
+
+def launch_book(held):
+    """The derived logbook of derive() (0002 carries the held record's version) where 0002 also has a ci with a
+    risk level and gate lines, copied from 0010's, so the panel's #lc-risk and #lc-gates have something to show."""
+    book = json.loads(json.dumps(held))
+    two = next(t for t in book["tickets"] if t["id"] == HELD_ID)
+    ten = next(t for t in book["tickets"] if t["id"] == "0010")
+    need(ten["ci"] and ten["ci"].get("risk_level") and ten["ci"].get("gates"), "ab: ticket 0010 has no ci with a risk level and gates to copy")
+    two["ci"] = json.loads(json.dumps(ten["ci"]))
+    return book
+
+
+def launch_tab(browser, bases, book, sent, dialogs=None, size=DESKTOP):
+    """A LIVE console SIMULATED in the browser (as o does): page.route answers /v1/console.json with the real
+    answer turned live and able to launch, /v1/logbook.json with BOOK, and /v1/go-for-launch with promote's line
+    for the answer posted, recording each body in SENT. Window.confirm and friends are recorded in DIALOGS."""
+    real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+    live = {**real, "mode": "live", "read_at": READ_AT, "can_launch": True, "reason": None}
+    ctx = browser.new_context(viewport=size)
+    ctx.add_init_script(RECORD_DRAG)
+    tab = Tab(ctx, bases["golden"])
+    if dialogs is not None:
+        tab.page.on("dialog", lambda d: (dialogs.append(f"{d.type}: {d.message}"), d.dismiss()))
+
+    def console_route(route):
+        route.fulfill(status=200, content_type="application/json", headers={"Cache-Control": "no-store"}, body=json.dumps(live))
+
+    def logbook_route(route):
+        # As the server does (ADR 0059 §1): the same bytes under the same ETag answer 304, so a poll redraws nothing.
+        if route.request.headers.get("if-none-match") == '"launch"':
+            route.fulfill(status=304, headers={"ETag": '"launch"'})
+        else:
+            route.fulfill(status=200, content_type="application/json", headers={"Cache-Control": "no-store", "ETag": '"launch"'}, body=json.dumps(book))
+
+    def go_route(route):
+        body = json.loads(route.request.post_data or "{}")
+        sent.append(body)
+        line = "GO: go-for-launch" if body.get("answer") == "GO" else "NO-GO: go-for-launch — human said NO-GO"
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({"line": line, "exit": 0 if body.get("answer") == "GO" else 1}))
+
+    tab.page.route("**/v1/console.json", console_route)
+    tab.page.route("**/v1/logbook.json", logbook_route)
+    tab.page.route("**/v1/go-for-launch", go_route)
+    return ctx, tab
+
+
+LC_JS = """() => {
+  const d = document.querySelector('dialog#launch-confirm');
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const q = (s) => (d ? d.querySelector(s) : null);
+  const rows = (s) => (d ? [...d.querySelectorAll(s + ' tr')].filter((r) => r.querySelector('td')).map(txt) : []);
+  const a = document.activeElement;
+  const box = q('textarea#lc-reason'), ok = q('button#lc-confirm');
+  return {count: document.querySelectorAll('dialog#launch-confirm').length, open: !!d && d.open, modal: !!d && d.matches(':modal'),
+    close: !!q('button.close'), brief: txt(q('#lc-brief')), thresholds: rows('#lc-thresholds'), stages: rows('#lc-stages'),
+    risk: txt(q('#lc-risk')), gates: txt(q('#lc-gates')), gate_items: d ? [...d.querySelectorAll('#lc-gates li')].map(txt) : [],
+    has_reason: !!box, confirm: !!ok, confirm_disabled: ok ? ok.disabled : null, text: txt(d),
+    active: a ? a.id : null, inside: !!d && d.contains(a), others: document.querySelectorAll('dialog#launch-confirm, dialog.launch-confirm').length};
+}"""
+LC_OPEN_JS = "() => { const d = document.querySelector('dialog#launch-confirm'); return !!d && d.open; }"
+LC_CLOSED_JS = "() => { const d = document.querySelector('dialog#launch-confirm'); return !d || !d.open; }"
+
+
+def norm_text(text):
+    return " ".join(str(text).split())
+
+
+def lc_problems(info, book):
+    """Why the panel does not hold what the decision rests on, worked out from the logbook BOOK."""
+    bad = []
+    L, rec = book["launch"], book["launch"]["record"]
+    two = next(t for t in book["tickets"] if t["id"] == HELD_ID)
+    if info["count"] != 1:
+        bad.append(f"{info['count']} dialog#launch-confirm in the page, want 1")
+    if not info["open"] or not info["modal"]:
+        bad.append(f"the panel is open={info['open']}, modal={info['modal']}; want a modal dialog")
+    if not info["close"]:
+        bad.append("the panel has no button.close")
+    brief = L["brief"]
+    if norm_text(brief["text"]) not in (info["brief"] or ""):
+        bad.append(f"#lc-brief does not hold the brief's text ({(info['brief'] or '')[:80]!r})")
+    if brief["author"] not in (info["brief"] or "") or brief["sha256"] not in (info["brief"] or ""):
+        bad.append("#lc-brief does not name the brief's author and sha256")
+    verify = [t for t in book["thresholds"] if t["judge"] == "verify"]
+    if not verify:
+        bad.append("the logbook has no verify threshold: the check cannot work")
+    if len(info["thresholds"]) != len(verify):
+        bad.append(f"#lc-thresholds has {len(info['thresholds'])} data row(s), want {len(verify)} (the thresholds judged by verify)")
+    else:
+        for row, t in zip(info["thresholds"], verify):
+            want = [t["key"], str(t["value"])] + ([t["provenance"]["text"]] if t.get("provenance") else [])
+            miss = [w for w in want if w not in row]
+            if miss:
+                bad.append(f"the #lc-thresholds row for {t['key']} lacks {miss}: {row!r}")
+    if len(info["stages"]) != len(rec["stages"]):
+        bad.append(f"#lc-stages has {len(info['stages'])} data row(s), want {len(rec['stages'])} (every stage of the record)")
+    else:
+        for row, s in zip(info["stages"], rec["stages"]):
+            want = [str(s["pct"]), s["verdict"]] + list(s["numbers"])
+            miss = [w for w in want if w not in row]
+            if miss:
+                bad.append(f"the #lc-stages row for {s['pct']}% lacks {miss}: {row!r}")
+    if two["ci"]["risk_level"] not in (info["risk"] or ""):
+        bad.append(f"#lc-risk says {info['risk']!r}, want {two['ci']['risk_level']!r}")
+    gate_text = info["gates"] or ""
+    miss = [g["line"] for g in two["ci"]["gates"] if g["line"] not in gate_text]
+    if miss:
+        bad.append(f"#lc-gates lacks the gate line(s) {miss}")
+    if not info["has_reason"] or not info["confirm"]:
+        bad.append("the panel has no textarea#lc-reason or no button#lc-confirm")
+    return bad
+
+
+def lc_open(tab, what):
+    tab.wait(LC_OPEN_JS, None, f"ab, {what}: dialog#launch-confirm never opened")
+    tab.page.wait_for_timeout(300)
+    return tab.page.evaluate(LC_JS)
+
+
+def lc_closed(tab, what):
+    tab.wait(LC_CLOSED_JS, None, f"ab, {what}: dialog#launch-confirm never closed")
+    tab.page.wait_for_timeout(150)
+
+
+def self_checks_launch(book):
+    rec = book["launch"]["record"]
+    version = rec["version"]
+    card = {"tag": "div", "id": None, "card": HELD_ID, "launch": version, "value": "true"}
+    target = {"tag": "button", "id": "drop-rollback", "card": None, "launch": None}
+    good = {"draggable": [card], "handlers": [{**card}, {**target}], "listeners": [{**target, "type": "drop"}]}
+    need(not drag_scan_problems(good, version), "ab: the held card and its targets are refused")
+    need(drag_scan_problems(good, None), "ab: a page with a draggable card is accepted where none may drag")
+    other = {**card, "card": "0009"}
+    need(drag_scan_problems({**good, "draggable": [card, other]}, version), "ab: a second draggable card is accepted")
+    need(drag_scan_problems({**good, "draggable": [{**card, "launch": None}]}, version), "ab: a draggable card with no data-launch is accepted")
+    need(drag_scan_problems({**good, "draggable": [{**card, "value": "false"}]}, version), "ab: a draggable that is not 'true' is accepted")
+    need(drag_scan_problems({**good, "handlers": [{**other}]}, version), "ab: a drag handler on another card is accepted")
+    need(drag_scan_problems({**good, "listeners": [{"tag": "[object Window]", "id": None, "card": None, "launch": None, "type": "drop"}]}, version),
+         "ab: a drop listener on the window is accepted")
+    need(drag_scan_problems({**good, "listeners": [{**target, "id": "somewhere-else", "type": "dragover"}]}, version),
+         "ab: a dragover listener on another button is accepted")
+    # The panel's comparison refuses a panel that lacks what it must hold.
+    two = next(t for t in book["tickets"] if t["id"] == HELD_ID)
+    verify = [t for t in book["thresholds"] if t["judge"] == "verify"]
+    info = {"count": 1, "open": True, "modal": True, "close": True,
+            "brief": norm_text(book["launch"]["brief"]["text"]) + " " + book["launch"]["brief"]["author"] + " " + book["launch"]["brief"]["sha256"],
+            "thresholds": [" ".join([t["key"], str(t["value"])] + ([t["provenance"]["text"]] if t.get("provenance") else [])) for t in verify],
+            "stages": [" ".join([str(s["pct"]), s["verdict"]] + list(s["numbers"])) for s in rec["stages"]],
+            "risk": two["ci"]["risk_level"], "gates": " ".join(g["line"] for g in two["ci"]["gates"]), "has_reason": True, "confirm": True}
+    need(not lc_problems(info, book), f"ab: a good panel is refused: {lc_problems(info, book)[:1]}")
+    for what, change in (("no brief", {"brief": ""}), ("no threshold rows", {"thresholds": []}), ("a missing stage", {"stages": info["stages"][:1]}),
+                         ("no risk", {"risk": ""}), ("no gate lines", {"gates": ""}), ("a non-modal panel", {"modal": False}),
+                         ("no reason box", {"has_reason": False}), ("two panels", {"count": 2})):
+        need(lc_problems({**info, **change}, book), f"ab: a panel with {what} is accepted")
+
+
+def ab_launch(browser, bases, golden, books):
+    """ADR 0079 §3-§5: the one card that drags, the panel its drop and the launch screen's buttons open, and what is
+    sent only when it is confirmed."""
+    held = books["held"]
+    book = launch_book(held)
+    rec = book["launch"]["record"]
+    version = rec["version"]
+    self_checks_launch(book)
+    need(version == golden["launch"]["record"]["version"] and book["launch"]["pressable"], "ab: the derived logbook has no pressable held record")
+    # 1. Over the golden, where the pressable record 0.5.0-d has no ticket: nothing drags, no target is shown.
+    ctx = browser.new_context(viewport=DESKTOP)
+    ctx.add_init_script(RECORD_DRAG)
+    tab = Tab(ctx, bases["golden"])
+    draw_kanban(tab, "ab, the golden")
+    tab.page.wait_for_timeout(300)
+    need(tab.page.locator(".card[draggable]").count() == 0, "ab, the golden: a card is draggable although the held release has no ticket")
+    need(tab.page.locator("#drop-promote, #drop-rollback").count() == 0, "ab, the golden: the drop targets are shown with no card to drop")
+    bad = drag_scan_problems(tab.page.evaluate(DRAG_SCAN_JS))
+    need(not bad, f"ab, the golden: {bad[0] if bad else ''}", *bad)
+    tab.audit("ab, the golden")
+    ctx.close()
+    # 2. Over the derived logbook, served live: exactly one card drags, with two targets.
+    sent = []
+    ctx, tab = launch_tab(browser, bases, book, sent)
+    draw_kanban(tab, "ab")
+    tab.wait("() => document.querySelectorAll('.card[draggable=\"true\"]').length > 0", None, "ab: no .card[draggable=true] for the held release")
+    tab.page.wait_for_timeout(300)
+    cards = tab.page.evaluate("() => [...document.querySelectorAll('.card[draggable=\"true\"]')].map((c) => [c.dataset.id, c.dataset.launch])")
+    need(cards == [[HELD_ID, version]], f"ab: the draggable cards are {cards}, want exactly [[{HELD_ID!r}, {version!r}]]")
+    scan = tab.page.evaluate(DRAG_SCAN_JS)
+    bad = drag_scan_problems(scan, version)
+    need(not bad and len(scan["draggable"]) == 1, f"ab: {bad[0] if bad else 'draggable elements: ' + str(scan['draggable'])}", *bad)
+    for sel in ("#launch-drop button#drop-promote", "#launch-drop button#drop-rollback"):
+        need(tab.page.locator(sel).count() == 1, f"ab: {sel} is not in the page exactly once")
+    # 3. The drag onto Rollback opens the panel and sends nothing.
+    tab.page.locator(f".card[data-id='{HELD_ID}']").drag_to(tab.page.locator("#drop-rollback"))
+    info = lc_open(tab, "the drag onto Rollback")
+    bad = lc_problems(info, book)
+    need(not bad, f"ab, the drag: {bad[0] if bad else ''}", *bad)
+    need(not sent and not tab.posts, f"ab, the drag: the drop sent {sent or tab.posts} before the confirmation")
+    need(info["confirm_disabled"] is True, "ab, the drag: #lc-confirm is enabled with no reason for a rollback")
+    tab.page.fill("textarea#lc-reason", "   ")
+    tab.page.wait_for_timeout(150)
+    need(tab.page.is_disabled("button#lc-confirm"), "ab, the drag: #lc-confirm is enabled with a blank reason for a rollback")
+    reason = "p99 is too close to the limit"
+    tab.page.fill("textarea#lc-reason", reason)
+    tab.page.wait_for_timeout(150)
+    need(tab.page.is_enabled("button#lc-confirm"), "ab, the drag: #lc-confirm is still disabled with a reason typed")
+    need(not sent and not tab.posts, f"ab, the drag: typing the reason sent {sent or tab.posts}")
+    tab.page.click("button#lc-confirm")
+    tab.page.wait_for_timeout(500)
+    need(len(sent) == 1, f"ab, the drag: confirming sent {len(sent)} request(s), want exactly 1")
+    want = {"answer": "NO-GO", "version": version, "held_at": rec["held_at"], "brief_sha256": book["launch"]["brief"]["sha256"], "reason": reason}
+    need({k: sent[0].get(k) for k in want} == want, f"ab, the drag: the POST body is {sent[0]}, want {want}")
+    need("NO-GO: go-for-launch — human said NO-GO" in tab.page.evaluate(LC_JS)["text"], "ab, the drag: the panel does not show promote's answer line")
+    tab.audit("ab, the drag", allow=("/v1/go-for-launch",))
+    ctx.close()
+    # 4. The keyboard alternative: Tab to #drop-promote, Enter. A promotion needs no reason.
+    sent = []
+    ctx, tab = launch_tab(browser, bases, book, sent)
+    draw_kanban(tab, "ab, the keyboard")
+    wait_for(tab, "button#drop-promote", "ab, the keyboard")
+    tab.page.wait_for_timeout(300)
+    tab.page.focus("button#drop-promote")
+    tab.page.keyboard.press("Enter")
+    info = lc_open(tab, "Enter on Promote")
+    bad = lc_problems(info, book)
+    need(not bad, f"ab, Enter on Promote: {bad[0] if bad else ''}", *bad)
+    need(info["confirm_disabled"] is False, "ab, Enter on Promote: #lc-confirm is disabled with an empty reason for a promotion")
+    need(not sent and not tab.posts, f"ab, Enter on Promote: the keypress sent {sent or tab.posts}")
+    tab.page.click("button#lc-confirm")
+    tab.page.wait_for_timeout(500)
+    need(len(sent) == 1 and sent[0].get("answer") == "GO" and sent[0].get("version") == version and sent[0].get("reason") in (None, ""),
+         f"ab, Enter on Promote: the POSTs are {sent}, want one GO for {version} with no reason")
+    tab.audit("ab, Enter on Promote", allow=("/v1/go-for-launch",))
+    ctx.close()
+    # 5. Esc and button.close close the panel and the focus returns to the opener; nothing is sent. The Rollback
+    # target needs a reason, so its panel opens with the confirmation disabled.
+    sent = []
+    ctx, tab = launch_tab(browser, bases, book, sent)
+    draw_kanban(tab, "ab, closing")
+    wait_for(tab, "button#drop-rollback", "ab, closing")
+    tab.page.wait_for_timeout(300)
+    for target, how in (("#drop-rollback", "Escape"), ("#drop-rollback", "button.close"), ("#drop-promote", "Escape"), ("#drop-promote", "button.close")):
+        tab.page.focus(target)
+        tab.page.keyboard.press("Enter")
+        info = lc_open(tab, f"{target}, {how}")
+        need(info["inside"], f"ab, {target}: the focus is not inside the panel when it opens")
+        need(info["confirm_disabled"] is (target == "#drop-rollback"),
+             f"ab, {target}: #lc-confirm disabled is {info['confirm_disabled']}, want {target == '#drop-rollback'}")
+        if how == "Escape":
+            tab.page.keyboard.press("Escape")
+        else:
+            tab.page.click("dialog#launch-confirm button.close")
+        lc_closed(tab, f"{target}, {how}")
+        active = tab.page.evaluate("document.activeElement && document.activeElement.id")
+        need(active == target[1:], f"ab, {target}, closed by {how}: the focus is on {active!r}, want it back on {target}")
+    need(not sent and not tab.posts, f"ab, closing: closing the panel sent {sent or tab.posts}")
+    tab.audit("ab, closing")
+    ctx.close()
+    # 6. The launch screen's buttons open the same panel, and window.confirm is never called.
+    sent, dialogs = [], []
+    ctx, tab = launch_tab(browser, bases, book, sent, dialogs)
+    tab.load("#launch")
+    wait_for(tab, "#launch-go", "ab, the launch screen")
+    tab.page.wait_for_timeout(300)
+    for button, how, need_reason in (("#launch-go", "Escape", False), ("#launch-nogo", "button.close", True)):
+        tab.page.click(button)
+        info = lc_open(tab, f"the launch screen's {button}")
+        bad = lc_problems(info, book)
+        need(not bad, f"ab, {button}: {bad[0] if bad else ''}", *bad)
+        need(info["confirm_disabled"] is need_reason, f"ab, {button}: #lc-confirm disabled is {info['confirm_disabled']}, want {need_reason}")
+        if how == "Escape":
+            tab.page.keyboard.press("Escape")
+        else:
+            tab.page.click("dialog#launch-confirm button.close")
+        lc_closed(tab, f"{button}, {how}")
+        active = tab.page.evaluate("document.activeElement && document.activeElement.id")
+        need(active == button[1:], f"ab, {button}, closed by {how}: the focus is on {active!r}, want it back on {button}")
+    need(not dialogs, f"ab: the launch screen called window dialogs: {dialogs}")
+    need(not sent and not tab.posts, f"ab, the launch screen: opening and closing the panel sent {sent or tab.posts}")
+    tab.audit("ab, the launch screen")
+    ctx.close()
+
+
+# --- ac. the live canary (docs/adr/0080 §5) ----------------------------------------------------------
+# Written from docs/adr/0080 and the selectors it names (section#canary, .canary-stage[data-pct],
+# [data-query], data-within, [data-running], #canary-rollback, data-decided), not from console/index.html.
+# The golden's record and the records derived here are the only inputs; every expectation is worked out
+# from the stages' own fields.
+
+CANARY_JS = """() => {
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const sec = [...document.querySelectorAll('section#canary')];
+  const s = sec[0] || null;
+  const rows = s ? [...s.querySelectorAll('.canary-stage')].map((r) => ({
+    pct: r.getAttribute('data-pct'), running: r.hasAttribute('data-running'), decided: r.hasAttribute('data-decided'), text: txt(r),
+    cells: [...r.querySelectorAll('[data-query]')].map((c) => {
+      const w = c.hasAttribute('data-within') ? c : c.querySelector('[data-within]');
+      return {query: c.getAttribute('data-query'), within: w ? w.getAttribute('data-within') : null, text: txt(c)};
+    }),
+    within_elsewhere: [...r.querySelectorAll('[data-within]')].map((w) => {
+      const q = w.closest('[data-query]'); return q ? q.getAttribute('data-query') : null; })})) : [];
+  const main = document.querySelector('main');
+  const firstBlock = main ? [...main.querySelectorAll('section, .panel, h2')].find((e) => e.id !== 'canary' && !e.closest('#canary')) : null;
+  const before = !!(s && firstBlock && (s.compareDocumentPosition(firstBlock) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const rb = [...document.querySelectorAll('#canary-rollback')];
+  return {sections: sec.length, rows, rollback: rb.length, rollback_text: rb.length ? txt(rb[0]) : null,
+    rollback_inside: rb.every((e) => !!e.closest('section#canary')), before_every_other_block: before || (!!s && !firstBlock), text: txt(s)};
+}"""
+
+CANARY_FLOAT = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def canary_numbers(text):
+    return [float(x) for x in CANARY_FLOAT.findall(text or "")]
+
+
+def canary_hms(stamp):
+    return stamp[11:19]
+
+
+def canary_stage_problems(row, stage, decided=False):
+    """Why a drawn row is not the record's STAGE (ADR 0080 §5): the percentage, the verdict, when it started and when
+    it was judged, and for each slo entry of error_rate or latency_p95 the four numbers and data-within by delta <= max_delta."""
+    bad = []
+    if row["pct"] != str(stage["pct"]):
+        bad.append(f"the row's data-pct is {row['pct']!r}, want {stage['pct']}")
+    if row["running"]:
+        bad.append("a recorded stage is drawn as the running one")
+    if row["decided"] != decided:
+        bad.append(f"data-decided is {row['decided']}, want {decided}")
+    if norm_text(stage["verdict"]) not in row["text"]:
+        bad.append(f"the verdict {stage['verdict']!r} is not in the row's text {row['text']!r}")
+    for key in ("started_at", "judged_at"):
+        if stage.get(key) and canary_hms(stage[key]) not in row["text"]:
+            bad.append(f"{key} {stage[key]} (time {canary_hms(stage[key])}) is not in the row's text {row['text']!r}")
+    for slo in stage.get("slo") or []:
+        if slo["query"] not in ("error_rate", "latency_p95"):
+            continue
+        cells = [c for c in row["cells"] if c["query"] == slo["query"]]
+        if len(cells) != 1:
+            bad.append(f"{len(cells)} [data-query={slo['query']!r}] cells in the row, want 1")
+            continue
+        cell = cells[0]
+        want = None if slo["delta"] is None or slo["max_delta"] is None else ("true" if slo["delta"] <= slo["max_delta"] else "false")
+        if want is not None and cell["within"] != want:
+            bad.append(f"{slo['query']}: data-within is {cell['within']!r}, want {want!r} (delta {slo['delta']}, max {slo['max_delta']})")
+        shown = canary_numbers(cell["text"])
+        for key in ("canary", "stable", "delta", "max_delta"):
+            if slo[key] is not None and not any(abs(x - slo[key]) < 1e-9 for x in shown):
+                bad.append(f"{slo['query']}: {key} {slo[key]} is not among the numbers {shown} of the cell {cell['text']!r}")
+    stray = [q for q in row["within_elsewhere"] if q not in ("error_rate", "latency_p95")]
+    if stray:
+        bad.append(f"data-within outside the error_rate and latency_p95 cells: {stray}")
+    return bad
+
+
+def canary_left_problems(row, pct, left=None, judge_after_s=None):
+    """The running row (ADR 0080 §5): the running percentage, and in live mode LEFT whole seconds (as a number of its
+    own, never negative); in a snapshot 'judged after <judge_after_s> s'."""
+    bad = []
+    if not row["running"] or row["pct"] != str(pct):
+        bad.append(f"the running row is {row['pct']!r}/{row['running']}, want data-pct {pct} and data-running")
+    text = row["text"]
+    if left is not None:
+        if not re.search(r"(?<![\d:.\-])%d(?![\d:.])" % left, text):
+            bad.append(f"{left} seconds left is not in the running row's text {text!r}")
+        if re.search(r"(?<![\w])-\s?\d+(?:\.\d+)?\s*s\b", text):
+            bad.append(f"the running row shows a negative time left: {text!r}")
+        if re.search(r"judged after", text):
+            bad.append(f"the live running row says 'judged after' ({text!r}), which is the snapshot's words")
+    else:
+        if f"judged after {judge_after_s} s" not in text:
+            bad.append(f"the snapshot's running row does not say 'judged after {judge_after_s} s': {text!r}")
+    return bad
+
+
+def self_checks_canary():
+    stage = {"pct": 25, "verdict": "NO-GO: launchpad — 25%: error_rate 0.050 → rolled back", "started_at": "2026-11-12T08:00:00Z",
+             "judged_at": "2026-11-12T08:01:00Z",
+             "slo": [{"query": "error_rate", "canary": 0.05, "stable": 0.0, "delta": 0.05, "max_delta": 0.01}]}
+    row = {"pct": "25", "running": False, "decided": True, "text": stage["verdict"] + " 08:00:00 08:01:00",
+           "cells": [{"query": "error_rate", "within": "false", "text": "canary 0.050 stable 0.000 Δ 0.050 max 0.01"}], "within_elsewhere": ["error_rate"]}
+    need(not canary_stage_problems(row, stage, True), f"ac: a good row is refused: {canary_stage_problems(row, stage, True)}")
+    for what, change, decided in (("the wrong pct", {"pct": "5"}, True), ("data-within true on a delta over its max", {"cells": [{**row["cells"][0], "within": "true"}]}, True),
+                                  ("no data-within", {"cells": [{**row["cells"][0], "within": None}]}, True),
+                                  ("no verdict", {"text": "08:00:00 08:01:00"}, True), ("no judged_at", {"text": stage["verdict"] + " 08:00:00"}, True),
+                                  ("a missing max_delta", {"cells": [{**row["cells"][0], "text": "canary 0.050 stable 0.000 Δ 0.050"}]}, True),
+                                  ("no cell", {"cells": []}, True), ("data-within on traffic", {"within_elsewhere": ["traffic"]}, True),
+                                  ("the running flag", {"running": True}, True), ("data-decided where not wanted", {}, False)):
+        need(canary_stage_problems({**row, **change}, stage, decided), f"ac: a row with {what} is accepted")
+    need(canary_stage_problems({**row, "decided": False}, stage, True), "ac: a deciding stage without data-decided is accepted")
+    run = {"pct": "25", "running": True, "decided": False, "text": "25% running 08:09:30 53 s left", "cells": [], "within_elsewhere": []}
+    need(not canary_left_problems(run, 25, left=53), f"ac: a good running row is refused: {canary_left_problems(run, 25, left=53)}")
+    for what, row2, kw in (("another time left", run, {"left": 54}), ("a negative time left", {**run, "text": "25% running -5 s left"}, {"left": 0}),
+                           ("not running", {**run, "running": False}, {"left": 53}), ("another pct", {**run, "pct": "5"}, {"left": 53}),
+                           ("the snapshot's words live", {**run, "text": run["text"] + " judged after 90 s"}, {"left": 53}),
+                           ("no snapshot words", run, {"judge_after_s": 90})):
+        need(canary_left_problems(row2, 25, **kw), f"ac: a running row with {what} is accepted")
+    need(not canary_left_problems({**run, "text": "25% judged after 90 s"}, 25, judge_after_s=90), "ac: a good snapshot row is refused")
+
+
+def canary_book(golden, record):
+    book = json.loads(json.dumps(golden))
+    book["launch"]["record"] = record
+    book["launch"]["pressable"] = False
+    book["launch"]["disabled_reason"] = f"release {record['version']} is {record['verdict']}"
+    return book
+
+
+def canary_tab(browser, bases, book, live):
+    """The golden's console, the logbook BOOK served by page.route; LIVE is a dict {'read_at': ...} (a LIVE console
+    SIMULATED as o does, console.json answered with mode live and that read_at, which the test may change) or None
+    (the snapshot server's own console.json, which has no read_at)."""
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    if live is not None:
+        real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+        tab.page.route("**/v1/console.json", lambda route: route.fulfill(
+            status=200, content_type="application/json", headers={"Cache-Control": "no-store"},
+            body=json.dumps({**real, "mode": "live", "read_at": live["read_at"]})))
+    tab.page.route("**/v1/logbook.json", lambda route: route.fulfill(
+        status=200, content_type="application/json", headers={"Cache-Control": "no-store"}, body=json.dumps(book)))
+    return ctx, tab
+
+
+def canary_info(tab, hash_, what):
+    tab.load(hash_)
+    wait_for(tab, "section#canary", what)
+    tab.page.wait_for_timeout(300)
+    return tab.page.evaluate(CANARY_JS)
+
+
+def canary_running_row(tab):
+    return next((r for r in tab.page.evaluate(CANARY_JS)["rows"] if r["running"]), None)
+
+
+def ac_canary(browser, bases, golden):
+    """ADR 0080 §5: over the golden the held record's stages, one row each, with data-within by delta <= max_delta, no
+    running row, no rollback banner; over derived records the running row and its time left against the console's
+    read_at, the overview's section at the top only while in progress, and the rollback with its reason and the
+    deciding stage."""
+    self_checks_canary()
+    rec = golden["launch"]["record"]
+    need(rec["verdict"] == "held" and len(rec["stages"]) >= 2 and all(st.get("slo") and st.get("judged_at") for st in rec["stages"]),
+         "ac: the golden's launch record is not a held one with two stages that carry slo and judged_at")
+    # 1. The golden: a held record.
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    info = canary_info(tab, "#launch", "ac, the golden")
+    need(info["sections"] == 1, f"ac, the golden: {info['sections']} section#canary on #launch, want 1")
+    rows = [r for r in info["rows"] if not r["running"]]
+    need(len(rows) == len(rec["stages"]) and len(info["rows"]) == len(rows),
+         f"ac, the golden: {len(info['rows'])} .canary-stage rows ({len(rows)} not running), want {len(rec['stages'])} and no running row")
+    need(all(r["pct"] is not None for r in info["rows"]), "ac, the golden: a .canary-stage row has no data-pct")
+    for row, stage in zip(rows, rec["stages"]):
+        bad = canary_stage_problems(row, stage, decided=False)
+        need(not bad, f"ac, the golden, stage {stage['pct']}%: {bad[0] if bad else ''}", *bad)
+        need(any(c["query"] == "error_rate" and c["within"] == "true" for c in row["cells"]),
+             f"ac, the golden, stage {stage['pct']}%: no [data-query=error_rate] cell with data-within=true")
+    need(not tab.page.locator("section#canary [data-running]").count(), "ac, the golden: a [data-running] row on a held record")
+    need(info["rollback"] == 0, "ac, the golden: #canary-rollback on a held record")
+    tab.page.goto(bases["golden"] + "/#overview")
+    tab.page.wait_for_selector("#your-turn", timeout=TIMEOUT_MS)
+    tab.page.wait_for_timeout(300)
+    need(tab.page.locator("main section#canary").count() == 0, "ac, the golden: the overview shows section#canary on a record that is not in progress")
+    tab.audit("ac, the golden")
+    ctx.close()
+    # 2. In progress, live, against read_at.
+    first = rec["stages"][0]
+    running = {"pct": 25, "started_at": "2026-11-12T08:09:30Z", "judge_after_s": 90}
+    inprog = {"version": rec["version"], "stable": rec["stable"], "image": rec["image"], "stages": [first], "verdict": "in-progress",
+              "held_at": None, "reason": None, "running": running}
+    book = canary_book(golden, inprog)
+    live = {"read_at": "2026-11-12T08:10:07Z"}  # 37 s into 90: 53 left
+    ctx, tab = canary_tab(browser, bases, book, live)
+    info = canary_info(tab, "#launch", "ac, in progress")
+    need(info["sections"] == 1, f"ac, in progress: {info['sections']} section#canary on #launch, want 1")
+    done = [r for r in info["rows"] if not r["running"]]
+    runs = [r for r in info["rows"] if r["running"]]
+    need(len(done) == 1 and len(runs) == 1, f"ac, in progress: {len(done)} stage rows and {len(runs)} running rows, want 1 and 1")
+    bad = canary_stage_problems(done[0], first, decided=False)
+    need(not bad, f"ac, in progress, the recorded stage: {bad[0] if bad else ''}", *bad)
+    bad = canary_left_problems(runs[0], 25, left=53)
+    need(not bad, f"ac, in progress, read_at {live['read_at']}: {bad[0] if bad else ''}", *bad)
+    need(info["rollback"] == 0, "ac, in progress: #canary-rollback while the record is in progress")
+    # The next poll carries a later read_at: the time left follows the server's clock, not the browser's.
+    for read_at, left in (("2026-11-12T08:10:27Z", 33), ("2026-11-12T08:12:00Z", 0)):
+        live["read_at"] = read_at
+        row = None
+        for _ in range(40):  # the page polls every 2 s (ADR 0047 §4)
+            tab.page.wait_for_timeout(250)
+            row = canary_running_row(tab)
+            if row and not canary_left_problems(row, 25, left=left):
+                break
+        else:
+            need(False, f"ac, in progress: after read_at moved to {read_at} the running row says {row and row['text']!r}, want {left} s left (never negative)")
+    tab.audit("ac, in progress")
+    # The overview: section#canary at the top while in progress.
+    live["read_at"] = "2026-11-12T08:10:07Z"
+    tab.page.goto(bases["golden"] + "/#overview")
+    tab.page.wait_for_selector("section#canary", timeout=TIMEOUT_MS)
+    tab.page.wait_for_timeout(300)
+    ov = tab.page.evaluate(CANARY_JS)
+    need(ov["sections"] == 1 and ov["before_every_other_block"], f"ac, the overview in progress: section#canary is {ov['sections']}x and "
+         f"{'' if ov['before_every_other_block'] else 'not '}before every other section, panel and heading of main")
+    need(any(r["running"] for r in ov["rows"]), "ac, the overview in progress: no running row in section#canary")
+    tab.audit("ac, the overview in progress")
+    ctx.close()
+    # 3. In progress in a snapshot: no read_at, so 'judged after N s'.
+    ctx, tab = canary_tab(browser, bases, book, None)
+    info = canary_info(tab, "#launch", "ac, the snapshot")
+    runs = [r for r in info["rows"] if r["running"]]
+    need(len(runs) == 1, f"ac, the snapshot: {len(runs)} running rows, want 1")
+    bad = canary_left_problems(runs[0], 25, judge_after_s=90)
+    need(not bad, f"ac, the snapshot: {bad[0] if bad else ''}", *bad)
+    tab.audit("ac, the snapshot")
+    ctx.close()
+    # 4. Rolled back: the reason and the deciding stage.
+    nogo = {"pct": 25, "verdict": "NO-GO: launchpad — 25%: error_rate 0.050 → rolled back", "numbers": [
+        "slo: error_rate canary(v)=0.050 stable(s)=0.000", "slo: latency_p95 canary(v)=0.300 stable(s)=0.100"],
+        "started_at": "2026-11-12T08:01:05Z", "judged_at": "2026-11-12T08:02:07Z",
+        "slo": [{"query": "error_rate", "canary": 0.05, "stable": 0.0, "delta": 0.05, "max_delta": 0.01},
+                {"query": "latency_p95", "canary": 0.3, "stable": 0.1, "delta": 0.2, "max_delta": 0.5}]}
+    edge = {**first, "slo": [{"query": "error_rate", "canary": 0.01, "stable": 0.0, "delta": 0.01, "max_delta": 0.01}]}  # delta == max: within
+    back = {"version": rec["version"], "stable": rec["stable"], "image": rec["image"], "stages": [edge, nogo], "verdict": "rolled-back",
+            "held_at": None, "reason": "25%: error_rate 0.050"}
+    for what, record, want in (("with its reason", back, "25%: error_rate 0.050"),
+                               ("from before the ADR, no reason", {k: v for k, v in back.items() if k != "reason"}, nogo["verdict"]),
+                               ("with a null reason", {**back, "reason": None}, nogo["verdict"])):
+        ctx, tab = canary_tab(browser, bases, canary_book(golden, record), None)
+        info = canary_info(tab, "#launch", f"ac, rolled back {what}")
+        need(info["rollback"] == 1 and info["rollback_inside"], f"ac, rolled back {what}: {info['rollback']} #canary-rollback inside section#canary, want 1")
+        need("Rolled back automatically" in info["rollback_text"], f"ac, rolled back {what}: #canary-rollback does not say 'Rolled back automatically': {info['rollback_text']!r}")
+        need(norm_text(want) in info["rollback_text"], f"ac, rolled back {what}: #canary-rollback does not hold {want!r}: {info['rollback_text']!r}")
+        rows = [r for r in info["rows"] if not r["running"]]
+        need(len(rows) == 2 and len(info["rows"]) == 2, f"ac, rolled back {what}: {len(info['rows'])} rows, want 2 and none running")
+        for row, stage, decided in zip(rows, record["stages"], (False, True)):
+            bad = canary_stage_problems(row, stage, decided)
+            need(not bad, f"ac, rolled back {what}, stage {stage['pct']}%: {bad[0] if bad else ''}", *bad)
+        need([c["within"] for c in rows[0]["cells"] if c["query"] == "error_rate"] == ["true"], f"ac, rolled back {what}: a delta equal to its max_delta is not within it")
+        need([c["within"] for c in rows[1]["cells"] if c["query"] == "error_rate"] == ["false"], f"ac, rolled back {what}: the failing error_rate is within its max_delta")
+        need([c["within"] for c in rows[1]["cells"] if c["query"] == "latency_p95"] == ["true"], f"ac, rolled back {what}: the latency within its max_delta is not within")
+        need(not tab.page.locator("section#canary [data-running]").count(), f"ac, rolled back {what}: a running row on a final record")
+        tab.page.goto(bases["golden"] + "/#overview")
+        tab.page.wait_for_selector("#your-turn", timeout=TIMEOUT_MS)
+        tab.page.wait_for_timeout(300)
+        need(tab.page.locator("main section#canary").count() == 0, f"ac, rolled back {what}: the overview shows section#canary on a final record")
+        tab.audit(f"ac, rolled back {what}")
+        ctx.close()
 
 
 def t_agents(browser, bases, golden):
@@ -3278,8 +4206,9 @@ def self_checks():
     # ADR 0063: the rules and the comparisons of g-k, each shown to fail.
     book = json.loads(GOLDEN.read_text(encoding="utf-8"))
     turns = turns_of(book)
+    by_id03 = next(t for t in book["tickets"] if t["id"] == "0003")  # at attempt 2 since ADR 0078's stub: the next is attempt 3
     need(sorted(i for i, e in turns.items() if e["turn"] == "you") == sorted(YOUR_TURN_GOLDEN), f"the now rules give {turns} over the golden")
-    need(turns["0003"]["contains"] == ["dev-worker", "attempt 2 of 4"] and turns["0008"]["contains"] == ["dev-worker", "attempt 2 of 4"],
+    need(turns["0003"]["contains"] == ["dev-worker", f"attempt {by_id03['attempt'] + 1} of 4"] and turns["0008"]["contains"] == ["dev-worker", "attempt 2 of 4"],
          f"the rework line's words are {turns['0003']['contains']}")
     need(turns["0009"]["contains"] == ["spec gate's"] and turns["0009"]["href"] == "#ticket/0009", f"the question's rule is {turns['0009']}")
     need(turns["0001"]["turn"] == "done" and turns["0002"]["turn"] == "done", "a rolled-back and a human-judged held ticket are not done")
@@ -3370,8 +4299,9 @@ def self_checks_0068(book):
     stale["history"][-1]["state"] = "pr-opened"
     need(expected_age(stale, ref) is None, "a ticket whose last history entry is not its state has an age")
     need(expected_age(by_id["0009"], READ_AT)[1] == "5d", f"the live age is {expected_age(by_id['0009'], READ_AT)}")
-    need(expected_pips(by_id["0007"], book) == (4, 4) and expected_pips(by_id["0001"], book) == (4, 1) and expected_pips(by_id["0003"], book) is None,
-         "the pips are wrong: 0007 (4, 4), 0001 (4, 1), 0003 none")
+    need(expected_pips(by_id["0007"], book) == (4, 4) and expected_pips(by_id["0001"], book) == (4, 1) and expected_pips(by_id["0003"], book) == (4, by_id["0003"]["attempt"]),
+         "the pips are wrong: 0007 (4, 4), 0001 (4, 1), 0003 (4, its attempt)")
+    self_checks_why(book)
     need(expected_pips(by_id["0001"], {"thresholds": []}) is None and expected_pips({**by_id["0001"], "attempt": "x"}, book) is None, "unreadable pips are not left out")
     # The face: every ticket's good face is accepted; each wrong one is refused.
 
@@ -3650,7 +4580,7 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(golden.get("schema") == "lights-out/logbook/1.3", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.3")
+        need(golden.get("schema") == "lights-out/logbook/1.4", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.4")
         need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 or later logbook")
         need(GOLDEN_12.is_file(), f"{GOLDEN_12.relative_to(ROOT)} not found: the 1.2 degradation (z) reads it")
         book12 = json.loads(GOLDEN_12.read_text(encoding="utf-8"))
@@ -3682,7 +4612,7 @@ def main():
                             p_long(browser, bases)
                             q_contrast(browser, bases)
                             r_bands(browser, bases, golden)
-                            s_nodrag(browser, bases)
+                            s_nodrag(browser, bases, books["held"])
                             net_nodrag(browser, bases)
                             q_network(browser, bases)
                             t_route(browser, bases, golden)
@@ -3693,6 +4623,9 @@ def main():
                             y_live(browser, bases, golden, nbooks)
                             z_old(browser, book12)
                             t_agents(browser, bases, golden)
+                            aa_why(browser, bases, golden)
+                            ab_launch(browser, bases, golden, books)
+                            ac_canary(browser, bases, golden)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)
