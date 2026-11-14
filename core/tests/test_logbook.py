@@ -530,7 +530,9 @@ STUB = ROOT / "fixtures" / "logbook" / "stub"
 GET_SH = '#!/bin/sh\nset -eu\nd=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)\nf="$d/state/$1.$2.json"\n[ -f "$f" ] || exit 1\ncat "$f"\n'
 ENV = {"LEVEL": "l0", "WORKLOAD": "app", "CODE_HOST": "stub-host", "STATE_STORE": "stub-state", "DELIVERY": "stub-delivery",
        "TICKETS_DIR": "tickets", "RELEASE_RECORD": "release.json", "RELEASES_LOG": "releases.jsonl",
-       "PROMOTE_OUT": "promote", "POSTMORTEM_DIR": "postmortem", "WORKLOAD_CONTRACT": "contract"}
+       "PROMOTE_OUT": "promote", "POSTMORTEM_DIR": "postmortem", "WORKLOAD_CONTRACT": "contract",
+       # The profile's model, the test's own names (docs/adr/0086 §1): no model id of a vendor here.
+       "MODEL_PROVIDER": "prov", "MODEL": "model-a", "AGENT_HARNESS": "fake-cli"}
 
 
 class Reader(unittest.TestCase):
@@ -545,8 +547,10 @@ class Reader(unittest.TestCase):
             root = Path(tmp)
             (root / "adapters" / "stub-state").mkdir(parents=True)
             (root / "adapters" / "stub-state" / "get.sh").write_text(GET_SH)
-            for name in ("state", "tickets", "policy", "contract", "promote", "postmortem"):
+            for name in ("state", "tickets", "policy", "contract", "promote", "postmortem", "roles"):
                 shutil.copytree(STUB / name, root / name)
+            # The run in flight (docs/adr/0087 §4): the hooks' count where crew.sh leaves it.
+            shutil.copytree(STUB / "crew", root / ".crew")
             for name in ("release.json", "releases.jsonl"):
                 shutil.copy(STUB / name, root / name)
             os.symlink(ROOT / "core", root / "core")
@@ -1078,7 +1082,7 @@ class SpendInTheLogbook(unittest.TestCase):
         self.assertIn("role test-reviewer: $0.00 over 1 run(s), 1 of cost unknown; 0h00m30s", s["lines"])
         self.assertIn("day 2026-11-03: $1.16 over 2 run(s)", s["lines"])
         kinds = [line.split(" ")[0] for line in s["lines"]]
-        self.assertEqual(kinds, ["ticket"] * 9 + ["role"] * 2 + ["day"] * 2 + ["budget:"])
+        self.assertEqual(kinds, ["ticket"] * 9 + ["role"] * 2 + ["day"] * 2 + ["burn:", "projection:", "budget:"])
 
     def test_the_cap_is_the_stop_of_0007_with_its_1_4_line(self):
         t = self.ticket(self.base(), "0007")
@@ -1363,6 +1367,167 @@ class FlowInTheLogbook(unittest.TestCase):
         src = self.source("0010")
         self.assertEqual(t["ci"]["seconds"], src["ci"]["seconds"])
         self.assertEqual(t["rework"][0]["seconds"], src["rework"][0]["seconds"])
+
+
+ROLE_ORDER = ["architect", "dev-worker", "ops-triage", "product", "release", "test-reviewer"]
+
+
+class RolesInTheLogbook(unittest.TestCase):
+    """Logbook 1.6's `roles` and `roles_summary`, over the stub sources (its roles/
+    copies the committed role.env keys), by hand from docs/adr/0086 §1."""
+
+    read = Reader.read
+    ticket = Reader.ticket
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if RolesInTheLogbook.book is None:
+            RolesInTheLogbook.book = self.read()
+        return RolesInTheLogbook.book
+
+    def row(self, book, role):
+        return [r for r in book["roles"] if r["role"] == role][0]
+
+    def test_six_rows_in_the_network_tables_order(self):
+        self.assertEqual([r["role"] for r in self.base()["roles"]], ROLE_ORDER)
+
+    def test_configured_from_the_profile_and_role_env(self):
+        b = self.base()
+        self.assertEqual(self.row(b, "dev-worker")["configured"],
+                         {"provider": "prov", "model": "model-a", "harness": "fake-cli", "thinking": "high"})
+        self.assertEqual(self.row(b, "product")["configured"],
+                         {"provider": "prov", "model": "model-a", "harness": "adk", "thinking": "medium"})
+        self.assertEqual({r["role"]: r["configured"]["thinking"] for r in b["roles"]},
+                         {"architect": "high", "dev-worker": "high", "ops-triage": "low", "product": "medium", "release": "low",
+                          "test-reviewer": "high"})
+
+    def test_budgets(self):
+        self.assertEqual({r["role"]: r["budget"] for r in self.base()["roles"]},
+                         {"architect": 600000, "dev-worker": 2600000, "ops-triage": None, "product": None, "release": None,
+                          "test-reviewer": 1500000})
+
+    def test_the_dev_worker_runs_on_0003(self):
+        r = self.row(self.base(), "dev-worker")
+        self.assertEqual(r["last"], {"ticket": "0003", "step": "rework", "attempt": 2, "at": "2026-11-03T08:15:00Z",
+                                     "harness": "gemini-cli", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": False,
+                                     "tokens": {"input": 400000, "output": 10000, "total": 410000}, "cost_usd": 0.3375,
+                                     "failed": None})
+        self.assertEqual(r["running"], {"ticket": "0003", "tokens": 2210000, "budget": 2600000, "warn": True})
+        self.assertEqual((r["used"], r["state"]), (2210000, "running"))
+        self.assertEqual(r["line"], "running on 0003: 2,210,000 of 2,600,000 tokens — near the budget")
+
+    def test_without_the_run_in_flight_the_dev_worker_ran(self):
+        r = self.row(self.read(lambda root: shutil.rmtree(root / ".crew")), "dev-worker")
+        self.assertEqual((r["running"], r["used"], r["state"]), (None, 410000, "ran"))
+        self.assertEqual(r["line"], "last ran on 0003 (rework, attempt 2) at 2026-11-03T08:15:00Z: 410,000 tokens of 2,600,000")
+
+    def test_the_test_reviewer_ran_on_0010(self):
+        r = self.row(self.base(), "test-reviewer")
+        self.assertEqual((r["last"]["ticket"], r["last"]["step"], r["last"]["model"], r["last"]["cost_usd"]), ("0010", "review", "model-x", None))
+        self.assertEqual((r["used"], r["state"]), (30900, "ran"))
+        self.assertEqual(r["line"], "last ran on 0010 (review, attempt 1) at 2026-11-02T06:40:00Z: 30,900 tokens of 1,500,000")
+
+    def test_the_four_others_are_idle(self):
+        for role in ("architect", "ops-triage", "product", "release"):
+            r = self.row(self.base(), role)
+            self.assertEqual((r["last"], r["running"], r["used"], r["state"], r["line"]),
+                             (None, None, None, "idle", "has not run in this record"), role)
+
+    def test_the_summary(self):
+        self.assertEqual(self.base()["roles_summary"],
+                         "6 roles on 1 provider: prov; last runs on gemini/gemini-3.8-flash, prov/model-x")
+
+    def test_at_l0_no_provider_and_no_model(self):
+        b = self.read(extra={"MODEL_PROVIDER": "", "MODEL": "", "AGENT_HARNESS": "replay"})
+        r = self.row(b, "dev-worker")
+        self.assertEqual(r["configured"], {"provider": None, "model": None, "harness": "replay", "thinking": "high"})
+        self.assertEqual(b["roles_summary"],
+                         "6 roles on no provider: the profile replays recorded runs; last runs on gemini/gemini-3.8-flash, prov/model-x")
+
+    def test_no_roles_directory_is_an_error(self):
+        b = self.read(lambda root: shutil.rmtree(root / "roles"))
+        self.assertEqual(b["roles"], {"ok": False, "error": "no roles/ directory: the six roles are its subdirectories"})
+        self.assertIsNone(b["roles_summary"])
+
+    def test_an_unreadable_role_env_is_that_rows_error(self):
+        b = self.read(lambda root: (root / "roles" / "architect" / "role.env").write_bytes(b"THINKING=\xff\xfe\n"))
+        r = self.row(b, "architect")
+        self.assertEqual((r["configured"], r["budget"]), (None, None))
+        self.assertEqual(r["error"], "roles/architect/role.env is not UTF-8")
+        self.assertEqual(self.row(b, "dev-worker")["configured"]["thinking"], "high")
+
+
+class LiveAndBurnInTheLogbook(unittest.TestCase):
+    """Logbook 1.6's `tickets[].live` and `spend.burn`, over the stub sources (its
+    crew/0003/out/tokens holds 2,210,000), by hand from docs/adr/0087 §3-§4."""
+
+    read = Reader.read
+    edit = Reader.edit
+    ticket = Reader.ticket
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if LiveAndBurnInTheLogbook.book is None:
+            LiveAndBurnInTheLogbook.book = self.read()
+        return LiveAndBurnInTheLogbook.book
+
+    def tokens(self, n):
+        return lambda root: (root / ".crew" / "0003" / "out" / "tokens").write_text(f"{n}\n")
+
+    def test_0003s_run_in_flight(self):
+        self.assertEqual(self.ticket(self.base(), "0003")["live"], {
+            "role": "dev-worker", "attempt": 3, "tokens": 2210000, "budget": 2600000, "warn": True,
+            "line": "dev-worker, attempt 3: 2,210,000 of 2,600,000 tokens (85%) — near TOKEN_BUDGET, the run stops at 2,600,000"})
+
+    def test_no_other_ticket_is_in_flight(self):
+        for t in self.base()["tickets"]:
+            if t["id"] != "0003":
+                self.assertIsNone(t["live"], t["id"])
+
+    def test_the_warning_starts_at_80_percent(self):
+        self.assertFalse(self.ticket(self.read(self.tokens(2079999)), "0003")["live"]["warn"])
+        live = self.ticket(self.read(self.tokens(2080000)), "0003")["live"]
+        self.assertTrue(live["warn"])
+        self.assertEqual(live["line"], "dev-worker, attempt 3: 2,080,000 of 2,600,000 tokens (80%) — near TOKEN_BUDGET, the run stops at 2,600,000")
+
+    def test_not_in_flight(self):
+        for what, mutate in (
+                ("a run.json beside it", lambda root: (root / ".crew" / "0003" / "out" / "run.json").write_text("{}")),
+                ("no tokens file", lambda root: (root / ".crew" / "0003" / "out" / "tokens").unlink()),
+                ("a count that is not a number", self.tokens("many")),
+                ("the ticket at review", self.edit("0003", lambda d: d.update(state="review"))),
+                ("an error last", self.edit("0003", lambda d: d["history"].append(
+                    {"step": "rework", "state": "ci-failed", "at": "2026-11-03T08:30:00Z", "error": "step exited 1"})))):
+            self.assertIsNone(self.ticket(self.read(mutate), "0003")["live"], what)
+
+    def test_no_budget(self):
+        def unbudgeted(root):
+            path = root / "roles" / "dev-worker" / "role.env"
+            path.write_text("".join(l for l in path.read_text(encoding="utf-8").splitlines(True) if not l.startswith("TOKEN_BUDGET=")))
+        live = self.ticket(self.read(unbudgeted), "0003")["live"]
+        self.assertEqual((live["budget"], live["warn"], live["line"]), (None, False, "dev-worker, attempt 3: 2,210,000 tokens, no budget"))
+
+    def test_the_burn_of_the_stubs_last_day(self):
+        b = self.base()["spend"]["burn"]
+        self.assertEqual((b["day"], b["first"], b["end"], b["runs"], b["unknown"]),
+                         ("2026-11-03", "2026-11-03T08:05:00Z", "2026-11-03T08:15:00Z", 2, 0))
+        for key, want in (("spent_usd", 1.1625), ("hours", 1.0), ("per_hour_usd", 1.1625), ("left_h", 15.75), ("projected_usd", 19.471875)):
+            self.assertAlmostEqual(b[key], want, places=6, msg=key)
+        self.assertEqual({i: v for i, v in enumerate(b["hourly"]) if v}, {8: 1.1625})
+        self.assertEqual((b["limit_usd"], b["over"]), (None, None))
+
+    def test_the_burn_lines_before_the_budget(self):
+        lines = self.base()["spend"]["lines"]
+        self.assertEqual(lines[-3:], [
+            "burn: $1.16 per hour on 2026-11-03 ($1.16 known in 2 run(s) from 08:05 to 08:15 UTC, over 1.0 h)",
+            "projection: $19.47 by the end of 2026-11-03 UTC at that rate, as of 08:15 UTC; SPEND_BUDGET_DAY_USD no limit",
+            "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"])
 
 
 if __name__ == "__main__":

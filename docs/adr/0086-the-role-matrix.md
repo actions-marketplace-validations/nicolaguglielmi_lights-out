@@ -66,9 +66,11 @@ them), any other directory after them by name:
   null, `, replayed` when replayed, `, stopped: <failed>` when failed),
   or `has not run in this record`.
 
-A `roles/` that cannot be listed makes `roles` `{ok: false, error}`; a
-`role.env` that cannot be read leaves that row's `configured` and
-`budget` null with an `error` key naming the file.
+No `roles/` directory makes `roles` `{ok: false, error: "no roles/
+directory: the six roles are its subdirectories"}`; a `role.env` that
+cannot be read leaves that row's `configured` and `budget` null with an
+`error` naming the file (`roles/<role>/role.env is not UTF-8`, or the
+system's reason). The directory is `ROLES_DIR`, default `roles`.
 
 ### 2. The panel
 
@@ -87,11 +89,13 @@ Thinking, Tokens and budget, State.
   `no budget` otherwise. A run over the budget fills it and says
   `over`.
 - State: the row's `line`.
-- Above the table, one sentence counted from the rows: `<n> roles on <k>
-  provider(s): <providers>` from `configured`, and `last runs on: <the
-  distinct provider/model pairs of last>` when any ran. The words come from
-  the logbook as `roles_summary`, a string, beside `roles`; the page adds
-  none.
+- Above the table, one sentence counted from the rows, `roles_summary`,
+  a string the logbook carries beside `roles` (null when `roles` is
+  unread), so the page adds no word: `<n> roles on <k> provider: <the
+  configured providers, sorted, joined by ", ">` (`providers` when more
+  than one), or `<n> roles on no provider: the profile replays recorded
+  runs` when none is configured; then, when any role ran, `; last runs on
+  <the distinct provider/model of every last, sorted, joined by ", ">`.
 - A logbook before 1.6 has no `roles`: the panel says so.
 
 ## Tests, from this ADR
@@ -116,7 +120,9 @@ Thinking, Tokens and budget, State.
   - with no `MODEL_PROVIDER` and `MODEL` (L0) `provider` and `model`
     null; with `roles/` missing, `roles` is the error; a row's unreadable
     `role.env` is that row's error;
-  - `roles_summary` for the stub;
+  - `roles_summary` for the stub: `6 roles on 1 provider: prov; last runs
+    on gemini/gemini-3.8-flash, prov/model-x`; at L0, `6 roles on no
+    provider: the profile replays recorded runs; last runs on …`;
   - `core/`, `gates/`, `verify/`, `roles/` gain no model id (the
     existing `ci/vendor-free.sh` check), and the stub's model ids are
     the test's own.
