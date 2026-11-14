@@ -46,7 +46,9 @@ INTAKE_VIA; `intake-questions` and `proposed` wait for a person;
 `intake-confirm` writes each ticket the person keeps (DECISIONS,
 CONFIRM_BY, CONFIRM_VIA) at `spec-ready` and the intake at `confirmed`.
 Every step gets STEP_WHY, a file: a failing step that wrote a line there
-is recorded `step exited <n>: <line>` (§6).
+is recorded `step exited <n>: <line>` (§6). And STEP_RUN, a file: a failing
+step that wrote there the run a role made, `{<field>: <task>}`, has it
+appended to `spend` with `failed` its `stop` (amendment A3).
 
 Spend (docs/adr/0083): every run a step's result carries (`task`,
 `review`, `product`) is appended to `spend` with its cost from
@@ -380,12 +382,30 @@ class Tower:
         got = spend_module().entries(step, {"task": dict(task(run), role=os.environ.get("ROLE") or "dev-worker")}, n, now())
         return dict(got[0], failed=marker or "the run failed") if got else None
 
+    def stopped_runs(self, step, doc, path):
+        """The ledger entries of the runs a failed step wrote to STEP_RUN (amendment A3)."""
+        try:
+            with open(path, encoding="utf-8") as fh:
+                result = json.load(fh)
+        except (OSError, ValueError):
+            return []
+        if not isinstance(result, dict):
+            return []
+        out = []
+        for entry in spend_module().entries(step, result, doc.get("attempt"), now()):
+            field = next((k for k, v in result.items() if isinstance(v, dict)
+                          and (v.get("role") or k) == entry["role"]), None)
+            stop = text(dig(result, field, "stop")) if field else ""
+            out.append(dict(entry, failed=stop or "the run failed"))
+        return out
+
     def record_failure(self, doc, step, state, why, run=None):
         """Append the failed attempt to doc's history and write it; the state does not move.
-        RUN, a failed attempt's ledger entry, is appended to `spend` in the same write."""
+        RUN, a failed attempt's ledger entry or a list of them, is appended to `spend` in the same write."""
         failed = dict(doc)
-        if run:
-            failed["spend"] = spend_module().ledger(doc) + [run]
+        runs = run if isinstance(run, list) else [run] if run else []
+        if runs:
+            failed["spend"] = spend_module().ledger(doc) + runs
         failed["history"] = (doc.get("history") or []) + [
             {"step": step, "state": state, "at": now(), **attempt(doc), "error": why}]
         if not self.store_put(failed):
@@ -532,19 +552,25 @@ class Tower:
             doc_file.write(compact(doc) + "\n")
             doc_file.flush()
             why_file = os.path.join(why_dir, "why")
+            run_file = os.path.join(why_dir, "run.json")
             env = dict(os.environ, TICKET=self.ticket, DOC_FILE=doc_file.name, SPEND_STOP=budget, STEP_WHY=why_file,
+                       STEP_RUN=run_file,
                        PR_NUMBER=text(dig(doc, "pr", "number")),
                        BASE_SHA=text(dig(doc, "pr", "base_sha")),
                        HEAD_SHA=text(dig(doc, "pr", "head_sha")))
             ran = sh(script, stdout=subprocess.PIPE, text=True, env=env)
             named = first_line(why_file) if ran.returncode != 0 else ""
+            stopped = self.stopped_runs(step, doc, run_file) if ran.returncode != 0 else []
         if ran.returncode != 0:
             rc = ran.returncode if ran.returncode > 0 else 128 - ran.returncode
             self.tell(f"step {step} failed; state stays {have}")
             run = self.failed_run(doc, step, began) if step in BUDGETED else None
             if run:
                 self.tell(f"the failed attempt's run is in the ledger ({run['failed']})")
-            self.record_failure(doc, step, have, f"step exited {rc}" + (f": {named}" if named else ""), run)
+            for entry in stopped:
+                self.tell(f"the stopped {entry['role']} run is in the ledger ({entry['failed']})")
+            self.record_failure(doc, step, have, f"step exited {rc}" + (f": {named}" if named else ""),
+                                ([run] if run else []) + stopped)
             raise Refused(None)
         try:
             result = json.loads(ran.stdout)

@@ -97,9 +97,11 @@ def planner_for(thinking: str) -> BasePlanner | None:
     return BuiltInPlanner(thinking_config=types.ThinkingConfig(thinking_level=level))
 
 
-def select_model(role: str, thinking: str, instruction_sha256: str | None = None) -> BaseLlm:
+def select_model(role: str, thinking: str, instruction_sha256: str | None = None,
+                 max_turns: int | None = None) -> BaseLlm:
     if is_replay():
-        return ReplayLlm(role=role, fixtures_dir=fixtures_dir(), instruction_sha256=instruction_sha256)
+        return ReplayLlm(role=role, fixtures_dir=fixtures_dir(), instruction_sha256=instruction_sha256,
+                         max_turns=max_turns)
     provider, model_id, key = provider_from_env()
     if provider == "gemini":
         real: BaseLlm = Gemini(model=model_id, client_kwargs={"api_key": key})

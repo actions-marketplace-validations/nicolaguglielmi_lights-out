@@ -164,5 +164,73 @@ class SelectModelTest(unittest.TestCase):
                 model.select_model("ops-triage", "low")
 
 
+class RecordingOverCapTest(unittest.TestCase):
+    """docs/adr/0090, Amendment 2026-11-14, A2: a recording with more
+    responses than the role's cap is refused before its first turn, never
+    replayed in part."""
+
+    def setUp(self):
+        self.fixtures_dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.fixtures_dir, ignore_errors=True)
+        self.role = "architect"
+        self.input_text = "[]"
+        self.key = replay.key_for(self.input_text)
+        os.makedirs(os.path.join(self.fixtures_dir, self.role))
+
+    def _record(self, turns):
+        responses = [
+            LlmResponse(content=types.Content(role="model", parts=[types.Part(text=f"r{i}")])).model_dump(
+                exclude_none=True
+            )
+            for i in range(turns)
+        ]
+        path = os.path.join(self.fixtures_dir, self.role, f"{self.key}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"input": self.input_text, "responses": responses}, f)
+
+    def _request(self, model_turns):
+        contents = [types.Content(role="user", parts=[types.Part(text=self.input_text)])]
+        for i in range(model_turns):
+            contents.append(types.Content(role="model", parts=[types.Part(text=f"prior {i}")]))
+        return LlmRequest(contents=contents)
+
+    def _llm(self, max_turns):
+        return replay.ReplayLlm(role=self.role, fixtures_dir=self.fixtures_dir, max_turns=max_turns)
+
+    def test_a_recording_over_the_cap_is_refused_before_its_first_turn(self):
+        self._record(5)
+        with self.assertRaises(replay.RecordingOverCap) as cm:
+            _collect(self._llm(3).generate_content_async(self._request(0)))
+        self.assertIn("5", str(cm.exception))
+        self.assertIn("over its ADK_MAX_TURNS=3", str(cm.exception))
+
+    def test_it_is_refused_at_every_turn_not_only_past_the_cap(self):
+        self._record(5)
+        for turns in (0, 1, 2):
+            with self.subTest(turns=turns), self.assertRaises(replay.RecordingOverCap):
+                _collect(self._llm(3).generate_content_async(self._request(turns)))
+
+    def test_it_is_not_a_missing_recording(self):
+        self._record(5)
+        self.assertFalse(issubclass(replay.RecordingOverCap, replay.NoRecording))
+
+    def test_a_recording_at_the_cap_replays_as_before(self):
+        self._record(3)
+        for turns in range(3):
+            got = _collect(self._llm(3).generate_content_async(self._request(turns)))
+            self.assertEqual(got[0].content.parts[0].text, f"r{turns}")
+
+    def test_a_recording_under_the_cap_replays_as_before(self):
+        self._record(2)
+        got = _collect(self._llm(10).generate_content_async(self._request(1)))
+        self.assertEqual(got[0].content.parts[0].text, "r1")
+
+    def test_without_a_cap_nothing_is_refused(self):
+        self._record(5)
+        got = _collect(replay.ReplayLlm(role=self.role, fixtures_dir=self.fixtures_dir)
+                       .generate_content_async(self._request(4)))
+        self.assertEqual(got[0].content.parts[0].text, "r4")
+
+
 if __name__ == "__main__":
     unittest.main()
