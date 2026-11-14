@@ -1466,6 +1466,7 @@ class LiveAndBurnInTheLogbook(unittest.TestCase):
 
     read = Reader.read
     edit = Reader.edit
+    state = Reader.state
     ticket = Reader.ticket
 
     @classmethod

@@ -1,7 +1,9 @@
 """Cost and time per ticket, and the budget (docs/adr/0083): stdlib only.
 
     python3 core/spend.py report     cost and time per ticket, role and day,
-                                     from every ticket's `spend` ledger
+                                     from every ticket's `spend` ledger, and
+                                     the burn and the day's projection
+                                     (docs/adr/0087 §3)
 
 The tower imports the rest: the price of a run (`cost`), the ledger
 entries a step's result gives (`entries`), the limits of policy/rework.env
@@ -15,7 +17,7 @@ import os
 import re
 import subprocess  # nosec B404 - the state store's adapter verb is a script
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 
 PRICES = "profiles/prices.json"
 POLICY = "policy/rework.env"
@@ -243,14 +245,72 @@ def budget_line(lim):
                                   for key in LIMIT_KEYS)
 
 
-def lines(got, lim):
+def lines(got, lim, b=None):
     """The words of ./go spend, without the [spend] prefix (amendment 2026-11-13, §2-§3): per
-    ticket, per role, per day, then the budget. The logbook carries them for the console."""
+    ticket, per role, per day, the burn and the projection (docs/adr/0087 §3, B is burn()'s),
+    then the budget. The logbook carries them for the console."""
     out = [f"ticket {tid}: {money(row)}; agents {hms(row['agent_s'])}, elapsed {hms(row['elapsed_s'])}"
            for tid, row in got["tickets"].items()]
     out += [f"role {role}: {money(row)}; {hms(row['agent_s'])}" for role, row in sorted(got["roles"].items())]
     out += [f"day {day}: {money(row)}" for day, row in sorted(got["days"].items())]
-    return out + [budget_line(lim)]
+    return out + burn_lines(b, lim) + [budget_line(lim)]
+
+
+# --- the burn and the day's projection (docs/adr/0087 §3) ----------------
+
+# Provenance, decision: docs/adr/0087 §3: a rate over less than an hour is one
+# run's cost spread over its own minutes (M24 phase D: tenacity-03's first run,
+# $1.39 in 495 s, would read as $10/h); one hour is the bucket the panel draws.
+MIN_HOURS = 1.0
+
+
+def burn(docs, lim):
+    """The known cost per hour of the last day that has a run, and the day's
+    spend at that rate until 24:00 UTC, as of its last run: no clock is read.
+    None when no ledger has an entry. LIM is limits()'s dict, or the error of
+    a malformed value (then the day has no limit to compare)."""
+    entries = [(when(e.get("at")), e) for doc in docs.values() for e in ledger(doc)]
+    entries = [(t, e) for t, e in entries if t is not None]
+    if not entries:
+        return None
+    end = max(t for t, _ in entries)
+    day = end.date()
+    today = [(t, e) for t, e in entries if t.date() == day]
+    first = min(t for t, _ in today)
+    hours = max(MIN_HOURS, (end - first).total_seconds() / 3600)
+    spent = round(sum(e["cost_usd"] for _, e in today if e.get("cost_usd") is not None), 6)
+    per_hour = spent / hours
+    midnight = datetime(day.year, day.month, day.day, tzinfo=end.tzinfo) + timedelta(days=1)
+    left = (midnight - end).total_seconds() / 3600
+    limit = lim.get("SPEND_BUDGET_DAY_USD") if isinstance(lim, dict) else None
+    projected = round(spent + per_hour * left, 6)
+    hourly = [0] * 24
+    for t, e in today:
+        if e.get("cost_usd") is not None:
+            hourly[t.hour] = round(hourly[t.hour] + e["cost_usd"], 6)
+    stamp = lambda t: t.strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    return {"day": day.isoformat(), "first": stamp(first), "end": stamp(end), "runs": len(today),
+            "unknown": sum(1 for _, e in today if e.get("cost_usd") is None), "spent_usd": spent,
+            "hours": round(hours, 6), "per_hour_usd": round(per_hour, 6), "left_h": round(left, 6),
+            "projected_usd": projected, "limit_usd": limit, "over": None if limit is None else projected >= limit,
+            "hourly": hourly}
+
+
+def burn_lines(b, lim):
+    """The two lines of §3, in the words ./go spend prints."""
+    if b is None:
+        return ["burn: no runs in the ledger", "projection: none without a run"]
+    unknown = f", {b['unknown']} of cost unknown" if b["unknown"] else ""
+    hm = lambda at: at[11:16]  # noqa: E731
+    if isinstance(lim, str):
+        against = "the day's limit cannot be read"
+    elif b["limit_usd"] is None:
+        against = "SPEND_BUDGET_DAY_USD no limit"
+    else:
+        against = f"SPEND_BUDGET_DAY_USD=${b['limit_usd']:.2f}: {'over' if b['over'] else 'under'}"
+    return [f"burn: ${b['per_hour_usd']:.2f} per hour on {b['day']} (${b['spent_usd']:.2f} known in {b['runs']} run(s) "
+            f"from {hm(b['first'])} to {hm(b['end'])} UTC, over {b['hours']:.1f} h{unknown})",
+            f"projection: ${b['projected_usd']:.2f} by the end of {b['day']} UTC at that rate, as of {hm(b['end'])} UTC; {against}"]
 
 
 def summary(got):
@@ -298,7 +358,7 @@ def main(argv, env=None):
         lim = limits()
     except ValueError as exc:
         lim = str(exc)
-    for line in lines(got, lim):
+    for line in lines(got, lim, burn(docs, lim)):
         print(f"[spend] {line}", file=sys.stderr)
     print(summary(got))
     return 0
