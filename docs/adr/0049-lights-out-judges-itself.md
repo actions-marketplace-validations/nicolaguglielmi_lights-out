@@ -145,3 +145,22 @@ toolchain is `compose:backend-test` and whose runners are its own, and
 the checkout's own secrets check is unchanged. `./go ci` gains one cold
 check, `secrets-history`: gitleaks on a throwaway repository, no engine,
 no key.
+
+## Amendment 2026-11-11 (M24 phase C): `ci/init.sh` judges the runners committed at HEAD
+
+The first change to the python runners since this ADR (the scorer fix of ADR 0042's amendment of the same
+day) was NO-GO in `self` by construction: the image's entrypoint puts the base's `.lights-out/runners/` back
+into the working tree (§3, ADR 0033), and `ci/init.sh` case (g) compared that copy, byte for byte, with the
+head's `stacks/python/runners/`. With ADR 0074's base, the last green ancestor, every later push would have
+been judged against the same old copy, so `self` would have stayed red on the branch and, after a merge, on
+`main` (run 43087538182).
+
+- §1's "byte for byte" is a property of commits: `ci/init.sh` reads both copies from HEAD (`git archive`)
+  and requires them equal, `self-checks.sh` aside. In the working tree, `stacks/python/runners/` must be
+  HEAD's, or equal to the working tree's `.lights-out/runners/` (an uncommitted edit made to both). A base's
+  contract in the working tree is then not a difference. A commit that changes one copy and not the other is
+  still NO-GO, and so is an uncommitted edit to the stack alone. `ci/init.sh` case (k), five throwaway
+  repositories; NO-GO on the base's contract before the change, GO after.
+- Rejected: leaving the push red until the owner merges. With ADR 0074 the red does not end on its own.
+- Rejected: taking `stacks/` from the base too. The check would then compare two base copies and never see the
+  change it is there to see.

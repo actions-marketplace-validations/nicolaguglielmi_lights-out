@@ -10,14 +10,23 @@ session was already scoped and filtered by tests/mutation/run.sh before
 `exec` ran). Every mutant not in {killed, survived} is excluded from the
 population entirely:
 
-- "incompetent" (cosmic_ray.work_item.TestOutcome.INCOMPETENT): the mutated
-  code no longer runs at all (raised before the test suite could observe
-  it) -- says nothing about the tests.
+- "incompetent" (cosmic_ray.work_item.TestOutcome.INCOMPETENT) with the
+  worker outcome "exception" (cosmic_ray/mutating.py): applying the
+  mutation raised -- says nothing about the tests.
 - a null `test_outcome`: either skipped (cr-filter-lines, cr-filter-
   operators or cr-filter-pragma marked it WorkerOutcome.SKIPPED before
   `exec` ever ran it) or WorkerOutcome.NO_TEST (cosmic-ray could not apply
   that occurrence of the operator at all). Neither is a signal about the
   tests either.
+
+"incompetent" with the worker outcome "normal" is the other source in
+8.7.0 (cosmic_ray/testing.py, run_tests): the test command could not be run
+at all -- Popen(shlex.split(command)) raised, so no test ran, for instance
+on a `VAR=value cmd` line, which is not a program without a shell. That is
+the tool failing, not a mutant: the scorer prints no score, says so on
+stderr and exits 1, which the mutation gate reads as a failed run. Found in
+M24 phase C (2026-11-11), where it turned every mutant of a production
+change into a GO by absence of subject.
 
 Timeouts need no special case: read from cosmic_ray/testing.py in the
 installed 8.7.0 package, `run_tests()` already reports a timed-out run as
@@ -41,6 +50,7 @@ def main() -> int:
     killed = 0
     survived = 0
     excluded = 0
+    not_run = 0
     survivor_lines: list[str] = []
 
     for lineno, raw_line in enumerate(sys.stdin, start=1):
@@ -54,8 +64,11 @@ def main() -> int:
             return 1
 
         test_outcome = None if result is None else result.get("test_outcome")
+        worker_outcome = None if result is None else result.get("worker_outcome")
 
-        if test_outcome == "killed":
+        if test_outcome == "incompetent" and worker_outcome == "normal":
+            not_run += 1
+        elif test_outcome == "killed":
             killed += 1
         elif test_outcome == "survived":
             survived += 1
@@ -67,6 +80,16 @@ def main() -> int:
         else:
             # None (skipped or no-test) or "incompetent": not in the population.
             excluded += 1
+
+    if not_run:
+        print(
+            f"score: cosmic-ray could not run the test command for {not_run} "
+            "mutant(s) (cosmic_ray/testing.py); no test ran, so this is not a "
+            "score. A command it splits without a shell cannot start with "
+            "VAR=value: set the variable before the runner instead",
+            file=sys.stderr,
+        )
+        return 1
 
     total = killed + survived
     score = (killed / total) if total > 0 else None
