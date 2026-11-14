@@ -559,6 +559,10 @@ Then the response is not 500 …
     </div>
     <p class="shots-note reveal">The stills are the real console, rendered in CI over the logbook its tests build (<code>fixtures/logbook/golden-1.5.json</code>), which holds tickets in more states than one demo leaves; its model is a stub. The ADR search reads a logbook built in CI from this repository's own project map.</p>
     <div class="board-link reveal">
+      <p><b>Click through a real run, with nothing to install.</b> The console of the latest <code>./go demo</code> on main, at L0 with no API key, frozen into one read-only page: ticket 0001 from the request to the canary that rolled itself back. Nothing on it can be sent.</p>
+      <a class="btn" href="console/snapshot.html">Open the frozen console ↗</a>
+    </div>
+    <div class="board-link reveal">
       <p><b>Open it on your own run.</b> After <code>./go demo</code>, <code>./go console</code> serves it on localhost:8098 over the live record.</p>
       <a class="btn" href="https://github.com/nicolaguglielmi/lights-out/tree/main/console">console/ ↗</a>
     </div>
@@ -575,6 +579,7 @@ Then the response is not 500 …
       <div class="stat reveal"><div class="v">434<small> s</small></div><p><code>./go demo</code> from a clone to the canary's automatic rollback, after the first run, measured on a MacBook with podman. The first run downloads about 1.2 GB: expect 10–15 minutes.</p><a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">README · the whole loop</a></div>
       <div class="stat reveal"><div class="v">27<small> s</small></div><p>The gates Action's check on a pull request of a repository that is not lights-out, on a runner that had never pulled the signed gates image. <code>test-proof</code> alone: 14 s.</p><a href="https://github.com/nicolaguglielmi/lights-out-probe/pull/1">lights-out-probe · the pull request</a></div>
       <div class="stat red reveal"><div class="v">0.625<small> &lt; 0.666</small></div><p>Claude Code's first live run, ticket 0001: 5 of 8 mutants killed on the changed lines. The mutation gate said NO-GO. Nothing merged.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">docs/reference.md · live, on Claude</a></div>
+      <div class="stat reveal"><div class="v">10 · 7<small> of 10</small></div><p>The same ten tickets on tenacity, a library not written for lights-out: merged with no human on the code by Claude Code on Anthropic and by Gemini CLI on Gemini. Gemini's other three stopped at the token budget, with no PR. OpenAI not run. Ten tickets, one repository, one run each: not a benchmark.</p><a href="scoreboard/">The scoreboard · every row sourced</a></div>
       <div class="stat reveal"><div class="v">0<small> keys</small></div><p>The demo needs no account, no API key and no cloud. Without a key no model is called: the agents replay answers recorded once.</p><a href="https://github.com/nicolaguglielmi/lights-out#what-is-real-and-what-is-recorded">README · what is recorded</a></div>
     </div>
   </div>
@@ -587,9 +592,9 @@ Then the response is not 500 …
       <h2 id="real-h">What is real, and what is recorded.</h2>
     </div>
     <div class="real reveal">
-      <div class="y"><b>Real</b><p>The gates, the signed build, the canary, the metrics, the rollback, the audit chain, GitLab as a code host (<code>./go gitlab-conformance</code>), Jenkins as a surface that shows the gates' line and never judges (<code>./go demo-jenkins</code>), adapters outside the repository admitted by a conformance proof, each release's signed evidence pack (<code>./go evidence</code>), the delivery measures (<code>./go dora</code>) and the cost of every run with a budget that stops the next attempt (<code>./go spend</code>), both on the console's overview. Nothing in them is simulated.</p></div>
-      <div class="rec"><b>Recorded</b><p>Without a key the agents replay answers recorded once against the Gemini API; with a key and <code>PROFILE=l1</code> they run live. The videos on this page are the board's scripted walks, with example versions and numbers.</p></div>
-      <div class="no"><b>Not yet</b><p>Nothing is proven yet on a codebase that was not written for lights-out. Outside adapters are proven for a StateStore only. Jenkins is proven with Jenkinsfile Runner, not a real controller. The full tower on GitLab does not fit beside the plane.</p></div>
+      <div class="y"><b>Real</b><p>The gates, the signed build, the canary, the metrics, the rollback, the audit chain, GitLab as a code host (<code>./go gitlab-conformance</code>), Jenkins as a surface that shows the gates' line and never judges (<code>./go demo-jenkins</code>), adapters outside the repository admitted by a conformance proof, each release's signed evidence pack with the console frozen beside it (<code>./go evidence</code>), the delivery measures (<code>./go dora</code>) and the cost of every run with a budget that stops the next attempt (<code>./go spend</code>), both on the console's overview. The <a href="scoreboard/">provider scoreboard</a> (<code>./go scoreboard</code>): ten tenacity tickets run live on Anthropic and on Gemini, NO-GOs and budget stops included, each row naming the handoff and run it comes from. Nothing in them is simulated.</p></div>
+      <div class="rec"><b>Recorded</b><p>Without a key the agents replay answers recorded once against the Gemini API; with a key and <code>PROFILE=l1</code> they run live. The videos on this page are the board's scripted walks, with example versions and numbers. The <a href="console/snapshot.html">frozen console</a> is a real <code>./go demo</code> run at L0, so its agents replayed recorded answers; the gates, the canary and the rollback in it are real.</p></div>
+      <div class="no"><b>Not yet</b><p>One codebase not written for lights-out so far, tenacity: ten small, low-risk tickets, so no review and no human gate ran, and each was run once per provider. OpenAI was not run. Outside adapters are proven for a StateStore only. Jenkins is proven with Jenkinsfile Runner, not a real controller. The full tower on GitLab does not fit beside the plane.</p></div>
     </div>
     <a class="more" href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">Every item, level by level →</a>
   </div>
@@ -658,6 +663,8 @@ steps:
       <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md">Reference</a></li>
       <li><a href="https://github.com/nicolaguglielmi/lights-out/tree/main/docs/adr">Decisions (ADRs)</a></li>
       <li><a href="board/">The board</a></li>
+      <li><a href="scoreboard/">Scoreboard</a></li>
+      <li><a href="console/snapshot.html">Frozen console</a></li>
       <li><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/LICENSE">License</a></li>
     </ul>
   </div>

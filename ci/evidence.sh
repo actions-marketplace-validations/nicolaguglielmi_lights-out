@@ -10,8 +10,11 @@
 # cosign key pair. Expects: GO and a pack with the right entries and gaps
 # for each release; a bundle that verifies with cosign verify-blob alone; a
 # pack changed by one byte that does not; an unknown version, a malformed
-# one and a missing key that are each one NO-GO line.
-# Written from docs/adr/0081 §1-§5 and §7, not from core/evidence.sh.
+# one and a missing key that are each one NO-GO line. The console frozen
+# beside the pack (docs/adr/0089 §5): signed and verified from a logbook,
+# tamper rejected; with no logbook the pack is still GO and says so.
+# Written from docs/adr/0081 §1-§5 and §7 and docs/adr/0089 §5, not from
+# core/evidence.sh.
 set -eu
 name=evidence
 . ci/lib.sh
@@ -26,6 +29,7 @@ trap 'rm -rf "$root"' EXIT
 mkdir -p "$root/adapters/stub-state" "$root/state" "$root/.crew" "$root/keys"
 ln -s "$repo/core" "$root/core"
 ln -s "$repo/ci" "$root/ci"
+ln -s "$repo/console" "$root/console"
 
 cat > "$root/adapters/stub-state/get.sh" <<'STUB'
 #!/bin/sh
@@ -66,9 +70,11 @@ pub="$root/keys/k.pub"
 
 # run N VERSION KEY: core/evidence.sh in the temp root, stdout to $root/N.out,
 # stderr to $root/N.err, exit code in $root/N.rc. VERSION "-" leaves it unset.
+# $logbook, when set, is the EVIDENCE_LOGBOOK the console is frozen from.
+logbook=""
 run() {
   rc=0
-  (cd "$root" && env -u VERSION VERSION="${2#-}" RELEASES_LOG=.crew/releases.jsonl STATE_STORE=stub-state \
+  (cd "$root" && env -u VERSION -u LOGBOOK_FILE VERSION="${2#-}" EVIDENCE_LOGBOOK="$logbook" RELEASES_LOG=.crew/releases.jsonl STATE_STORE=stub-state \
     EVIDENCE_DIR="$root/out" COSIGN_KEY="$3" sh core/evidence.sh > "$root/$1.out" 2> "$root/$1.err") || rc=$?
   echo "$rc" > "$root/$1.rc"
 }
@@ -97,6 +103,11 @@ ok "0.2.0: the stage times are not missing" 0.2.0 '.stages[0].started_at | has("
 n=$(jq '[.. | objects | select(has("source") and has("missing"))] | length' "$root/out/0.2.0.json")
 [ "$(jq '.missing | length' "$root/out/0.2.0.json")" = "$n" ] || nogo "0.2.0: the top-level missing does not list every missing entry ($n)"
 
+# (a') no logbook: the pack is GO all the same, its line says why there is
+# no console snapshot, and none is written (ADR 0089 §5).
+case $(cat "$root/a.out") in *"; no console snapshot: "?*) ;; *) nogo "0.2.0 with no logbook: the line does not say there is no console snapshot" "$(cat "$root/a.out")" ;; esac
+[ ! -e "$root/out/0.2.0.console.html" ] || nogo "0.2.0 with no logbook: a console snapshot was written"
+
 # (b) the pack verifies with cosign alone; one appended byte must not.
 verify() { cosign verify-blob --key "$pub" --insecure-ignore-tlog --bundle "$1.bundle" "$1" >/dev/null 2>&1; }
 verify "$root/out/0.2.0.json" || nogo "0.2.0: the bundle does not verify with cosign verify-blob"
@@ -122,6 +133,23 @@ printf 'stale' > "$root/out/0.2.0.json.bundle"
 run d 0.2.0 "$key"
 verify "$root/out/0.2.0.json" || nogo "0.2.0 rebuilt: the old bundle was not replaced by a new signature"
 
+# (d') with a logbook: the console frozen beside the pack, signed into its
+# own bundle, verified by cosign alone; one appended byte must not verify.
+logbook="$repo/fixtures/logbook/golden-1.5.json"
+run s 0.2.0 "$key"
+logbook=""
+one_line s "0.2.0 with a logbook"
+case $(cat "$root/s.out") in "GO: evidence"*"; console snapshot signed") ;; *) nogo "0.2.0 with a logbook: the line does not end in the signed snapshot" "$(cat "$root/s.out")" "$(cat "$root/s.err")" ;; esac
+snap="$root/out/0.2.0.console.html"
+[ -s "$snap" ] && [ -s "$snap.bundle" ] || nogo "0.2.0 with a logbook: no console snapshot and bundle beside the pack"
+grep -q 'id="frozen-logbook"' "$snap" || nogo "0.2.0 with a logbook: the snapshot does not inline the logbook"
+grep -q 'evidence pack 0.2.0, logbook of ' "$snap" || nogo "0.2.0 with a logbook: the snapshot's label does not name the pack"
+verify "$snap" || nogo "0.2.0 with a logbook: the snapshot's bundle does not verify with cosign verify-blob"
+cp "$snap" "$root/tampered.html"
+cp "$snap.bundle" "$root/tampered.html.bundle"
+printf ' ' >> "$root/tampered.html"
+if verify "$root/tampered.html"; then nogo "a snapshot with one byte appended still verifies"; fi
+
 # (e) the refusals: each is exactly one NO-GO line and exit 1.
 refused() {
   run "$1" "$2" "$3"
@@ -145,4 +173,4 @@ case $(cat "$root/i.out") in *"./go up"*) ;; *) nogo "a missing key: the line do
 [ "$(wc -l < "$root/.crew/releases.jsonl" | tr -d ' ')" = 4 ] || nogo "the release log was changed"
 [ ! -e "$root/state/0002.json" ] || nogo "the state store was written"
 
-go_with "pack for a rolled-back and an answered release, signed, verified, tamper rejected"
+go_with "pack for a rolled-back and an answered release, and a frozen console, signed, verified, tamper rejected"

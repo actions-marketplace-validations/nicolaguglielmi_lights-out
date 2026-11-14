@@ -24,7 +24,7 @@
 #   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
-#   ./go evidence       the evidence pack of a release, signed with the plane's key and verified: VERSION=<v> (ADR 0081)
+#   ./go evidence       the evidence pack of a release and its frozen console, signed with the plane's key and verified: VERSION=<v> (ADR 0081, 0089)
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
 #   ./go request        start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> [REQUEST_BY=<who>]
 #   ./go answer         answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text>
@@ -44,6 +44,7 @@
 #   ./go network        one ticket's agent network in text, the console's #network in the same words: [TICKET=] [ATTEMPT=]
 #   ./go dora           the four delivery measures (DORA) over the last WINDOW_DAYS days, from the logbook (ADR 0082)
 #   ./go spend          cost and time per ticket, per role and per day, from the tower's spend ledger (ADR 0083)
+#   ./go scoreboard     per provider and harness: merged at the first attempt, reworks, NO-GOs, budget stops, cost; every row sourced (ADR 0088)
 #   ./go demo-console   prove go-for-launch pressed from the console: held canary, POST GO → 100%, then the un-promote
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote

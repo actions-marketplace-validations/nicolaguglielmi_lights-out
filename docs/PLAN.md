@@ -1091,6 +1091,25 @@ Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, da
 
 *Stato 2026-11-13 (sessione M51, branch `claude/m51-python-gates-7e292c`):* ADR 0084 scritta; dieci gate in `core/gates/` dietro `verdict`, la coppia harness nella lista del debito (693 e 738). Shell in `gates/` da 4.074 a 2.489 righe (codice da 2.670 a 1.539; gli undici wrapper toccati da 1.210 a 87). 103 test unitari nuovi. `./go ci` verde da clone pieno; i cinque workflow verdi su e0e6db3, con le suite codehost, statestore, eventbus, delivery e harness girate davvero in Actions. Demo in Actions 856 e 841 s contro 696–826 s di main sullo stesso tipo di runner: l'unica differenza costante sono i test nuovi (+4–6 s); in locale 1.235 s su una VM appena ripresa da un blocco, non ripetibile con il piano occupato da un'altra sessione.
 
+### Sprint 2026-11-14 — Il flusso a colpo d'occhio (M52–M56)
+
+*Aggiunto 2026-11-14, decisione dell'owner.* Due filoni paralleli su file disgiunti. Il filone A (M52–M54, ADR 0085–0087) aggiunge tre pannelli alla console. Il filone B (M55–M56, ADR 0088–0089) decide cosa si pubblica: l'owner ha guardato Hive Commons (CNCF Sandbox), che pubblica ogni ora un benchmark per modello e snapshot statiche in sola lettura della sua dashboard, e vuole l'equivalente di lights-out, con la sua identità: i NO-GO pubblicati come i GO, ogni numero con la sua fonte.
+
+#### M55 — Il tabellone dei provider (ADR 0088; filone B)
+
+- **Criteri di accettazione:**
+  - `./go scoreboard` legge i logbook dei run e un dataset curato, e stampa per provider e harness: ticket, mergiati al primo tentativo, rework, NO-GO per gate e motivo, stop di budget, token e costo per ticket. Rende una pagina statica pubblicata col sito.
+  - Seminato coi risultati veri di M24: Anthropic 10/10 (fasi B e C), Gemini 7/10 con 04, 09 e 10 fermati a `TOKEN_BUDGET`, OpenAI mostrato come "non eseguito", mai vuoto o inventato. Ogni riga dice da dove vengono i numeri (handoff e run); un numero senza fonte non entra. I due costi (ledger e listino) affiancati con una nota dove differiscono.
+  - La pagina dice che sono 10 ticket su un repository, un run ciascuno: non un benchmark.
+
+#### M56 — Una snapshot della console in sola lettura (ADR 0089; filone B)
+
+- **Criteri di accettazione:**
+  - La console di un run vero congelata in un solo file HTML autosufficiente: nessun server, i dati dentro, i controlli disattivati; regge i pannelli del filone A senza elencarli.
+  - Allegata al pacchetto di evidenza (`./go evidence`, ADR 0081) e linkata dal sito, l'ultima: un visitatore vede un canary tornare indietro senza clonare niente. Costruita da `./go demo` a L0, senza chiave.
+
+*Nota 2026-11-14 (filone B, branch `claude/public-proof-176b67`).* Le tre torri di M24 esistono ancora sulla macchina dell'owner ma fuori dal repository, e non portano gli stop a `TOKEN_BUDGET` né i token in cache: il dataset `docs/scoreboard/m24-tenacity.json` è curato a mano, 20 righe lette dagli handoff e controllate sui documenti delle torri (tentativi, merge, PR, righe di rework, token per tentativo, ledger di Gemini, $8,782964). Il logbook di una demo non si committa (gitleaks legge come segreto il `key` di una soglia, ADR 0049 §4): il sito congela la console del commit sopra il logbook dell'ultimo `./go demo` riuscito su main, preso dall'artifact del workflow ci, e la pagina nomina quel run. Il pacchetto di evidenza porta accanto `<v>.console.html`, firmato e verificato con la stessa chiave.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
