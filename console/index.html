@@ -117,6 +117,43 @@ textarea { font: inherit; width: 100%; min-height: 70px; padding: 8px; border-ra
 .spend-lines { margin: 4px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
 .spend-lines li { margin: 2px 0; }
 #spend-summary { font-weight: 700; margin: 0 0 8px; }
+/* The role matrix (docs/adr/0086 §2) and the burn (docs/adr/0087 §5). */
+#role-matrix td.tokens { white-space: nowrap; }
+#role-matrix meter, span.live meter { display: block; width: 100%; max-width: 160px; height: 8px; margin-top: 4px; }
+#roles-summary { margin: 0 0 8px; font-weight: 600; }
+#spend-hours { display: block; width: 100%; max-width: 480px; height: 40px; margin: 6px 0; }
+#spend-hours rect.hour { fill: var(--accent); }
+#spend-hours rect.hour[data-zero] { fill: var(--line); }
+#spend-projection[data-over="true"] { background: var(--wait-bg); color: var(--ink); border-radius: 6px; padding: 6px 10px; font-weight: 600; }
+span.live { display: inline-flex; flex-direction: column; font-size: 12px; font-family: var(--mono); color: var(--muted); min-width: 64px; }
+span.live[data-warn="true"] { color: var(--wait); background: var(--wait-bg); border-radius: 4px; padding: 0 4px; font-weight: 700; }
+span.live meter { height: 5px; margin-top: 2px; }
+.live-line { margin: 6px 0; font-size: 14px; }
+.live-line[data-warn="true"] { background: var(--wait-bg); color: var(--ink); border-radius: 6px; padding: 6px 10px; }
+/* The flow strip (docs/adr/0085 §6): the console's verdict tokens, already
+   AA in both themes, and a mark that is not colour alone. On a card's face a
+   compact row of segments; on its back and its timeline a row of tab stops,
+   each with its reason shown on hover and on focus. */
+ol.flow { list-style: none; display: flex; gap: 2px; padding: 0; margin: 8px 0 0; }
+ol.flow .flow-node[data-verdict="GO"] { background: var(--go-bg); color: var(--go); }
+ol.flow .flow-node[data-verdict="NO-GO"] { background: var(--nogo-bg); color: var(--nogo); }
+ol.flow .flow-node[data-verdict="running"] { background: var(--wait-bg); color: var(--wait); }
+ol.flow .flow-node[data-verdict="not-reached"] { background: var(--none-bg); color: var(--none); }
+/* A grid of fourteen tracks that can shrink to nothing: the strip never widens the card. */
+ol.flow:not(.flow-detail) { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); contain: inline-size; }
+ol.flow:not(.flow-detail) .flow-node { min-width: 0; height: 16px; border-radius: 3px; font-size: 11px; font-weight: 700;
+  line-height: 16px; text-align: center; overflow: hidden; }
+ol.flow-detail { position: relative; flex-wrap: wrap; gap: 4px; margin: 0 0 12px; }
+ol.flow-detail .flow-node { padding: 3px 9px; border-radius: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+ol.flow-detail .flow-node:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+ol.flow-detail .flow-node[aria-haspopup] { cursor: pointer; text-decoration: underline; }
+.flow-time { font-family: var(--mono); font-size: 12px; font-weight: 400; margin-left: 4px; }
+.flow-verdict { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.flow-why { display: none; position: absolute; left: 0; right: 0; top: 100%; margin-top: 6px; z-index: 5; padding: 8px 10px;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 14px var(--shadow);
+  font-size: 13px; font-weight: 400; white-space: normal; overflow-wrap: anywhere; }
+ol.flow-detail .flow-node:hover .flow-why, ol.flow-detail .flow-node:focus .flow-why { display: block; }
+#ticket-now { overflow: visible; }
 /* The board fits the flow (docs/adr/0063 §1): the columns, in the logbook's
    order, under four bands; a column with no card in the view is narrow and
    the columns with cards share the width. Provenance, decision: 40 px holds
@@ -763,6 +800,112 @@ function titled(t, q) {
   return h("span", {cls: "title"}, at < 0 ? name : [name.slice(0, at), h("mark", {}, name.slice(at, at + q.length)), name.slice(at + q.length)]);
 }
 
+// --- the flow strip (docs/adr/0085 §6) ----------------------------------------
+// The logbook's fourteen nodes as they are: the page computes no verdict, no
+// time and no reason. The card's face draws them compact, one label for the
+// whole strip (the card is the board's keyboard unit); the back and the
+// timeline make each node a tab stop with its reason on hover and on focus,
+// and a NO-GO gate with a why opens it (ADR 0078).
+const FLOW_NAMES = {ticket: "ticket", perimeter: "perimeter", pr: "PR", canary: "canary", human: "human gate", full: "100%"};
+const FLOW_WORDS = {"GO": "GO", "NO-GO": "NO-GO", running: "running", "not-reached": "not reached"};
+const FLOW_MARKS = {"GO": "✓", "NO-GO": "✗", running: "◌", "not-reached": "·"};
+const flowName = (n) => n.node === "gate" ? String(n.gate) : (FLOW_NAMES[n.node] || String(n.node));
+const flowOf = (t) => Array.isArray(t.flow) && t.flow.length ? t.flow : null;
+function took(s) {
+  if (s === null || s === undefined) return null;
+  s = Number(s);
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.round(s / 60) + "m";
+  return Math.round(s / 360) / 10 + "h";
+}
+function flowFace(t) {
+  const f = flowOf(t);
+  if (!f) return null;
+  return h("ol", {cls: "flow", role: "img", "aria-label": "Flow: " + f.map((n) => flowName(n) + " " + FLOW_WORDS[n.verdict]).join(", ")},
+    f.map((n) => h("li", {cls: "flow-node", "data-node": n.node, "data-gate": n.node === "gate" ? n.gate : null, "data-verdict": n.verdict,
+      title: n.line || FLOW_WORDS[n.verdict]}, FLOW_MARKS[n.verdict] || "?")));
+}
+// `id` only on the timeline screen (ol#flow); the back draws the same strip without it.
+function flowDetail(t, id) {
+  const f = flowOf(t);
+  if (!f) return null;
+  const pre = (id ? "flow-t-" : "flow-b-") + t.id + "-";
+  return h("ol", {cls: "flow flow-detail", id: id || null, "aria-label": "The path of ticket " + t.id + ", from the request to 100%"},
+    f.map((n, i) => {
+      const opens = n.node === "gate" && n.verdict === "NO-GO" && whyFor(t, t.attempt);
+      const time = n.verdict === "running" ? "…" : took(n.seconds);
+      const open = (e) => { e.stopPropagation(); openWhy(t.id, t.attempt, e.currentTarget); };
+      return h("li", {cls: "flow-node", tabindex: "0", "data-node": n.node, "data-gate": n.node === "gate" ? n.gate : null,
+        "data-verdict": n.verdict, "data-seconds": n.seconds === null || n.seconds === undefined ? null : String(n.seconds),
+        "aria-describedby": n.line ? pre + i : null, "aria-haspopup": opens ? "dialog" : null,
+        onclick: opens ? open : null,
+        onkeydown: opens ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(e); } } : null},
+        flowName(n), " ", h("span", {"aria-hidden": "true"}, FLOW_MARKS[n.verdict] || "?"), h("span", {cls: "flow-verdict"}, " " + FLOW_WORDS[n.verdict]),
+        time ? h("span", {cls: "flow-time"}, time) : null,
+        n.line ? h("span", {cls: "flow-why", id: pre + i, role: "tooltip"}, n.line) : null);
+    }));
+}
+
+// --- the role matrix (docs/adr/0086 §2) ---------------------------------------
+// One row per role, from the logbook's `roles`: what the profile configures,
+// the last run's tokens against the role's TOKEN_BUDGET, and its state in the
+// logbook's words. The summary sentence is the logbook's too.
+const n_ = (x) => Number(x).toLocaleString("en");
+function tokenCell(used, budget) {
+  if (Number.isInteger(used) && Number.isInteger(budget)) {
+    const text = n_(used) + " of " + n_(budget) + (used > budget ? " — over" : "");
+    return [text, h("meter", {min: "0", max: String(budget), value: String(Math.min(used, budget)), "aria-label": text + " tokens"})];
+  }
+  if (budget === null || budget === undefined) return (Number.isInteger(used) ? n_(used) + " tokens, " : "") + "no budget";
+  return "none yet, of " + n_(budget);
+}
+function rolesPanel() {
+  const rows = book.roles;
+  let body;
+  if (rows === undefined || rows === null) body = h("p", {cls: "muted"}, "This logbook has no role matrix: ./go logbook writes it from logbook 1.6.");
+  else if (unread(rows)) body = err(rows);
+  else body = [h("p", {id: "roles-summary"}, shown(book.roles_summary)),
+    h("table", {id: "role-matrix"}, h("tr", {}, ["Role", "Provider", "Harness", "Thinking", "Tokens and budget", "State"].map((c) => h("th", {}, c))),
+      rows.map((r) => {
+        const c = r.configured || {}, l = r.last || null;
+        const configured = c.provider ? c.provider + " " + shown(c.model) : "replay (recorded runs)";
+        const other = l && l.provider && (l.provider !== c.provider || l.model !== c.model) ? "last ran on " + l.provider + " " + shown(l.model) : null;
+        return h("tr", {cls: "role-row", "data-role": r.role, "data-state": r.state},
+          h("td", {cls: "role"}, r.role),
+          h("td", {"data-provider": c.provider || ""}, configured, other ? [h("br"), h("span", {cls: "muted"}, other)] : null),
+          h("td", {cls: "harness"}, shown(c.harness)), h("td", {cls: "thinking"}, shown(c.thinking)),
+          h("td", {cls: "tokens"}, tokenCell(r.used, r.budget)),
+          h("td", {cls: "state"}, r.error ? h("span", {cls: "unread"}, r.error) : r.line));
+      }))];
+  return h("section", {id: "roles"}, h("h2", {}, "Who runs each role (ADR 0086)"), h("div", {cls: "panel"}, body));
+}
+
+// --- the run in flight (docs/adr/0087 §4-§5) ----------------------------------
+const short = (x) => x >= 1e6 ? (x / 1e6).toFixed(1) + "M" : x >= 1e3 ? Math.round(x / 1e3) + "k" : String(x);
+function liveBadge(t) {
+  const lv = t.live;
+  if (!lv || typeof lv !== "object") return null;
+  const warn = lv.warn === true;
+  return h("span", {cls: "live", "data-warn": String(warn), role: "img", "aria-label": lv.line, title: lv.line},
+    (warn ? "near " : "") + short(lv.tokens) + (Number.isInteger(lv.budget) ? " / " + short(lv.budget) : ""),
+    Number.isInteger(lv.budget) ? h("meter", {min: "0", max: String(lv.budget), value: String(Math.min(lv.tokens, lv.budget))}) : null);
+}
+function liveLine(t) {
+  const lv = t.live;
+  return lv && typeof lv === "object" ? h("p", {cls: "live-line", "data-warn": String(lv.warn === true)}, lv.line) : null;
+}
+// The burn's 24 hours as bars (no chart library: an inline SVG of rectangles),
+// labelled with the burn line itself: the page formats no number of its own.
+function hoursSpark(b, label) {
+  const hourly = Array.isArray(b.hourly) ? b.hourly : [];
+  const top = Math.max(...hourly, 0);
+  return svg("svg", {id: "spend-hours", viewBox: "0 0 240 40", preserveAspectRatio: "none", role: "img", "aria-label": label},
+    hourly.map((v, i) => {
+      const height = top > 0 ? Math.max(1, Math.round(38 * v / top)) : 1;
+      return svg("rect", {cls: "hour", "data-hour": String(i), "data-zero": v > 0 ? null : "", x: String(i * 10 + 1), y: String(40 - height), width: "8", height: String(height)});
+    }));
+}
+
 // --- delivery and spend (docs/adr/0082, 0083, amendments of 2026-11-13) --
 // The words are the commands' own, carried by logbook 1.5: `./go dora` and
 // `./go spend` print the same lines. The page formats no number.
@@ -791,7 +934,15 @@ function spendPanel() {
     const lines = Array.isArray(s.lines) ? s.lines.map(String) : [];
     const kind = (w) => lines.filter((l) => l.startsWith(w + " "));
     const list = (id, title, rows) => h("div", {}, h("b", {}, title), h("ul", {id: id, cls: "spend-lines"}, rows.map((l) => h("li", {}, l))));
+    // The burn and the day's projection (docs/adr/0087 §3, §5), in ./go spend's words.
+    const b = s.burn === undefined ? undefined : s.burn;
+    const burnLine = lines.find((l) => l.startsWith("burn: ")), projLine = lines.find((l) => l.startsWith("projection: "));
+    const flying = ticketsList().filter((t) => t.live && typeof t.live === "object");
     body = [h("p", {id: "spend-summary"}, shown(s.summary)),
+      b === undefined ? null : [h("p", {id: "spend-burn"}, shown(burnLine)), b ? hoursSpark(b, burnLine || "") : null,
+        h("p", {id: "spend-projection", "data-over": b && b.over !== null && b.over !== undefined ? String(b.over) : ""}, shown(projLine))],
+      flying.length ? [h("b", {}, "Running now"), h("ul", {id: "spend-live", cls: "spend-lines"},
+        flying.map((t) => h("li", {"data-id": t.id}, h("a", {href: "#ticket/" + encodeURIComponent(t.id)}, t.id), ": " + t.live.line)))] : null,
       h("div", {cls: "grid3"}, list("spend-tickets", "Per ticket", kind("ticket")), list("spend-roles", "Per role", kind("role")), list("spend-days", "Per day (UTC)", kind("day"))),
       h("p", {id: "spend-budget", cls: "muted"}, lines.filter((l) => l.startsWith("budget: ")).pop() || "")];
   }
@@ -822,6 +973,7 @@ function screenOverview() {
   const states = ORDER.concat([...new Set(all.map((t) => t.state))].filter((st) => !ORDER.includes(st)));
   const inState = (st) => all.filter((t) => t.state === st);
   const bands = BANDS.concat([{band: "other", name: "Other", states: states.filter((st) => bandOf(st) === "other")}]);
+  out.push(rolesPanel());
   out.push(h("h2", {}, "Where the tickets are"), h("div", {cls: "panel"}, h("div", {cls: "grid3"},
     bands.filter((b) => b.states.some((st) => inState(st).length)).map((b) => h("div", {cls: "band-sum", "data-band": b.band},
       h("div", {}, h("b", {}, b.name), " ", h("span", {cls: "count"}, b.states.reduce((s, st) => s + inState(st).length, 0))),
@@ -959,7 +1111,8 @@ function card(t, v) {
     labels(t),
     titled(t, v.q),
     nowLine(t),
-    h("div", {cls: "badges"}, whoBadge(t), age(t), pips(t),
+    flowFace(t),
+    h("div", {cls: "badges"}, whoBadge(t), age(t), pips(t), liveBadge(t),
       t.outcome && t.outcome.verdict !== "pending"
         ? (t.outcome.verdict === "NO-GO" && whyButton(t, t.attempt, chip(t.outcome.verdict))) || chip(t.outcome.verdict) : null),
     m ? h("div", {cls: "muted"}, "moved here from " + m.from) : null);
@@ -995,6 +1148,8 @@ function drawer(t) {
     h("div", {cls: "nowbox", "data-turn": now(t).turn}, nowLine(t, true)),
     q ? h("blockquote", {cls: "question"}, h("b", {}, q.from === "spec" ? "The spec gate asks: " : "The product role asks: "), q.question) : null,
     stageStrip(t),
+    flowDetail(t),
+    liveLine(t),
     h("div", {cls: "badges"}, whoBadge(t), age(t), pips(t)),
     // No verdict yet: the now line says what is awaited, and no empty row stands in.
     dl([["State", t.state + " · " + bandName(bandOf(t.state))],
@@ -1305,6 +1460,8 @@ function screenTicket(id) {
     h("div", {cls: "panel", id: "ticket-now"},
       h("div", {cls: "nowbox", "data-turn": w.turn}, nowLine(t)),
       stageStrip(t, "stages"),
+      flowDetail(t, "flow"),
+      liveLine(t),
       h("p", {cls: "muted", style: "margin: 0"}, "Last verdict: ", chip(t.outcome.verdict), " ", shown(t.outcome.judge), ": ", h("span", {cls: "mono"}, shown(t.outcome.line)))),
     answerPanel(t),
     h("p", {cls: "lede"}, "Every phase from the request to the release, one row each, each from its record, under the band it belongs to. Check it against the code host: ",

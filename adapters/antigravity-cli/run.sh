@@ -111,13 +111,14 @@ model_served=$(python3 -I "$here/served_model.py" "$store" 2>/dev/null || echo u
 rm -rf "$store"
 
 # The budget hook names the budget it stopped on in OUT/stop (docs/adr/0041
-# §5); agy then exits 3, the code it also uses for its own print timeout.
+# §5); agy then exits 3, the code it also uses for its own print timeout. A
+# TOKEN_BUDGET stop exits below, once run.json is written: the spend ledger
+# counts what the run spent (docs/adr/0087 §2).
 stopped=$(cat "$OUT/stop" 2>/dev/null || true)
 case "$stopped" in
   MAX_TURNS) printf 'harness-antigravity-cli: over MAX_TURNS (%s)\n' "$MAX_TURNS" >&2; exit 1 ;;
-  TOKEN_BUDGET) printf 'harness-antigravity-cli: over TOKEN_BUDGET (%s)\n' "$TOKEN_BUDGET" >&2; exit 1 ;;
 esac
-if [ "$container_rc" -ne 0 ]; then
+if [ "$stopped" != TOKEN_BUDGET ] && [ "$container_rc" -ne 0 ]; then
   reason="agy exited $container_rc"
   if [ "$container_rc" -eq 124 ]; then
     reason="over TIMEOUT_S ($TIMEOUT_S s)"
@@ -154,6 +155,10 @@ jq -n \
     tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
     duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
     + (if $endpoint == "" then {} else {endpoint: $endpoint} end)' > "$OUT/run.json"
+if [ "$stopped" = TOKEN_BUDGET ]; then
+  printf 'harness-antigravity-cli: over TOKEN_BUDGET (%s)\n' "$TOKEN_BUDGET" >&2
+  exit 1
+fi
 
 # The adapter commits, not the model (docs/adr/0017 §1).
 committed=0

@@ -17,9 +17,11 @@
      "sast": [{"rule": "B602", "file": "README.md", "line": 7}, {"rule": "B105", "file": "README.md", "line": 9}],
      "lines": ["GO: risk — low, auto-merge", "GO: secrets", "GO: test-weakening", "GO: deps",
                "NO-GO: sast — in the workbench: this diff introduces 2 finding(s); list on stderr"],
+     "seconds": {"risk": 1, "secrets": 3, "test-weakening": 1, "deps": 2, "sast": 5},
      "at": "2026-11-03T08:12:00Z"}
   ],
   "ci": {"verdict": "NO-GO", "failed": "test", "risk_level": "low", "decision": null, "line": "NO-GO: gates — test: NO-GO: test — 2 failed",
+         "seconds": {"risk": 1, "secrets": 3, "test-weakening": 1, "deps": 2, "sast": 6, "test": 41},
          "details": ["FAILED tests/a.py::one", "FAILED tests/a.py::two"], "head_sha": "h3", "sast": null,
          "lines": ["GO: risk — low, auto-merge", "GO: secrets", "GO: test-weakening", "GO: deps", "GO: sast — in the workbench, none new (0 inherited)",
                    "NO-GO: test — 2 failed"]},

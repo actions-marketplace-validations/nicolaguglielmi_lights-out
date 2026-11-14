@@ -137,13 +137,11 @@ end=$(date +%s)
 duration=$((end - start))
 
 # A budget hook names the budget it stopped on in OUT/stop (docs/adr/0041
-# §5): that, not the exit code the CLI chose, is the stop reason.
+# §5): that, not the exit code the CLI chose, is the stop reason. It exits
+# below, once run.json is written: the spend ledger counts what a run that
+# stopped on its budget spent (docs/adr/0087 §2).
 stopped=$(cat "$OUT/stop" 2>/dev/null || true)
-if [ "$stopped" = TOKEN_BUDGET ]; then
-  printf 'harness-gemini-cli: over TOKEN_BUDGET (%s)\n' "$TOKEN_BUDGET" >&2
-  exit 1
-fi
-if [ "$container_rc" -ne 0 ]; then
+if [ "$stopped" != TOKEN_BUDGET ] && [ "$container_rc" -ne 0 ]; then
   reason="gemini exited $container_rc"
   case "$container_rc" in
     124) reason="over TIMEOUT_S ($TIMEOUT_S s)" ;;
@@ -237,6 +235,10 @@ write_run_json() {
       + (if $endpoint == "" then {} else {endpoint: $endpoint} end) + {mcp: $mcp}' > "$OUT/run.json"
 }
 write_run_json
+if [ "$stopped" = TOKEN_BUDGET ]; then
+  printf 'harness-gemini-cli: over TOKEN_BUDGET (%s)\n' "$TOKEN_BUDGET" >&2
+  exit 1
+fi
 
 # A declared server that did not come up fails the run (docs/adr/0073 §8).
 # This CLI goes on without it and says nothing on stderr or in the

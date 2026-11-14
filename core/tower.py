@@ -42,7 +42,10 @@ profiles/prices.json. Before `assign` and `rework` the spend is checked
 against policy/rework.env's SPEND_BUDGET_TICKET_USD and
 SPEND_BUDGET_DAY_USD: over a limit, `assign` is refused like a red main
 and `rework` runs with SPEND_STOP=<the line>, which ends the ticket at
-`needs-human`.
+`needs-human`. When `assign` or `rework` fails, the run the crew left in
+.crew/<ticket>/out/run.json during the step is appended too, with `failed`
+the budget marker in out/stop (docs/adr/0087 §1): a run stopped on its
+TOKEN_BUDGET spent money the limits must count.
 """
 
 import fnmatch
@@ -53,6 +56,7 @@ import re
 import subprocess  # nosec B404 - adapter verbs and steps are scripts (docs/adr/0052 §3)
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 COLLECTION = "tickets"
@@ -315,9 +319,35 @@ class Tower:
             raise Refused(f"[tower] {self.ticket}: no document; open the ticket first")
         return doc
 
-    def record_failure(self, doc, step, state, why):
-        """Append the failed attempt to doc's history and write it; the state does not move."""
+    def failed_run(self, doc, step, began):
+        """The ledger entry of the run a failed `assign` or `rework` left in
+        .crew/<ticket>/out/run.json since BEGAN (docs/adr/0087 §1), or None."""
+        out = os.path.join(".crew", self.ticket, "out")
+        path = os.path.join(out, "run.json")
+        try:
+            if os.path.getmtime(path) < began:
+                return None
+            with open(path, encoding="utf-8") as fh:
+                run = json.load(fh)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(run, dict):
+            return None
+        try:
+            with open(os.path.join(out, "stop"), encoding="utf-8") as fh:
+                marker = fh.readline().strip()
+        except OSError:
+            marker = ""
+        n = 1 if step == "assign" else (doc.get("attempt") or 1) + 1
+        got = spend_module().entries(step, {"task": dict(task(run), role=os.environ.get("ROLE") or "dev-worker")}, n, now())
+        return dict(got[0], failed=marker or "the run failed") if got else None
+
+    def record_failure(self, doc, step, state, why, run=None):
+        """Append the failed attempt to doc's history and write it; the state does not move.
+        RUN, a failed attempt's ledger entry, is appended to `spend` in the same write."""
         failed = dict(doc)
+        if run:
+            failed["spend"] = spend_module().ledger(doc) + [run]
         failed["history"] = (doc.get("history") or []) + [
             {"step": step, "state": state, "at": now(), **attempt(doc), "error": why}]
         if not self.store_put(failed):
@@ -397,6 +427,7 @@ class Tower:
             self.tell(budget)
 
         self.tell(f"{step} (state {have})")
+        began = time.time() - 1  # the file system's clock is coarser than ours
         with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as doc_file:
             doc_file.write(compact(doc) + "\n")
             doc_file.flush()
@@ -408,7 +439,10 @@ class Tower:
         if ran.returncode != 0:
             rc = ran.returncode if ran.returncode > 0 else 128 - ran.returncode
             self.tell(f"step {step} failed; state stays {have}")
-            self.record_failure(doc, step, have, f"step exited {rc}")
+            run = self.failed_run(doc, step, began) if step in BUDGETED else None
+            if run:
+                self.tell(f"the failed attempt's run is in the ledger ({run['failed']})")
+            self.record_failure(doc, step, have, f"step exited {rc}", run)
             raise Refused(None)
         try:
             result = json.loads(ran.stdout)
