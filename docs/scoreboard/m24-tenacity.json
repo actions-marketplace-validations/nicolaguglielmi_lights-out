@@ -1,0 +1,695 @@
+{
+ "schema": "lights-out/scoreboard-data/1",
+ "scope": "The ten tenacity tickets of M24 (five tests-only, five that change production code) on one repository, tenacity, from the same bases (df51380 and eb254b1), each run once per provider: Anthropic on 2026-11-11, Gemini on 2026-11-14. Every ticket was small (2 to 17 production lines) and low risk, so no review and no human gate ran.",
+ "rows": [
+  {
+   "ticket": "tenacity-03",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 1,
+   "merge": "7d66513",
+   "tokens": {
+    "input": 29438,
+    "output": 1455,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": null,
+    "cached": null
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-a-5dacb7.md §6 (phase B)",
+    "run": "tower optimistic-meitner-aed1df/.crew/full/.crew/state.sqlite tickets/tenacity-03; PR #1 on the plane's Gitea, merged as 7d66513"
+   }
+  },
+  {
+   "ticket": "tenacity-05",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 2,
+   "merge": "b0587a1",
+   "tokens": {
+    "input": 40294,
+    "output": 1177,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": null,
+    "cached": null
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-a-5dacb7.md §6 (phase B)",
+    "run": "tower optimistic-meitner-aed1df/.crew/full/.crew/state.sqlite tickets/tenacity-05; PR #2 on the plane's Gitea, merged as b0587a1"
+   }
+  },
+  {
+   "ticket": "tenacity-01",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 3,
+   "merge": "f719d8f",
+   "tokens": {
+    "input": 37856,
+    "output": 1319,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": null,
+    "cached": null
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-a-5dacb7.md §6 (phase B)",
+    "run": "tower optimistic-meitner-aed1df/.crew/full/.crew/state.sqlite tickets/tenacity-01; PR #3 on the plane's Gitea, merged as f719d8f"
+   }
+  },
+  {
+   "ticket": "tenacity-04",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 4,
+   "merge": "80801d7",
+   "tokens": {
+    "input": 71448,
+    "output": 2607,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": null,
+    "cached": null
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-a-5dacb7.md §6 (phase B)",
+    "run": "tower optimistic-meitner-aed1df/.crew/full/.crew/state.sqlite tickets/tenacity-04; PR #4 on the plane's Gitea, merged as 80801d7"
+   }
+  },
+  {
+   "ticket": "tenacity-02",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 5,
+   "merge": "01db331",
+   "tokens": {
+    "input": 41810,
+    "output": 977,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": null,
+    "cached": null
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-a-5dacb7.md §6 (phase B)",
+    "run": "tower optimistic-meitner-aed1df/.crew/full/.crew/state.sqlite tickets/tenacity-02; PR #5 on the plane's Gitea, merged as 01db331"
+   }
+  },
+  {
+   "ticket": "tenacity-06",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 2,
+   "launches": 1,
+   "reworks": 1,
+   "nogos": [
+    {
+     "gate": "mutation",
+     "reason": "in workbench (isolated): 9/12 mutants on changed lines killed (0.750 < 0.769); survivors on stderr"
+    }
+   ],
+   "stop": null,
+   "pr": 1,
+   "merge": "373844c",
+   "tokens": {
+    "input": 85045,
+    "output": 3217,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": 0.214,
+    "cached": null
+   },
+   "source": {
+    "handoff": "docs/plans/m24-phase-c-handoff.md §3 (phase C)",
+    "run": "tower m24c-crew/full/.crew/state.sqlite tickets/tenacity-06 (tasks and rework); PR #1 on the plane's Gitea, merged as 373844c"
+   }
+  },
+  {
+   "ticket": "tenacity-08",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 2,
+   "merge": "88841bd",
+   "tokens": {
+    "input": 41454,
+    "output": 1867,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": 0.114,
+    "cached": null
+   },
+   "source": {
+    "handoff": "docs/plans/m24-phase-c-handoff.md §3 (phase C)",
+    "run": "tower m24c-crew/full/.crew/state.sqlite tickets/tenacity-08 (tasks and rework); PR #2 on the plane's Gitea, merged as 88841bd"
+   }
+  },
+  {
+   "ticket": "tenacity-07",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 3,
+   "merge": "e27de33",
+   "tokens": {
+    "input": 55698,
+    "output": 2117,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": 0.143,
+    "cached": null
+   },
+   "source": {
+    "handoff": "docs/plans/m24-phase-c-handoff.md §3 (phase C)",
+    "run": "tower m24c-crew/full/.crew/state.sqlite tickets/tenacity-07 (tasks and rework); PR #3 on the plane's Gitea, merged as e27de33"
+   }
+  },
+  {
+   "ticket": "tenacity-09",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 4,
+   "merge": "9709c38",
+   "tokens": {
+    "input": 187194,
+    "output": 4564,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": 0.435,
+    "cached": null
+   },
+   "source": {
+    "handoff": "docs/plans/m24-phase-c-handoff.md §3 (phase C)",
+    "run": "tower m24c-crew/full/.crew/state.sqlite tickets/tenacity-09 (tasks and rework); PR #4 on the plane's Gitea, merged as 9709c38"
+   }
+  },
+  {
+   "ticket": "tenacity-10",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "merged": true,
+   "attempts": 2,
+   "launches": 1,
+   "reworks": 1,
+   "nogos": [
+    {
+     "gate": "mutation",
+     "reason": "in workbench (isolated): 10/14 mutants on changed lines killed (0.714 < 0.769); survivors on stderr"
+    }
+   ],
+   "stop": null,
+   "pr": 5,
+   "merge": "4831978",
+   "tokens": {
+    "input": 143926,
+    "output": 5128,
+    "cached": null
+   },
+   "cost_usd": {
+    "ledger": null,
+    "list": 0.356,
+    "cached": null
+   },
+   "source": {
+    "handoff": "docs/plans/m24-phase-c-handoff.md §3 (phase C)",
+    "run": "tower m24c-crew/full/.crew/state.sqlite tickets/tenacity-10 (tasks and rework); PR #5 on the plane's Gitea, merged as 4831978"
+   }
+  },
+  {
+   "ticket": "tenacity-03",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 2,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 1,
+   "merge": "cf34766",
+   "tokens": {
+    "input": 2202279,
+    "output": 4670,
+    "cached": 2025588
+   },
+   "cost_usd": {
+    "ledger": 1.389999,
+    "list": 1.67,
+    "cached": 0.3
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-03 (attempt, merge, spend); logs/stats.jsonl; PR #1 on the plane's Gitea, merged as cf34766; the tower counts the second launch only, the tokens are both launches' (the first stopped by the budget hook's bug, handoff §3)"
+   }
+  },
+  {
+   "ticket": "tenacity-05",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 2,
+   "merge": "6d84ab8",
+   "tokens": {
+    "input": 1470019,
+    "output": 3552,
+    "cached": 1350297
+   },
+   "cost_usd": {
+    "ledger": 1.118217,
+    "list": 1.12,
+    "cached": 0.2
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-05 (attempt, merge, spend); logs/stats.jsonl; PR #2 on the plane's Gitea, merged as 6d84ab8"
+   }
+  },
+  {
+   "ticket": "tenacity-01",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 3,
+   "merge": "27054e3",
+   "tokens": {
+    "input": 1691482,
+    "output": 3509,
+    "cached": 1549709
+   },
+   "cost_usd": {
+    "ledger": 1.2843,
+    "list": 1.28,
+    "cached": 0.24
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-01 (attempt, merge, spend); logs/stats.jsonl; PR #3 on the plane's Gitea, merged as 27054e3"
+   }
+  },
+  {
+   "ticket": "tenacity-04",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": false,
+   "attempts": 0,
+   "launches": 2,
+   "reworks": 0,
+   "nogos": [],
+   "stop": {
+    "kind": "TOKEN_BUDGET",
+    "line": "over TOKEN_BUDGET (2600000) on both launches, no PR"
+   },
+   "pr": null,
+   "merge": null,
+   "tokens": {
+    "input": 5156856,
+    "output": 10046,
+    "cached": 4835677
+   },
+   "cost_usd": {
+    "ledger": 0.002719,
+    "list": 3.91,
+    "cached": 0.64
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-04 (assign: step exited 1, twice; spend: the product role only); logs/tenacity-04.request.log and .resume.log; logs/stats.jsonl"
+   }
+  },
+  {
+   "ticket": "tenacity-02",
+   "repository": "tenacity",
+   "kind": "tests-only",
+   "phase": "B",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 4,
+   "merge": "392097a",
+   "tokens": {
+    "input": 863857,
+    "output": 2496,
+    "cached": 771342
+   },
+   "cost_usd": {
+    "ledger": 0.659531,
+    "list": 0.66,
+    "cached": 0.14
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-02 (attempt, merge, spend); logs/stats.jsonl; PR #4 on the plane's Gitea, merged as 392097a"
+   }
+  },
+  {
+   "ticket": "tenacity-06",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 5,
+   "merge": "06bdc78",
+   "tokens": {
+    "input": 1746028,
+    "output": 3493,
+    "cached": 1618443
+   },
+   "cost_usd": {
+    "ledger": 1.325542,
+    "list": 1.32,
+    "cached": 0.23
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-06 (attempt, merge, spend); logs/stats.jsonl; PR #5 on the plane's Gitea, merged as 06bdc78"
+   }
+  },
+  {
+   "ticket": "tenacity-08",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 6,
+   "merge": "4a707a1",
+   "tokens": {
+    "input": 1816805,
+    "output": 3391,
+    "cached": 1680639
+   },
+   "cost_usd": {
+    "ledger": 1.378225,
+    "list": 1.38,
+    "cached": 0.24
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-08 (attempt, merge, spend); logs/stats.jsonl; PR #6 on the plane's Gitea, merged as 4a707a1"
+   }
+  },
+  {
+   "ticket": "tenacity-07",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": true,
+   "attempts": 1,
+   "launches": 1,
+   "reworks": 0,
+   "nogos": [],
+   "stop": null,
+   "pr": 7,
+   "merge": "22df69a",
+   "tokens": {
+    "input": 2134722,
+    "output": 3668,
+    "cached": 1996817
+   },
+   "cost_usd": {
+    "ledger": 1.6174,
+    "list": 1.62,
+    "cached": 0.27
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-07 (attempt, merge, spend); logs/stats.jsonl; PR #7 on the plane's Gitea, merged as 22df69a"
+   }
+  },
+  {
+   "ticket": "tenacity-09",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": false,
+   "attempts": 0,
+   "launches": 2,
+   "reworks": 0,
+   "nogos": [],
+   "stop": {
+    "kind": "TOKEN_BUDGET",
+    "line": "over TOKEN_BUDGET (2600000) on both launches, no PR"
+   },
+   "pr": null,
+   "merge": null,
+   "tokens": {
+    "input": 5222782,
+    "output": 13934,
+    "cached": 4905883
+   },
+   "cost_usd": {
+    "ledger": 0.003119,
+    "list": 3.97,
+    "cached": 0.66
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-09 (assign: step exited 1, twice; spend: the product role only); logs/tenacity-09.request.log and .resume.log; logs/stats.jsonl"
+   }
+  },
+  {
+   "ticket": "tenacity-10",
+   "repository": "tenacity",
+   "kind": "production",
+   "phase": "C",
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "merged": false,
+   "attempts": 0,
+   "launches": 2,
+   "reworks": 0,
+   "nogos": [],
+   "stop": {
+    "kind": "TOKEN_BUDGET",
+    "line": "over TOKEN_BUDGET (2600000) on both launches, no PR"
+   },
+   "pr": null,
+   "merge": null,
+   "tokens": {
+    "input": 5217140,
+    "output": 6257,
+    "cached": 4891834
+   },
+   "cost_usd": {
+    "ledger": 0.003912,
+    "list": 3.94,
+    "cached": 0.63
+   },
+   "source": {
+    "handoff": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md §2",
+    "run": "tower m24d-crew/full/.crew/state.sqlite tickets/tenacity-10 (assign: step exited 1, twice; spend: the product role only); logs/tenacity-10.request.log and .resume.log; logs/stats.jsonl"
+   }
+  }
+ ],
+ "totals": [
+  {
+   "provider": "anthropic",
+   "harness": "claude-code",
+   "model": "claude-sonnet-5-5",
+   "basis": "list",
+   "usd": 1.83,
+   "bound": "at most",
+   "note": "Anthropic: list price ($2/M input, $10/M output, read 2026-11-10) with every input token uncached, every role, phases B and C together; an upper bound, the Anthropic console has the billed figure. No ledger: these runs are from 2026-11-11, before the spend ledger (ADR 0083).",
+   "source": "docs/plans/m24-phase-c-handoff.md, the short version and §3"
+  },
+  {
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "basis": "ledger",
+   "usd": 8.78,
+   "bound": "exactly",
+   "note": "Gemini ledger: the tower's spend ledger (ADR 0083), every role. It misses the five launches that stopped on the budget and prices every input token uncached, so it is neither the bill nor the list figure (handoff §4, findings 1 and 2).",
+   "source": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md, the short version; ./go spend on m24d-crew/full"
+  },
+  {
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "basis": "list",
+   "usd": 20.88,
+   "bound": "at most",
+   "note": "Gemini list: every run, budget-stopped launches included, at list price ($0.75/M input, $3.75/M output, profiles/prices.json) with every input token uncached.",
+   "source": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md, the short version and §2"
+  },
+  {
+   "provider": "gemini",
+   "harness": "gemini-cli",
+   "model": "gemini-3.8-flash",
+   "basis": "cached",
+   "usd": 3.58,
+   "bound": "about",
+   "note": "Gemini cached: the same runs with the cached input (93%) at $0.075/M, the price the handoff applied; profiles/prices.json has no cached price. Google AI Studio has the billed figure.",
+   "source": ".claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md, the short version and §2"
+  }
+ ],
+ "not_run": [
+  {
+   "provider": "openai",
+   "harness": "codex",
+   "why": "no OpenAI key; M24 asks for every ticket on three providers, and the third was not run",
+   "source": "docs/plans/m24-phase-c-handoff.md, the owner's decisions 3; the Gemini handoff §5"
+  }
+ ]
+}

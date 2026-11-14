@@ -340,6 +340,29 @@ auto-merge, so no review was asked for. The stage times arrive with a
 later milestone. Change one byte of the file and the verify command
 fails.
 
+Beside the pack, the same command freezes the console (ADR 0089). It
+writes the logbook first, then `.crew/evidence/<version>.console.html`:
+the console's own page with the logbook inside it, read-only, with
+nothing behind it. It is signed into its own bundle and verified the
+same way:
+
+<!-- source: local run on podman, commit 4fd8340, 2026-11-14, after ./go demo; left out: the logbook's line and cosign's own progress lines -->
+```
+missing: release.held_at
+missing: artefacts.dast
+missing: answer
+missing: prs[0].review
+evidence: verify with: cosign verify-blob --key .crew/cosign.pub --insecure-ignore-tlog --bundle .crew/evidence/0.2.0-waitlist.json.bundle .crew/evidence/0.2.0-waitlist.json
+GO: evidence — .crew/evidence/0.2.0-waitlist.json signed and verified; 4 missing; console snapshot signed
+```
+
+The stage times are in the record now, so four gaps are left. Open the
+`.console.html` file in a browser, with no server. Ticket 0001's
+timeline runs from the request to the canary's rollback, and the
+go-for-launch screen shows the stage that judged it. Nothing on the page
+can be sent. The landing page links the same freeze of the latest demo
+on main.
+
 ### `./go dora` and `./go spend`: how delivery went, and what it cost
 
 ```sh
@@ -388,6 +411,36 @@ shows the same lines, read from the logbook, beside who runs each role;
 every card shows its path from the request to 100%, and from L1 the
 attempt in flight against its token budget. Its window ends at the record's last event, not at the
 moment you look.
+
+### `./go scoreboard`: the providers side by side
+
+```sh
+./go scoreboard
+```
+
+M24 ran the same ten tenacity tickets once on Anthropic and once on
+Gemini. `./go scoreboard` reads those twenty runs from a committed
+dataset, `docs/scoreboard/m24-tenacity.json`, where every row names the
+handoff and the run it was read from (ADR 0088). It needs no plane and
+no key:
+
+<!-- source: local run on the host's python3, commit ed5de8e, 2026-11-14; the scope line shortened -->
+```
+[scoreboard] scope: The ten tenacity tickets of M24 (…) each run once per provider: …
+[scoreboard] anthropic · claude-code · claude-sonnet-5-5: 10 tickets, 10 merged, 8 at the first attempt, 2 reworks, NO-GO mutation 2, 0 budget stops; 75,859 tokens per ticket; per ticket ledger not recorded, list ≤ $0.18, cached not recorded
+[scoreboard] gemini · gemini-cli · gemini-3.8-flash: 10 tickets, 7 merged, 7 at the first attempt, 0 reworks, NO-GO none, 3 budget stops; 2,757,699 tokens per ticket; per ticket ledger $0.88, list ≤ $2.09, cached ~$0.36
+[scoreboard] openai · codex: not run — no OpenAI key; M24 asks for every ticket on three providers, and the third was not run
+GO: scoreboard — 2 groups run, 1 not run, 20 tickets; .crew/scoreboard/index.html
+```
+
+The two mutation NO-GOs are Anthropic's first attempts at tickets 06 and
+10, each sent back and merged at the second. Gemini's three budget stops
+opened no PR. OpenAI is printed as not run, never as zero. A cost no
+source gives is "not recorded": the Anthropic runs predate the spend
+ledger. The page in `.crew/scoreboard/index.html` has every row with
+its source and a footnote for each cost. Add your own runs with
+`SCOREBOARD_LOGBOOKS=.crew/logbook.json`. A logbook's replayed tickets
+are counted and not scored, so after `./go demo` alone it adds nothing.
 
 ## 2. The short looks
 

@@ -1123,6 +1123,20 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
   - Il ticket in corso: i token del run in volo (il contatore degli hook) contro `TOKEN_BUDGET`, con un avviso dall'80% (decisione proposta nell'ADR, con la misura di M24), sulla card, sul retro, nel pannello e nella matrice.
 
 *Stato 2026-11-14 (filone A, branch `claude/console-flow-313acd`):* M52–M54 costruite, ADR prima, test dall'ADR, poi il codice. Logbook 1.6 (solo aggiunte; `golden-1.5.json` resta come vecchia fixture). La ricetta `gates` scrive i secondi di ogni gate (`ci.seconds`). Il ledger conta il run di un tentativo fallito con il suo stop; gemini-cli e antigravity-cli scrivono `run.json` prima di uscire su `TOKEN_BUDGET`, e il caso 6 di `harness-conformance` lo controlla. `ci/console-ui.py` verde con le sezioni nuove (ae, af, ag); `./go ci` verde da un clone pieno (a2800db, 355 s); `./go demo` verde, 886 s al rollback con un `./go ci` in parallelo nei primi minuti. **Scostamenti:** la soglia dell'avviso all'80% è proposta, da confermare dall'owner; i membri dell'harness `network` non entrano nel ledger quando falliscono; `site/index.html` non è toccato (il testo per il sito è nell'handoff).
+#### M55 — Il tabellone dei provider (ADR 0088; filone B)
+
+- **Criteri di accettazione:**
+  - `./go scoreboard` legge i logbook dei run e un dataset curato, e stampa per provider e harness: ticket, mergiati al primo tentativo, rework, NO-GO per gate e motivo, stop di budget, token e costo per ticket. Rende una pagina statica pubblicata col sito.
+  - Seminato coi risultati veri di M24: Anthropic 10/10 (fasi B e C), Gemini 7/10 con 04, 09 e 10 fermati a `TOKEN_BUDGET`, OpenAI mostrato come "non eseguito", mai vuoto o inventato. Ogni riga dice da dove vengono i numeri (handoff e run); un numero senza fonte non entra. I due costi (ledger e listino) affiancati con una nota dove differiscono.
+  - La pagina dice che sono 10 ticket su un repository, un run ciascuno: non un benchmark.
+
+#### M56 — Una snapshot della console in sola lettura (ADR 0089; filone B)
+
+- **Criteri di accettazione:**
+  - La console di un run vero congelata in un solo file HTML autosufficiente: nessun server, i dati dentro, i controlli disattivati; regge i pannelli del filone A senza elencarli.
+  - Allegata al pacchetto di evidenza (`./go evidence`, ADR 0081) e linkata dal sito, l'ultima: un visitatore vede un canary tornare indietro senza clonare niente. Costruita da `./go demo` a L0, senza chiave.
+
+*Nota 2026-11-14 (filone B, branch `claude/public-proof-176b67`).* Le tre torri di M24 esistono ancora sulla macchina dell'owner ma fuori dal repository, e non portano gli stop a `TOKEN_BUDGET` né i token in cache: il dataset `docs/scoreboard/m24-tenacity.json` è curato a mano, 20 righe lette dagli handoff e controllate sui documenti delle torri (tentativi, merge, PR, righe di rework, token per tentativo, ledger di Gemini, $8,782964). Il logbook di una demo non si committa (gitleaks legge come segreto il `key` di una soglia, ADR 0049 §4): il sito congela la console del commit sopra il logbook dell'ultimo `./go demo` riuscito su main, preso dall'artifact del workflow ci, e la pagina nomina quel run. Il pacchetto di evidenza porta accanto `<v>.console.html`, firmato e verificato con la stessa chiave.
 
 ### Dopo
 

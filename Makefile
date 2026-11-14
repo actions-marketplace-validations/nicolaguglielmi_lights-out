@@ -344,6 +344,14 @@ network: ## The agent network of one ticket in text: the graph, every attempt wi
 dora: ## The four delivery measures over a window, from the logbook: [WINDOW_DAYS=30] [DORA_LOGBOOK=<file>] [DORA_OUT=.crew/dora.json] (docs/adr/0082)
 	@WINDOW_DAYS="$(WINDOW_DAYS)" DORA_LOGBOOK="$(DORA_LOGBOOK)" DORA_OUT="$(DORA_OUT)" sh core/dora.sh
 
+# The provider scoreboard (docs/adr/0088): per provider, harness and model,
+# from the curated dataset (every row naming its handoff and run) and any
+# run logbooks named; one contract line on stdout, one line per group on
+# stderr, the page in SCOREBOARD_OUT. No plane, no key.
+.PHONY: scoreboard
+scoreboard: ## Per provider and harness: tickets, merged at the first attempt, reworks, NO-GOs by gate, budget stops, tokens and cost per ticket: [SCOREBOARD_DATA=] [SCOREBOARD_LOGBOOKS=] [SCOREBOARD_OUT=] (docs/adr/0088)
+	@SCOREBOARD_DATA="$(SCOREBOARD_DATA)" SCOREBOARD_LOGBOOKS="$(SCOREBOARD_LOGBOOKS)" SCOREBOARD_OUT="$(SCOREBOARD_OUT)" sh core/scoreboard.sh
+
 # Cost and time per ticket (docs/adr/0083 §5): per ticket, role and day,
 # from every ticket's spend ledger; one contract line on stdout.
 .PHONY: spend
@@ -966,9 +974,13 @@ audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the
 # stages, every gate line of its PR, the rework, the review, the spec, the
 # digests and the human answer, each entry naming its source and every gap
 # named; signed with the plane's cosign key and verified in the same run.
+# Beside it, the console frozen from the logbook, written first unless
+# EVIDENCE_LOGBOOK names one, and signed the same way (docs/adr/0089 §5):
+# a logbook that cannot be written leaves the pack without a snapshot.
 .PHONY: evidence
-evidence: ## Build, sign and verify the evidence pack of a release: VERSION=<v> → .crew/evidence/<v>.json (docs/adr/0081)
-	@VERSION="$(VERSION)" sh core/evidence.sh
+evidence: ## Build, sign and verify the evidence pack of a release and its frozen console: VERSION=<v> → .crew/evidence/<v>.json, <v>.console.html (docs/adr/0081, 0089)
+	@[ -n "$(EVIDENCE_LOGBOOK)" ] || sh core/logbook.sh >&2 || printf 'evidence: the logbook could not be written; the pack goes without a console snapshot\n' >&2
+	@VERSION="$(VERSION)" EVIDENCE_LOGBOOK="$(EVIDENCE_LOGBOOK)" sh core/evidence.sh
 
 # A ticket whose last step failed stays at that step's starting state
 # with nothing queued (docs/adr/0034). resume asks the tower to request

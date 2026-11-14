@@ -19,6 +19,9 @@ encodes the takes with ffmpeg into <site dir>/media/:
                                  logbook's network ticket (docs/adr/0071 §7), every
                                  frame captioned as a replay
 
+and checks console/snapshot.html, the latest demo's console frozen by the
+workflow (docs/adr/0089): served alone in both themes, nothing leaves it.
+
 Every frame says what it shows: the board's scripted walks, the real code
 paths with example versions and numbers. With SHOTS=<dir> it also takes
 screenshots of the built landing at desktop and phone width.
@@ -563,6 +566,51 @@ async def network_clip(site):
     log(f"network.mp4: replay of ticket {NETWORK_TICKET}, {rows} rows, {seconds(media / 'network.mp4')} s")
 
 
+# ---- the frozen console (docs/adr/0089) ----------------------------------------
+
+async def snapshot(site, out):
+    """The latest demo's console, frozen into console/snapshot.html, served
+    alone, in both themes: no request leaves the file, the header says it is
+    a snapshot, ticket 0001's timeline ends in the canary's rollback and
+    go-for-launch cannot be pressed. With SHOTS, the overview and ticket
+    0001 in each theme."""
+    f = site / "console" / "snapshot.html"
+    if not f.is_file():
+        sys.exit(f"render: {f} not found; the site workflow freezes it first (docs/adr/0089 §6)")
+    base = serve(f.parent)
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        for theme in ("light", "dark"):
+            ctx = await browser.new_context(viewport={"width": 1440, "height": 1000}, color_scheme=theme)
+            page = await ctx.new_page()
+            seen = []
+            page.on("request", lambda r: seen.append(r.url))
+            await page.goto(base + "/snapshot.html#overview")
+            await page.wait_for_selector("#frozen-banner")
+            await asyncio.sleep(1.5)
+            if "snapshot" not in (await page.locator("header").inner_text()).lower():
+                sys.exit("render: the frozen console's header does not say it is a snapshot")
+            if out:
+                await page.screenshot(path=out / f"snapshot-overview-{theme}.png")
+            await page.evaluate("location.hash = 'ticket/0001'")
+            await asyncio.sleep(1.5)
+            if "rolled back" not in (await page.locator("main").inner_text()).lower():
+                sys.exit("render: ticket 0001's timeline in the frozen console does not reach the rollback")
+            if out:
+                await page.screenshot(path=out / f"snapshot-ticket-0001-{theme}.png")
+            await page.evaluate("location.hash = 'launch'")
+            await asyncio.sleep(1)
+            for sel in ("#launch-go", "#launch-nogo"):
+                if await page.locator(sel).count() and await page.locator(sel).is_enabled():
+                    sys.exit(f"render: {sel} can be pressed in the frozen console")
+            left = [u for u in seen if not u.startswith(base + "/snapshot.html") and not u.startswith("data:")]
+            if left:
+                sys.exit(f"render: the frozen console sent {len(left)} request(s): {left[:3]}")
+            await ctx.close()
+        await browser.close()
+    log(f"console/snapshot.html: frozen, read-only, nothing sent, in both themes")
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("usage: python3 site/render.py <site dir>")
@@ -572,6 +620,10 @@ def main():
     asyncio.run(render(site))
     asyncio.run(stills(site))
     asyncio.run(network_clip(site))
+    out = pathlib.Path(os.environ["SHOTS"]).resolve() if os.environ.get("SHOTS") else None
+    if out:
+        out.mkdir(parents=True, exist_ok=True)
+    asyncio.run(snapshot(site, out))
     if os.environ.get("SHOTS"):
         asyncio.run(shots(site, pathlib.Path(os.environ["SHOTS"]).resolve()))
 
