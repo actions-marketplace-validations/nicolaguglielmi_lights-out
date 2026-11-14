@@ -1186,5 +1186,178 @@ class DoraInTheLogbook(unittest.TestCase):
         self.assertNotIn("spend", old)
 
 
+GATES = ("risk", "secrets", "test-weakening", "deps", "sast", "test", "mutation", "test-proof")
+FLOW = ["ticket", "perimeter"] + ["gate"] * 8 + ["pr", "canary", "human", "full"]
+NODE_KEYS = {"node", "gate", "verdict", "started_at", "ended_at", "seconds", "line"}
+
+
+class FlowInTheLogbook(unittest.TestCase):
+    """Logbook 1.6's `tickets[].flow`, over the stub sources, by hand from
+    docs/adr/0085 §1-§3: fourteen nodes in order, each with its verdict, its
+    times from the record, its seconds and its one-line reason."""
+
+    read = Reader.read
+    edit = Reader.edit
+    state = Reader.state
+    ticket = Reader.ticket
+    source = Reader.source
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if FlowInTheLogbook.book is None:
+            FlowInTheLogbook.book = self.read()
+        return FlowInTheLogbook.book
+
+    def flow(self, book, tid):
+        return self.ticket(book, tid)["flow"]
+
+    def node(self, flow, name):
+        return [n for n in flow if (n["gate"] if n["node"] == "gate" else n["node"]) == name][0]
+
+    def is_node(self, n, verdict, line=None, started=None, ended=None, seconds=None):
+        self.assertEqual((n["verdict"], n["line"], n["started_at"], n["ended_at"], n["seconds"]),
+                         (verdict, line, started, ended, seconds), n)
+
+    def test_the_schema_is_1_6(self):
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.6")
+
+    def test_every_ticket_has_fourteen_nodes_in_order_with_seven_keys(self):
+        for t in self.base()["tickets"]:
+            self.assertEqual([n["node"] for n in t["flow"]], FLOW, t["id"])
+            self.assertEqual([n["gate"] for n in t["flow"] if n["node"] == "gate"], list(GATES), t["id"])
+            for n in t["flow"]:
+                self.assertEqual(set(n), NODE_KEYS, (t["id"], n))
+                self.assertIn(n["verdict"], ("GO", "NO-GO", "running", "not-reached"), (t["id"], n))
+                if n["node"] != "gate" and n["seconds"] is not None:
+                    self.assertTrue(n["started_at"] and n["ended_at"], (t["id"], n))
+                if n["node"] != "gate":
+                    self.assertIsNone(n["gate"])
+
+    def test_0010_from_the_open_to_100_percent(self):
+        f = self.flow(self.base(), "0010")
+        src = self.source("0010")
+        self.is_node(self.node(f, "ticket"), "GO", "opened directly: no request, no spec gate",
+                     "2026-11-02T06:00:00Z", "2026-11-02T06:00:00Z", None)
+        self.is_node(self.node(f, "perimeter"), "GO",
+                     "PR #10 opened, every file inside app/backend/notify/*, tests/test_notify.py",
+                     "2026-11-02T06:00:00Z", "2026-11-02T06:05:00Z", 300)
+        for gate, line in zip(GATES, src["ci"]["lines"]):
+            self.is_node(self.node(f, gate), "GO", line, None, None, src["ci"]["seconds"][gate])
+        self.is_node(self.node(f, "pr"), "GO", "merged m10, approved by the test-reviewer",
+                     "2026-11-02T06:55:00Z", "2026-11-02T07:06:00Z", 660)
+        self.is_node(self.node(f, "canary"), "GO", "held at 25%: 2 stage(s) GO",
+                     "2026-11-02T07:08:00Z", "2026-11-02T07:30:00Z", 1320)
+        self.is_node(self.node(f, "human"), "GO", "promoted by bob via cli",
+                     "2026-11-02T07:30:00Z", "2026-11-02T07:45:00Z", 900)
+        self.is_node(self.node(f, "full"), "GO", "100% of the traffic on 0.2.5-n",
+                     "2026-11-02T07:45:00Z", "2026-11-02T07:45:00Z", None)
+
+    def without_answer(self, root):
+        path = root / "releases.jsonl"
+        lines = [l for l in path.read_text(encoding="utf-8").splitlines()
+                 if '"version": "0.2.5-n"' not in l or '"kind": "release"' in l]
+        path.write_text("\n".join(lines) + "\n")
+
+    def test_0010_held_with_no_answer_waits_for_you(self):
+        f = self.flow(self.read(self.without_answer), "0010")
+        self.is_node(self.node(f, "human"), "running", "waits for go-for-launch at 25%", "2026-11-02T07:30:00Z", None, None)
+        self.is_node(self.node(f, "full"), "not-reached")
+
+    def test_0010_rejected_by_a_person(self):
+        def rejected(root):
+            self.without_answer(root)
+            with open(root / "releases.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"kind": "answer", "at": "2026-11-02T07:50:00Z", "version": "0.2.5-n", "answer": "NO-GO",
+                                     "by": "carol", "via": "console", "reason": "not this week"}) + "\n")
+        f = self.flow(self.read(rejected), "0010")
+        self.is_node(self.node(f, "human"), "NO-GO", "rejected by carol via console: not this week",
+                     "2026-11-02T07:30:00Z", "2026-11-02T07:50:00Z", 1200)
+        self.is_node(self.node(f, "full"), "not-reached", "rolled back by a person")
+
+    def test_0003_stops_at_test_and_the_rest_is_not_reached(self):
+        f = self.flow(self.base(), "0003")
+        src = self.source("0003")
+        for gate, line in zip(GATES[:5], src["ci"]["lines"]):
+            self.is_node(self.node(f, gate), "GO", line, None, None, src["ci"]["seconds"][gate])
+        self.is_node(self.node(f, "test"), "NO-GO", "NO-GO: test — 2 failed", None, None, 41)
+        for gate in ("mutation", "test-proof"):
+            self.is_node(self.node(f, gate), "not-reached", "not run: test said NO-GO first")
+        for name in ("pr", "canary", "human", "full"):
+            self.is_node(self.node(f, name), "not-reached")
+        self.is_node(self.node(f, "perimeter"), "GO", "PR #3 opened, every file inside README.md",
+                     "2026-11-03T08:00:00Z", "2026-11-03T08:05:00Z", 300)
+
+    def test_0009_the_spec_gate_said_no_go(self):
+        f = self.flow(self.base(), "0009")
+        self.is_node(self.node(f, "ticket"), "NO-GO", "NO-GO: spec — no ## Perimeter section",
+                     "2026-11-07T08:00:00Z", "2026-11-07T08:10:07Z", 607)
+        for n in f[1:]:
+            self.assertEqual(n["verdict"], "not-reached", n)
+
+    def test_a_question_of_the_product_role_is_running(self):
+        def asked(d):
+            d["history"] = d["history"][:2]
+            d["questions"] = d["questions"][:1]
+            d["questions"][0].pop("answer"), d["questions"][0].pop("answered_by"), d["questions"][0].pop("answered_at")
+        f = self.flow(self.read(self.edit("0009", asked)), "0009")
+        self.is_node(self.node(f, "ticket"), "running",
+                     "the product role asked: Is the first person on the list promoted when a seat frees up?; it waits for an answer",
+                     "2026-11-07T08:00:00Z", None, None)
+
+    def test_0005_assign_failed(self):
+        f = self.flow(self.base(), "0005")
+        self.assertEqual(self.node(f, "ticket")["verdict"], "GO")
+        self.is_node(self.node(f, "perimeter"), "NO-GO", "step exited 1", "2026-11-04T07:00:00Z", "2026-11-04T07:01:00Z", 60)
+        for n in f[2:]:
+            self.assertEqual(n["verdict"], "not-reached", n)
+
+    def test_0004_stranded_at_ci(self):
+        f = self.flow(self.base(), "0004")
+        self.is_node(self.node(f, "risk"), "NO-GO", "ci step failed: the gates did not run")
+        for n in f[3:]:
+            self.assertEqual(n["verdict"], "not-reached", n)
+
+    def test_0001_rolled_back_by_the_canary(self):
+        f = self.flow(self.base(), "0001")
+        self.assertEqual(self.node(f, "canary")["verdict"], "NO-GO")
+        self.assertEqual(self.node(f, "canary")["line"], "5%: error_rate 1.000")
+        self.is_node(self.node(f, "human"), "not-reached", "the canary rolled back before it")
+        self.is_node(self.node(f, "full"), "not-reached")
+
+    def test_0008_review_changes_requested(self):
+        f = self.flow(self.base(), "0008")
+        for gate in GATES:
+            self.is_node(self.node(f, gate), "GO", "GO: ci")
+        n = self.node(f, "pr")
+        self.assertEqual((n["verdict"], n["line"]), ("NO-GO", "first line"))
+
+    def test_gates_running_at_pr_opened_and_pr_running_at_review(self):
+        def opened(d):
+            d["state"], d["attempt"], d["ci"], d["rework"] = "pr-opened", 1, None, []
+            d["history"] = d["history"][:2]
+        f = self.flow(self.read(self.edit("0003", opened)), "0003")
+        for gate in GATES:
+            self.is_node(self.node(f, gate), "running", "the gates judge attempt 1; the step reports when all have run",
+                         "2026-11-03T08:05:00Z", None, None)
+
+        def review(d):
+            d["state"] = "review"
+            d["history"] = d["history"][:5]
+            d["review"], d["merge"], d["release"] = None, None, None
+        f = self.flow(self.read(self.edit("0010", review)), "0010")
+        self.is_node(self.node(f, "pr"), "running", "the test-reviewer reviews attempt 2 (risk low)",
+                     "2026-11-02T06:55:00Z", None, None)
+
+    def test_a_ci_with_seconds_is_kept_on_the_ticket_and_its_rework(self):
+        t = self.ticket(self.base(), "0010")
+        src = self.source("0010")
+        self.assertEqual(t["ci"]["seconds"], src["ci"]["seconds"])
+        self.assertEqual(t["rework"][0]["seconds"], src["rework"][0]["seconds"])
+
+
 if __name__ == "__main__":
     unittest.main()

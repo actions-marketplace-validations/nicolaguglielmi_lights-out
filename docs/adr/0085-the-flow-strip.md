@@ -84,15 +84,16 @@ pr; `mainline`, `release` → canary), and every node after it not reached.
   `started_at` is the `request` entry's `at`; `GO` at the last `spec`
   entry that moved to `opened`, `ended_at` its `at`, line the spec's line
   (`GO: spec` when the document has none). At `questions` after a spec
-  entry that moved to `questions`: `NO-GO`, line `NO-GO: spec — <the last
-  question>`. At `requested`, `spec-ready`, or `questions` asked by the
+  entry that moved to `questions`: `NO-GO`, `ended_at` that entry's
+  `at`, line `NO-GO: spec — <the last question>`. At `requested`, `spec-ready`, or `questions` asked by the
   product role: `running`, line `the product role asked: <question>; it
   waits for an answer` or `the product role and the spec gate`.
 - **perimeter.** `started_at` is the `at` of the entry that brought the
   ticket to `opened`. `GO` at the first `assign` entry without an error,
   `ended_at` its `at`, line `PR #<n> opened, every file inside <globs
-  joined by ", ">` (the crew checks the perimeter before the PR exists,
-  ADR 0021 §5). At `opened` with no error last: `running`, line `the
+  joined by ", ">` (`the PR opened, …` when the document has no PR
+  number; the crew checks the perimeter before the PR exists, ADR 0021
+  §5). At `opened` with no error last: `running`, line `the
   dev-worker, attempt 1`. Refused or failed at `assign`: `NO-GO`, the
   error.
 - **gates.** The current attempt's `ci` (the one logbook 1.4 judges). A
@@ -108,15 +109,19 @@ pr; `mainline`, `release` → canary), and every node after it not reached.
   verdicts: the card's now line says the next attempt runs.
 - **pr.** `started_at` is the `ci` entry of the current attempt that moved
   to `review` or `ci-passed`. At `review` or `ci-passed`: `running`, line
-  `the <role> reviews attempt <n> (risk <level>)` or `the merge (risk
+  `the <role> reviews attempt <n> (risk <level>)` (the document's
+  review role, else the step's default, the test-reviewer) or `the merge (risk
   <level>, <decision>)`. A changes-requested review: `NO-GO`, its first
-  line. Merged (any state after `merged`): `GO`, `ended_at` the `merge`
+  line (the document keeps a review only for the attempt it judged: a
+  rework clears it). Merged (`merged` or a state after it: `main-green`,
+  `held`, `rolled-back`): `GO`, `ended_at` the `merge`
   entry's `at`, line `merged <first 7 of merge.sha>`, then `, approved by
   the <role>` when a review approved it, or `, no review: risk <level>`.
 - **canary.** The ticket's release in the release log (its ticket and its
   `release.version`, the last line). `started_at` the first stage's
   `started_at` (else the `at` of the entry that brought the ticket to
-  `main-green`); `ended_at` the last stage's `judged_at`. `held`: `GO`,
+  `main-green`); `ended_at` the last stage's `judged_at` (else the `at`
+  of the `release` history entry). `held`: `GO`,
   line `held at <held_at>%: <n> stage(s) GO`. `rolled-back`: `NO-GO`, line
   the release's `reason`, else its last stage's verdict, else the
   document's `release.verdict`. At `main-green` with no error: `running`,
@@ -193,14 +198,20 @@ documents gain `ci.seconds` on ticket 0010 and on 0003's rework entry):
 - `core/tests/test_logbook.py`, `flow` over the stub, each ticket's nodes
   in the order of §1 (fourteen: ticket, perimeter, eight gates, pr,
   canary, human, full):
-  - 0010 (opened directly, two attempts, review approved, held, no answer):
-    ticket `GO` `opened directly…` with no seconds; perimeter `GO` from
-    06:00:00 to 06:05:00, 300 s, `PR #10 opened, every file inside …`;
-    the eight gates `GO`, each line verbatim from `ci.gates`, each with
-    the stub's `ci.seconds`; pr `GO` from 06:55:00 to 07:06:00, 660 s,
-    line `merged <sha7>, approved by the test-reviewer`; canary `GO` with
-    the first stage's `started_at` and the last's `judged_at`; human
-    `running`, `waits for go-for-launch at 25%`; full `not-reached`.
+  - 0010 (opened directly, two attempts, review approved, held, promoted
+    by bob via cli at 07:45): ticket `GO` `opened directly…` with no
+    seconds; perimeter `GO` from 06:00:00 to 06:05:00, 300 s, `PR #10
+    opened, every file inside …`; the eight gates `GO`, each line
+    verbatim from `ci.gates`, each with the stub's `ci.seconds`; pr `GO`
+    from 06:55:00 to 07:06:00, 660 s, line `merged m10, approved by the
+    test-reviewer`; canary `GO` from 07:08:00 (its stages have no times)
+    to 07:30:00, `held at 25%: 2 stage(s) GO`; human `GO` from 07:30:00 to
+    07:45:00, 900 s, `promoted by bob via cli`; full `GO`, `100% of the
+    traffic on 0.2.5-n`. With the answer taken out of the release log:
+    human `running`, `waits for go-for-launch at 25%`, full
+    `not-reached`; with a NO-GO answer and a reason, human `NO-GO`
+    `rejected by … via …: <reason>`, full `not-reached` `rolled back by a
+    person`.
   - 0003 (two attempts, the second NO-GO at `test`): the first five gates
     `GO`, `test` `NO-GO` with its line, `mutation` and `test-proof`
     `not-reached` with `not run: test said NO-GO first`; pr, canary,
@@ -213,9 +224,8 @@ documents gain `ci.seconds` on ticket 0010 and on 0003's rework entry):
     rest of the gates and after them `not-reached`.
   - 0001 (rolled back): canary `NO-GO` with the record's reason; human
     `not-reached`, `the canary rolled back before it`.
-  - 0002 with an answer GO derived from the stub's: human `GO` with who,
-    via and reason, full `GO` `100% of the traffic on 0.3.0-b`; with NO-GO,
-    human `NO-GO`, full `not-reached` `rolled back by a person`.
+  - 0008 (review changes-requested): the eight gates `GO` with `GO: ci`
+    (a ci with no rows), pr `NO-GO` `first line`.
   - A ticket at `pr-opened` with no ci: the eight gates `running`; at
     `review`: pr `running`.
   - Every node of every ticket has exactly the seven keys; no `seconds`

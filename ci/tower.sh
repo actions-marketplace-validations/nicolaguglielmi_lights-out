@@ -23,8 +23,11 @@
 # NO-GO, and `ci.lines` must be the gates' lines file, in order, stopping at the
 # first NO-GO, and a perimeter NO-GO its one line. assign.sh and rework.sh ask
 # tower.py for the patch, review.sh does not (static check, with its own
-# planted miss). Each new check is able to fail: a premise names what would
-# make it pass for the wrong reason.
+# planted miss). Each gate's seconds (docs/adr/0085 §4): (h) `ci.seconds` holds
+# the gates that ran and only those, each a whole number, null on a perimeter
+# refusal; (i) the real rework.sh copies it into the rejected attempt's entry.
+# Each new check is able to fail: a premise names what would make it pass for
+# the wrong reason.
 # Written from the ADRs, not from the scripts.
 set -eu
 name=tower
@@ -160,7 +163,7 @@ case "$mode" in
     lines: ["GO: risk — high, review", "GO: secrets"]}}' ;;
   fail) jq -cn --arg h "$HEAD_SHA" '{state: "ci-failed", ci: {verdict: "NO-GO", failed: "mutation", risk_level: "low", decision: "auto-merge", head_sha: $h,
     line: "NO-GO: mutation — 2 mutants survived in \($h)",
-    lines: ["GO: risk — low, auto-merge", "NO-GO: mutation — 2 mutants survived in \($h)"],
+    lines: ["GO: risk — low, auto-merge", "NO-GO: mutation — 2 mutants survived in \($h)"], seconds: {risk: 1, mutation: 3},
     details: ["app/meetups.py:27 swap-comparison", "app/meetups.py:31 drop-return"]}}' ;;
 esac
 STUB
@@ -484,6 +487,8 @@ if [ -z "$mismatch" ]; then
   # docs/adr/0071 §1: the entry keeps the lines of the gates that rejected the
   # attempt, which are not the lines of the attempt that passed.
   [ "$(doc | jq -c '.rework[0].lines')" = "$(lines_fail 1)" ] || fail_case i-lines "rework[0].lines: $(doc | jq -c '.rework[0].lines')"
+  # docs/adr/0085 §4: the entry keeps each gate's seconds beside its lines.
+  [ "$(doc | jq -cS '.rework[0].seconds')" = '{"mutation":3,"risk":1}' ] || fail_case i-seconds "rework[0].seconds: $(doc | jq -cS '.rework[0].seconds')"
   [ "$(doc | jq -c '.ci.lines')" = "$lines_pass" ] || fail_case i-lines "ci.lines after the passing attempt: $(doc | jq -c '.ci.lines')"
   [ "$(doc | jq -c '.rework[0].lines')" != "$(doc | jq -c '.ci.lines')" ] || fail_case i-lines "the rejected attempt's lines are the passing attempt's"
   # docs/adr/0071 §1: the patch and its files of the attempt rework.sh ran, from
@@ -806,6 +811,9 @@ TICKET
   [ "$(printf '%s' "$got" | jq -c '.ci.lines')" = '["GO: risk"]' ] || fail_case h1-lines "ci.lines: $(printf '%s' "$got" | jq -c '.ci.lines')"
   [ "$(printf '%s' "$got" | jq -r '.ci.line')" != "$(printf '%s' "$got" | jq -r '.ci.lines[0]')" ] \
     || fail_case h1-lines "ci.lines[0] is the summary line, so it proves nothing about the lines file"
+  # docs/adr/0085 §4: each gate that ran has its whole seconds, and only those.
+  [ "$(printf '%s' "$got" | jq -c '.ci.seconds | [keys, (map(select(type == "number" and . >= 0 and . == floor)) | length)]')" = '[["risk"],1]' ] \
+    || fail_case h1-seconds "ci.seconds: $(printf '%s' "$got" | jq -c '.ci.seconds')"
 fi
 if [ -z "$mismatch" ]; then
   rm -f "$g/status.log"
@@ -823,6 +831,8 @@ if [ -z "$mismatch" ]; then
   [ "$(printf '%s' "$got" | jq -r '.ci.lines[0]')" = "$(printf '%s' "$got" | jq -r '.ci.line')" ] \
     || fail_case h2-lines "ci.lines[0] is '$(printf '%s' "$got" | jq -r '.ci.lines[0]')', not the one NO-GO line the step printed"
   case "$(printf '%s' "$got" | jq -r '.ci.lines[0]')" in "NO-GO: perimeter — "*) : ;; *) fail_case h2-lines "the recorded line is not a perimeter NO-GO" ;; esac
+  # docs/adr/0085 §4: no gate ran, so no gate has seconds.
+  [ "$(printf '%s' "$got" | jq -c '.ci.seconds')" = null ] || fail_case h2-seconds "ci.seconds of a perimeter refusal: $(printf '%s' "$got" | jq -c '.ci.seconds')"
 fi
 # h3 and h4 (docs/adr/0071 §1): the gates run from the base's Makefile with the
 # planted gates added through EXTRA_GATES. h3, all GO: every gate's line, in the
@@ -835,6 +845,8 @@ if [ -z "$mismatch" ]; then
   [ "$(printf '%s' "$got" | jq -c '.ci.lines')" = '["GO: risk","GO: go-demo — planted, always GO"]' ] \
     || fail_case h3 "ci.lines with two gates that said GO: $(printf '%s' "$got" | jq -c '.ci.lines') (the document: $got)"
   [ "$(printf '%s' "$got" | jq -r '.ci.verdict')" = GO ] || fail_case h3 "verdict $(printf '%s' "$got" | jq -r '.ci.verdict'), want GO"
+  [ "$(printf '%s' "$got" | jq -c '.ci.seconds | [keys, (map(select(type == "number" and . >= 0 and . == floor)) | length)]')" = '[["go-demo","risk"],2]' ] \
+    || fail_case h3-seconds "ci.seconds with two gates that ran: $(printf '%s' "$got" | jq -c '.ci.seconds')"
 fi
 if [ -z "$mismatch" ]; then
   export EXTRA_GATES="nogo-demo go-demo"
@@ -845,6 +857,8 @@ if [ -z "$mismatch" ]; then
   [ "$(printf '%s' "$got" | jq -c '.ci.lines')" = '["GO: risk","NO-GO: nogo-demo — planted, always NO-GO"]' ] \
     || fail_case h4 "ci.lines of a NO-GO: $(printf '%s' "$got" | jq -c '.ci.lines'); want the gates up to the NO-GO and none after"
   [ "$(printf '%s' "$got" | jq -c '.ci.details')" = '["a detail line"]' ] || fail_case h4 "ci.details: $(printf '%s' "$got" | jq -c '.ci.details')"
+  [ "$(printf '%s' "$got" | jq -c '.ci.seconds | [keys, (map(select(type == "number" and . >= 0 and . == floor)) | length)]')" = '[["nogo-demo","risk"],2]' ] \
+    || fail_case h4-seconds "ci.seconds of a NO-GO: $(printf '%s' "$got" | jq -c '.ci.seconds'); want the gates up to the NO-GO and none after"
 fi
 
 [ -z "$mismatch" ] || nogo "case $mismatch disagrees with docs/adr/0019, 0033, 0034 or 0038"
