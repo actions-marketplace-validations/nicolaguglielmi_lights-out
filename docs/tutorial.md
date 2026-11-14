@@ -590,29 +590,57 @@ at most five, then proposes tickets with criteria, feature and priority;
 the architect role proposes each ticket's perimeter from the project map;
 the spec gate checks each one as a draft; and nothing opens until a person
 confirms, edits or drops each ticket with `./go intake-confirm`. No plane
-is needed. At L0 the interview only replays a recorded one, and the
-committed request on the meetup app has no recording yet, so this is what
-you see:
+is needed. At L0 the interview replays the one recorded on the committed
+request about the meetup app (recorded on Gemini 3.8 Flash on 2026-11-14):
 
-<!-- source: local run on podman, commit 9ddbbae, 2026-11-14, a full clone of the M57 branch -->
+<!-- source: local run on podman, commit 16c97e7, 2026-11-14, a full clone of the M57 branch, L0 -->
 ```sh
-./go intake INTAKE_FILE=fixtures/intake/request.md
+./go intake TICKET=0030 INTAKE_FILE=fixtures/intake/request.md
+./go answer TICKET=0030 ANSWER="A button on the meetup page; then they are no longer registered and one more seat is free."
+./go answer TICKET=0030 ANSWER="The organiser sees the names and the free seats on the meetup page; other members see only the free seats."
 ```
 
 ```
-[intake] tickets/0023.intake.md written
-[tower] 0023: intake by unauthenticated via cli, interview requested
-[tower] 0023: interview (state intake)
-intake: no recording of this intake's interview at L0 (fixtures/adk/product); record it at L1 with ./go intake ... ADK_RECORD=extend, then ./go resume TICKET=0023
-[tower] 0023: step interview failed; state stays intake
-NO-GO: intake — 0023: step exited 1: no recording of this intake's interview at L0 (fixtures/adk/product); record it at L1 with ./go intake ... ADK_RECORD=extend, then ./go resume TICKET=0023
+GO: intake — 0030 at intake-questions
+GO: answer
+[tower] 0030: intake-answer → drafted
+[tower] 0030: perimeter (state drafted)
+[tower] 0030: perimeter → proposed
+GO: answer
 ```
 
-Nothing is proposed in its place: a raw request has no criteria to fall
-back on. With a key, `PROFILE=l1` runs the interview live; answer each
-question with `./go answer TICKET=0023 ANSWER=...`, and the console's
-request screen has the same entry, "Describe the need", with the intake's
-card above the kanban.
+The first answer brings the second question; the second makes the request
+clear, and the product role proposes two tickets, "Allow registered
+members to give back their meetup seat" and "Display attendee list to
+organisers while keeping attendee names private from other members",
+both `- Feature: rsvp-cancellation`, `- Priority: P1`. The architect role
+proposed six paths for each, and the spec gate said `GO: spec` on both as
+drafts. Under replay your answers' words are not compared with the
+recording: any answer replays the same proposal. Keep the first ticket and
+drop the second:
+
+```sh
+./go intake-confirm TICKET=0030 DECISIONS='["confirm","drop"]'
+```
+
+```
+[tower] 0030: confirmed by unauthenticated via cli: 0031
+[tower] 0031: spec-ready from intake 0030, spec requested
+GO: spec
+[tower] 0031: spec → opened
+[tower] 0031: assign (state opened)
+```
+
+Ticket 0031 is written to the tickets directory, with `- Intake: 0030`, and is
+opened by the spec gate. The orchestrator then requests `assign`, which
+needs the plane and a dev-worker for the new ticket: without the plane,
+`assign` fails and the command ends NO-GO, the ticket stranded at
+`opened` and resumable, as a new `./go request` would be. An intake whose
+words were never recorded is refused at L0 with one line that names the
+command that records it, and nothing is proposed in its place: a raw
+request has no criteria to fall back on. The console's request screen has
+the same entry, "Describe the need", and each intake's card sits above
+the kanban.
 
 ### `./go demo-launch`: go-for-launch, the one human gate
 

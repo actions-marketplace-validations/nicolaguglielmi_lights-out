@@ -313,9 +313,12 @@ Read in this checkout on 2026-11-14 (`land/sprint-1114`, 3924ebf):
 
 - An intake costs two role runs where a ticket costs one: the interview
   and the perimeter. Both enter the spend ledger.
-- Until the owner records the demo intake, `./go ci` proves the refusal,
-  not the conversation; the console shows an intake only where one was
-  recorded or run live.
+- The demo intake was recorded on 2026-11-14 (Gemini 3.8 Flash): `./go
+  ci` replays it end to end and proves the refusal on an unrecorded
+  intake. The recording showed what this ADR did not bound: the
+  architect's run took 74 model turns (72 `find_files` calls) and 1.48M
+  input tokens, 1.30M of them cached. An ADK role has no turn cap; the
+  perimeter step needs one, with its provenance, in an amendment.
 - Under replay the answers' text is not compared with the recording (ADR
   0055 §2): another answer replays the same proposal.
 - `./go demo` does not change: it carries ticket 0001 from `requested`,

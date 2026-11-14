@@ -66,25 +66,45 @@ at push time). Not merged; the coordinator lands it.
    record-evals" (the replay model's own line); the intake's refusal line that
    follows names the right command.
 
-## The recording (needs the owner)
+## The recording (done 2026-11-14, owner-approved)
 
-Full plan: shared notes `m57-recording-plan.md`. In short, from a full clone,
-no plane needed:
+Approved by the owner through the coordinator ("Sì, registra": Gemini only,
+≤ $1) and again in this session ("Yes, record it"). Run from a full clone
+with `PROFILE=l1 ADK_RECORD=extend`: `./go intake TICKET=0101`, then two
+`./go answer`; the answers were written by this session as the client.
+Committed in 16c97e7 after grepping both files for the Gemini and Anthropic
+keys and any `AIza…` string (none):
 
-```
-./go intake TICKET=0101 INTAKE_FILE=fixtures/intake/request.md PROFILE=l1 ADK_RECORD=extend
-./go answer TICKET=0101 ANSWER="..." PROFILE=l1 ADK_RECORD=extend   # per question, ≤ 5
-```
+- `fixtures/adk/product/766129b5….json`: 6 model turns, 2 questions, 2
+  `propose_ticket` (both `- Feature: rsvp-cancellation`, `- Priority: P1`).
+- `fixtures/adk/architect/cd449eef….json`: 74 model turns, 72 `find_files`,
+  2 `propose_perimeter` (six paths each), 308.9 s.
 
-Then commit `fixtures/adk/product/766129b5d7dc6a0661710562e9c523435ccab8ee44919f4a18729759f293b2fa.json`
-and the new `fixtures/adk/architect/*.json` (grep them for the key first).
+**Tokens and cost**, summed once per turn from the recordings' own
+`usage_metadata` (each turn's prompt is billed once):
 
-**Estimate**: Gemini 3.8 Flash (the l1 profile, same as the existing product
-recordings), ≈ 140k–270k input and 35k–55k output tokens across the product
-interview (6–12 turns) and the architect (8–10 turns, high thinking): **≈
-$0.24–$0.41, ceiling ≤ $0.85** with a full re-run. On Claude Sonnet 5.5:
-≈ $0.63–$1.09, ceiling ≤ $2.20. Basis: 0005's measured four-turn conversation,
-37,905 tokens; prices from profiles/prices.json (checked 2026-11-12).
+| role | turns | input | of which cached | output (incl. thinking) |
+|---|---|---|---|---|
+| product | 6 | 19,837 | 6,819 | 4,712 |
+| architect | 74 | 1,482,329 | 1,299,118 | 22,062 |
+| **total** | 80 | **1,502,166** | **1,305,937** | **26,774** |
+
+- At the cached-input rate M24 used ($0.075/M cached, $0.75/M uncached,
+  $3.75/M out): **≈ $0.35**.
+- At list price with no input cached: **≈ $1.23**, over the $1 approval.
+- Google AI Studio's billing is not visible from here: the owner should
+  check which of the two was charged.
+- `./go spend` over the recording's own tower document would overstate it:
+  under `ADK_RECORD=extend` the run's `run.json` counts the turns it only
+  replayed (the product's three runs count turns 1–2 three times).
+
+**The overrun, and what it shows:** the estimate assumed 8–10 architect
+turns; it took 74, because nothing caps the turns of an ADK role (the
+architect's `MAX_TURNS=60` and `TOKEN_BUDGET` in `role.env` are its
+coding harness's, not the ADK path's). It could not be stopped mid-run. The
+replay is unaffected (17 s in `ci/intake.sh`), but a live intake at L1 can
+spend without bound: **the perimeter step needs a turn cap, with its
+provenance, in an amendment of ADR 0090** (proposed, not done).
 
 ## Screenshots
 

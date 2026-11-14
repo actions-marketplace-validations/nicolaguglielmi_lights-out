@@ -1032,7 +1032,7 @@ intake: ## Start an intake from a client's words: the product role interviews an
 	id=$$(python3 core/intake.py new "$$tmp" "$(TICKETS_DIR)" $(INTAKE_ID)) \
 		|| { printf 'NO-GO: intake — nothing written; see the intake: line above\n'; exit 1; }; \
 	printf '[intake] %s/%s.intake.md written\n' "$(TICKETS_DIR)" "$$id" >&2; \
-	sh core/tower.sh intake "$$id" || { printf 'NO-GO: intake — %s was not started; see the [tower] line above\n' "$$id"; exit 1; }; \
+	sh core/tower.sh intake "$$id" || { rm -f "$(TICKETS_DIR)/$$id.intake.md"; printf 'NO-GO: intake — %s was not started, nothing kept; see the [tower] line above\n' "$$id"; exit 1; }; \
 	if ! sh adapters/$(ORCHESTRATOR)/run.sh; then \
 		why=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$$id" | jq -r '.history[-1].error // "a step failed"'); \
 		printf 'NO-GO: intake — %s: %s\n' "$$id" "$$why"; exit 1; \
