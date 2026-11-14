@@ -505,6 +505,136 @@
       "version": "0.5.0-d"
     }
   ],
+  "roles": [
+    {
+      "budget": 600000,
+      "configured": {
+        "harness": "gemini-cli",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "thinking": "high"
+      },
+      "last": null,
+      "line": "has not run in this record",
+      "role": "architect",
+      "running": null,
+      "state": "idle",
+      "used": null
+    },
+    {
+      "budget": 2600000,
+      "configured": {
+        "harness": "gemini-cli",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "thinking": "high"
+      },
+      "last": {
+        "at": "2026-11-03T08:15:00Z",
+        "attempt": 2,
+        "cost_usd": 0.3375,
+        "failed": null,
+        "harness": "gemini-cli",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "replayed": false,
+        "step": "rework",
+        "ticket": "0003",
+        "tokens": {
+          "input": 400000,
+          "output": 10000,
+          "total": 410000
+        }
+      },
+      "line": "running on 0003: 2,210,000 of 2,600,000 tokens — near the budget",
+      "role": "dev-worker",
+      "running": {
+        "budget": 2600000,
+        "ticket": "0003",
+        "tokens": 2210000,
+        "warn": true
+      },
+      "state": "running",
+      "used": 2210000
+    },
+    {
+      "budget": null,
+      "configured": {
+        "harness": "adk",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "thinking": "low"
+      },
+      "last": null,
+      "line": "has not run in this record",
+      "role": "ops-triage",
+      "running": null,
+      "state": "idle",
+      "used": null
+    },
+    {
+      "budget": null,
+      "configured": {
+        "harness": "adk",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "thinking": "medium"
+      },
+      "last": null,
+      "line": "has not run in this record",
+      "role": "product",
+      "running": null,
+      "state": "idle",
+      "used": null
+    },
+    {
+      "budget": null,
+      "configured": {
+        "harness": "stub-harness",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "thinking": "low"
+      },
+      "last": null,
+      "line": "has not run in this record",
+      "role": "release",
+      "running": null,
+      "state": "idle",
+      "used": null
+    },
+    {
+      "budget": 1500000,
+      "configured": {
+        "harness": "gemini-cli",
+        "model": "gemini-3.8-flash",
+        "provider": "gemini",
+        "thinking": "high"
+      },
+      "last": {
+        "at": "2026-11-02T06:40:00Z",
+        "attempt": 1,
+        "cost_usd": null,
+        "failed": null,
+        "harness": "stub-harness",
+        "model": "model-x",
+        "provider": "prov",
+        "replayed": false,
+        "step": "review",
+        "ticket": "0010",
+        "tokens": {
+          "input": 30000,
+          "output": 900,
+          "total": 30900
+        }
+      },
+      "line": "last ran on 0010 (review, attempt 1) at 2026-11-02T06:40:00Z: 30,900 tokens of 1,500,000",
+      "role": "test-reviewer",
+      "running": null,
+      "state": "ran",
+      "used": 30900
+    }
+  ],
+  "roles_summary": "6 roles on 1 provider: gemini; last runs on gemini/gemini-3.8-flash, prov/model-x",
   "schema": "lights-out/logbook/1.6",
   "source": {
     "code_host": "gitea",
@@ -513,6 +643,46 @@
     "workload": "app"
   },
   "spend": {
+    "burn": {
+      "day": "2026-11-03",
+      "end": "2026-11-03T08:15:00Z",
+      "first": "2026-11-03T08:05:00Z",
+      "hourly": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1.1625,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hours": 1.0,
+      "left_h": 15.75,
+      "limit_usd": null,
+      "over": null,
+      "per_hour_usd": 1.1625,
+      "projected_usd": 19.471875,
+      "runs": 2,
+      "spent_usd": 1.1625,
+      "unknown": 0
+    },
     "days": {
       "2026-11-02": {
         "cost_usd": 0,
@@ -543,6 +713,8 @@
       "role test-reviewer: $0.00 over 1 run(s), 1 of cost unknown; 0h00m30s",
       "day 2026-11-02: $0.00 over 2 run(s), 1 of cost unknown",
       "day 2026-11-03: $1.16 over 2 run(s)",
+      "burn: $1.16 per hour on 2026-11-03 ($1.16 known in 2 run(s) from 08:05 to 08:15 UTC, over 1.0 h)",
+      "projection: $19.47 by the end of 2026-11-03 UTC at that rate, as of 08:15 UTC; SPEND_BUDGET_DAY_USD no limit",
       "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"
     ],
     "roles": {
@@ -854,6 +1026,7 @@
         }
       ],
       "id": "0001",
+      "live": null,
       "map": {
         "docs_ticket": "0009",
         "sha": "m1"
@@ -1178,6 +1351,7 @@
         }
       ],
       "id": "0002",
+      "live": null,
       "map": null,
       "merge": null,
       "opened_at": "2026-11-02T08:00:00Z",
@@ -1526,6 +1700,14 @@
         }
       ],
       "id": "0003",
+      "live": {
+        "attempt": 3,
+        "budget": 2600000,
+        "line": "dev-worker, attempt 3: 2,210,000 of 2,600,000 tokens (85%) — near TOKEN_BUDGET, the run stops at 2,600,000",
+        "role": "dev-worker",
+        "tokens": 2210000,
+        "warn": true
+      },
       "map": null,
       "merge": null,
       "opened_at": "2026-11-03T08:00:00Z",
@@ -1872,6 +2054,7 @@
         }
       ],
       "id": "0004",
+      "live": null,
       "map": null,
       "merge": null,
       "opened_at": "2026-11-03T09:00:00Z",
@@ -2143,6 +2326,7 @@
         }
       ],
       "id": "0005",
+      "live": null,
       "map": null,
       "merge": null,
       "opened_at": "2026-11-04T07:00:00Z",
@@ -2355,6 +2539,7 @@
         }
       ],
       "id": "0007",
+      "live": null,
       "map": null,
       "merge": null,
       "opened_at": "2026-11-04T06:00:00Z",
@@ -2626,6 +2811,7 @@
         }
       ],
       "id": "0008",
+      "live": null,
       "map": null,
       "merge": null,
       "opened_at": "2026-11-04T05:00:00Z",
@@ -2855,6 +3041,7 @@
         }
       ],
       "id": "0009",
+      "live": null,
       "map": null,
       "merge": null,
       "opened_at": "2026-11-07T08:00:00Z",
@@ -3264,6 +3451,7 @@
         }
       ],
       "id": "0010",
+      "live": null,
       "map": null,
       "merge": {
         "head_sha": "h10b",

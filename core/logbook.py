@@ -12,7 +12,9 @@ what its last run used: the task's `mcp` and the review's `instructions`
 (docs/adr/0073 §10, the ticket's back), the spend per ticket, role and day
 and the delivery measures in the words `./go spend` and `./go dora` print
 (docs/adr/0083 and 0082, amendments of 2026-11-13), and each ticket's flow
-strip, its fourteen nodes from the request to 100% (docs/adr/0085). Every rule
+strip, its fourteen nodes from the request to 100% (docs/adr/0085), the role
+matrix (docs/adr/0086), the burn and the day's projection, and the dev-worker's
+attempt in flight from the budget hooks' count (docs/adr/0087). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -395,6 +397,7 @@ def tickets(rels, docs=None):
             "tasks": attempts(doc),
             "timeline": timeline(doc, tid, rels, perimeter(path)),
             "flow": flow(doc, tid, rels, perimeter(path)),
+            "live": live(doc, tid),
         })
     return out
 
@@ -409,8 +412,9 @@ def spend(held, docs):
         lim = ledger.limits()
     except ValueError as exc:
         lim = str(exc)
-    got.update(limits=unread(lim) if isinstance(lim, str) else lim, lines=ledger.lines(got, lim),
-               summary=ledger.summary(got))
+    b = ledger.burn(docs, lim)
+    got.update(limits=unread(lim) if isinstance(lim, str) else lim, lines=ledger.lines(got, lim, b),
+               summary=ledger.summary(got), burn=b)
     return got
 
 
@@ -747,6 +751,127 @@ def timeline(doc, tid, rels, globs):
     if end["verdict"] != "pending":
         rows.append(row("outcome", None, end["line"], f"outcome, judged by {end['judge']}", end["verdict"]))
     return rows
+
+
+# --- the roles and the run in flight (docs/adr/0086, docs/adr/0087 §4) -------
+
+# Provenance, decision: docs/adr/0087 §4, proposed there for the owner to
+# confirm: the warning comes at 80% of TOKEN_BUDGET. On M24's Gemini runs each
+# model call resent about 45,000 tokens (measurement, the phase D handoff):
+# the last 20% of 2,600,000 is about eleven calls before the stop.
+WARN_NUM, WARN_DEN = 4, 5
+
+
+def role_keys(role):
+    """(KEY=value pairs of ROLES_DIR/<role>/role.env, None) or (None, why)."""
+    path = f"{env('ROLES_DIR', 'roles')}/{role}/role.env"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return {m.group(1): m.group(2).strip() for m in (_KEY_LINE.match(l.strip()) for l in fh) if m}, None
+    except UnicodeDecodeError:
+        return None, f"{path} is not UTF-8"
+    except OSError as exc:
+        return None, f"{path}: {exc.strerror}"
+
+
+def whole(value):
+    return int(value) if isinstance(value, str) and value.isdigit() else None
+
+
+def live(doc, tid):
+    """The dev-worker's attempt in flight (docs/adr/0087 §4): the budget hooks'
+    count while crew.sh has emptied the run's directory and the harness has
+    not yet written run.json; None otherwise."""
+    state = doc.get("state")
+    history = [h for h in doc.get("history") or [] if isinstance(h, dict)]
+    if state not in ("opened", "ci-failed") or (history and history[-1].get("error")):
+        return None
+    out = os.path.join(env("CREW_DIR", ".crew"), tid, "out")
+    if os.path.exists(os.path.join(out, "run.json")):
+        return None
+    try:
+        with open(os.path.join(out, "tokens"), encoding="utf-8") as fh:
+            tokens = whole(fh.read().strip())
+    except (OSError, UnicodeDecodeError):
+        return None
+    if tokens is None:
+        return None
+    keys, _ = role_keys("dev-worker")
+    budget = whole((keys or {}).get("TOKEN_BUDGET"))
+    attempt = 1 if state == "opened" else (doc.get("attempt") or 1) + 1
+    warn = budget is not None and tokens * WARN_DEN >= budget * WARN_NUM
+    if budget is None:
+        line = f"dev-worker, attempt {attempt}: {tokens:,} tokens, no budget"
+    else:
+        line = f"dev-worker, attempt {attempt}: {tokens:,} of {budget:,} tokens ({tokens * 100 // budget}%)"
+        if warn:
+            line += f" — near TOKEN_BUDGET, the run stops at {budget:,}"
+    return {"role": "dev-worker", "attempt": attempt, "tokens": tokens, "budget": budget, "warn": warn, "line": line}
+
+
+def used_of(tokens):
+    """A run's tokens in the budget's unit: total, else input + output, else None."""
+    if not isinstance(tokens, dict):
+        return None
+    if isinstance(tokens.get("total"), int):
+        return tokens["total"]
+    tin, tout = tokens.get("input"), tokens.get("output")
+    return tin + tout if isinstance(tin, int) and isinstance(tout, int) else None
+
+
+def roles(docs, held):
+    """(rows, summary): one row per role of ROLES_DIR (docs/adr/0086 §1), what the
+    profile configures, its last run in the ledger and its run in flight."""
+    base = env("ROLES_DIR", "roles")
+    if not os.path.isdir(base):
+        return unread("no roles/ directory: the six roles are its subdirectories"), None
+    names = sorted(d for d in os.listdir(base) if os.path.isfile(os.path.join(base, d, "role.env")))
+    known = contract_network.TABLE["roles"]
+    order = [r for r in known if r in names] + [r for r in names if r not in known]
+    runs = [(str(e.get("at") or ""), tid, e) for tid, doc in sorted(docs.items()) for e in ledger.ledger(doc)]
+    flying = [(t["id"], t["live"]) for t in held if isinstance(t.get("live"), dict)] if isinstance(held, list) else []
+    rows = []
+    for role in order:
+        keys, error = role_keys(role)
+        configured = None if keys is None else {
+            "provider": env("MODEL_PROVIDER") or None, "model": env("MODEL") or None,
+            "harness": keys.get("HARNESS") or env("AGENT_HARNESS") or None, "thinking": keys.get("THINKING") or None}
+        budget = whole((keys or {}).get("TOKEN_BUDGET"))
+        mine = [x for x in runs if x[2].get("role") == role]
+        at, tid, e = max(mine, key=lambda x: (x[0], x[1])) if mine else (None, None, None)
+        last = None if e is None else {"ticket": tid, "step": e.get("step"), "attempt": e.get("attempt"), "at": e.get("at"),
+                                       "harness": e.get("harness"), "provider": e.get("provider"), "model": e.get("model"),
+                                       "replayed": e.get("replayed") is True, "tokens": e.get("tokens"),
+                                       "cost_usd": e.get("cost_usd"), "failed": e.get("failed")}
+        now_ = next(({"ticket": t, "tokens": lv["tokens"], "budget": lv["budget"], "warn": lv["warn"]}
+                     for t, lv in flying if lv.get("role") == role), None)
+        used = now_["tokens"] if now_ else used_of(last["tokens"]) if last else None
+        if now_:
+            state = "running"
+            line = (f"running on {now_['ticket']}: {used:,} of {budget:,} tokens" if budget is not None
+                    else f"running on {now_['ticket']}: {used:,} tokens, no budget")
+            line += " — near the budget" if now_["warn"] else ""
+        elif last:
+            state = "ran"
+            line = (f"last ran on {tid} ({last['step']}, attempt {last['attempt']}) at {last['at']}: "
+                    + (f"{used:,} tokens" if used is not None else "tokens unknown")
+                    + (f" of {budget:,}" if budget is not None else ", no budget")
+                    + (", replayed" if last["replayed"] else "") + (f", stopped: {last['failed']}" if last["failed"] else ""))
+        else:
+            state, line = "idle", "has not run in this record"
+        row = {"role": role, "configured": configured, "budget": budget, "last": last, "running": now_,
+               "used": used, "state": state, "line": line}
+        if error:
+            row["error"] = error
+        rows.append(row)
+    providers = sorted({r["configured"]["provider"] for r in rows if r["configured"] and r["configured"]["provider"]})
+    summary = (f"{len(rows)} roles on {len(providers)} provider{'s' if len(providers) > 1 else ''}: {', '.join(providers)}"
+               if providers else f"{len(rows)} roles on no provider: the profile replays recorded runs")
+    lasts = sorted({f"{r['last']['provider']}/{r['last']['model']}" for r in rows
+                    if r["last"] and r["last"]["provider"] and r["last"]["model"]})
+    if lasts:
+        summary += "; last runs on " + ", ".join(lasts)
+    return rows, summary
 
 
 # --- the flow strip (docs/adr/0085) ----------------------------------------
@@ -1147,6 +1272,7 @@ def main(argv):
     tests_of = map_tests() if items is not None else None
     for t in held if isinstance(held, list) else []:
         t["files"] = ticket_files(t, items, holds, tests_of)
+    matrix, matrix_summary = roles(docs, held)
     book = {
         "schema": SCHEMA,
         "source": source(),
@@ -1162,6 +1288,8 @@ def main(argv):
         "adrs": decisions,
         "spend": spend(held, docs),
         "dora": dora(rels, held),
+        "roles": matrix,
+        "roles_summary": matrix_summary,
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"
