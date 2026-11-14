@@ -350,7 +350,9 @@ fails.
 `./go dora` reads the logbook and prints DORA's four delivery measures
 over the last `WINDOW_DAYS` days (ADR 0082). `./go spend` adds up every
 run the tower priced into each ticket's ledger, per ticket, per role and
-per day, and names the budget (ADR 0083). Run after the demo:
+per day, the burn per hour of the last day that had a run and that
+day's projection to midnight UTC (ADR 0087), and names the budget (ADR
+0083). Run after the demo:
 
 <!-- source: local run on podman, commit 37ca51a, 2026-11-13, after ./go demo -->
 ```
@@ -360,9 +362,15 @@ per day, and names the budget (ADR 0083). Run after the demo:
 [dora] change fail rate: 100%: 2 of 2 decided release(s) rolled back, 0 pending
 [dora] recovery time: median 1 min from the failing stage's start to the rollback over 2 release(s), 0 unmeasured
 GO: dora — .crew/dora.json, 3 of 4 measured over 30 days
-[spend] ticket 0001: $0.00 over 1 run(s); agents 0h00m00s, elapsed 0h03m51s
+```
+
+<!-- source: local run on podman, commit a2800db, 2026-11-14, after ./go demo -->
+```
+[spend] ticket 0001: $0.00 over 1 run(s); agents 0h00m00s, elapsed 0h04m30s
 [spend] role dev-worker: $0.00 over 1 run(s); 0h00m00s
-[spend] day 2026-11-13: $0.00 over 1 run(s)
+[spend] day 2026-11-14: $0.00 over 1 run(s)
+[spend] burn: $0.00 per hour on 2026-11-14 ($0.00 known in 1 run(s) from 09:36 to 09:36 UTC, over 1.0 h)
+[spend] projection: $0.00 by the end of 2026-11-14 UTC at that rate, as of 09:36 UTC; SPEND_BUDGET_DAY_USD no limit
 [spend] budget: SPEND_BUDGET_TICKET_USD no limit, SPEND_BUDGET_DAY_USD no limit
 GO: spend — 1 tickets, 1 runs, $0.00 known, 0 of cost unknown
 ```
@@ -373,8 +381,12 @@ rolled back. The run was replayed at L0, so it cost nothing and its
 agents' time is not counted. Set `SPEND_BUDGET_TICKET_USD` or
 `SPEND_BUDGET_DAY_USD` in `policy/rework.env` and the tower launches no
 attempt past the limit: the ticket goes to `needs-human` with the
-budget's line. The console's Overview shows the same lines, read from
-the logbook. Its window ends at the record's last event, not at the
+budget's line. A run that stops on its own `TOKEN_BUDGET` is in the
+ledger too. The burn is counted over at least an hour and projected from
+the last run's time, not from the moment you look. The console's Overview
+shows the same lines, read from the logbook, beside who runs each role;
+every card shows its path from the request to 100%, and from L1 the
+attempt in flight against its token budget. Its window ends at the record's last event, not at the
 moment you look.
 
 ## 2. The short looks
