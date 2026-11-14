@@ -385,4 +385,38 @@ done
 
 [ "$bad" -eq 0 ] || nogo "$bad of $total guard runs disagree with their case; first: $first"
 
+# Gemini's token budget (docs/adr/0017 §8, amendment 2026-11-14). gemini-cli
+# 0.61.0-preview.0 fires AfterModel once per streamed chunk of a model call
+# (geminiChat's stream loop calls fireAfterModelEvent(request, chunk)), and
+# each chunk's usageMetadata.totalTokenCount is that call's running total; a
+# chunk may carry none. BeforeModel fires once before each call. So a call
+# counts once, at its largest total, and the next BeforeModel denies (exit 2,
+# OUT/stop = TOKEN_BUDGET) exactly when the calls so far reach TOKEN_BUDGET.
+# Found live on M24's Gemini leg: summing every chunk counted 2,638,713
+# tokens for a run whose own stats said 400,473, and stopped it.
+bdir=adapters/gemini-cli/hooks
+budget_out=$work/budget
+rm -rf "$budget_out" && mkdir -p "$budget_out"
+before() { CREW_OUT=$budget_out TOKEN_BUDGET=1000 sh "$bdir/budget-before.sh" </dev/null >/dev/null 2>"$budget_out/before.err"; }
+after() {
+  if [ "$1" = none ]; then printf '{"llm_response":{"candidates":[]}}\n'
+  else printf '{"llm_response":{"usageMetadata":{"promptTokenCount":1,"totalTokenCount":%s}}}\n' "$1"; fi \
+    | CREW_OUT=$budget_out TOKEN_BUDGET=1000 sh "$bdir/budget-after.sh" >/dev/null 2>&1 \
+    || nogo "$bdir/budget-after.sh exited non-zero; it never denies"
+}
+# Call 1: chunks 100, 300, none, 400 -> 400. Call 2: 450, 500 -> 900 in all.
+# Call 3: 150 -> 1050. Only the fourth call is denied.
+for c in 1 2 3; do
+  before || nogo "budget: call $c was denied at $(cat "$budget_out/tokens" 2>/dev/null || echo nothing) of TOKEN_BUDGET=1000; a call counts once, at its last running total, not once per streamed chunk"
+  case $c in
+    1) for t in 100 300 none 400; do after "$t"; done ;;
+    2) for t in 450 500; do after "$t"; done ;;
+    3) after 150 ;;
+  esac
+done
+rc=0; before || rc=$?
+[ "$rc" -eq 2 ] || nogo "budget: the fourth call, after 1050 of TOKEN_BUDGET=1000, was not denied (exit $rc, want 2)"
+[ "$(cat "$budget_out/stop" 2>/dev/null)" = TOKEN_BUDGET ] || nogo "budget: a denied call left no OUT/stop naming TOKEN_BUDGET"
+grep -q '1050' "$budget_out/before.err" || nogo "budget: the denial does not say 1050 tokens: $(cat "$budget_out/before.err")"
+
 go

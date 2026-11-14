@@ -65,6 +65,7 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/adoring-poitras-b31f86`: the podman harness-conformance port race, [handoffs/claude-adoring-poitras-b31f86.md](handoffs/claude-adoring-poitras-b31f86.md)
 - `claude/m17-network-edfb56`: M17's third slice, the agent network, ADR 0071, logbook 1.3, [handoffs/claude-m17-network-edfb56.md](handoffs/claude-m17-network-edfb56.md)
 - `claude/m24-phase-a-5dacb7`: M24 on tenacity, five tests-only tickets merged live, three fixes, [handoffs/claude-m24-phase-a-5dacb7.md](handoffs/claude-m24-phase-a-5dacb7.md)
+- `claude/m24-phase-d-gemini-1628f2`: M24 on Gemini, the ten tenacity tickets 7 of 10 merged, the gemini-cli budget hook fixed (it counted every streamed chunk), phase C's fixes merged with main, [handoffs/claude-m24-phase-d-gemini-1628f2.md](handoffs/claude-m24-phase-d-gemini-1628f2.md)
 - `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
 - `fix/mutation-shards`: the bootstrap, ADR 0074's judge and the mutants in shards, landed with the release as 0213078
 - Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) landed as 1387a74 for 0.5.0
