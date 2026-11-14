@@ -48,6 +48,18 @@ Security scanning (ADR 0072) landed as M43, not M42: main had given M42 to ADR 0
 
 The sprint of 2026-11-12 landed in three merges: streams B and C (a741bf0), stream A (8d36f9f) and the console's DORA and spend panels on logbook 1.5 (563ecbf), each with every workflow green on its landing branch. 0.5.0's three drafts were published to the Marketplace by the owner the same morning. The release commit bumps the same files as 0.5.0's; the tag waits for the owner's go.
 
+## Release 0.7.0, 2026-11-14
+
+Landed since 0.6.0, each with every workflow green on its landing branch:
+- M51 (b75dea8), with the otel advisory fix first;
+- M32 (b5f6357);
+- accessibility (58315f7) and the ADK bump (bdc1943);
+- M24 phase C and D on Gemini (59e93e0);
+- the sprint M52-M56 (3924ebf);
+- M57 (238bc0c) and its turn cap (faf3314).
+
+0.6.0's three drafts were published by the owner on 2026-11-13. The owner asked for 0.7.0 on 2026-11-14.
+
 ## Branches landed, one handoff each
 
 Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/context/handoffs/`; this file is the coordinator's: the state of the integration branch and one line per branch landed.

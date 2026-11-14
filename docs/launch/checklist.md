@@ -287,6 +287,23 @@ Overview panels for the last two. Named 0.6.0: it adds features.
   passkey, 2026-11-13): `lights-out`, `test-integrity` and `test-proof`
   each show 0.6.0 as Latest, and their three Marketplace pages list v0.6.0.
 
+### Release 0.7.0 (2026-11-14)
+
+Since 0.6.0: the gates' logic in Python (ADR 0084, M51), adapters outside
+the repository with GitLab and Jenkins (ADR 0058, M32), M24's fixes and
+its Gemini leg, the flow strip, the role matrix and the burn (ADRs
+0085-0087, M52-M54), the provider scoreboard and the frozen console
+(ADRs 0088, 0089, M55, M56), and the intake interview with a turn cap on
+every ADK role (ADR 0090, M57). Named 0.7.0: it adds features.
+
+- [x] **The release commit**: the wrapper, `pyproject.toml`, the three
+  plugin manifests and the landing page at 0.7.0, every usage pinned to
+  `@v0.7.0`, the prose in `docs/releases/v0.7.0.md`.
+- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
+- [ ] **Tag `v0.7.0`** on the release merge, every job green.
+- [ ] **The three drafts `v0.7.0` published to the Marketplace** (owner,
+  passkey).
+
 ### The Python package on PyPI (M35)
 
 The light tier, `lights-out-gates --light`, is a Python package built from
