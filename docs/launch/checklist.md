@@ -299,8 +299,11 @@ every ADK role (ADR 0090, M57). Named 0.7.0: it adds features.
 - [x] **The release commit**: the wrapper, `pyproject.toml`, the three
   plugin manifests and the landing page at 0.7.0, every usage pinned to
   `@v0.7.0`, the prose in `docs/releases/v0.7.0.md`.
-- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
-- [ ] **Tag `v0.7.0`** on the release merge, every job green.
+- [x] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`):
+  run 43651713236, every job green.
+- [x] **Tag `v0.7.0`** on main (6f134db, the release merge and the
+  jenkins job's fix), every job green: run 43652010467, PyPI 0.7.0, the
+  wiki rendered, three drafts.
 - [ ] **The three drafts `v0.7.0` published to the Marketplace** (owner,
   passkey).
 
