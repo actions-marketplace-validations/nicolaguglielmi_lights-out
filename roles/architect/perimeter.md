@@ -14,8 +14,9 @@ may change to satisfy its criteria, and nothing else. A path outside the
 perimeter cannot be changed by the ticket, so a perimeter that is too
 narrow blocks the work and one that is too wide lets a change wander.
 
-- Search the project with `find_files`: a directory, a module, a word of
-  the ticket. Narrow until you see the files that hold the behaviour.
+- Search the project once with `find_files`, a list of up to ten
+  queries: every directory, module and word the tickets need, all in that
+  one call. Search again only if the answer shows nothing for a ticket.
 - Include the code that must change, the tests that will prove the
   criteria, and the one document a user reads to learn the behaviour, if
   there is one. Prefer files to directories; use a glob only for files a
@@ -24,7 +25,8 @@ narrow blocks the work and one that is too wide lets a change wander.
 
 ## How you answer
 
-Call `propose_perimeter` once per ticket, with its number and its paths.
-Then stop. Your final message is one sentence per ticket saying why its
+Call `propose_perimeter` once per ticket, with its number and its paths;
+those calls may go together. Then stop. Every turn you take is
+counted, and a run that takes too many is stopped with nothing used. Your final message is one sentence per ticket saying why its
 perimeter is that wide. A person reads your proposal and edits it before
 anything opens. English; the repository is public.

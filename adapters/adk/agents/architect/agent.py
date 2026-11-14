@@ -15,26 +15,36 @@ from lights_out_adk.agent import build
 # Provenance, decision: docs/adr/0090 §3, enough paths for one query to
 # show a directory's files without filling the conversation with the map.
 FIND_MAX = 40
+# Provenance, decision: docs/adr/0090 amendment A4, ten queries of forty
+# paths answer at most 400 paths, about half the 786 files the map held at
+# 3924ebf, so one answer stays well under the map itself.
+QUERIES_MAX = 10
 KINDS = ("file", "test", "page", "adr")
 
 
-def find_files(query: str) -> dict:
-    """Search the project map for paths containing QUERY (case-insensitive):
-    files, tests, pages and ADRs, at most 40, sorted. Use a directory, a
-    module or a word of the ticket, then narrow it."""
+def find_files(queries: list[str]) -> dict:
+    """Search the project map once for every query you need, at most 10:
+    for each, the paths of files, tests, pages and ADRs that contain it
+    (case-insensitive), at most 40, sorted, and how many more matched.
+    Put every directory, module and word the tickets need in one call."""
     path = os.environ.get("INTAKE_MAP", "")
     if not path or not os.path.isfile(path):
-        return {"error": "no project map for this run", "paths": []}
+        return {"error": "no project map for this run", "results": []}
+    if not isinstance(queries, list) or not queries or len(queries) > QUERIES_MAX:
+        return {"error": f"give between 1 and {QUERIES_MAX} queries in one list", "results": []}
     db = sqlite3.connect(f"file:{quote(os.path.abspath(path))}?mode=ro", uri=True)
+    results = []
     try:
-        rows = db.execute(
-            "SELECT name FROM node WHERE kind IN (?, ?, ?, ?) AND instr(lower(name), lower(?)) > 0 ORDER BY name",
-            (*KINDS, query or ""),
-        ).fetchall()
+        for query in queries:
+            rows = db.execute(
+                "SELECT name FROM node WHERE kind IN (?, ?, ?, ?) AND instr(lower(name), lower(?)) > 0 ORDER BY name",
+                (*KINDS, str(query or "")),
+            ).fetchall()
+            paths = [r[0] for r in rows]
+            results.append({"query": query, "paths": paths[:FIND_MAX], "more": max(0, len(paths) - FIND_MAX)})
     finally:
         db.close()
-    paths = [r[0] for r in rows]
-    return {"paths": paths[:FIND_MAX], "more": max(0, len(paths) - FIND_MAX)}
+    return {"results": results}
 
 
 def propose_perimeter(ticket: int, paths: list[str]) -> dict:

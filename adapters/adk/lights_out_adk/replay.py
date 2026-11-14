@@ -30,6 +30,11 @@ class RecordingExhausted(RuntimeError):
     pass
 
 
+class RecordingOverCap(RuntimeError):
+    """A recording longer than its role's ADK_MAX_TURNS (docs/adr/0090,
+    amendment A2): refused whole, never replayed in part."""
+
+
 def canonical(text: str) -> str:
     """JSON inputs are compared by content, not by whitespace: a file and an
     eval case with the same document share one key."""
@@ -65,6 +70,8 @@ class ReplayLlm(BaseLlm):
     role: str
     fixtures_dir: str
     instruction_sha256: Optional[str] = None
+    # The role's ADK_MAX_TURNS: a longer recording is refused (amendment A2).
+    max_turns: Optional[int] = None
     # The last recording replayed: run.json reports its provider and model
     # under `recorded` (docs/adr/0040 §3).
     recorded: Optional[dict] = None
@@ -81,6 +88,12 @@ class ReplayLlm(BaseLlm):
                 f"(input starts: {input_text.strip()[:80]!r}); record them with {RECORD_COMMAND}"
             )
         recording = json.loads(path.read_text())
+        held = len(recording.get("responses", []))
+        if self.max_turns is not None and held > self.max_turns:
+            raise RecordingOverCap(
+                f"recording {key} of role {self.role} holds {held} turns, over its "
+                f"ADK_MAX_TURNS={self.max_turns}; re-record it"
+            )
         self.recorded = {"provider": recording.get("provider"), "model": recording.get("model")}
         recorded_under = recording.get("instruction_sha256")
         if (
