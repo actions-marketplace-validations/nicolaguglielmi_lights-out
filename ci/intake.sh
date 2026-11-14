@@ -11,10 +11,11 @@
 #   b. `core/tower.sh intake` writes the document at `intake` (INTAKE_BY and
 #      INTAKE_VIA default to unauthenticated and cli), one history entry,
 #      requests `interview`; a missing file or an existing document is refused.
-#   c. The fixture intake (fixtures/intake/request.md) at L0. With no
-#      recording of its interview, the `interview` step fails, the state
-#      stays `intake`, the failure names the missing recording, and `resume`
-#      requests `interview` again. With the recording, the whole flow:
+#   c. At L0, an intake nobody recorded (the fixture's words plus one line):
+#      the `interview` step fails, the state stays `intake`, the failure
+#      names the missing recording, and `resume` requests `interview` again.
+#      Then the fixture intake (fixtures/intake/request.md); with its
+#      recording, the whole flow:
 #      interview, every question answered, proposal, perimeter,
 #      confirmation, each confirmed ticket through the unchanged spec gate.
 #      stderr says which of the two was proved.
@@ -257,19 +258,25 @@ print(hashlib.sha256(text.strip().encode()).hexdigest())
 PY
 )
 recording="$repo/fixtures/adk/product/$key.json"
+
+# The refusal holds for any intake nobody recorded, whether or not the
+# fixture's own recording exists: the fixture's words with one more line.
+{ cat fixtures/intake/request.md; printf 'This line was never recorded.\n'; } > "$root/tickets/0401.intake.md"
+tower sh core/tower.sh intake 0401 || nogo "core/tower.sh intake failed on an unrecorded intake" "$(tail -n 5 "$tmp/tower.err")"
+tower sh core/tower.sh step 0401 interview || :
+want 0401 '.state == "intake"' "an intake with no recording left state intake: it is not stranded at intake"
+want 0401 '.history[-1].error | startswith("step exited 1: ")' \
+  "the failed interview is not recorded as 'step exited 1: <reason>'"
+want 0401 '.history[-1].error | test("no recording")' "the failure does not name the missing recording"
+want 0401 '[.proposal // [] | .[]] | length == 0' "an intake with no recording was proposed tickets"
+tower sh core/tower.sh resume 0401 || nogo "core/tower.sh resume failed on the stranded intake" "$(tail -n 5 "$tmp/tower.err")"
+[ "$(last_published)" = "$(step_of 0401 interview)" ] || nogo "resume published '$(last_published)', want interview"
+
 cp fixtures/intake/request.md "$root/tickets/0400.intake.md"
 tower sh core/tower.sh intake 0400 || nogo "core/tower.sh intake failed on the fixture intake" "$(tail -n 5 "$tmp/tower.err")"
 
 if [ ! -f "$recording" ]; then
-  tower sh core/tower.sh step 0400 interview || :
-  want 0400 '.state == "intake"' "an intake with no recording left state intake: it is not stranded at intake"
-  want 0400 '.history[-1].error | startswith("step exited 1: ")' \
-    "the failed interview is not recorded as 'step exited 1: <reason>'"
-  want 0400 '.history[-1].error | test("no recording")' "the failure does not name the missing recording"
-  want 0400 '[.proposal // [] | .[]] | length == 0' "an intake with no recording was proposed tickets"
-  tower sh core/tower.sh resume 0400 || nogo "core/tower.sh resume failed on the stranded intake" "$(tail -n 5 "$tmp/tower.err")"
-  [ "$(last_published)" = "$(step_of 0400 interview)" ] || nogo "resume published '$(last_published)', want interview"
-  printf 'intake: no recording of the fixture intake (%s): proved the L0 refusal (docs/adr/0090 §4)\n' "$key" >&2
+  printf 'intake: no recording of the fixture intake (%s): proved the L0 refusal only (docs/adr/0090 §4)\n' "$key" >&2
   go
 fi
 
