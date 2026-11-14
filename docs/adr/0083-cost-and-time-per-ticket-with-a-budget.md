@@ -2,6 +2,8 @@
 
 - Status: proposed (M50)
 - Date: 2026-11-12
+- Amended by: ADR 0087 (a failed attempt's run enters the ledger; `./go spend`
+  prints the burn and the day's projection before the budget line)
 
 ## Context
 

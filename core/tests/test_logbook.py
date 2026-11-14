@@ -1247,7 +1247,7 @@ class FlowInTheLogbook(unittest.TestCase):
         self.is_node(self.node(f, "ticket"), "GO", "opened directly: no request, no spec gate",
                      "2026-11-02T06:00:00Z", "2026-11-02T06:00:00Z", None)
         self.is_node(self.node(f, "perimeter"), "GO",
-                     "PR #10 opened, every file inside app/backend/notify/*, tests/test_notify.py",
+                     "PR #10 opened, every file inside " + ", ".join(logbook.perimeter(STUB / "tickets" / "0010.md")),
                      "2026-11-02T06:00:00Z", "2026-11-02T06:05:00Z", 300)
         for gate, line in zip(GATES, src["ci"]["lines"]):
             self.is_node(self.node(f, gate), "GO", line, None, None, src["ci"]["seconds"][gate])
