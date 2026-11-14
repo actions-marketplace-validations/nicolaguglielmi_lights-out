@@ -969,7 +969,7 @@ chk mapset "$am/map-1.sqlite" schema 1 >"$tmp/chk.out" || nogo "could not make a
 # A directory listing and a tree digest: the tools the runtime part judges
 # "the root is unchanged" and "the next id" with, each shown to see a change.
 tree_digest() { (cd "$1" && find . -path ./.git -prune -o -type f -exec sha256sum {} + | sort -k2 | sha256sum | cut -d' ' -f1); }
-next_id() { find "$1" -maxdepth 1 -name '[0-9][0-9][0-9][0-9].md' | awk -F/ '{ n = substr($NF, 1, 4) + 0; if (n > m) m = n } END { printf "%04d", m + 1 }'; }
+next_id() { find "$1" -maxdepth 1 \( -name '[0-9][0-9][0-9][0-9].md' -o -name '[0-9][0-9][0-9][0-9].intake.md' \) | awk -F/ '{ n = substr($NF, 1, 4) + 0; if (n > m) m = n } END { printf "%04d", m + 1 }'; }
 mkdir -p "$st/digest/sub" "$st/ids"
 printf 'a\n' > "$st/digest/a.txt"
 d1=$(tree_digest "$st/digest")

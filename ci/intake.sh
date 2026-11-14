@@ -86,12 +86,12 @@ refused() {
   what=$1
   shift
   before=$(bus_n)
-  files=$(ls "$root/$TD" | wc -l)
+  files=$(find "$root/$TD" -type f | wc -l)
   if tower "$@"; then
     nogo "$what was accepted"
   fi
   [ "$(bus_n)" -eq "$before" ] || nogo "$what was refused but published $(last_published)"
-  [ "$(ls "$root/$TD" | wc -l)" -eq "$files" ] || nogo "$what was refused but wrote a file"
+  [ "$(find "$root/$TD" -type f | wc -l)" -eq "$files" ] || nogo "$what was refused but wrote a file"
 }
 has_line() { awk -v l="$2" '$0 == l { f = 1 } END { exit !f }' "$1"; }
 step_of() { printf '{"ticket":"%s","step":"%s"}' "$1" "$2"; }
@@ -181,10 +181,12 @@ tower env DECISIONS='["confirm","drop",{"edit":{"perimeter":["app/x.py"]}}]' sh 
 t1="$root/$TD/0231.md"
 t2="$root/$TD/0232.md"
 [ "$(sed -n 1p "$t1")" = "# 0231 — Give a seat back" ] || nogo "ticket 0231 does not start with '# 0231 — <title>': $(sed -n 1p "$t1")"
+# shellcheck disable=SC2016 # backticks and $STEP_WHY are literal text here
 for l in '- Status: open' '- Intake: 0230' '- Feature: waitlist' '- Priority: P1' '## Problem' '## Acceptance criteria' '## Perimeter' '- `app/meetups.py`' "$gwt"; do
   has_line "$t1" "$l" || nogo "ticket 0231 has no line '$l'" "$(cat "$t1")"
 done
 [ "$(sed -n 1p "$t2")" = "# 0232 — Show who is coming" ] || nogo "ticket 0232 does not start with '# 0232 — <title>'"
+# shellcheck disable=SC2016 # backticks and $STEP_WHY are literal text here
 has_line "$t2" '- `app/x.py`' || nogo "the edit's perimeter is not in ticket 0232" "$(cat "$t2")"
 has_line "$t2" '- Intake: 0230' || nogo "ticket 0232 has no '- Intake: 0230'"
 awk '/^- (Feature|Priority):/ { f = 1 } END { exit f }' "$t2" || nogo "ticket 0232 has a Feature or Priority line it was not given"
@@ -209,14 +211,14 @@ want 0230 '.state == "confirmed"
 seed 0240 "$(proposed 0240 proposed)"
 printf '["drop","drop","drop"]\n' > "$tmp/decisions.json"
 before=$(bus_n)
-files=$(ls "$root/$TD" | wc -l)
+files=$(find "$root/$TD" -type f | wc -l)
 tower env DECISIONS="@$tmp/decisions.json" CONFIRM_BY=ci CONFIRM_VIA=console sh core/tower.sh intake-confirm 0240 \
   || nogo "intake-confirm failed with DECISIONS=@file" "$(tail -n 5 "$tmp/tower.err")"
 want 0240 '.state == "confirmed" and .confirmation.by == "ci" and .confirmation.via == "console" and (.tickets | length) == 0
   and ([.proposal[] | select(.decision == "drop" and .ticket == null)] | length) == 3' \
   "dropping every ticket is not a confirmation with no ticket, or CONFIRM_BY and CONFIRM_VIA are not recorded"
 [ "$(bus_n)" -eq "$before" ] || nogo "dropping every ticket published $(last_published)"
-[ "$(ls "$root/$TD" | wc -l)" -eq "$files" ] || nogo "dropping every ticket wrote a ticket"
+[ "$(find "$root/$TD" -type f | wc -l)" -eq "$files" ] || nogo "dropping every ticket wrote a ticket"
 
 # Refused: nothing written, nothing published.
 seed 0250 "$(proposed 0250 proposed)"
@@ -233,6 +235,7 @@ TD=tickets
 # --- f. a step may name its reason --------------------------------------------
 mkdir "$tmp/steps-f"
 printf '#!/bin/sh\nprintf "boom\\n" >&2\nexit 1\n' > "$tmp/steps-f/interview.sh"
+# shellcheck disable=SC2016 # backticks and $STEP_WHY are literal text here
 printf '#!/bin/sh\nprintf "because the stub says so\\n" > "$STEP_WHY"\nexit 1\n' > "$tmp/steps-f/interview-why.sh"
 printf 'A request.\n' > "$root/tickets/0260.intake.md"
 tower sh core/tower.sh intake 0260 || nogo "core/tower.sh intake failed on 0260"

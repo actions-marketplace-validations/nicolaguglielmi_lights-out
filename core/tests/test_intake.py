@@ -18,7 +18,7 @@ from core import intake, spec
 
 ROOT = Path(__file__).resolve().parents[2]
 LAST = "\n\nThat was the last question this interview allows: propose the tickets now."
-GWT = "Given a member with a seat, when they cancel it, then the seat count of the meetup goes up by one"
+GWT = "Given a member with a seat, when they cancel it, then the seat count of the event goes up by one"
 GWT2 = "Given a member without a seat, when they cancel it, then the response status is 404"
 REPLAY = {"AGENT_HARNESS": "replay"}
 
@@ -170,13 +170,13 @@ class Interview(RunDir):
             intake.interview(self.doc(5), self.run_dir([ask("Sixth?")]), 0, REPLAY)
 
     def test_proposed_tickets_after_the_last_question_are_the_proposal_in_order(self):
-        calls = [ask(), propose("First", "p1", [GWT, GWT2], "waitlist", "P1"), propose("Second", "p2", [GWT])]
+        calls = [ask(), propose("First", "p1", [GWT, GWT2], "waiting-list", "P1"), propose("Second", "p2", [GWT])]
         got = intake.interview(self.doc(1), self.run_dir(calls), 0, REPLAY)
         self.assertEqual(got["state"], "drafted")
         self.assertIs(got["product"]["consulted"], True)
         first, second = got["proposal"]
         self.assertEqual(first, {"n": 1, "title": "First", "problem": "p1", "criteria": [GWT, GWT2],
-                                 "feature": "waitlist", "priority": "P1"})
+                                 "feature": "waiting-list", "priority": "P1"})
         self.assertEqual(second, {"n": 2, "title": "Second", "problem": "p2", "criteria": [GWT],
                                   "feature": None, "priority": None})
 
@@ -244,27 +244,27 @@ class Perimeter(RunDir):
         return got, seen
 
     def test_each_ticket_gets_its_paths_and_its_check_line(self):
-        calls = [{"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["app/meetups.py"]}},
-                 {"name": "propose_perimeter", "args": {"ticket": 2, "paths": ["app/roster.py", "tests/test_roster.py"]}}]
+        calls = [{"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["src/a.py"]}},
+                 {"name": "propose_perimeter", "args": {"ticket": 2, "paths": ["src/roster.py", "tests/test_roster.py"]}}]
         got, seen = self.call(calls)
         self.assertEqual(got["state"], "proposed")
         self.assertIs(got["architect"]["consulted"], True)
         one, two = got["proposal"]
-        self.assertEqual(one["perimeter"], ["app/meetups.py"])
-        self.assertEqual(two["perimeter"], ["app/roster.py", "tests/test_roster.py"])
+        self.assertEqual(one["perimeter"], ["src/a.py"])
+        self.assertEqual(two["perimeter"], ["src/roster.py", "tests/test_roster.py"])
         self.assertEqual((one["check"], two["check"]), ("GO: spec", "GO: spec"))
         self.assertEqual((one["title"], two["feature"]), ("Cancel a seat", "roster"))
         self.assertEqual(len(seen), 2)
-        self.assertIn("app/meetups.py", seen[0])
+        self.assertIn("src/a.py", seen[0])
 
     def test_the_last_call_naming_a_ticket_wins(self):
-        calls = [{"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["app/old.py"]}},
-                 {"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["app/new.py"]}}]
+        calls = [{"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["src/old.py"]}},
+                 {"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["src/new.py"]}}]
         got, _ = self.call(calls)
-        self.assertEqual(got["proposal"][0]["perimeter"], ["app/new.py"])
+        self.assertEqual(got["proposal"][0]["perimeter"], ["src/new.py"])
 
     def test_a_ticket_no_call_names_has_an_empty_perimeter_and_the_gates_no_go(self):
-        calls = [{"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["app/meetups.py"]}}]
+        calls = [{"name": "propose_perimeter", "args": {"ticket": 1, "paths": ["src/a.py"]}}]
         got, _ = self.call(calls)
         two = got["proposal"][1]
         self.assertEqual(two["perimeter"], [])
@@ -288,8 +288,8 @@ class Compose(unittest.TestCase):
 
     def ticket(self, **over):
         t = {"n": 1, "title": "Cancel a seat", "problem": "People cannot give a seat back.",
-             "criteria": [GWT, GWT2], "feature": "waitlist", "priority": "P1",
-             "perimeter": ["app/meetups.py", "tests/test_meetups.py"]}
+             "criteria": [GWT, GWT2], "feature": "waiting-list", "priority": "P1",
+             "perimeter": ["src/a.py", "tests/test_a.py"]}
         t.update(over)
         return t
 
@@ -297,9 +297,9 @@ class Compose(unittest.TestCase):
         text = intake.compose(self.ticket(), "0106", "0105")
         lines = text.splitlines()
         self.assertEqual(lines[0], "# 0106 — Cancel a seat")
-        for line in ("- Status: open", "- Intake: 0105", "- Feature: waitlist", "- Priority: P1",
+        for line in ("- Status: open", "- Intake: 0105", "- Feature: waiting-list", "- Priority: P1",
                      "## Problem", "## Acceptance criteria", "## Perimeter",
-                     "- `app/meetups.py`", "- `tests/test_meetups.py`"):
+                     "- `src/a.py`", "- `tests/test_a.py`"):
             self.assertIn(line, lines)
         self.assertTrue(text.endswith("\n"))
         self.assertLess(lines.index("## Problem"), lines.index("## Acceptance criteria"))
@@ -315,7 +315,7 @@ class Compose(unittest.TestCase):
     def test_a_complete_ticket_passes_the_spec_gate(self):
         text = intake.compose(self.ticket(), "0106", "0105")
         self.assertIsNone(spec.check(text))
-        self.assertEqual(spec.fields(text), {"feature": "waitlist", "priority": "P1"})
+        self.assertEqual(spec.fields(text), {"feature": "waiting-list", "priority": "P1"})
 
     def test_an_empty_perimeter_is_the_gates_no_go(self):
         why = spec.check(intake.compose(self.ticket(perimeter=[]), "0106", "0105"))
@@ -334,10 +334,10 @@ class Decide(unittest.TestCase):
     def doc(self, state="proposed", n=3):
         return {"id": "0105", "kind": "intake", "state": state,
                 "proposal": [{"n": i + 1, "title": f"t{i + 1}", "problem": "p", "criteria": [GWT],
-                              "feature": None, "priority": None, "perimeter": ["app/x.py"]} for i in range(n)]}
+                              "feature": None, "priority": None, "perimeter": ["src/x.py"]} for i in range(n)]}
 
     def test_a_valid_list_is_accepted(self):
-        got = intake.decide(self.doc(), ["confirm", "drop", {"edit": {"perimeter": ["app/x.py"]}}])
+        got = intake.decide(self.doc(), ["confirm", "drop", {"edit": {"perimeter": ["src/x.py"]}}])
         self.assertEqual(len(got), 3)
 
     def test_every_replaceable_field_may_be_edited(self):
