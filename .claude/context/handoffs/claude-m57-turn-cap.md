@@ -63,7 +63,7 @@ Not retried; the partial recording is not committed.
    "propose now" (deterministic, cheap); (b) give the architect only the
    workload's tree (the map's paths under the workload directory), not
    lights-out's whole repository; (c) both. Either needs one more live
-   recording, ≈ $0.06 expected, ≤ $0.06 here measured per 10 turns.
+   recording: at most about $0.06 even if capped again (this attempt: $0.057 for ten turns).
 2. **The ADK ledger undercounts output.** `run.py`'s `_tokens` takes
    `candidates_token_count` as output and drops `thoughts_token_count`,
    which Gemini bills as output: this attempt's ledger entry says 443 output
