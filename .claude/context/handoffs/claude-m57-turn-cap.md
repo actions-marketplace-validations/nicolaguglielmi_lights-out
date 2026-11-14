@@ -18,7 +18,13 @@ Branch `claude/m57-turn-cap`, cut from `origin/claude/m57-intake-6ec974`
   `harness-adk: loop: TurnCapReached: ADK_MAX_TURNS=3 reached`, run.json
   `turns: 3`, tokens 30/6/36, `stop: "ADK_MAX_TURNS=3"`.
 - `./go ci` GO from a full clone (`.crew/cap`), 92a3464, 398 s.
-- GitHub Actions: RUNS_PENDING
+- **Final head 895233d** (main 238bc0c merged as first parent, tree equal to
+  6e3524a, whose `./go ci` from a full clone is GO in 347 s): ci 43624023412
+  (`GO: demo, milestone M9, 757s to rollback`), stranger 43624023454 (798 s),
+  self 43624023464, podman 43624023439, package 43624023451, all green; site
+  not triggered (no site path changed). Earlier: 92a3464's ci had
+  `NO-GO: demo — … 907s > 900s`, b0eb01a's self had test-proof NO-GO
+  (only a pure-arithmetic core test changed); both fixed, see below.
 
 ## What changed
 
