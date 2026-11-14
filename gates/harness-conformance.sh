@@ -781,7 +781,8 @@ for h in $selected; do
   prepare "$h" 6
   set_case "$(endless_steps)"
   run_case "$role_max_turns" 2500 "$role_timeout_s"
-  check_stop "over TOKEN_BUDGET (2500)" 3
+  # docs/adr/0087 §2: the stopped run leaves its run.json, with its harness, provider and tokens, for the spend ledger.
+  check_stop "over TOKEN_BUDGET (2500)" 3; jq -e --arg h "$h" '.harness == $h and (.provider | type) == "string" and (.tokens | type) == "object"' "$out/run.json" >/dev/null 2>&1 || fail "the over-budget run left no run.json with its harness, provider and tokens: the spend ledger cannot count what it spent"
 
   # ---- case 7: TIMEOUT_S -----------------------------------------------------
   prepare "$h" 7
