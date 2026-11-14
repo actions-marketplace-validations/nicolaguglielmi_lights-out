@@ -276,7 +276,9 @@ class Committed(unittest.TestCase):
 
     def test_anthropic(self):
         g = group(self.groups, "anthropic")
-        self.assertEqual((g["harness"], g["model"]), ("claude-code", "claude-sonnet-5-5"))
+        # The model id is the dataset's to name, not core/'s (docs/adr/0040 §5).
+        self.assertEqual(g["harness"], "claude-code")
+        self.assertTrue(g["model"])
         self.assertEqual((g["tickets"], g["merged"], g["first_attempt"], g["reworks"], g["budget_stops"]),
                          (10, 10, 8, 2, 0))
         self.assertEqual(list(g["nogos"]), ["mutation"])
@@ -284,7 +286,8 @@ class Committed(unittest.TestCase):
 
     def test_gemini(self):
         g = group(self.groups, "gemini")
-        self.assertEqual((g["harness"], g["model"]), ("gemini-cli", "gemini-3.8-flash"))
+        self.assertEqual(g["harness"], "gemini-cli")
+        self.assertTrue(g["model"])
         self.assertEqual((g["tickets"], g["merged"], g["first_attempt"], g["reworks"], g["budget_stops"]),
                          (10, 7, 7, 0, 3))
         self.assertEqual(sorted(r["ticket"] for r in self.rows if r["provider"] == "gemini" and r["stop"]),
