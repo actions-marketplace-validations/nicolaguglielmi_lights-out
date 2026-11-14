@@ -1,5 +1,7 @@
 """Tests for the cost and the budget, written from docs/adr/0083, never from
 the implementation: the ADR's price table, report fixture and budget cases.
+The burn, the day's projection and a failed attempt's run in the ledger are
+docs/adr/0087's (§1, §3), by hand from that ADR.
 """
 
 import contextlib
@@ -307,6 +309,154 @@ class Tower(unittest.TestCase):
         self.assertEqual(self.doc()["state"], "pr-opened")
 
 
+def day_docs(*runs):
+    """One ticket whose ledger holds RUNS: (at, usd or None)."""
+    ledger = [{"step": "assign", "attempt": 1, "role": "dev-worker", "harness": "h", "provider": "prov", "model": "model-a",
+               "replayed": False, "tokens": None, "duration_s": 60, "cost_usd": usd,
+               "cost_unknown": None if usd is not None else "no price", "at": at} for at, usd in runs]
+    return {"0301": {"id": "0301", "history": [], "spend": ledger}}
+
+
+class Burn(unittest.TestCase):
+    """docs/adr/0087 §3, by hand."""
+
+    NONE = {"SPEND_BUDGET_TICKET_USD": None, "SPEND_BUDGET_DAY_USD": None}
+    DAY = day_docs(("2026-11-14T09:00:00Z", 2.0), ("2026-11-14T10:30:00Z", 1.0), ("2026-11-14T12:00:00Z", 3.0),
+                   ("2026-11-13T23:00:00Z", 50.0))
+
+    def burn(self, docs=None, day=None):
+        return spend.burn(docs or self.DAY, dict(self.NONE, SPEND_BUDGET_DAY_USD=day))
+
+    def test_three_runs_over_three_hours(self):
+        b = self.burn()
+        self.assertEqual((b["day"], b["first"], b["end"], b["runs"], b["unknown"]),
+                         ("2026-11-14", "2026-11-14T09:00:00Z", "2026-11-14T12:00:00Z", 3, 0))
+        for key, want in (("spent_usd", 6.0), ("hours", 3.0), ("per_hour_usd", 2.0), ("left_h", 12.0), ("projected_usd", 30.0)):
+            self.assertAlmostEqual(b[key], want, places=6, msg=key)
+        self.assertEqual(len(b["hourly"]), 24)
+        self.assertEqual({i: v for i, v in enumerate(b["hourly"]) if v}, {9: 2.0, 10: 1.0, 12: 3.0})
+        self.assertEqual((b["limit_usd"], b["over"]), (None, None))
+
+    def test_the_day_limit_at_or_over(self):
+        self.assertIs(self.burn(day=30.0)["over"], True)
+        self.assertIs(self.burn(day=30.01)["over"], False)
+        self.assertEqual(self.burn(day=30.01)["limit_usd"], 30.01)
+
+    def test_the_day_before_never_counts(self):
+        self.assertAlmostEqual(self.burn()["spent_usd"], 6.0)
+
+    def test_an_unknown_run_is_counted_not_priced_and_named(self):
+        docs = day_docs(("2026-11-14T09:00:00Z", 2.0), ("2026-11-14T12:00:00Z", None))
+        b = self.burn(docs)
+        self.assertEqual((b["runs"], b["unknown"]), (2, 1))
+        self.assertAlmostEqual(b["spent_usd"], 2.0)
+        line = spend.burn_lines(b, self.NONE)[0]
+        self.assertTrue(line.endswith(", 1 of cost unknown)"), line)
+
+    def test_two_runs_ten_minutes_apart_are_counted_over_an_hour(self):
+        b = self.burn(day_docs(("2026-11-14T08:05:00Z", 0.825), ("2026-11-14T08:15:00Z", 0.3375)))
+        self.assertAlmostEqual(b["hours"], 1.0)
+        self.assertAlmostEqual(b["per_hour_usd"], 1.1625)
+        self.assertAlmostEqual(b["left_h"], 15.75)
+        self.assertAlmostEqual(b["projected_usd"], 19.471875)
+
+    def test_no_entry_is_no_burn(self):
+        self.assertIsNone(spend.burn({"0301": {"id": "0301", "history": [], "spend": []}}, self.NONE))
+        self.assertEqual(spend.burn_lines(None, self.NONE), ["burn: no runs in the ledger", "projection: none without a run"])
+
+    def test_the_two_lines(self):
+        self.assertEqual(spend.burn_lines(self.burn(day=25.0), dict(self.NONE, SPEND_BUDGET_DAY_USD=25.0)), [
+            "burn: $2.00 per hour on 2026-11-14 ($6.00 known in 3 run(s) from 09:00 to 12:00 UTC, over 3.0 h)",
+            "projection: $30.00 by the end of 2026-11-14 UTC at that rate, as of 12:00 UTC; SPEND_BUDGET_DAY_USD=$25.00: over"])
+        self.assertTrue(spend.burn_lines(self.burn(day=31.0), dict(self.NONE, SPEND_BUDGET_DAY_USD=31.0))[1].endswith(
+            "SPEND_BUDGET_DAY_USD=$31.00: under"))
+        self.assertTrue(spend.burn_lines(self.burn(), "a malformed limit")[1].endswith("; the day's limit cannot be read"))
+
+
+FAILING_STEP = """mkdir -p ".crew/$TICKET/out"
+printf '%s' '{run}' > ".crew/$TICKET/out/run.json"
+printf 'TOKEN_BUDGET\\n' > ".crew/$TICKET/out/stop"
+exit 1
+"""
+
+
+class FailedRun(unittest.TestCase):
+    """docs/adr/0087 §1: the run of an attempt whose step failed enters the ledger."""
+
+    setUp = Tower.setUp
+    tearDown = Tower.tearDown
+    tower = Tower.tower
+    put = Tower.put
+    doc = Tower.doc
+    policy = Tower.policy
+
+    RUN = {"harness": "fake-cli", "provider": "prov", "model": "model-a", "tokens": {"input": 1_000_000, "output": 0, "total": 1_000_000},
+           "duration_s": 600}
+
+    def failing(self, name, run=None):
+        (self.root / "steps" / f"{name}.sh").write_text(FAILING_STEP.replace("{run}", json.dumps(run or self.RUN)))
+
+    def test_a_failed_assign_records_attempt_1_with_its_stop(self):
+        self.policy()
+        self.put({"id": "0001", "state": "opened", "history": []})
+        self.failing("assign")
+        self.assertEqual(self.tower("step", "0001", "assign"), 1)
+        doc = self.doc()
+        self.assertEqual(doc["state"], "opened")
+        self.assertTrue(doc["history"][-1]["error"])
+        self.assertEqual(len(doc["spend"]), 1)
+        e = doc["spend"][0]
+        self.assertEqual((e["step"], e["attempt"], e["role"], e["failed"], e["cost_usd"]), ("assign", 1, "dev-worker", "TOKEN_BUDGET", 1.0))
+        self.assertEqual(e["tokens"], self.RUN["tokens"])
+
+    def test_a_failed_rework_records_the_attempt_that_ran(self):
+        self.policy()
+        self.put({"id": "0001", "state": "ci-failed", "attempt": 2, "history": []})
+        self.failing("rework")
+        self.tower("step", "0001", "rework")
+        e = self.doc()["spend"][-1]
+        self.assertEqual((e["step"], e["attempt"], e["failed"]), ("rework", 3, "TOKEN_BUDGET"))
+
+    def test_without_a_stop_marker_the_run_failed(self):
+        self.policy()
+        self.put({"id": "0001", "state": "opened", "history": []})
+        (self.root / "steps" / "assign.sh").write_text(FAILING_STEP.replace("{run}", json.dumps(self.RUN))
+                                                       .replace("printf 'TOKEN_BUDGET\\n' > \".crew/$TICKET/out/stop\"\n", ""))
+        self.tower("step", "0001", "assign")
+        self.assertEqual(self.doc()["spend"][0]["failed"], "the run failed")
+
+    def test_an_older_run_json_is_not_counted(self):
+        self.policy()
+        self.put({"id": "0001", "state": "opened", "history": []})
+        out = self.root / ".crew" / "0001" / "out"
+        out.mkdir(parents=True)
+        (out / "run.json").write_text(json.dumps(self.RUN))
+        old = datetime.now(timezone.utc).timestamp() - 3600
+        os.utime(out / "run.json", (old, old))
+        (self.root / "steps" / "assign.sh").write_text("exit 1\n")
+        self.tower("step", "0001", "assign")
+        self.assertFalse(self.doc().get("spend"))
+
+    def test_no_run_json_and_a_failing_ci_record_nothing(self):
+        self.policy()
+        self.put({"id": "0001", "state": "opened", "history": []})
+        (self.root / "steps" / "assign.sh").write_text("exit 1\n")
+        self.tower("step", "0001", "assign")
+        self.assertFalse(self.doc().get("spend"))
+        self.put({"id": "0002", "state": "pr-opened", "attempt": 1, "history": []})
+        self.failing("ci")
+        self.tower("step", "0002", "ci")
+        self.assertFalse(self.doc("0002").get("spend"))
+
+    def test_the_resumed_assign_is_refused_on_what_the_failed_run_spent(self):
+        self.policy(ticket="0.50")
+        self.put({"id": "0001", "state": "opened", "history": []})
+        self.failing("assign")
+        self.tower("step", "0001", "assign")
+        self.assertEqual(self.tower("step", "0001", "assign"), 1)
+        self.assertIn("SPEND_BUDGET_TICKET_USD", self.doc()["history"][-1]["error"])
+
+
 class ReworkStep(unittest.TestCase):
     """§4: core/steps/rework.sh with SPEND_STOP records the attempt and stops."""
 
@@ -357,8 +507,9 @@ class Lines(unittest.TestCase):
 
     NONE = {"SPEND_BUDGET_TICKET_USD": None, "SPEND_BUDGET_DAY_USD": None}
 
-    def test_the_report_lines_in_order_then_the_budget(self):
-        got = spend.lines(spend.report(DOCS), self.NONE)
+    def test_the_report_lines_in_order_then_the_burn_then_the_budget(self):
+        # docs/adr/0087 §3: the burn and the projection between the days and the budget.
+        got = spend.lines(spend.report(DOCS), self.NONE, spend.burn(DOCS, self.NONE))
         self.assertEqual(got, [
             "ticket 0201: $4.20 over 3 run(s); agents 0h09m20s, elapsed 25h00m00s",
             "ticket 0202: $0.00 over 2 run(s), 1 of cost unknown; agents 0h00m50s, elapsed 1h30m00s",
@@ -366,13 +517,16 @@ class Lines(unittest.TestCase):
             "role test-reviewer: $0.50 over 2 run(s); 0h01m00s",
             "day 2026-11-10: $3.00 over 2 run(s)",
             "day 2026-11-11: $1.20 over 3 run(s), 1 of cost unknown",
+            "burn: $0.39 per hour on 2026-11-11 ($1.20 known in 3 run(s) from 09:00 to 12:05 UTC, over 3.1 h, 1 of cost unknown)",
+            "projection: $5.84 by the end of 2026-11-11 UTC at that rate, as of 12:05 UTC; SPEND_BUDGET_DAY_USD no limit",
             "budget: SPEND_BUDGET_TICKET_USD no limit, SPEND_BUDGET_DAY_USD no limit",
         ])
 
     def test_a_ticket_limit_is_named_with_its_value(self):
         lim = dict(self.NONE, SPEND_BUDGET_TICKET_USD=1.0)
-        self.assertEqual(spend.lines(spend.report({}), lim),
-                         ["budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"])
+        self.assertEqual(spend.lines(spend.report({}), lim, None),
+                         ["burn: no runs in the ledger", "projection: none without a run",
+                          "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"])
 
     def test_a_malformed_limit_is_the_budget_line(self):
         try:
@@ -380,7 +534,7 @@ class Lines(unittest.TestCase):
         except ValueError as exc:
             why = str(exc)
         self.assertIn("SPEND_BUDGET_DAY_USD", why)
-        self.assertEqual(spend.lines(spend.report({}), why), [f"budget: {why}"])
+        self.assertEqual(spend.lines(spend.report({}), why, None)[-1], f"budget: {why}")
 
     def test_the_summary_is_the_stdout_detail(self):
         self.assertEqual(spend.summary(spend.report(DOCS)), "2 tickets, 5 runs, $4.20 known, 1 of cost unknown")

@@ -530,7 +530,9 @@ STUB = ROOT / "fixtures" / "logbook" / "stub"
 GET_SH = '#!/bin/sh\nset -eu\nd=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)\nf="$d/state/$1.$2.json"\n[ -f "$f" ] || exit 1\ncat "$f"\n'
 ENV = {"LEVEL": "l0", "WORKLOAD": "app", "CODE_HOST": "stub-host", "STATE_STORE": "stub-state", "DELIVERY": "stub-delivery",
        "TICKETS_DIR": "tickets", "RELEASE_RECORD": "release.json", "RELEASES_LOG": "releases.jsonl",
-       "PROMOTE_OUT": "promote", "POSTMORTEM_DIR": "postmortem", "WORKLOAD_CONTRACT": "contract"}
+       "PROMOTE_OUT": "promote", "POSTMORTEM_DIR": "postmortem", "WORKLOAD_CONTRACT": "contract",
+       # The profile's model, the test's own names (docs/adr/0086 §1): no model id of a vendor here.
+       "MODEL_PROVIDER": "prov", "MODEL": "model-a", "AGENT_HARNESS": "fake-cli"}
 
 
 class Reader(unittest.TestCase):
@@ -545,8 +547,10 @@ class Reader(unittest.TestCase):
             root = Path(tmp)
             (root / "adapters" / "stub-state").mkdir(parents=True)
             (root / "adapters" / "stub-state" / "get.sh").write_text(GET_SH)
-            for name in ("state", "tickets", "policy", "contract", "promote", "postmortem"):
+            for name in ("state", "tickets", "policy", "contract", "promote", "postmortem", "roles"):
                 shutil.copytree(STUB / name, root / name)
+            # The run in flight (docs/adr/0087 §4): the hooks' count where crew.sh leaves it.
+            shutil.copytree(STUB / "crew", root / ".crew")
             for name in ("release.json", "releases.jsonl"):
                 shutil.copy(STUB / name, root / name)
             os.symlink(ROOT / "core", root / "core")
@@ -587,9 +591,9 @@ class Reader(unittest.TestCase):
             Reader.book = self.read()
         return Reader.book
 
-    def test_the_schema_is_1_5(self):
-        # 1.5 adds dora and spend (docs/adr/0082, 0083, amendments of 2026-11-13); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.5")
+    def test_the_schema_is_1_6(self):
+        # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
 
     def test_ci_and_rework_carry_gates_and_not_the_raw_lines(self):
         t = self.ticket(self.base())
@@ -736,8 +740,8 @@ class WhyOfAnEntry(unittest.TestCase):
         base.update(more)
         return base
 
-    def test_the_schema_is_1_5(self):
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.5")
+    def test_the_schema_is_1_6(self):
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.6")
 
     def test_a_ci_that_failed_a_gate_after_secrets_said_go(self):
         self.assertEqual(logbook.why(self.entry(), 2, "gates"),
@@ -866,9 +870,9 @@ class WhyInTheLogbook(unittest.TestCase):
     def gate_rows(self, t):
         return [r for r in t["timeline"] if r["phase"] == "gate"]
 
-    def test_the_schema_is_1_5(self):
-        # 1.5 adds dora and spend (docs/adr/0082, 0083, amendments of 2026-11-13); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.5")
+    def test_the_schema_is_1_6(self):
+        # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
 
     def test_0003s_current_ci_why(self):
         t = self.ticket(self.base(), "0003")
@@ -1078,7 +1082,7 @@ class SpendInTheLogbook(unittest.TestCase):
         self.assertIn("role test-reviewer: $0.00 over 1 run(s), 1 of cost unknown; 0h00m30s", s["lines"])
         self.assertIn("day 2026-11-03: $1.16 over 2 run(s)", s["lines"])
         kinds = [line.split(" ")[0] for line in s["lines"]]
-        self.assertEqual(kinds, ["ticket"] * 9 + ["role"] * 2 + ["day"] * 2 + ["budget:"])
+        self.assertEqual(kinds, ["ticket"] * 9 + ["role"] * 2 + ["day"] * 2 + ["burn:", "projection:", "budget:"])
 
     def test_the_cap_is_the_stop_of_0007_with_its_1_4_line(self):
         t = self.ticket(self.base(), "0007")
@@ -1184,6 +1188,351 @@ class DoraInTheLogbook(unittest.TestCase):
         self.assertEqual(old["schema"], "lights-out/logbook/1.4")
         self.assertNotIn("dora", old)
         self.assertNotIn("spend", old)
+
+
+GATES = ("risk", "secrets", "test-weakening", "deps", "sast", "test", "mutation", "test-proof")
+FLOW = ["ticket", "perimeter"] + ["gate"] * 8 + ["pr", "canary", "human", "full"]
+NODE_KEYS = {"node", "gate", "verdict", "started_at", "ended_at", "seconds", "line"}
+
+
+class FlowInTheLogbook(unittest.TestCase):
+    """Logbook 1.6's `tickets[].flow`, over the stub sources, by hand from
+    docs/adr/0085 §1-§3: fourteen nodes in order, each with its verdict, its
+    times from the record, its seconds and its one-line reason."""
+
+    read = Reader.read
+    edit = Reader.edit
+    state = Reader.state
+    ticket = Reader.ticket
+    source = Reader.source
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if FlowInTheLogbook.book is None:
+            FlowInTheLogbook.book = self.read()
+        return FlowInTheLogbook.book
+
+    def flow(self, book, tid):
+        return self.ticket(book, tid)["flow"]
+
+    def node(self, flow, name):
+        return [n for n in flow if (n["gate"] if n["node"] == "gate" else n["node"]) == name][0]
+
+    def is_node(self, n, verdict, line=None, started=None, ended=None, seconds=None):
+        self.assertEqual((n["verdict"], n["line"], n["started_at"], n["ended_at"], n["seconds"]),
+                         (verdict, line, started, ended, seconds), n)
+
+    def test_the_schema_is_1_6(self):
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.6")
+
+    def test_every_ticket_has_fourteen_nodes_in_order_with_seven_keys(self):
+        for t in self.base()["tickets"]:
+            self.assertEqual([n["node"] for n in t["flow"]], FLOW, t["id"])
+            self.assertEqual([n["gate"] for n in t["flow"] if n["node"] == "gate"], list(GATES), t["id"])
+            for n in t["flow"]:
+                self.assertEqual(set(n), NODE_KEYS, (t["id"], n))
+                self.assertIn(n["verdict"], ("GO", "NO-GO", "running", "not-reached"), (t["id"], n))
+                if n["node"] != "gate" and n["seconds"] is not None:
+                    self.assertTrue(n["started_at"] and n["ended_at"], (t["id"], n))
+                if n["node"] != "gate":
+                    self.assertIsNone(n["gate"])
+
+    def test_0010_from_the_open_to_100_percent(self):
+        f = self.flow(self.base(), "0010")
+        src = self.source("0010")
+        self.is_node(self.node(f, "ticket"), "GO", "opened directly: no request, no spec gate",
+                     "2026-11-02T06:00:00Z", "2026-11-02T06:00:00Z", None)
+        self.is_node(self.node(f, "perimeter"), "GO",
+                     "PR #10 opened, every file inside " + ", ".join(logbook.perimeter(STUB / "tickets" / "0010.md")),
+                     "2026-11-02T06:00:00Z", "2026-11-02T06:05:00Z", 300)
+        for gate, line in zip(GATES, src["ci"]["lines"]):
+            self.is_node(self.node(f, gate), "GO", line, None, None, src["ci"]["seconds"][gate])
+        self.is_node(self.node(f, "pr"), "GO", "merged m10, approved by the test-reviewer",
+                     "2026-11-02T06:55:00Z", "2026-11-02T07:06:00Z", 660)
+        self.is_node(self.node(f, "canary"), "GO", "held at 25%: 2 stage(s) GO",
+                     "2026-11-02T07:08:00Z", "2026-11-02T07:30:00Z", 1320)
+        self.is_node(self.node(f, "human"), "GO", "promoted by bob via cli",
+                     "2026-11-02T07:30:00Z", "2026-11-02T07:45:00Z", 900)
+        self.is_node(self.node(f, "full"), "GO", "100% of the traffic on 0.2.5-n",
+                     "2026-11-02T07:45:00Z", "2026-11-02T07:45:00Z", None)
+
+    def without_answer(self, root):
+        path = root / "releases.jsonl"
+        lines = [l for l in path.read_text(encoding="utf-8").splitlines()
+                 if '"version": "0.2.5-n"' not in l or '"kind": "release"' in l]
+        path.write_text("\n".join(lines) + "\n")
+
+    def test_0010_held_with_no_answer_waits_for_you(self):
+        f = self.flow(self.read(self.without_answer), "0010")
+        self.is_node(self.node(f, "human"), "running", "waits for go-for-launch at 25%", "2026-11-02T07:30:00Z", None, None)
+        self.is_node(self.node(f, "full"), "not-reached")
+
+    def test_0010_rejected_by_a_person(self):
+        def rejected(root):
+            # The answer sits after its release line and before the next one, as promote writes it.
+            path = root / "releases.jsonl"
+            no = json.dumps({"kind": "answer", "at": "2026-11-02T07:50:00Z", "version": "0.2.5-n", "answer": "NO-GO",
+                             "by": "carol", "via": "console", "reason": "not this week"})
+            out = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if '"version": "0.2.5-n"' in line and '"kind": "answer"' in line:
+                    line = no
+                out.append(line)
+            path.write_text("\n".join(out) + "\n")
+        f = self.flow(self.read(rejected), "0010")
+        self.is_node(self.node(f, "human"), "NO-GO", "rejected by carol via console: not this week",
+                     "2026-11-02T07:30:00Z", "2026-11-02T07:50:00Z", 1200)
+        self.is_node(self.node(f, "full"), "not-reached", "rolled back by a person")
+
+    def test_0003_stops_at_test_and_the_rest_is_not_reached(self):
+        f = self.flow(self.base(), "0003")
+        src = self.source("0003")
+        for gate, line in zip(GATES[:5], src["ci"]["lines"]):
+            self.is_node(self.node(f, gate), "GO", line, None, None, src["ci"]["seconds"][gate])
+        self.is_node(self.node(f, "test"), "NO-GO", "NO-GO: test — 2 failed", None, None, 41)
+        for gate in ("mutation", "test-proof"):
+            self.is_node(self.node(f, gate), "not-reached", "not run: test said NO-GO first")
+        for name in ("pr", "canary", "human", "full"):
+            self.is_node(self.node(f, name), "not-reached")
+        self.is_node(self.node(f, "perimeter"), "GO", "PR #3 opened, every file inside README.md",
+                     "2026-11-03T08:00:00Z", "2026-11-03T08:05:00Z", 300)
+
+    def test_0009_the_spec_gate_said_no_go(self):
+        f = self.flow(self.base(), "0009")
+        self.is_node(self.node(f, "ticket"), "NO-GO", "NO-GO: spec — no ## Perimeter section",
+                     "2026-11-07T08:00:00Z", "2026-11-07T08:10:07Z", 607)
+        for n in f[1:]:
+            self.assertEqual(n["verdict"], "not-reached", n)
+
+    def test_a_question_of_the_product_role_is_running(self):
+        def asked(d):
+            d["history"] = d["history"][:2]
+            d["questions"] = d["questions"][:1]
+            d["questions"][0].pop("answer"), d["questions"][0].pop("answered_by"), d["questions"][0].pop("answered_at")
+        f = self.flow(self.read(self.edit("0009", asked)), "0009")
+        self.is_node(self.node(f, "ticket"), "running",
+                     "the product role asked: Is the first person on the list promoted when a seat frees up?; it waits for an answer",
+                     "2026-11-07T08:00:00Z", None, None)
+
+    def test_0005_assign_failed(self):
+        f = self.flow(self.base(), "0005")
+        self.assertEqual(self.node(f, "ticket")["verdict"], "GO")
+        self.is_node(self.node(f, "perimeter"), "NO-GO", "step exited 1", "2026-11-04T07:00:00Z", "2026-11-04T07:01:00Z", 60)
+        for n in f[2:]:
+            self.assertEqual(n["verdict"], "not-reached", n)
+
+    def test_0004_stranded_at_ci(self):
+        f = self.flow(self.base(), "0004")
+        self.is_node(self.node(f, "risk"), "NO-GO", "ci step failed: the gates did not run")
+        for n in f[3:]:
+            self.assertEqual(n["verdict"], "not-reached", n)
+
+    def test_0001_rolled_back_by_the_canary(self):
+        f = self.flow(self.base(), "0001")
+        self.assertEqual(self.node(f, "canary")["verdict"], "NO-GO")
+        self.assertEqual(self.node(f, "canary")["line"], "5%: error_rate 1.000")
+        self.is_node(self.node(f, "human"), "not-reached", "the canary rolled back before it")
+        self.is_node(self.node(f, "full"), "not-reached")
+
+    def test_0008_review_changes_requested(self):
+        f = self.flow(self.base(), "0008")
+        for gate in GATES:
+            self.is_node(self.node(f, gate), "GO", "GO: ci")
+        n = self.node(f, "pr")
+        self.assertEqual((n["verdict"], n["line"]), ("NO-GO", "first line"))
+
+    def test_gates_running_at_pr_opened_and_pr_running_at_review(self):
+        def opened(d):
+            d["state"], d["attempt"], d["ci"], d["rework"] = "pr-opened", 1, None, []
+            d["history"] = d["history"][:2]
+        f = self.flow(self.read(self.edit("0003", opened)), "0003")
+        for gate in GATES:
+            self.is_node(self.node(f, gate), "running", "the gates judge attempt 1; the step reports when all have run",
+                         "2026-11-03T08:05:00Z", None, None)
+
+        def review(d):
+            d["state"] = "review"
+            d["history"] = d["history"][:5]
+            d["review"], d["merge"], d["release"] = None, None, None
+        f = self.flow(self.read(self.edit("0010", review)), "0010")
+        self.is_node(self.node(f, "pr"), "running", "the test-reviewer reviews attempt 2 (risk low)",
+                     "2026-11-02T06:55:00Z", None, None)
+
+    def test_a_ci_with_seconds_is_kept_on_the_ticket_and_its_rework(self):
+        t = self.ticket(self.base(), "0010")
+        src = self.source("0010")
+        self.assertEqual(t["ci"]["seconds"], src["ci"]["seconds"])
+        self.assertEqual(t["rework"][0]["seconds"], src["rework"][0]["seconds"])
+
+
+ROLE_ORDER = ["architect", "dev-worker", "ops-triage", "product", "release", "test-reviewer"]
+
+
+class RolesInTheLogbook(unittest.TestCase):
+    """Logbook 1.6's `roles` and `roles_summary`, over the stub sources (its roles/
+    copies the committed role.env keys), by hand from docs/adr/0086 §1."""
+
+    read = Reader.read
+    ticket = Reader.ticket
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if RolesInTheLogbook.book is None:
+            RolesInTheLogbook.book = self.read()
+        return RolesInTheLogbook.book
+
+    def row(self, book, role):
+        return [r for r in book["roles"] if r["role"] == role][0]
+
+    def test_six_rows_in_the_network_tables_order(self):
+        self.assertEqual([r["role"] for r in self.base()["roles"]], ROLE_ORDER)
+
+    def test_configured_from_the_profile_and_role_env(self):
+        b = self.base()
+        self.assertEqual(self.row(b, "dev-worker")["configured"],
+                         {"provider": "prov", "model": "model-a", "harness": "fake-cli", "thinking": "high"})
+        self.assertEqual(self.row(b, "product")["configured"],
+                         {"provider": "prov", "model": "model-a", "harness": "adk", "thinking": "medium"})
+        self.assertEqual({r["role"]: r["configured"]["thinking"] for r in b["roles"]},
+                         {"architect": "high", "dev-worker": "high", "ops-triage": "low", "product": "medium", "release": "low",
+                          "test-reviewer": "high"})
+
+    def test_budgets(self):
+        self.assertEqual({r["role"]: r["budget"] for r in self.base()["roles"]},
+                         {"architect": 600000, "dev-worker": 2600000, "ops-triage": None, "product": None, "release": None,
+                          "test-reviewer": 1500000})
+
+    def test_the_dev_worker_runs_on_0003(self):
+        r = self.row(self.base(), "dev-worker")
+        # The stub ledger's own harness, provider and model: no model id is written in core/ (ci/model-free).
+        e = Reader.source(self, "0003")["spend"][1]
+        self.assertEqual(r["last"], {"ticket": "0003", "step": "rework", "attempt": 2, "at": "2026-11-03T08:15:00Z",
+                                     "harness": e["harness"], "provider": e["provider"], "model": e["model"], "replayed": False,
+                                     "tokens": {"input": 400000, "output": 10000, "total": 410000}, "cost_usd": 0.3375,
+                                     "failed": None})
+        self.assertEqual(r["running"], {"ticket": "0003", "tokens": 2210000, "budget": 2600000, "warn": True})
+        self.assertEqual((r["used"], r["state"]), (2210000, "running"))
+        self.assertEqual(r["line"], "running on 0003: 2,210,000 of 2,600,000 tokens — near the budget")
+
+    def test_without_the_run_in_flight_the_dev_worker_ran(self):
+        r = self.row(self.read(lambda root: shutil.rmtree(root / ".crew")), "dev-worker")
+        self.assertEqual((r["running"], r["used"], r["state"]), (None, 410000, "ran"))
+        self.assertEqual(r["line"], "last ran on 0003 (rework, attempt 2) at 2026-11-03T08:15:00Z: 410,000 tokens of 2,600,000")
+
+    def test_the_test_reviewer_ran_on_0010(self):
+        r = self.row(self.base(), "test-reviewer")
+        self.assertEqual((r["last"]["ticket"], r["last"]["step"], r["last"]["model"], r["last"]["cost_usd"]), ("0010", "review", "model-x", None))
+        self.assertEqual((r["used"], r["state"]), (30900, "ran"))
+        self.assertEqual(r["line"], "last ran on 0010 (review, attempt 1) at 2026-11-02T06:40:00Z: 30,900 tokens of 1,500,000")
+
+    def test_the_four_others_are_idle(self):
+        for role in ("architect", "ops-triage", "product", "release"):
+            r = self.row(self.base(), role)
+            self.assertEqual((r["last"], r["running"], r["used"], r["state"], r["line"]),
+                             (None, None, None, "idle", "has not run in this record"), role)
+
+    def test_the_summary(self):
+        e = Reader.source(self, "0003")["spend"][1]
+        self.assertEqual(self.base()["roles_summary"],
+                         f"6 roles on 1 provider: prov; last runs on {e['provider']}/{e['model']}, prov/model-x")
+
+    def test_at_l0_no_provider_and_no_model(self):
+        b = self.read(extra={"MODEL_PROVIDER": "", "MODEL": "", "AGENT_HARNESS": "replay"})
+        r = self.row(b, "dev-worker")
+        self.assertEqual(r["configured"], {"provider": None, "model": None, "harness": "replay", "thinking": "high"})
+        e = Reader.source(self, "0003")["spend"][1]
+        self.assertEqual(b["roles_summary"],
+                         f"6 roles on no provider: the profile replays recorded runs; last runs on {e['provider']}/{e['model']}, prov/model-x")
+
+    def test_no_roles_directory_is_an_error(self):
+        b = self.read(lambda root: shutil.rmtree(root / "roles"))
+        self.assertEqual(b["roles"], {"ok": False, "error": "no roles/ directory: the six roles are its subdirectories"})
+        self.assertIsNone(b["roles_summary"])
+
+    def test_an_unreadable_role_env_is_that_rows_error(self):
+        b = self.read(lambda root: (root / "roles" / "architect" / "role.env").write_bytes(b"THINKING=\xff\xfe\n"))
+        r = self.row(b, "architect")
+        self.assertEqual((r["configured"], r["budget"]), (None, None))
+        self.assertEqual(r["error"], "roles/architect/role.env is not UTF-8")
+        self.assertEqual(self.row(b, "dev-worker")["configured"]["thinking"], "high")
+
+
+class LiveAndBurnInTheLogbook(unittest.TestCase):
+    """Logbook 1.6's `tickets[].live` and `spend.burn`, over the stub sources (its
+    crew/0003/out/tokens holds 2,210,000), by hand from docs/adr/0087 §3-§4."""
+
+    read = Reader.read
+    edit = Reader.edit
+    state = Reader.state
+    ticket = Reader.ticket
+
+    @classmethod
+    def setUpClass(cls):
+        cls.book = None
+
+    def base(self):
+        if LiveAndBurnInTheLogbook.book is None:
+            LiveAndBurnInTheLogbook.book = self.read()
+        return LiveAndBurnInTheLogbook.book
+
+    def tokens(self, n):
+        return lambda root: (root / ".crew" / "0003" / "out" / "tokens").write_text(f"{n}\n")
+
+    def test_0003s_run_in_flight(self):
+        self.assertEqual(self.ticket(self.base(), "0003")["live"], {
+            "role": "dev-worker", "attempt": 3, "tokens": 2210000, "budget": 2600000, "warn": True,
+            "line": "dev-worker, attempt 3: 2,210,000 of 2,600,000 tokens (85%) — near TOKEN_BUDGET, the run stops at 2,600,000"})
+
+    def test_no_other_ticket_is_in_flight(self):
+        for t in self.base()["tickets"]:
+            if t["id"] != "0003":
+                self.assertIsNone(t["live"], t["id"])
+
+    def test_the_warning_starts_at_80_percent(self):
+        self.assertFalse(self.ticket(self.read(self.tokens(2079999)), "0003")["live"]["warn"])
+        live = self.ticket(self.read(self.tokens(2080000)), "0003")["live"]
+        self.assertTrue(live["warn"])
+        self.assertEqual(live["line"], "dev-worker, attempt 3: 2,080,000 of 2,600,000 tokens (80%) — near TOKEN_BUDGET, the run stops at 2,600,000")
+
+    def test_not_in_flight(self):
+        for what, mutate in (
+                ("a run.json beside it", lambda root: (root / ".crew" / "0003" / "out" / "run.json").write_text("{}")),
+                ("no tokens file", lambda root: (root / ".crew" / "0003" / "out" / "tokens").unlink()),
+                ("a count that is not a number", self.tokens("many")),
+                ("the ticket at review", self.edit("0003", lambda d: d.update(state="review"))),
+                ("an error last", self.edit("0003", lambda d: d["history"].append(
+                    {"step": "rework", "state": "ci-failed", "at": "2026-11-03T08:30:00Z", "error": "step exited 1"})))):
+            self.assertIsNone(self.ticket(self.read(mutate), "0003")["live"], what)
+
+    def test_no_budget(self):
+        def unbudgeted(root):
+            path = root / "roles" / "dev-worker" / "role.env"
+            path.write_text("".join(l for l in path.read_text(encoding="utf-8").splitlines(True) if not l.startswith("TOKEN_BUDGET=")))
+        live = self.ticket(self.read(unbudgeted), "0003")["live"]
+        self.assertEqual((live["budget"], live["warn"], live["line"]), (None, False, "dev-worker, attempt 3: 2,210,000 tokens, no budget"))
+
+    def test_the_burn_of_the_stubs_last_day(self):
+        b = self.base()["spend"]["burn"]
+        self.assertEqual((b["day"], b["first"], b["end"], b["runs"], b["unknown"]),
+                         ("2026-11-03", "2026-11-03T08:05:00Z", "2026-11-03T08:15:00Z", 2, 0))
+        for key, want in (("spent_usd", 1.1625), ("hours", 1.0), ("per_hour_usd", 1.1625), ("left_h", 15.75), ("projected_usd", 19.471875)):
+            self.assertAlmostEqual(b[key], want, places=6, msg=key)
+        self.assertEqual({i: v for i, v in enumerate(b["hourly"]) if v}, {8: 1.1625})
+        self.assertEqual((b["limit_usd"], b["over"]), (None, None))
+
+    def test_the_burn_lines_before_the_budget(self):
+        lines = self.base()["spend"]["lines"]
+        self.assertEqual(lines[-3:], [
+            "burn: $1.16 per hour on 2026-11-03 ($1.16 known in 2 run(s) from 08:05 to 08:15 UTC, over 1.0 h)",
+            "projection: $19.47 by the end of 2026-11-03 UTC at that rate, as of 08:15 UTC; SPEND_BUDGET_DAY_USD no limit",
+            "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"])
 
 
 if __name__ == "__main__":

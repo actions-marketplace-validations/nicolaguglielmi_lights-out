@@ -129,9 +129,10 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
 
 # ci.sast: on a sast NO-GO, the findings sast.json's `new` says this diff
 # introduces, as core/sastdiff.py wrote them; null for any other gate
-# (docs/adr/0078 §1).
+# (docs/adr/0078 §1). ci.seconds: each gate that ran and its whole seconds,
+# from the recipe's `seconds` file; null when no gate ran (docs/adr/0085 §4).
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
-  --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
+  --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" --argjson seconds "$( { [ -f "${gates_dir:-$tmp}/seconds" ] && jq -R 'split(" ") | {(.[0]): (.[1] | tonumber)}' < "${gates_dir:-$tmp}/seconds" | jq -cs 'add'; } || echo null)" \
   --argjson details "$details" --argjson sast "$( { [ "$failed" = sast ] && jq -c '[.new[]? | {rule, file, line}] | if length > 0 then . else null end' "$gates_dir/sast.json" 2>/dev/null; } || echo null)" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
   '{state: $state, ci: {verdict: $verdict, failed: (if $failed == "" then null else $failed end),
-    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, sast: $sast, lines: $lines}}'
+    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, sast: $sast, lines: $lines, seconds: $seconds}}'

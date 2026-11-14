@@ -284,10 +284,12 @@
         "GO: test — in the workbench",
         "NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%"
       ],
+      "seconds": {"risk": 1, "secrets": 4, "test-weakening": 1, "deps": 2, "sast": 7, "test": 37, "mutation": 198},
       "at": "2026-11-02T06:40:00Z"
     }
   ],
   "ci": {
+    "seconds": {"risk": 1, "secrets": 4, "test-weakening": 1, "deps": 2, "sast": 7, "test": 38, "mutation": 212, "test-proof": 55},
     "verdict": "GO",
     "failed": null,
     "risk_level": "low",

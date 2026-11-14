@@ -265,7 +265,8 @@ if [ "$rc" -ne 0 ]; then
   stop=$(cat "$OUT/stop" 2>/dev/null || true)
   case "$stop" in
     MAX_TURNS) reason="over MAX_TURNS ($MAX_TURNS)" ;;
-    TOKEN_BUDGET) reason="over TOKEN_BUDGET ($TOKEN_BUDGET)" ;;
+    # A budget stop still records what the run spent (docs/adr/0087 §2); `no-run-on-stop` does not.
+    TOKEN_BUDGET) reason="over TOKEN_BUDGET ($TOKEN_BUDGET)"; [ "$defect" = no-run-on-stop ] || jq -n --arg p "$MODEL_PROVIDER" --argjson d "$duration" '{harness: "fake-cli", provider: $p, model: null, tokens: {input: null, output: null, total: null}, duration_s: $d, exit_code: 1}' > "$OUT/run.json" ;;
     TIMEOUT_S) reason="over TIMEOUT_S ($TIMEOUT_S s)" ;;
     *) reason="fake-cli exited $rc: $(tail -n 1 "$OUT/stderr.log")" ;;
   esac
@@ -328,8 +329,7 @@ jq -n --arg harness fake-cli --arg provider "$MODEL_PROVIDER" --arg model "$serv
     tokens: {input: ($tokens * 9 / 10 | floor), output: ($tokens / 10 | floor), total: $tokens},
     duration_s: $duration, exit_code: 0, input_sha256: $insha, endpoint: $endpoint, mcp: $mcp}' > "$OUT/run.json"
 if [ "$defect" = no-endpoint ]; then
-  jq 'del(.endpoint)' "$OUT/run.json" > "$OUT/run.json.new"
-  mv "$OUT/run.json.new" "$OUT/run.json"
+  jq 'del(.endpoint)' "$OUT/run.json" > "$OUT/run.json.new" && mv "$OUT/run.json.new" "$OUT/run.json"
 fi
 exit 0
 RUN
@@ -929,6 +929,7 @@ prove "no hook at all" no-hook "fake-cli case 1: OUT/hooks.log"
 prove "ignores MAX_TURNS" no-turn-limit "fake-cli case 5:"
 prove "stops on TOKEN_BUDGET with its own words" wrong-stop-phrase "fake-cli case 5:"
 prove "never stops on TOKEN_BUDGET" no-token-limit "fake-cli case 6:"
+prove "leaves no run.json when it stops on TOKEN_BUDGET" no-run-on-stop "fake-cli case 6: the over-budget run left no run.json"
 prove "the key reaches a request body" key-in-body "fake-cli case 3:"
 
 # Confinement (docs/adr/0046). Case 1 meets what any case would: a request that did not come

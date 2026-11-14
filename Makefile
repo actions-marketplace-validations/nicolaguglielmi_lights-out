@@ -506,7 +506,9 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk,
 	failed=""; failreason=""; \
 	for g in $(GATES); do \
 		case "$$g" in secrets) script=ci/secrets.sh ;; *) script=gates/$$g.sh ;; esac; \
+		t0=$$(date +%s); \
 		out=$$(BASE="$$base" HEAD="$$head" JUDGED="$(JUDGED)" NOGO_DETAILS="$(GATES_OUT)/$$g.details" sh "$$script"); \
+		printf '%s %s\n' "$$g" "$$(( $$(date +%s) - t0 ))" >> "$(GATES_OUT)/seconds"; \
 		printf '%s\n' "$$out" >> "$(GATES_OUT)/lines"; \
 		case "$$out" in \
 			"GO: $$g"|"GO: $$g — "*) ;; \
