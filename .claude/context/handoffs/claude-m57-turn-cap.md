@@ -55,7 +55,48 @@ Not retried; the partial recording is not committed.
 | this attempt | 10 | 59,753 | 37,163 | 3,139 | **$0.057** | $0.032 |
 | first recording (M57) | 80 | 1,502,166 | 1,305,937 | 26,774 | $1.23 | $0.35 |
 
-## Findings, each a decision for the owner
+## Second round (owner: "Sì, tutto" for the fixes; "Yes, record once" for ≤ $0.10)
+
+- **Fixes** (ADR 0090 second amendment A6–A7, ADR 0083 amendment): the
+  architect searches the workload only (`INTAKE_SCOPE` from `git -C
+  $WORKLOAD rev-parse --show-prefix`, `app` here, empty for an attached
+  repository; no `WORKLOAD` → the step refuses naming it), at most two
+  searches (the third answers "propose now"); an ADK run's output counts its
+  thinking tokens.
+- **Tests first** (gate-writer, from the amendments). On 0073afa: 7 failures
+  and 1 error in the ADK suite (scope, budget, `_tokens`), `ci/intake.sh`
+  `NO-GO: intake — the perimeter step succeeded with WORKLOAD unset`. After:
+  ADK 77/77, `GO: intake`. Plus `core/tests/test_perimeter_step.py` (written
+  in session from A6, so `self`'s test-proof, which reads `core/tests/*.py`
+  only, has a changed core test that fails on the base: 2 failures on
+  529d561's step, OK after).
+- **The ledger moves up.** ADK costs shown in the console, the role matrix
+  and `./go spend` rise by each run's thinking tokens from the next live run
+  on: the measured run is $0.046 before, $0.057 after (`core/tests/
+  test_spend.py`, `test_run.Tokens`). Runs already in a ledger keep their
+  number.
+- **The re-recording succeeded at the first attempt** (b413d39), Gemini 3.8
+  Flash, the product's six turns replayed (fixture unchanged):
+
+  | turns | input | cached | output incl. thinking | list | cached rate |
+  |---|---|---|---|---|---|
+  | 4 (2 `find_files`, 2 `propose_perimeter` in one turn, the sentence) | 18,888 | 3,461 | 9,808 | **$0.051** | $0.049 |
+
+  Six `app/` paths per ticket (`app/README.md`, `app/backend/meetups/app.py`,
+  `app/backend/meetups/db.py`, `app/backend/tests/test_meetups.py`,
+  `app/frontend/src/App.tsx`, `app/frontend/src/api.ts`), both `GO: spec` as
+  drafts. The ledger's own entry: $0.050946 (thinking now counted). No key
+  or `AIza…` in the file.
+- **Total spent on the turn-cap branch:** $0.057 (stopped attempt) + $0.051
+  = **$0.108 at list price**.
+- **The demo's margin.** 92a3464's ci workflow: `NO-GO: demo — rollback
+  reached, but 907s > 900s budget`; the demo's ci stage had grown from 4m52s
+  (9fe74ff) to 7m52s (evals +38 s, core-tests +32 s, intake +26 s, logbook
+  +24 s on the runner). `test_run_cap` now runs each scenario once (nine ADK
+  subprocesses → five). b0eb01a: `GO: demo … 817s` (ci) and 805 s
+  (stranger). Under budget, with a margin of 83 s.
+
+## Findings, each a decision for the owner (first round, now done)
 
 1. **The batched search alone does not make the architect stop.** It
    searched ten times, each a list, and proposed nothing. Options:

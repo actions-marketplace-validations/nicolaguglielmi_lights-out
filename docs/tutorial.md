@@ -593,7 +593,7 @@ confirms, edits or drops each ticket with `./go intake-confirm`. No plane
 is needed. At L0 the interview replays the one recorded on the committed
 request about the meetup app (recorded on Gemini 3.8 Flash on 2026-11-14):
 
-<!-- source: local run on podman, commit 92a3464, 2026-11-14, a full clone of claude/m57-turn-cap, L0 -->
+<!-- source: local run on podman, commit b413d39, 2026-11-14, a full clone of claude/m57-turn-cap, L0 -->
 ```sh
 ./go intake TICKET=0030 INTAKE_FILE=fixtures/intake/request.md
 ./go answer TICKET=0030 ANSWER="A button on the meetup page; then they are no longer registered and one more seat is free."
@@ -613,15 +613,14 @@ clear, and the product role proposes two tickets, "Allow registered
 members to give back their meetup seat" and "Display attendee list to
 organisers while keeping attendee names private from other members",
 both `- Feature: rsvp-cancellation`, `- Priority: P1`. The architect role
-has no recording at L0 yet (its first one, 74 turns, was over the turn cap
-that followed it), so it is not consulted: each proposed ticket has no
-perimeter, and the spec gate says `NO-GO: spec — ## Perimeter declares no
-path` on both drafts. Under replay your answers' words are not compared
-with the recording: any answer replays the same proposal. Keep the first
-ticket with the perimeter you write, and drop the second:
+replays its recording: two searches of the app's files, then six paths for
+each ticket (the backend, its tests, the frontend and the app's README),
+and the spec gate says `GO: spec` on both drafts. Under replay your
+answers' words are not compared with the recording: any answer replays
+the same proposal. Keep the first ticket and drop the second:
 
 ```sh
-./go intake-confirm TICKET=0030 DECISIONS='[{"edit":{"perimeter":["app/backend/meetups/app.py","app/backend/tests/test_registrations.py"]}},"drop"]'
+./go intake-confirm TICKET=0030 DECISIONS='["confirm","drop"]'
 ```
 
 ```

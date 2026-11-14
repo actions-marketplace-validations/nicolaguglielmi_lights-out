@@ -1167,6 +1167,8 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 
 *Stato 2026-11-14 (branch `claude/m57-turn-cap`):* test scritti prima dal gate-writer, NO-GO su fa857be e GO dopo; `ADK_MAX_TURNS` nei quattro ruoli ADK, il run fermato nel registro (`STEP_RUN`), `find_files` con una lista; `./go ci` verde da un clone pieno (92a3464, 398 s). La nuova registrazione dell'architect, approvata dall'owner (≤ $0,77), si è fermata al tetto di 10 turni con dieci ricerche e nessuna proposta: $0,057 a listino, $0,032 al prezzo della cache, nel registro; non ripetuta. Restano due decisioni per l'owner, nell'handoff: un budget di ricerche nello strumento o la mappa del solo workload, e il registro ADK che non conta i token di thinking.
 
+*Stato 2026-11-14, seconda correzione (approvata dall'owner, "Sì, tutto"):* la mappa dell'architect è quella del solo workload (`INTAKE_SCOPE` da `WORKLOAD`), le ricerche sono al massimo due, e il registro ADK conta i token di thinking come output (ADR 0083, emendamento: $0,046 → $0,057 sul run misurato). Test prima, NO-GO su 0073afa e GO dopo. La nuova registrazione dell'architect, approvata dall'owner (≤ $0,10), è riuscita al primo tentativo: quattro turni, due ricerche, sei percorsi in `app/` per ticket, tutti e due `GO: spec` come bozze; 18.888 token in ingresso e 9.808 in uscita, $0,051 a listino.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
