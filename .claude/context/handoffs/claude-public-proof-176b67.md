@@ -109,8 +109,11 @@ The snapshot shots are of main's local demo (bdc1943).
 - The M24 Gemini findings that the scoreboard surfaces: the ledger misses budget-stopped runs, and it drops `cached`.
   Fixing either would let a logbook carry what only the dataset carries today.
 
-## self
+## Workflows on the branch head
 
-Still running on 4fd8340 at the time of writing. The branch then moved to e86cc22: the tutorial line and the merge of
-59e93e0, with main as the first parent. Its workflows were pushed after this file was first written. Read their verdicts
-on the branch before landing.
+- 4fd8340: ci 43578817482, site 43578817564, podman 43578817626, package 43578817520, stranger 43578817576 and self
+  43578817588, all success. In `self`, mutation and SAST judged the new `core/` code.
+- f95a995 (main 59e93e0 merged in, main as the first parent, plus this handoff): ci 43580516845, stranger 43580516851,
+  package 43580516870, podman 43580516878, self 43580516905 and site 43580554769 (dispatched, because the push changed
+  no site path), all success.
+- This file's last edit is docs-only, under `.claude/`.
