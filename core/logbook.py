@@ -2,7 +2,7 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.5` (core/logbook/1.5.schema.json) from the
+Assembles `lights-out/logbook/1.6` (core/logbook/1.6.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
@@ -11,7 +11,8 @@ contract gives the agents (core/agents.py, docs/adr/0073 §10), and per ticket
 what its last run used: the task's `mcp` and the review's `instructions`
 (docs/adr/0073 §10, the ticket's back), the spend per ticket, role and day
 and the delivery measures in the words `./go spend` and `./go dora` print
-(docs/adr/0083 and 0082, amendments of 2026-11-13). Every rule
+(docs/adr/0083 and 0082, amendments of 2026-11-13), and each ticket's flow
+strip, its fourteen nodes from the request to 100% (docs/adr/0085). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -44,6 +45,7 @@ try:
     from . import agents as contract_agents
     from . import dora as delivery
     from . import spend as ledger
+    from . import network as contract_network
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
@@ -52,8 +54,9 @@ except ImportError:  # run as a script: core/ is sys.path[0]
     import agents as contract_agents
     import dora as delivery
     import spend as ledger
+    import network as contract_network
 
-SCHEMA = "lights-out/logbook/1.5"
+SCHEMA = "lights-out/logbook/1.6"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -391,6 +394,7 @@ def tickets(rels, docs=None):
             "product": pick(doc.get("product"), TASK_KEYS[1:] + ("consulted", "why")),
             "tasks": attempts(doc),
             "timeline": timeline(doc, tid, rels, perimeter(path)),
+            "flow": flow(doc, tid, rels, perimeter(path)),
         })
     return out
 
@@ -440,7 +444,7 @@ def ci_entry(doc):
     """The ticket's ci, judged; its `why` only on a NO-GO, for the attempt
     the ticket is at (docs/adr/0078 §2)."""
     ci = pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha", "lines",
-                              "sast"))
+                              "sast", "seconds"))
     if ci is None:
         return None
     return judged(ci, doc.get("attempt"), ci.get("verdict") == "NO-GO")
@@ -743,6 +747,198 @@ def timeline(doc, tid, rels, globs):
     if end["verdict"] != "pending":
         rows.append(row("outcome", None, end["line"], f"outcome, judged by {end['judge']}", end["verdict"]))
     return rows
+
+
+# --- the flow strip (docs/adr/0085) ----------------------------------------
+
+# The step whose failure stops each node (§3), and the states at or after a
+# merge (the tower's table, docs/adr/0019 §1).
+STUCK_AT = {"clarify": "ticket", "answer": "ticket", "spec": "ticket", "assign": "perimeter", "rework": "perimeter",
+            "ci": "gate", "review": "pr", "merge": "pr", "mainline": "canary", "release": "canary"}
+MERGED = ("merged", "main-green", "held", "rolled-back")
+
+
+def seconds_between(start, end):
+    a, b = delivery.when(start), delivery.when(end)
+    return round((b - a).total_seconds()) if a and b else None
+
+
+def flow_node(node, verdict="not-reached", start=None, end=None, line=None, gate=None, seconds=None, timed=True):
+    """One node (§2): its seconds are end - start when both are there, unless
+    the rule says the record measured nothing (timed=False) or gives its own."""
+    if seconds is None and timed and node != "gate":
+        seconds = seconds_between(start, end)
+    return {"node": node, "gate": gate, "verdict": verdict, "started_at": start, "ended_at": end,
+            "seconds": seconds, "line": line}
+
+
+def flow(doc, tid, rels, globs):
+    """The fourteen nodes of a ticket's path (docs/adr/0085 §1-§3), each from
+    the record; the reader's clock is never read."""
+    history = [h for h in doc.get("history") or [] if isinstance(h, dict)]
+    state, attempt = doc.get("state"), doc.get("attempt")
+    last = history[-1] if history else {}
+    stuck = STUCK_AT.get(last.get("step")) if last.get("error") else None
+    ok = [h for h in history if not h.get("error")]
+
+    def first(pred):
+        return next((h for h in ok if pred(h)), None)
+
+    def latest(pred):
+        return next((h for h in reversed(ok) if pred(h)), None)
+
+    def at(h):
+        return h.get("at") if h else None
+
+    def failed(node, start, gate=None):
+        # A gate node's times are its own seconds, never the step's (§2).
+        return flow_node(node, "NO-GO", start, None if gate else last.get("at"), last.get("error"), gate=gate)
+
+    out = []
+    # ticket: the request and the spec gate.
+    opened = first(lambda h: h.get("step") == "open")
+    request = first(lambda h: h.get("step") == "request")
+    questions = [q for q in doc.get("questions") or [] if isinstance(q, dict)]
+    asked = questions[-1].get("question") if questions else None
+    if opened:
+        out.append(flow_node("ticket", "GO", at(opened), at(opened), "opened directly: no request, no spec gate", timed=False))
+    elif stuck == "ticket":
+        out.append(failed("ticket", at(request)))
+    else:
+        passed = latest(lambda h: h.get("step") == "spec" and h.get("state") == "opened")
+        spoke = latest(lambda h: h.get("step") in ("clarify", "answer", "spec"))
+        if passed:
+            line = (doc.get("spec") or {}).get("line") if isinstance(doc.get("spec"), dict) else None
+            out.append(flow_node("ticket", "GO", at(request), at(passed), line or "GO: spec"))
+        elif state == "questions" and spoke and spoke.get("step") == "spec":
+            out.append(flow_node("ticket", "NO-GO", at(request), at(spoke), f"NO-GO: spec — {asked}"))
+        elif state == "questions":
+            out.append(flow_node("ticket", "running", at(request), None,
+                                 f"the product role asked: {asked}; it waits for an answer"))
+        elif state in ("requested", "spec-ready"):
+            out.append(flow_node("ticket", "running", at(request), None, "the product role and the spec gate"))
+        else:
+            out.append(flow_node("ticket"))
+
+    # perimeter: assign, up to the PR.
+    into = first(lambda h: h.get("state") == "opened")
+    assigned = first(lambda h: h.get("step") == "assign")
+    ci = doc.get("ci") if isinstance(doc.get("ci"), dict) else None
+    pr = doc.get("pr") if isinstance(doc.get("pr"), dict) else {}
+    inside = ", ".join(globs) if isinstance(globs, list) and globs else "its perimeter"
+    if stuck == "perimeter":
+        out.append(failed("perimeter", at(into)))
+    elif ci and ci.get("failed") == "perimeter":
+        out.append(flow_node("perimeter", "NO-GO", at(into), None, ci.get("line")))
+    elif assigned:
+        opened_pr = f"PR #{pr['number']} opened" if pr.get("number") is not None else "the PR opened"
+        out.append(flow_node("perimeter", "GO", at(into), at(assigned), f"{opened_pr}, every file inside {inside}"))
+    elif state == "opened":
+        out.append(flow_node("perimeter", "running", at(into), None, "the dev-worker, attempt 1"))
+    else:
+        out.append(flow_node("perimeter"))
+
+    # the gates, in the Makefile's order.
+    gates = contract_network.TABLE["gates"]
+    secs = ci.get("seconds") if ci and isinstance(ci.get("seconds"), dict) else {}
+    rows = gate_rows(ci.get("lines")) if ci else None
+    if stuck == "gate":
+        out.append(failed("gate", None, gate=gates[0]))
+        out += [flow_node("gate", gate=g) for g in gates[1:]]
+    elif ci and ci.get("verdict") in ("GO", "NO-GO") and ci.get("failed") != "perimeter":
+        said = {r["gate"]: r for r in rows or [] if r.get("gate")}
+        stop = None
+        for g in gates:
+            if stop:
+                out.append(flow_node("gate", gate=g, line=f"not run: {stop} said NO-GO first"))
+            elif rows:
+                r = said.get(g)
+                out.append(flow_node("gate", r["verdict"], line=r["line"], gate=g, seconds=secs.get(g)) if r
+                           else flow_node("gate", gate=g))
+                stop = g if r and r["verdict"] == "NO-GO" else None
+            elif ci.get("verdict") == "GO":
+                out.append(flow_node("gate", "GO", line=ci.get("line"), gate=g))
+            elif ci.get("failed") == g:
+                out.append(flow_node("gate", "NO-GO", line=ci.get("line"), gate=g))
+                stop = g
+            elif ci.get("failed") in gates:
+                out.append(flow_node("gate", "GO", gate=g))
+            else:
+                out.append(flow_node("gate", gate=g))
+    elif state == "pr-opened":
+        began = latest(lambda h: h.get("state") == "pr-opened")
+        line = f"the gates judge attempt {attempt or 1}; the step reports when all have run"
+        out += [flow_node("gate", "running", at(began), None, line, gate=g) for g in gates]
+    else:
+        out += [flow_node("gate", gate=g) for g in gates]
+
+    # pr: the review when the risk asks for one, then the merge.
+    passed = [h for h in ok if h.get("step") == "ci" and h.get("state") in ("review", "ci-passed")]
+    began = at(([h for h in passed if h.get("attempt") == attempt] or passed or [None])[-1])
+    review = doc.get("review") if isinstance(doc.get("review"), dict) else {}
+    level = ci.get("risk_level") if ci else None
+    if stuck == "pr":
+        out.append(failed("pr", began))
+    elif state in MERGED:
+        merged = latest(lambda h: h.get("step") == "merge")
+        sha = (doc.get("merge") or {}).get("sha") if isinstance(doc.get("merge"), dict) else None
+        how = (f", approved by the {review.get('role')}" if review.get("verdict") == "approved"
+               else f", no review: risk {level}" if level else "")
+        out.append(flow_node("pr", "GO", began, at(merged), f"merged {sha[:7]}{how}" if sha else f"merged{how}"))
+    elif review.get("verdict") == "changes-requested":
+        judged = latest(lambda h: h.get("step") == "review")
+        reason = review.get("reason") or ""
+        out.append(flow_node("pr", "NO-GO", began, at(judged), reason.splitlines()[0] if reason else "changes requested"))
+    elif state == "review":
+        out.append(flow_node("pr", "running", began, None,
+                             f"the {review.get('role') or 'test-reviewer'} reviews attempt {attempt} (risk {level})"))
+    elif state == "ci-passed":
+        out.append(flow_node("pr", "running", began, None, f"the merge (risk {level}, {ci.get('decision') if ci else None})"))
+    else:
+        out.append(flow_node("pr"))
+
+    # canary, human, full: the ticket's release in the release log.
+    rel = doc.get("release") if isinstance(doc.get("release"), dict) else {}
+    mine = [r for r in rels if r["ticket"] == tid and r["version"] == rel.get("version")] if isinstance(rels, list) else []
+    mine = mine[-1] if mine else {}
+    stages = [s for s in mine.get("stages") or [] if isinstance(s, dict)]
+    green = first(lambda h: h.get("state") == "main-green")
+    released = latest(lambda h: h.get("step") == "release")
+    start = (stages[0].get("started_at") if stages else None) or at(green)
+    end = (stages[-1].get("judged_at") if stages else None) or at(released)
+    if stuck == "canary":
+        out.append(failed("canary", start))
+    elif state == "held":
+        out.append(flow_node("canary", "GO", start, end, f"held at {mine.get('held_at')}%: {len(stages)} stage(s) GO"))
+    elif state == "rolled-back":
+        why = mine.get("reason") or (stages[-1].get("verdict") if stages else None) or rel.get("verdict")
+        out.append(flow_node("canary", "NO-GO", start, end, why))
+    elif state == "main-green":
+        out.append(flow_node("canary", "running", start, None, "the release step: deploy, then the stages"))
+    else:
+        out.append(flow_node("canary"))
+    answer = mine.get("answer") if isinstance(mine.get("answer"), dict) else None
+    held = latest(lambda h: h.get("step") == "release" and h.get("state") == "held")
+    if state == "held" and answer:
+        said = "promoted" if answer.get("answer") == "GO" else "rejected"
+        why = f": {answer['reason']}" if answer.get("reason") else ""
+        out.append(flow_node("human", "GO" if said == "promoted" else "NO-GO", at(held), answer.get("at"),
+                             f"{said} by {answer.get('by')} via {answer.get('via')}{why}"))
+        out.append(flow_node("full", "GO", answer.get("at"), answer.get("at"), f"100% of the traffic on {mine.get('version')}",
+                             timed=False) if said == "promoted" else flow_node("full", line="rolled back by a person"))
+    elif state == "held":
+        out.append(flow_node("human", "running", at(held), None, f"waits for go-for-launch at {mine.get('held_at')}%"))
+        out.append(flow_node("full"))
+    elif state == "rolled-back":
+        out += [flow_node("human", line="the canary rolled back before it"), flow_node("full")]
+    else:
+        out += [flow_node("human"), flow_node("full")]
+
+    # A failed step: every node after the one it stopped is not reached.
+    if stuck:
+        at_ = next(i for i, n in enumerate(out) if n["node"] == stuck)
+        out = out[:at_ + 1] + [flow_node(n["node"], gate=n["gate"]) for n in out[at_ + 1:]]
+    return out
 
 
 # --- thresholds -----------------------------------------------------------
