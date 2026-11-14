@@ -1087,6 +1087,37 @@ Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, da
 
 *Stato 2026-11-13 (sessione M51, branch `claude/m51-python-gates-7e292c`):* ADR 0084 scritta; dieci gate in `core/gates/` dietro `verdict`, la coppia harness nella lista del debito (693 e 738). Shell in `gates/` da 4.074 a 2.489 righe (codice da 2.670 a 1.539; gli undici wrapper toccati da 1.210 a 87). 103 test unitari nuovi. `./go ci` verde da clone pieno; i cinque workflow verdi su e0e6db3, con le suite codehost, statestore, eventbus, delivery e harness girate davvero in Actions. Demo in Actions 856 e 841 s contro 696–826 s di main sullo stesso tipo di runner: l'unica differenza costante sono i test nuovi (+4–6 s); in locale 1.235 s su una VM appena ripresa da un blocco, non ripetibile con il piano occupato da un'altra sessione.
 
+### Sprint 2026-11-14 — Il flusso a colpo d'occhio (M52–M56)
+
+*Aggiunto 2026-11-14, decisione dell'owner.* L'owner ha guardato la dashboard di Hive Commons (CNCF Sandbox) e gli è piaciuto come mostra il flusso: prendiamo il modo di mostrare, non il modello (niente scala di autonomia, niente auto-merge al 100%, niente orchestrazione di flotte). Due filoni con file disgiunti: A, la console (M52–M54, ADR 0085–0087); B, la prova pubblica (M55–M56, ADR 0088–0089: `site/index.html`, il pacchetto di evidenze, un tabellone pubblico e una fotografia statica della console). Valgono le regole dello sprint del 2026-11-12: test dall'ADR prima del codice, `./go demo` invariato a L0 senza chiave, nessuna chiamata a modelli dal vivo, `./go ci` verde da un clone sotto `.crew/`, il coordinatore fa il merge.
+
+#### M52 — La striscia del flusso (ADR 0085; filone A, prima fetta)
+
+Ogni ticket ha la sua strada in una riga: ticket → perimetro → gli otto gate nell'ordine della tower → PR → canary → gate umano → 100%. Oggi la strada è sparsa fra le righe della timeline e i chip della card.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - Il logbook 1.6 porta `tickets[].flow`: quattordici nodi in quell'ordine, ognuno con il verdetto (GO, NO-GO, running, not-reached), l'inizio e la fine dal record, i secondi e la riga del perché; le regole nodo per nodo sono quelle di ADR 0085 §3, scritte a mano nei test sullo stub prima del codice. La pagina disegna i nodi del logbook e non calcola nessun verdetto.
+  - Il tempo di ogni gate: la ricetta `gates` scrive `seconds`, `core/steps/ci.sh` lo registra in `ci.seconds`, `rework.sh` lo copia nel tentativo; `ci/tower.sh` lo prova sul passo vero.
+  - La striscia sulla card (compatta, il perché nel `title`, un `aria-label` che legge ogni nodo), sul retro e sulla timeline (ogni nodo raggiungibile con Tab, il perché al passaggio e al focus, un NO-GO di gate che apre il pannello del perché di ADR 0078). WCAG AA nei due temi, misurato da `ci/console-ui.py`.
+  - Golden 1.6 dal lettore sullo stub, controllato a mano in `ci/logbook.sh`; 1.5 resta come vecchia fixture.
+
+#### M53 — La matrice dei ruoli (ADR 0086; filone A, seconda fetta)
+
+La neutralità rispetto al fornitore non si vede da nessuna parte: M24 ha girato gli stessi dieci ticket su Anthropic e su Gemini, e la console non lo distingue.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - Il logbook 1.6 porta `roles`: una riga per ruolo di `roles/` (sei), con fornitore, modello e harness configurati (dal profilo e da `role.env`), il livello di thinking, `TOKEN_BUDGET`, l'ultimo run del ruolo dal ledger, i token usati sul ticket in corso o sull'ultimo, lo stato e una riga di testo; `roles_summary` conta i fornitori.
+  - Un pannello nella Overview, `section#roles`, dopo "Waiting for you", con un `meter` dove ci sono i due numeri. Nessun id di modello in `core/`, `gates/`, `verify/`, `roles/`: i valori vengono dal profilo e dal logbook.
+
+#### M54 — Il ritmo della spesa e la proiezione (ADR 0087; filone A, terza fetta)
+
+M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva vederlo arrivare; i cinque run fermati dal budget non sono nel ledger, e il budget di M50 non li conta.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - Un tentativo fallito entra nel ledger: la tower, se il passo `assign` o `rework` esce in errore, legge il `run.json` scritto durante il passo e lo aggiunge con `failed` (il marcatore del budget); gemini-cli e antigravity-cli scrivono `run.json` prima di uscire su `TOKEN_BUDGET`, come claude-code e codex; il caso 6 di `harness-conformance` lo controlla.
+  - `./go spend` e il pannello della spesa: la spesa per ora del giorno dell'ultimo run (almeno un'ora di base), la proiezione a mezzanotte UTC contro `SPEND_BUDGET_DAY_USD`, una sparkline delle 24 ore; nessun orologio nel logbook, la proiezione dice da quando proietta.
+  - Il ticket in corso: i token del run in volo (il contatore degli hook) contro `TOKEN_BUDGET`, con un avviso dall'80% (decisione proposta nell'ADR, con la misura di M24), sulla card, sul retro, nel pannello e nella matrice.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
