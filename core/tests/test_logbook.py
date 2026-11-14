@@ -591,9 +591,9 @@ class Reader(unittest.TestCase):
             Reader.book = self.read()
         return Reader.book
 
-    def test_the_schema_is_1_6(self):
+    def test_the_schema_is_1_7(self):
         # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.7")
 
     def test_ci_and_rework_carry_gates_and_not_the_raw_lines(self):
         t = self.ticket(self.base())
@@ -740,8 +740,8 @@ class WhyOfAnEntry(unittest.TestCase):
         base.update(more)
         return base
 
-    def test_the_schema_is_1_6(self):
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.6")
+    def test_the_schema_is_1_7(self):
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.7")
 
     def test_a_ci_that_failed_a_gate_after_secrets_said_go(self):
         self.assertEqual(logbook.why(self.entry(), 2, "gates"),
@@ -870,9 +870,9 @@ class WhyInTheLogbook(unittest.TestCase):
     def gate_rows(self, t):
         return [r for r in t["timeline"] if r["phase"] == "gate"]
 
-    def test_the_schema_is_1_6(self):
+    def test_the_schema_is_1_7(self):
         # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.7")
 
     def test_0003s_current_ci_why(self):
         t = self.ticket(self.base(), "0003")
@@ -1225,9 +1225,9 @@ class FlowInTheLogbook(unittest.TestCase):
         self.assertEqual((n["verdict"], n["line"], n["started_at"], n["ended_at"], n["seconds"]),
                          (verdict, line, started, ended, seconds), n)
 
-    def test_the_schema_is_1_6(self):
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.6")
+    def test_the_schema_is_1_7(self):
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.7")
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.7")
 
     def test_every_ticket_has_fourteen_nodes_in_order_with_seven_keys(self):
         for t in self.base()["tickets"]:
@@ -1537,3 +1537,36 @@ class LiveAndBurnInTheLogbook(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IntakesInTheLogbook(unittest.TestCase):
+    """docs/adr/0090 §7: the intakes, read from TICKETS_DIR/*.intake.md and the
+    tower's documents; never a ticket, never a card. The reader is run as Reader runs it."""
+
+    read, state, edit = Reader.read, Reader.state, Reader.edit
+
+    def test_a_failed_last_step_is_stranded_with_its_reason(self):
+        def strand(doc):
+            doc["state"] = "intake"
+            doc["history"] = doc["history"][:1] + [{"step": "interview", "state": "intake", "at": "t",
+                                                    "error": "step exited 1: no recording"}]
+        got = self.read(self.edit("0013", strand))
+        i = next(x for x in got["intakes"] if x["id"] == "0013")
+        self.assertEqual(i["stranded"], {"step": "interview", "error": "step exited 1: no recording", "at": "t"})
+
+    def test_an_intake_file_the_tower_never_started_is_absent(self):
+        got = self.read(lambda root: (root / "tickets" / "0042.intake.md").write_text("words\n"))
+        self.assertNotIn("0042", [i["id"] for i in got["intakes"]])
+        self.assertNotIn("0042", [t["id"] for t in got["tickets"]])
+
+    def test_an_intake_with_a_ledger_counts_in_the_spend(self):
+        run = {"step": "interview", "attempt": None, "role": "product", "harness": "adk", "provider": "gemini",
+               "model": "m", "replayed": False, "tokens": {"input": 1, "output": 1, "total": 2}, "duration_s": 1.0,
+               "cost_usd": 0.5, "cost_unknown": None, "at": "2026-11-06T09:00:05Z"}
+        got = self.read(self.edit("0013", lambda doc: doc.update(spend=[run])))
+        self.assertIn("0013", got["spend"]["tickets"])
+        self.assertNotIn("0011", got["spend"]["tickets"])
+
+    def test_a_document_that_is_not_an_intake_is_skipped(self):
+        got = self.read(self.edit("0013", lambda doc: doc.pop("kind")))
+        self.assertEqual([i["id"] for i in got["intakes"]], ["0011"])
