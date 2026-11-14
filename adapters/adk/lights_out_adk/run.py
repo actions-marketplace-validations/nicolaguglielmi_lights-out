@@ -33,11 +33,13 @@ from google.genai import types
 
 
 def _tokens(usage) -> dict:
+    """Output is the candidates plus the thinking: the provider bills both as
+    output (docs/adr/0083, amendment 2026-11-14)."""
     if usage is None:
         return {"input": 0, "output": 0, "total": 0}
     return {
         "input": usage.prompt_token_count or 0,
-        "output": usage.candidates_token_count or 0,
+        "output": (usage.candidates_token_count or 0) + (getattr(usage, "thoughts_token_count", None) or 0),
         "total": usage.total_token_count or 0,
     }
 

@@ -74,5 +74,28 @@ class Conversation(unittest.TestCase):
         self.assertNotIn("no_recording", run)
 
 
+class Tokens(unittest.TestCase):
+    """docs/adr/0083, Amendment 2026-11-14: an ADK run's output counts its
+    thinking tokens, the way the provider bills them. The measured run:
+    prompt 59,753, candidates 443, thoughts 2,696, total 62,892."""
+
+    def usage(self, **kw):
+        from google.genai import types
+        return types.GenerateContentResponseUsageMetadata(**kw)
+
+    def test_output_is_the_candidates_plus_the_thoughts(self):
+        got = adk_run._tokens(self.usage(prompt_token_count=59753, candidates_token_count=443,
+                                         thoughts_token_count=2696, total_token_count=62892))
+        self.assertEqual(got, {"input": 59753, "output": 3139, "total": 62892})
+
+    def test_a_response_without_thoughts_counts_its_candidates(self):
+        got = adk_run._tokens(self.usage(prompt_token_count=10, candidates_token_count=2, total_token_count=12))
+        self.assertEqual(got, {"input": 10, "output": 2, "total": 12})
+
+    def test_a_response_with_nothing_is_zero(self):
+        self.assertEqual(adk_run._tokens(self.usage()), {"input": 0, "output": 0, "total": 0})
+        self.assertEqual(adk_run._tokens(None), {"input": 0, "output": 0, "total": 0})
+
+
 if __name__ == "__main__":
     unittest.main()

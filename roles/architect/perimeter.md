@@ -16,7 +16,8 @@ narrow blocks the work and one that is too wide lets a change wander.
 
 - Search the project once with `find_files`, a list of up to ten
   queries: every directory, module and word the tickets need, all in that
-  one call. Search again only if the answer shows nothing for a ticket.
+  one call. Search again only if the answer shows nothing for a ticket:
+  you have two searches in all, then you propose.
 - Include the code that must change, the tests that will prove the
   criteria, and the one document a user reads to learn the behaviour, if
   there is one. Prefer files to directories; use a glob only for files a

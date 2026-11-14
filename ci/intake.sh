@@ -25,6 +25,11 @@
 #      failure names ADK_MAX_TURNS and nothing is proposed or published;
 #      a planted recording at the cap proposes. The plants live in a copy
 #      of fixtures/adk (ADK_FIXTURES), never under the repo's.
+#   h. The scope (docs/adr/0090, Amendment 2026-11-14, second): the perimeter
+#      step needs WORKLOAD, the directory the architect may search: with it
+#      unset, on a drafted intake, the step fails, the state stays `drafted`
+#      and the failure names WORKLOAD. Every other call that reaches the
+#      perimeter step passes WORKLOAD=$repo/app, inside the repository.
 #   d. The table: `perimeter` on an intake not at `drafted` is ignored;
 #      `answer` on an intake at `intake-questions` records who, how and when
 #      and requests `intake-answer`; on a ticket at `questions` it still
@@ -73,7 +78,7 @@ TD=tickets
 # tower ARGS...: in the temp root, the person-facing variables cleared so a
 # default is a default.
 tower() {
-  (cd "$root" && env -u INTAKE_BY -u INTAKE_VIA -u CONFIRM_BY -u CONFIRM_VIA -u ANSWER -u ANSWER_BY -u DECISIONS \
+  (cd "$root" && env -u INTAKE_BY -u INTAKE_VIA -u CONFIRM_BY -u CONFIRM_VIA -u ANSWER -u ANSWER_BY -u DECISIONS -u WORKLOAD -u INTAKE_SCOPE \
     STATE_STORE=stub-state EVENT_BUS=stub-bus TOWER_STEPS=core/steps TICKETS_DIR="$TD" \
     AGENT_HARNESS=replay WORKLOAD_REPO="$repo" "$@") 2>>"$tmp/tower.err"
 }
@@ -105,7 +110,7 @@ step_of() { printf '{"ticket":"%s","step":"%s"}' "$1" "$2"; }
 # run ID: apply the step the bus asked for last.
 run() {
   step=$(last_published | jq -r .step)
-  tower sh core/tower.sh step "$1" "$step" || :
+  tower env WORKLOAD="$repo/app" sh core/tower.sh step "$1" "$step" || :
 }
 seed() { printf '%s\n' "$2" > "$root/state/tickets.$1.json"; printf 'a raw request\n' > "$root/$TD/$1.intake.md"; }
 
@@ -317,7 +322,7 @@ seed 0410 "$(drafted 0410 "Over the cap")"
 plant 0410 11
 before=$(bus_n)
 snapshot=$(doc 0410)
-if tower env ADK_FIXTURES="$fx" sh core/tower.sh step 0410 perimeter; then
+if tower env WORKLOAD="$repo/app" ADK_FIXTURES="$fx" sh core/tower.sh step 0410 perimeter; then
   nogo "an architect recording over ADK_MAX_TURNS was replayed: the perimeter step succeeded"
 fi
 want 0410 '.state == "drafted"' "a recording over its cap moved the intake out of drafted"
@@ -330,10 +335,21 @@ want 0410 '.architect == null' "an over-cap recording was recorded as the archit
 # The same step over a recording at the cap proposes: the gate can pass.
 seed 0411 "$(drafted 0411 "Under the cap")"
 plant 0411 10
-tower env ADK_FIXTURES="$fx" sh core/tower.sh step 0411 perimeter \
+tower env WORKLOAD="$repo/app" ADK_FIXTURES="$fx" sh core/tower.sh step 0411 perimeter \
   || nogo "an architect recording at ADK_MAX_TURNS=10 was refused" "$(tail -n 5 "$tmp/tower.err")"
 want 0411 '.state == "proposed" and .architect.consulted == true and .proposal[0].perimeter == ["app/meetups.py"]' \
   "a recording at the cap did not propose its perimeter"
+
+# --- h. the scope -------------------------------------------------------------
+seed 0420 "$(drafted 0420 "No workload")"
+before=$(bus_n)
+if tower sh core/tower.sh step 0420 perimeter; then
+  nogo "the perimeter step succeeded with WORKLOAD unset"
+fi
+want 0420 '.state == "drafted"' "the perimeter step with WORKLOAD unset moved the intake out of drafted"
+want 0420 '.history[-1] | .step == "perimeter" and (.error | test("WORKLOAD"))' \
+  "the failure of the perimeter step with WORKLOAD unset does not name WORKLOAD"
+[ "$(bus_n)" -eq "$before" ] || nogo "the perimeter step with WORKLOAD unset published $(last_published)"
 
 cp fixtures/intake/request.md "$root/tickets/0400.intake.md"
 tower sh core/tower.sh intake 0400 || nogo "core/tower.sh intake failed on the fixture intake" "$(tail -n 5 "$tmp/tower.err")"

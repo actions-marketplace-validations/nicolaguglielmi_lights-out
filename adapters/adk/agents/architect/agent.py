@@ -20,13 +20,36 @@ FIND_MAX = 40
 # 3924ebf, so one answer stays well under the map itself.
 QUERIES_MAX = 10
 KINDS = ("file", "test", "page", "adr")
+# Provenance, decision: docs/adr/0090 second amendment A7, one search with
+# every query the tickets need plus one to look again where a ticket found
+# nothing; measured, ten searches without a proposal.
+SEARCHES_MAX = 2
+BUDGET_USED = {"error": f"search budget of {SEARCHES_MAX} used: propose now with propose_perimeter", "results": []}
+_searches = 0
+
+
+def reset_searches() -> None:
+    """A new run's budget (one process is one run; tests reuse the module)."""
+    global _searches
+    _searches = 0
+
+
+def in_scope(path: str, scope: str) -> bool:
+    """Whether PATH is the workload's (amendment A6): under SCOPE, or SCOPE empty."""
+    return not scope or path == scope or path.startswith(scope + "/")
 
 
 def find_files(queries: list[str]) -> dict:
     """Search the project map once for every query you need, at most 10:
     for each, the paths of files, tests, pages and ADRs that contain it
     (case-insensitive), at most 40, sorted, and how many more matched.
-    Put every directory, module and word the tickets need in one call."""
+    Put every directory, module and word the tickets need in one call: you
+    have two searches in all, then you propose."""
+    global _searches
+    if _searches >= SEARCHES_MAX:
+        return dict(BUDGET_USED)
+    _searches += 1
+    scope = os.environ.get("INTAKE_SCOPE", "").strip("/")
     path = os.environ.get("INTAKE_MAP", "")
     if not path or not os.path.isfile(path):
         return {"error": "no project map for this run", "results": []}
@@ -40,7 +63,7 @@ def find_files(queries: list[str]) -> dict:
                 "SELECT name FROM node WHERE kind IN (?, ?, ?, ?) AND instr(lower(name), lower(?)) > 0 ORDER BY name",
                 (*KINDS, str(query or "")),
             ).fetchall()
-            paths = [r[0] for r in rows]
+            paths = [r[0] for r in rows if in_scope(r[0], scope)]
             results.append({"query": query, "paths": paths[:FIND_MAX], "more": max(0, len(paths) - FIND_MAX)})
     finally:
         db.close()
