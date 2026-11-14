@@ -69,41 +69,59 @@ AGENT_PY = textwrap.dedent('''
 
 
 class Base(unittest.TestCase):
-    def setUp(self):
-        self.dir = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.out = self.dir / "out"
+    """Each scenario runs once per class: a subprocess imports ADK, which is
+    the slow part, and every test of a class reads the same run."""
 
-    def run_module(self, role, input_text, pythonpath, **env):
-        (self.dir / "input.md").write_text(input_text)
-        full = dict(os.environ, ROLE=role, INPUT=str(self.dir / "input.md"), OUT=str(self.out),
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(tempfile.mkdtemp())
+        cls.runs = {}
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def run_module(self, role, input_text, pythonpath, key, **env):
+        if key in self.runs:
+            return self.runs[key]
+        work = self.root / key
+        work.mkdir(parents=True)
+        self.dir, self.out = work, work / "out"
+        (work / "input.md").write_text(input_text)
+        full = dict(os.environ, ROLE=role, INPUT=str(work / "input.md"), OUT=str(self.out),
                     PYTHONPATH=pythonpath, LIGHTS_OUT_ROOT=str(REPO), THINKING="low", **env)
         for k in ("ANSWERS", "ADK_RECORD"):
             full.pop(k, None)
-        got = subprocess.run([sys.executable, "-m", "lights_out_adk.run"], env=full, cwd=str(self.dir),
+        got = subprocess.run([sys.executable, "-m", "lights_out_adk.run"], env=full, cwd=str(work),
                              capture_output=True, text=True, timeout=120, check=False)
         run = json.loads((self.out / "run.json").read_text()) if (self.out / "run.json").is_file() else None
-        return got, run
+        self.runs[key] = (got, run, self.out)
+        return self.runs[key]
 
 
 class LiveCap(Base):
-    def setUp(self):
-        super().setUp()
-        pkg = self.dir / "pkg" / "agents" / "capped"
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        pkg = cls.root / "pkg" / "agents" / "capped"
         pkg.mkdir(parents=True)
-        (self.dir / "pkg" / "agents" / "__init__.py").write_text("")
+        (cls.root / "pkg" / "agents" / "__init__.py").write_text("")
         (pkg / "__init__.py").write_text("from . import agent\nfrom .agent import root_agent\n")
         (pkg / "agent.py").write_text(AGENT_PY)
-        self.count = self.dir / "count"
-        self.count.write_text("")
-        self.path = f"{self.dir / 'pkg'}{os.pathsep}{ADK}"
+        cls.path = f"{cls.root / 'pkg'}{os.pathsep}{ADK}"
+
+    def live(self, **env):
+        key = "live-" + env.get("END_AFTER", "never")
+        count = self.root / f"count-{key}"
+        if key not in self.runs:
+            count.write_text("")
+        got, run, _ = self.run_module("capped", "go on forever", self.path, key, AGENT_HARNESS="gemini",
+                                      COUNT_FILE=str(count), **env)
+        self.count = count
+        return got, run
 
     def calls(self):
         return len(self.count.read_text().splitlines())
-
-    def live(self, **env):
-        return self.run_module("capped", "go on forever", self.path, AGENT_HARNESS="gemini",
-                               COUNT_FILE=str(self.count), **env)
 
     def test_a_role_that_never_stops_is_stopped_at_its_cap(self):
         got, run = self.live()
@@ -159,8 +177,15 @@ class ReplayOverCap(Base):
         return fixtures
 
     def replayed(self, turns):
+        key = f"replay-{turns}"
+        if key in self.runs:
+            got, run, self.out = self.runs[key]
+            return got, run
+        self.dir = self.root / f"fixtures-{turns}"
         fixtures = self.plant(turns)
-        return self.run_module("product", self.INPUT, str(ADK), AGENT_HARNESS="replay", ADK_FIXTURES=str(fixtures))
+        got, run, self.out = self.run_module("product", self.INPUT, str(ADK), key, AGENT_HARNESS="replay",
+                                             ADK_FIXTURES=str(fixtures))
+        return got, run
 
     def test_a_recording_over_the_cap_is_refused(self):
         got, run = self.replayed(17)
