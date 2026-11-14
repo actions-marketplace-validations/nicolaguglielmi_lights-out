@@ -512,7 +512,7 @@ def cmd_machine(path):
         die(f"actor is {actor!r}, want an object of one actor per step")
     if sorted(actor) != sorted(tower.PRECONDITION):
         die(f"actor names {sorted(actor)}, core/tower.py's steps are {sorted(tower.PRECONDITION)}")
-    actors = ("product", "spec", "dev", "gates", "reviewer", "tower", "canary")
+    actors = ("product", "architect", "spec", "dev", "gates", "reviewer", "tower", "canary")
     for step, who_acts in actor.items():
         if who_acts not in actors:
             die(f"actor[{step}] is {who_acts!r}, want one of {', '.join(actors)}")
@@ -2008,6 +2008,56 @@ plant16 "a run in flight on 0005" "$(tix 0005 '.live = {role: "dev-worker", atte
 plant16 "the burn over ten minutes" '.spend.burn.hours = 0.166667'
 plant16 "the projection from a clock" '.spend.burn.left_h = 12'
 plant16 "the projection line after the budget" '.spend.lines |= (.[0:-3] + [.[-2], .[-1], .[-3]])'
+
+# The 1.7 intakes (docs/adr/0090 §7), written down by hand from the stub's
+# tower documents and its two *.intake.md files; the reader's code is not
+# read. Intake 0011, by client@example.com via the console on 2026-11-06,
+# one question answered, two proposed tickets with the architect not
+# consulted, the first confirmed as 0009 and the second dropped by
+# owner@example.com via cli; intake 0013 waits on its open question. Neither
+# is a ticket, a card or a line of the spend; ticket 0009 names its intake.
+h17() {
+  jq -e --rawfile w11 "$stub/tickets/0011.intake.md" --rawfile w13 "$stub/tickets/0013.intake.md" \
+    "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+# shellcheck disable=SC2016 # $w11 and $w13 are jq's own variables
+hand_17() {
+  h17 "the intakes are 0011 and 0013, in that order, with the client's words verbatim" \
+    '[.intakes[] | .id] == ["0011", "0013"] and .intakes[0].text == $w11 and .intakes[1].text == $w13' "$1" || return 1
+  h17 "0011: confirmed, by client@example.com via console at 09:00, confirmed by owner@example.com via cli" \
+    '.intakes[0] | .state == "confirmed" and .by == "client@example.com" and .via == "console" and .at == "2026-11-06T09:00:00Z"
+      and .confirmation == {by: "owner@example.com", via: "cli", at: "2026-11-06T09:10:00Z"} and .stranded == null' "$1" || return 1
+  h17 "0011: one question, answered via the console" \
+    '.intakes[0].questions | length == 1 and .[0].from == "product" and .[0].answer == "The first one waiting gets it." and .[0].answered_via == "console"' "$1" || return 1
+  h17 "0011: two proposed tickets, 1 confirmed as 0009, 2 dropped; the tickets are [0009]" \
+    '.intakes[0] | [.proposal[] | [.n, .decision, .ticket]] == [[1, "confirm", "0009"], [2, "drop", null]] and .tickets == ["0009"]' "$1" || return 1
+  h17 "0011: each proposed ticket checked by the gate, perimeter empty, the architect not consulted" \
+    '.intakes[0] | ([.proposal[] | .check] == ["NO-GO: spec — ## Perimeter declares no path", "NO-GO: spec — ## Perimeter declares no path"])
+      and ([.proposal[] | .perimeter] == [[], []]) and .architect.consulted == false and (.architect.why | length > 0) and .product.consulted == true' "$1" || return 1
+  h17 "0013: at intake-questions, its one question open, nothing proposed or confirmed" \
+    '.intakes[1] | .state == "intake-questions" and (.questions | length == 1 and .[0].answer == null) and .proposal == [] and .confirmation == null and .tickets == []' "$1" || return 1
+  h17 "no intake is a ticket or a card, and only 0009 names an intake" \
+    '([.tickets[] | .id] | index("0011") == null and index("0013") == null) and ([.kanban[].tickets[]] | index("0011") == null and index("0013") == null)
+      and ([.tickets[] | select(.intake != null) | [.id, .intake]] == [["0009", "0011"]])' "$1" || return 1
+  h17 "the intakes, which ran no recorded spend here, are no line of the spend" \
+    '(.spend.tickets | has("0011") | not) and (.spend.tickets | has("0013") | not)' "$1" || return 1
+}
+bad=$(hand_17 "$root/out1.json") || nogo "the 1.7 intakes over the stub sources: $bad" "$(jq -c '{intakes}' "$root/out1.json" 2>&1)"
+plant17() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_17 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.7 intakes accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+plant17 "the intakes swapped" '.intakes |= [.[1], .[0]]'
+plant17 "the client's words trimmed" '.intakes[0].text |= .[0:20]'
+plant17 "the confirmation by someone else" '.intakes[0].confirmation.by = "eve"'
+plant17 "the dropped ticket kept" '.intakes[0].proposal[1].decision = "confirm"'
+plant17 "a check line reworded" '.intakes[0].proposal[0].check = "GO: spec"'
+plant17 "the open question answered" '.intakes[1].questions[0].answer = "yes"'
+plant17 "an intake as a card" '.kanban[0].tickets += ["0013"]'
+plant17 "0009 without its intake" '(.tickets[] | select(.id == "0009") | .intake) = null'
+plant17 "an intake as a line of the spend" '.spend.tickets["0011"] = {runs: 0}'
 
 cp "$root/state/tickets.0009.json" "$tmp/0009.keep"
 jq '.history[0] += {by: "ada@example.org", via: "console"}' "$tmp/0009.keep" > "$root/state/tickets.0009.json"

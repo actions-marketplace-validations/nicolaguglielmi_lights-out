@@ -249,9 +249,9 @@ Read in this checkout on 2026-11-14 (`land/sprint-1114`, 3924ebf):
 8. **The console: "Describe the need", and one intake card that fans out
    to its tickets.**
    - The request screen gains "Describe the need": one text area and one
-     button. `POST /v1/intake {text}` runs `core/intake.py new` with the
-     next free id, then `make intake` with the console's identity and
-     `INTAKE_VIA=console`. Refused in a snapshot and with
+     button. `POST /v1/intake {text}` runs `make intake` with the text as
+     `INTAKE_FILE` (the recipe's `core/intake.py new` takes the next free
+     id), the console's identity and `INTAKE_VIA=console`. Refused in a snapshot and with
      `CONSOLE_AUTH=public`, under ADR 0047 §3's checks (JSON content type,
      Origin, Host, one press at a time).
    - The kanban screen shows the intakes above the columns, one card
