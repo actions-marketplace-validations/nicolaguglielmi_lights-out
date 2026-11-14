@@ -323,7 +323,7 @@ def store_docs(store, tickets_dir):
     """{id: doc} for every ticket of TICKETS_DIR the store holds; ValueError on a store error."""
     docs = {}
     for path in sorted(glob.glob(os.path.join(tickets_dir, "*.md"))):
-        tid = os.path.basename(path)[:-3]
+        tid = os.path.basename(path)[:-3].removesuffix(".intake")  # an intake's runs count (docs/adr/0090 §7)
         got = subprocess.run(["sh", f"adapters/{store}/get.sh", "tickets", tid], capture_output=True,
                              text=True, check=False)  # nosec B603 B607 - an argv list, the store's verb
         if got.returncode == 1:
