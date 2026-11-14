@@ -26,6 +26,16 @@ at push time). Not merged; the coordinator lands it.
   cards), podman 43606198759, package 43606198851. Shell, help, plan and
   docs-drift re-run green locally on 9fe74ff.
 
+- **With the recording**, on 9c117d7: `./go ci` GO from a fresh full clone
+  (342 s; `intake: the recording of the fixture intake exists: proved the full
+  conversation`), and the six push workflows green: ci 43611591662 (`GO: demo, milestone M9, 840s to rollback`,
+  `GO: console-ui`), stranger 43611591625 (`GO: demo … 718s`), self
+  43611591683, site 43611591643, podman 43611591604, package 43611591669.
+  **Watch the demo's margin:** 840 s against the 900 s budget on
+  engine-compat (659 s on 9fe74ff). `ci-intake` inside the demo's ci stage
+  took 14 s on that runner (15:47:39 → 15:47:53), so most of the jump is
+  the runner, but the margin is one minute.
+
 ## What changed
 
 - **ADR 0090** (amends 0055, 0059 §4, 0023 §2, 0034 §1) and PLAN "M57 — Il
