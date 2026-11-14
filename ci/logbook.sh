@@ -9,7 +9,7 @@
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.5.json, written by hand from the
+#      golden fixtures/logbook/golden-1.6.json, written by hand from the
 #      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6 and
 #      its 1.2 `adrs` against the stub map (docs/adr/0059 §3), its 1.3
 #      `agents` against the stub contract (docs/adr/0073 §10), its 1.4 `why`
@@ -36,7 +36,10 @@
 #      0007's stop the cap and, with a budget line in its document, the budget
 #      and that line; the window ending at the record's last event and the
 #      four measures; each run again with one fact planted wrong.
-#      golden-1.4.json, golden-1.3.json and golden-1.2.json stay in the
+#      The 1.6 flow (docs/adr/0085 §1-§3), by hand from the stub: 0010's
+#      fourteen nodes from the open to 100%, 0003's gates stopping at test,
+#      each gate's seconds on ci and rework; each run again planted wrong.
+#      golden-1.5.json, golden-1.4.json, golden-1.3.json and golden-1.2.json stay in the
 #      repository, untouched, as the old-logbook fixtures, and validate against
 #      their schemas. The stub root
 #      holds three ADRs, the files they cite, the notifier and its test, and
@@ -53,8 +56,8 @@
 #      The kanban's every card sits in its ticket's state's column, and moves
 #      when the tower moves the ticket (docs/adr/0055 §7).
 #   b. The golden validates against every committed schema of its major
-#      (1.0 to 1.5), and against the schema file of its own minor; so do the
-#      old fixtures, golden-1.4.json, golden-1.3.json and golden-1.2.json (their own minors
+#      (1.0 to 1.6), and against the schema file of its own minor; so do the
+#      old fixtures, golden-1.5.json, golden-1.4.json, golden-1.3.json and golden-1.2.json (their own minors
 #      and the ones before).
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
@@ -107,7 +110,8 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.5.json"
+golden="$repo/fixtures/logbook/golden-1.6.json"
+golden15="$repo/fixtures/logbook/golden-1.5.json"
 golden14="$repo/fixtures/logbook/golden-1.4.json"
 golden13="$repo/fixtures/logbook/golden-1.3.json"
 golden12="$repo/fixtures/logbook/golden-1.2.json"
@@ -120,7 +124,8 @@ for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.5.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.6.json not found"
+[ -f "$golden15" ] || nogo "fixtures/logbook/golden-1.5.json not found (the old-logbook fixture)"
 [ -f "$golden14" ] || nogo "fixtures/logbook/golden-1.4.json not found (the old-logbook fixture)"
 [ -f "$golden13" ] || nogo "fixtures/logbook/golden-1.3.json not found (the old-logbook fixture)"
 [ -f "$golden12" ] || nogo "fixtures/logbook/golden-1.2.json not found (the old-logbook fixture)"
@@ -615,6 +620,10 @@ jq '.dora.lines = "window: 30 days"' "$golden" > "$st/bad-dora-lines.json"
 jq '.spend.lines = "budget: none"' "$golden" > "$st/bad-spend-lines.json"
 jq '.spend.limits.SPEND_BUDGET_TICKET_USD = "1.00"' "$golden" > "$st/bad-spend-limit.json"
 jq '(.tickets[] | select(.id == "0007") | .outcome.stop) = "money"' "$golden" > "$st/bad-stop.json"
+# 1.6 (docs/adr/0085): the flow and each gate's seconds are typed.
+jq '(.tickets[] | select(.id == "0010") | .flow[0].verdict) = "maybe"' "$golden" > "$st/bad-flow-verdict.json"
+jq '(.tickets[] | select(.id == "0010") | .flow) |= .[0:13]' "$golden" > "$st/bad-flow-length.json"
+jq '(.tickets[] | select(.id == "0010") | .ci.seconds.risk) = "1"' "$golden" > "$st/bad-ci-seconds.json"
 (
   cd "$st"
   must_reject "schema validation (an enum value)" valid bad-enum.json
@@ -640,6 +649,9 @@ jq '(.tickets[] | select(.id == "0007") | .outcome.stop) = "money"' "$golden" > 
   must_reject "schema validation (spend lines that are not a list)" valid bad-spend-lines.json
   must_reject "schema validation (a spend limit that is not a number or null)" valid bad-spend-limit.json
   must_reject "schema validation (an outcome's stop outside budget and cap)" valid bad-stop.json
+  must_reject "schema validation (a flow node's verdict outside its four)" valid bad-flow-verdict.json
+  must_reject "schema validation (a flow of thirteen nodes)" valid bad-flow-length.json
+  must_reject "schema validation (a gate's seconds that is not an integer)" valid bad-ci-seconds.json
   must_accept "schema validation" valid "$golden"
 ) || exit 1
 
@@ -1161,7 +1173,7 @@ run_reader LOGBOOK_FILE=out2.json
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.5.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.6.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
 # the day it was blessed; these are the rules, worked out again from the
@@ -1216,8 +1228,8 @@ hand_13() {
   # shellcheck disable=SC2016 # $old is jq's own variable
   # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 and ADR 0078 add none;
   # 1.5 adds `dora` and `spend` (docs/adr/0082, 0083, amendments of 2026-11-13).
-  h13 "nothing new at the top level but agents, dora and spend, and the schema is 1.5" \
-    '.schema == "lights-out/logbook/1.5" and (keys == ($old[0] | keys + ["agents", "dora", "spend"] | sort))' "$1" || return 1
+  h13 "nothing new at the top level but agents, dora and spend, and the schema is 1.6" \
+    '.schema == "lights-out/logbook/1.6" and (keys == ($old[0] | keys + ["agents", "dora", "spend"] | sort))' "$1" || return 1
   h13 "0010's two attempts, as the tower recorded them" \
     "$t10 | (.tasks | map(.attempt)) == [1, 2]" "$1" || return 1
   h13 "0010 attempt 1: members impl and tests, in that order, with their harness, model and perimeter" \
@@ -1337,7 +1349,7 @@ h14() {
 t03='(.tickets[] | select(.id == "0003"))'
 t02='(.tickets[] | select(.id == "0002"))'
 hand_14() {
-  h14 "the schema is 1.5 (1.4's fields are kept)" '.schema == "lights-out/logbook/1.5"' "$1" || return 1
+  h14 "the schema is 1.6 (1.4's fields are kept)" '.schema == "lights-out/logbook/1.6"' "$1" || return 1
   h14 "0003 is at attempt 2, PR 3, with two ci runs and one rework in its history" \
     "$t03 | .attempt == 2 and .pr.number == 3 and ([.history[] | select(.step == \"ci\")] | length) == 2
       and ([.history[] | select(.step == \"rework\")] | length) == 1" "$1" || return 1
@@ -1524,7 +1536,7 @@ h15() {
 }
 # shellcheck disable=SC2016 # $t, $s7 and the dollar amounts are jq's and the record's, not the shell's
 hand_15() {
-  h15 "the schema is 1.5" '.schema == "lights-out/logbook/1.5"' "$1" || return 1
+  h15 "the schema is 1.6 (1.5's fields are kept)" '.schema == "lights-out/logbook/1.6"' "$1" || return 1
   h15 "spend per ticket: 0003 \$1.1625 over 2 runs, 420 s of agents, 1,200 s elapsed; 0010 \$0 over 2, 1 unknown, 30 s, 5,400 s; the others 0 runs with their elapsed time" \
     '.spend.tickets as $t | ($t | keys) == ["0001","0002","0003","0004","0005","0007","0008","0009","0010"]
       and ($t["0003"] | .runs == 2 and .unknown == 0 and .agent_s == 420 and .elapsed_s == 1200 and ((.cost_usd - 1.1625) | fabs) < 0.000001)
@@ -1867,6 +1879,71 @@ chk adrs "$root/var.json" "$root/.crew/map.sqlite" >"$tmp/chk.out" || nogo "a wi
 
 # Who requested and through what (docs/adr/0059 §4): the tower's history entry
 # reaches the timeline's request row.
+# The 1.6 flow (docs/adr/0085 §1-§3), worked out from the stub's tower
+# documents and release log and written down by hand; the reader's code is not
+# read. 0010 was opened directly at 06:00, its PR #10 opened at 06:05, its
+# second attempt passed the eight gates (the stub's ci.seconds), the ci said
+# review at 06:55 and the merge m10 came at 07:06 after the test-reviewer
+# approved; main went green at 07:08, the release held at 25% at 07:30 after
+# two stages with no times, and bob promoted it via cli at 07:45. 0003's
+# second attempt said NO-GO at test after five GO gates.
+h16() {
+  jq -e --slurpfile s3 "$stub/state/tickets.0003.json" --slurpfile s10 "$stub/state/tickets.0010.json" \
+    --argjson order "$gate_order" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+# shellcheck disable=SC2016 # $s3, $s10 and $order are jq's own variables
+hand_16() {
+  h16 "every ticket's flow: ticket, perimeter, the Makefile's eight gates in order, pr, canary, human, full" \
+    '[.tickets[] | [.flow[] | if .node == "gate" then .gate else .node end]] | unique
+      == [["ticket", "perimeter"] + $order + ["pr", "canary", "human", "full"]]' "$1" || return 1
+  h16 "0010's ticket node: GO, opened directly at 06:00, no seconds" \
+    "$t10"' | .flow[0] == {node: "ticket", gate: null, verdict: "GO", started_at: "2026-11-02T06:00:00Z",
+      ended_at: "2026-11-02T06:00:00Z", seconds: null, line: "opened directly: no request, no spec gate"}' "$1" || return 1
+  h16 "0010's perimeter: GO from 06:00 to 06:05, 300 s, PR #10 inside its two globs" \
+    "$t10"' | .flow[1] == {node: "perimeter", gate: null, verdict: "GO", started_at: "2026-11-02T06:00:00Z",
+      ended_at: "2026-11-02T06:05:00Z", seconds: 300,
+      line: "PR #10 opened, every file inside app/backend/notify/*, tests/test_notify.py"}' "$1" || return 1
+  h16 "0010's eight gates: GO, each line verbatim from the stub's ci.lines, each with the stub's ci.seconds" \
+    "$t10"' | [.flow[2:10][] | [.gate, .verdict, .line, .seconds, .started_at, .ended_at]]
+      == [$order[] as $g | [$g, "GO", ($s10[0].ci.lines[] | select(. == "GO: \($g)" or startswith("GO: \($g) — "))), $s10[0].ci.seconds[$g], null, null]]' "$1" || return 1
+  h16 "0010's pr: GO from 06:55 to 07:06, 660 s, merged m10 and approved by the test-reviewer" \
+    "$t10"' | .flow[10] == {node: "pr", gate: null, verdict: "GO", started_at: "2026-11-02T06:55:00Z",
+      ended_at: "2026-11-02T07:06:00Z", seconds: 660, line: "merged m10, approved by the test-reviewer"}' "$1" || return 1
+  h16 "0010's canary: GO from main-green at 07:08 to the release at 07:30, held at 25% after two stages" \
+    "$t10"' | .flow[11] == {node: "canary", gate: null, verdict: "GO", started_at: "2026-11-02T07:08:00Z",
+      ended_at: "2026-11-02T07:30:00Z", seconds: 1320, line: "held at 25%: 2 stage(s) GO"}' "$1" || return 1
+  h16 "0010's human gate and 100%: promoted by bob via cli at 07:45" \
+    "$t10"' | .flow[12:] == [{node: "human", gate: null, verdict: "GO", started_at: "2026-11-02T07:30:00Z",
+      ended_at: "2026-11-02T07:45:00Z", seconds: 900, line: "promoted by bob via cli"},
+      {node: "full", gate: null, verdict: "GO", started_at: "2026-11-02T07:45:00Z", ended_at: "2026-11-02T07:45:00Z",
+       seconds: null, line: "100% of the traffic on 0.2.5-n"}]' "$1" || return 1
+  h16 "0003's gates: five GO, test NO-GO with its line and 41 s, mutation and test-proof not reached; nothing after" \
+    "$t03"' | [.flow[2:][] | [.verdict, .line, .seconds]]
+      == [["GO", "GO: risk — low, auto-merge", 1], ["GO", "GO: secrets", 3], ["GO", "GO: test-weakening", 1], ["GO", "GO: deps", 2],
+          ["GO", "GO: sast — in the workbench, none new (0 inherited)", 6], ["NO-GO", "NO-GO: test — 2 failed", 41],
+          ["not-reached", "not run: test said NO-GO first", null], ["not-reached", "not run: test said NO-GO first", null],
+          ["not-reached", null, null], ["not-reached", null, null], ["not-reached", null, null], ["not-reached", null, null]]' "$1" || return 1
+  h16 "0003 and 0010 keep each gate's seconds on ci and on the rework entry" \
+    "($t03 | .ci.seconds == \$s3[0].ci.seconds and .rework[0].seconds == \$s3[0].rework[0].seconds)
+      and ($t10 | .ci.seconds == \$s10[0].ci.seconds)" "$1" || return 1
+}
+bad=$(hand_16 "$root/out1.json") || nogo "the 1.6 flow over the stub sources: $bad" \
+  "$(jq -c '[.tickets[] | select(.id == "0010" or .id == "0003") | {id, flow}]' "$root/out1.json" 2>&1)"
+plant16() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_16 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.6 flow accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+plant16 "two gates swapped" "$(tix 0010 '.flow |= (.[0:2] + [.[3], .[2]] + .[4:])')"
+plant16 "0010's perimeter timed from the clock" "$(tix 0010 '.flow[1].seconds = 299')"
+plant16 "0010's pr line reworded" "$(tix 0010 '.flow[10].line = "merged m10"')"
+plant16 "0010's canary running" "$(tix 0010 '.flow[11].verdict = "running"')"
+plant16 "0010's human answer by someone else" "$(tix 0010 '.flow[12].line = "promoted by eve via cli"')"
+plant16 "0003's mutation reached" "$(tix 0003 '.flow[8].verdict = "GO"')"
+plant16 "0003's test seconds lost" "$(tix 0003 '.flow[7].seconds = null')"
+plant16 "0003's rework seconds dropped" "$(tix 0003 'del(.rework[0].seconds)')"
+
 cp "$root/state/tickets.0009.json" "$tmp/0009.keep"
 jq '.history[0] += {by: "ada@example.org", via: "console"}' "$tmp/0009.keep" > "$root/state/tickets.0009.json"
 var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009") | .timeline[] | select(.phase == "request")]
@@ -1874,11 +1951,13 @@ var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009")
 cp "$tmp/0009.keep" "$root/state/tickets.0009.json"
 
 # --- b. the golden against every committed schema of its major ---------------
-for n in 0 1 2 3 4 5; do
-  [ -f "core/logbook/1.$n.schema.json" ] || nogo "core/logbook/1.$n.schema.json not found: the golden validates against 1.0 to 1.5"
+for n in 0 1 2 3 4 5 6; do
+  [ -f "core/logbook/1.$n.schema.json" ] || nogo "core/logbook/1.$n.schema.json not found: the golden validates against 1.0 to 1.6"
 done
 chk valid "$golden" >"$tmp/chk.out" || nogo "the golden does not validate" "$(cat "$tmp/chk.out")"
 # The old-logbook fixtures stay valid against their own major's schemas, untouched.
+chk valid "$golden15" >"$tmp/chk.out" || nogo "golden-1.5.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+[ "$(jq -r .schema "$golden15")" = "lights-out/logbook/1.5" ] || nogo "golden-1.5.json is not a 1.5 logbook: the old fixture was changed"
 chk valid "$golden14" >"$tmp/chk.out" || nogo "golden-1.4.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
 [ "$(jq -r .schema "$golden14")" = "lights-out/logbook/1.4" ] || nogo "golden-1.4.json is not a 1.4 logbook: the old fixture was changed"
 chk valid "$golden13" >"$tmp/chk.out" || nogo "golden-1.3.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
@@ -2095,7 +2174,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.5.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.6.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -2105,7 +2184,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.5.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.6.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"

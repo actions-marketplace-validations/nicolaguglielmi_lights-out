@@ -587,9 +587,9 @@ class Reader(unittest.TestCase):
             Reader.book = self.read()
         return Reader.book
 
-    def test_the_schema_is_1_5(self):
-        # 1.5 adds dora and spend (docs/adr/0082, 0083, amendments of 2026-11-13); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.5")
+    def test_the_schema_is_1_6(self):
+        # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
 
     def test_ci_and_rework_carry_gates_and_not_the_raw_lines(self):
         t = self.ticket(self.base())
@@ -736,8 +736,8 @@ class WhyOfAnEntry(unittest.TestCase):
         base.update(more)
         return base
 
-    def test_the_schema_is_1_5(self):
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.5")
+    def test_the_schema_is_1_6(self):
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.6")
 
     def test_a_ci_that_failed_a_gate_after_secrets_said_go(self):
         self.assertEqual(logbook.why(self.entry(), 2, "gates"),
@@ -866,9 +866,9 @@ class WhyInTheLogbook(unittest.TestCase):
     def gate_rows(self, t):
         return [r for r in t["timeline"] if r["phase"] == "gate"]
 
-    def test_the_schema_is_1_5(self):
-        # 1.5 adds dora and spend (docs/adr/0082, 0083, amendments of 2026-11-13); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.5")
+    def test_the_schema_is_1_6(self):
+        # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.6")
 
     def test_0003s_current_ci_why(self):
         t = self.ticket(self.base(), "0003")
@@ -1269,10 +1269,16 @@ class FlowInTheLogbook(unittest.TestCase):
 
     def test_0010_rejected_by_a_person(self):
         def rejected(root):
-            self.without_answer(root)
-            with open(root / "releases.jsonl", "a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"kind": "answer", "at": "2026-11-02T07:50:00Z", "version": "0.2.5-n", "answer": "NO-GO",
-                                     "by": "carol", "via": "console", "reason": "not this week"}) + "\n")
+            # The answer sits after its release line and before the next one, as promote writes it.
+            path = root / "releases.jsonl"
+            no = json.dumps({"kind": "answer", "at": "2026-11-02T07:50:00Z", "version": "0.2.5-n", "answer": "NO-GO",
+                             "by": "carol", "via": "console", "reason": "not this week"})
+            out = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if '"version": "0.2.5-n"' in line and '"kind": "answer"' in line:
+                    line = no
+                out.append(line)
+            path.write_text("\n".join(out) + "\n")
         f = self.flow(self.read(rejected), "0010")
         self.is_node(self.node(f, "human"), "NO-GO", "rejected by carol via console: not this week",
                      "2026-11-02T07:30:00Z", "2026-11-02T07:50:00Z", 1200)
