@@ -593,7 +593,7 @@ confirms, edits or drops each ticket with `./go intake-confirm`. No plane
 is needed. At L0 the interview replays the one recorded on the committed
 request about the meetup app (recorded on Gemini 3.8 Flash on 2026-11-14):
 
-<!-- source: local run on podman, commit 16c97e7, 2026-11-14, a full clone of the M57 branch, L0 -->
+<!-- source: local run on podman, commit 92a3464, 2026-11-14, a full clone of claude/m57-turn-cap, L0 -->
 ```sh
 ./go intake TICKET=0030 INTAKE_FILE=fixtures/intake/request.md
 ./go answer TICKET=0030 ANSWER="A button on the meetup page; then they are no longer registered and one more seat is free."
@@ -602,7 +602,6 @@ request about the meetup app (recorded on Gemini 3.8 Flash on 2026-11-14):
 
 ```
 GO: intake — 0030 at intake-questions
-GO: answer
 [tower] 0030: intake-answer → drafted
 [tower] 0030: perimeter (state drafted)
 [tower] 0030: perimeter → proposed
@@ -614,13 +613,15 @@ clear, and the product role proposes two tickets, "Allow registered
 members to give back their meetup seat" and "Display attendee list to
 organisers while keeping attendee names private from other members",
 both `- Feature: rsvp-cancellation`, `- Priority: P1`. The architect role
-proposed six paths for each, and the spec gate said `GO: spec` on both as
-drafts. Under replay your answers' words are not compared with the
-recording: any answer replays the same proposal. Keep the first ticket and
-drop the second:
+has no recording at L0 yet (its first one, 74 turns, was over the turn cap
+that followed it), so it is not consulted: each proposed ticket has no
+perimeter, and the spec gate says `NO-GO: spec — ## Perimeter declares no
+path` on both drafts. Under replay your answers' words are not compared
+with the recording: any answer replays the same proposal. Keep the first
+ticket with the perimeter you write, and drop the second:
 
 ```sh
-./go intake-confirm TICKET=0030 DECISIONS='["confirm","drop"]'
+./go intake-confirm TICKET=0030 DECISIONS='[{"edit":{"perimeter":["app/backend/meetups/app.py","app/backend/tests/test_registrations.py"]}},"drop"]'
 ```
 
 ```
@@ -631,10 +632,10 @@ GO: spec
 [tower] 0031: assign (state opened)
 ```
 
-Ticket 0031 is written to the tickets directory, with `- Intake: 0030`, and is
-opened by the spec gate. The orchestrator then requests `assign`, which
-needs the plane and a dev-worker for the new ticket: without the plane,
-`assign` fails and the command ends NO-GO, the ticket stranded at
+Ticket 0031 is written to the tickets directory, with `- Intake: 0030`,
+and is opened by the spec gate. The orchestrator then requests `assign`,
+which needs the plane and a dev-worker for the new ticket: without the
+plane, `assign` fails and the command ends NO-GO, the ticket stranded at
 `opened` and resumable, as a new `./go request` would be. An intake whose
 words were never recorded is refused at L0 with one line that names the
 command that records it, and nothing is proposed in its place: a raw
