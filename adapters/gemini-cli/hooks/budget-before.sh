@@ -1,6 +1,7 @@
 #!/bin/sh
-# budget-before (BeforeModel hook): denies the next model call once tokens
-# accumulated by budget-after.sh reach TOKEN_BUDGET (docs/adr/0017 §8).
+# budget-before (BeforeModel hook): adds the call budget-after.sh recorded to
+# $CREW_OUT/tokens, then denies the next model call once that total reaches
+# TOKEN_BUDGET (docs/adr/0017 §8).
 # Fails open (allows) if TOKEN_BUDGET is unset or nothing has been recorded
 # yet: this hook only ever tightens the pre-emptive limits, MAX_TURNS
 # (model.maxSessionTurns) and TIMEOUT_S (the entrypoint's `timeout`), never
@@ -11,13 +12,20 @@ set -eu
 
 cat >/dev/null
 
-[ -n "$TOKEN_BUDGET" ] || exit 0
-[ -f "$CREW_OUT/tokens" ] || exit 0
+# The call that just ended counts once, at the running total budget-after.sh
+# kept for it (docs/adr/0017 §8, amendment 2026-11-14), whatever the budget.
+spent=0
+[ -f "$CREW_OUT/tokens" ] && spent=$(cat "$CREW_OUT/tokens")
+case "$spent" in ''|*[!0-9]*) spent=0 ;; esac
+if [ -f "$CREW_OUT/tokens.call" ]; then
+  call=$(cat "$CREW_OUT/tokens.call")
+  case "$call" in ''|*[!0-9]*) call=0 ;; esac
+  spent=$((spent + call))
+  printf '%s\n' "$spent" > "$CREW_OUT/tokens"
+  rm -f "$CREW_OUT/tokens.call"
+fi
 
-spent=$(cat "$CREW_OUT/tokens")
-case "$spent" in
-  ''|*[!0-9]*) exit 0 ;;
-esac
+[ -n "$TOKEN_BUDGET" ] || exit 0
 
 if [ "$spent" -ge "$TOKEN_BUDGET" ]; then
   # The stop marker run.sh reads (docs/adr/0041 §5): which budget stopped

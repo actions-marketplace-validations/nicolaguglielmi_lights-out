@@ -495,3 +495,28 @@ next attempt, detailed in HANDOFF, not repeated here.
     inspecting the still-dirty workspace directly, fixed by committing
     first, always, with a WIP placeholder message amended to the real
     one if a response does arrive (commit `d2198a4`).
+
+## Amendment 2026-11-14 (M24's Gemini leg): one model call counts once
+
+Item 1 above read the field right and the event wrong. gemini-cli
+0.61.0-preview.0, the pin since `0fb2f4a`, fires `AfterModel` once per
+streamed chunk of a model call (its chat stream loop calls
+`fireAfterModelEvent(request, chunk)` for every chunk), and each chunk's
+`usageMetadata.totalTokenCount` is the call's running total. Summing them
+counted every call several times: M24's first Gemini ticket was stopped at
+2,638,713 tokens by a run whose own `result` stats said 400,473 (369,087 in,
+310,772 of them cached, 1,331 out), 13 tool calls into a tests-only ticket.
+
+- §8's accumulate-and-deny stays, per call: `budget-after.sh` keeps the
+  largest running total of the call in flight in `$CREW_OUT/tokens.call`;
+  `budget-before.sh` adds it to `$CREW_OUT/tokens` before the next call and
+  denies that call once the total reaches `TOKEN_BUDGET`. `ci/hooks.sh` runs
+  four calls with streamed chunks (one with no usage) against a budget of
+  1,000: the first three pass, the fourth is denied naming 1,050. NO-GO on
+  the summing hooks (the third call denied at 1,750), GO after.
+- The tokens of the call in progress are counted at the next `BeforeModel`,
+  as before: the budget never stops a call mid-stream.
+- Rejected: reading only the chunk that carries `finishReason`. Whether every
+  stream ends with one that also carries usage is not something the pinned
+  CLI's code promises; the largest running total holds either way.
+- Rejected: raising `TOKEN_BUDGET`. The budget was right; the count was not.
