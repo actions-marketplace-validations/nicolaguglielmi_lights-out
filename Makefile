@@ -1021,13 +1021,15 @@ request: ## Start a ticket at requested: the product role asks or confirms, then
 # tickets start at spec-ready. TEXT, INTAKE_*, DECISIONS and CONFIRM_*
 # reach core/intake.py and core/tower.sh from make's command line. At L0
 # an intake replays its recording or is refused; record one at L1 with
-# ADK_RECORD=extend on intake and on each answer (§4).
+# ADK_RECORD=extend on intake and on each answer (§4). The intake's id is
+# TICKET only when given: the file's own TICKET default names a ticket.
+INTAKE_ID = $(if $(filter command line environment,$(origin TICKET)),$(TICKET))
 .PHONY: intake
 intake: ## Start an intake from a client's words: the product role interviews and proposes tickets, the architect their perimeters: [TICKET=<id>] TEXT=<text>|INTAKE_FILE=<file> [INTAKE_BY=<who>] [INTAKE_VIA=<how>] (docs/adr/0090)
 	@tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
 	if [ -n "$(INTAKE_FILE)" ]; then cat "$(INTAKE_FILE)" > "$$tmp" || { printf 'NO-GO: intake — cannot read INTAKE_FILE=%s\n' "$(INTAKE_FILE)"; exit 1; }; \
 	else printf '%s\n' "$${TEXT:-}" > "$$tmp"; fi; \
-	id=$$(python3 core/intake.py new "$$tmp" "$(TICKETS_DIR)" $(TICKET)) \
+	id=$$(python3 core/intake.py new "$$tmp" "$(TICKETS_DIR)" $(INTAKE_ID)) \
 		|| { printf 'NO-GO: intake — nothing written; see the intake: line above\n'; exit 1; }; \
 	printf '[intake] %s/%s.intake.md written\n' "$(TICKETS_DIR)" "$$id" >&2; \
 	sh core/tower.sh intake "$$id" || { printf 'NO-GO: intake — %s was not started; see the [tower] line above\n' "$$id"; exit 1; }; \
