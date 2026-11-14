@@ -168,7 +168,8 @@ the branch with main as the first parent, as always.
 ## Proofs
 
 - `ci/hooks.sh`: NO-GO before a66e6df, GO after; `ci/harness.sh`, `ci/harness-shape.sh`, `ci/shell.sh` GO.
-- `./go ci` from a clean clone: GO on f998ad4 (308 s) and on the final head (see the plan's note).
+- `./go ci` from a clean clone (`.crew/m24d-ci`): GO on f998ad4 (308 s) and on 8167f36 (322 s), the last
+  commit before this line.
 - The runs: section 2, from the tower documents, each run's `transcript.jsonl` and `./go spend`
   (`GO: spend — 10 tickets, 17 runs, $8.78 known, 0 of cost unknown`).
 - Workflows on 46f9644: ci 43568373040, stranger 43568373058, self 43568373013, package 43568373000, podman
