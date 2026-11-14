@@ -420,3 +420,34 @@ A5. **The recording.** The 74-turn architect recording is over its cap
 - **One cap for every role.** Ops-triage needs 2 turns, the product
   interview up to 16; one number would be too tight for one or too loose
   for the other.
+
+## Amendment 2026-11-14 (second): the architect searches the workload only, and at most twice
+
+*Owner's decision, the same day, after the re-recording stopped at the cap.*
+
+- **Measured.** With the batched search (A4) and the cap (A1), the
+  architect's re-recording took its ten turns as ten `find_files` calls
+  of 2 to 10 queries each and proposed nothing. Its later queries were
+  lights-out's own paths (`roles/architect`, `fixtures/logbook`,
+  `core/perimeter`): the map covered this whole repository, not the app
+  the tickets are about. It spent 59,753 input and 3,139 output tokens,
+  $0.057 at list price.
+
+A6. **The map the architect searches is the workload's.** The perimeter
+    step passes `INTAKE_SCOPE`, the workload's directory inside its
+    repository (`git -C "$WORKLOAD" rev-parse --show-prefix`: `app` for
+    the bundled app, empty for an attached repository, whose whole tree is
+    the workload). `find_files` answers only paths under it. A step with
+    no `WORKLOAD` refuses, naming it, rather than search a tree that may
+    not be the workload. Proposed paths stay repository-relative, as every
+    ticket's perimeter is.
+
+A7. **A search budget.** `find_files` answers at most two calls per run;
+    the third and later answer `{"error": "search budget of 2 used:
+    propose now with propose_perimeter", "results": []}`. Provenance,
+    decision: one search with every query the tickets need, plus one to
+    look again where a ticket found nothing (the rule `perimeter.md`
+    already states); measured, ten searches without a proposal. With the
+    budget a proposal of N tickets takes at most N + 4 turns (two
+    searches, one refused, one turn per ticket, the sentence), so A1's
+    cap of 10 still fits six tickets.

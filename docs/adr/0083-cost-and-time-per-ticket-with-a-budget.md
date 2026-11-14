@@ -306,3 +306,26 @@ and no model runs, so nothing is missing from `./go demo`.
   and in `#your-turn`.
 - `ci/secrets.sh`'s allowlist: proven as in item 6 on the pinned
   gitleaks, recorded here; `./go ci` after `./go dora` is GO.
+
+## Amendment 2026-11-14: an ADK run's output counts its thinking tokens
+
+*Owner's decision, 2026-11-14, with ADR 0090's turn-cap amendment.*
+
+- **Measured.** The demo intake's second architect run (Gemini 3.8 Flash,
+  high thinking, stopped at `ADK_MAX_TURNS=10`) reported, summed over its
+  ten responses' `usage_metadata`: 59,753 prompt, 443 candidates and 2,696
+  thoughts tokens, 62,892 total. The ledger priced 59,753 in and 443 out,
+  **$0.046**. Google bills thinking as output (the price table's own
+  note: "output includes thinking tokens"): 59,753 in and 3,139 out is
+  **$0.057**.
+- **Decision.** The ADK harness (`lights_out_adk.run`) reports
+  `tokens.output` as the candidates plus the thoughts of every response.
+  `tokens.total` is unchanged, and now equals input plus output for these
+  runs. The ledger's formula (§2) is unchanged; its input is right.
+- **Consequence.** Every live ADK run's cost goes up by its thinking:
+  the console's spend panel, the role matrix and `./go spend` show the
+  higher figure from the next run on. Runs already in a ledger keep the
+  number they were priced at; a replayed run still costs $0.
+- The gap in "The gap between the cost and the bill" that remains is the
+  coding harnesses': Gemini CLI's `total` above input plus output is not
+  priced, as before. It is not guessed at.
