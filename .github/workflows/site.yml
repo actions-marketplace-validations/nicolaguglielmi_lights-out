@@ -21,7 +21,7 @@ on:
       - board/index.html
       - console/index.html
       - console/serve.py
-      - fixtures/logbook/golden-1.6.json
+      - fixtures/logbook/golden-1.7.json
       - core/network.py
       - core/map.py
       - core/logbook.py

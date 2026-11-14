@@ -582,6 +582,38 @@ No GitHub Actions job runs `demo-postmortem`, so its own output is not
 shown here. Its last line is `GO: demo-postmortem`, with the fix ticket's
 path on stderr (README: recorded once at L1 on 2026-11-04).
 
+### `./go intake`: a need, before any ticket
+
+A client rarely writes a ticket. `./go intake` starts from their words
+(ADR 0090): the product role interviews them, one question at a time and
+at most five, then proposes tickets with criteria, feature and priority;
+the architect role proposes each ticket's perimeter from the project map;
+the spec gate checks each one as a draft; and nothing opens until a person
+confirms, edits or drops each ticket with `./go intake-confirm`. No plane
+is needed. At L0 the interview only replays a recorded one, and the
+committed request on the meetup app has no recording yet, so this is what
+you see:
+
+<!-- source: local run on podman, commit 9ddbbae, 2026-11-14, a full clone of the M57 branch -->
+```sh
+./go intake INTAKE_FILE=fixtures/intake/request.md
+```
+
+```
+[intake] tickets/0023.intake.md written
+[tower] 0023: intake by unauthenticated via cli, interview requested
+[tower] 0023: interview (state intake)
+intake: no recording of this intake's interview at L0 (fixtures/adk/product); record it at L1 with ./go intake ... ADK_RECORD=extend, then ./go resume TICKET=0023
+[tower] 0023: step interview failed; state stays intake
+NO-GO: intake — 0023: step exited 1: no recording of this intake's interview at L0 (fixtures/adk/product); record it at L1 with ./go intake ... ADK_RECORD=extend, then ./go resume TICKET=0023
+```
+
+Nothing is proposed in its place: a raw request has no criteria to fall
+back on. With a key, `PROFILE=l1` runs the interview live; answer each
+question with `./go answer TICKET=0023 ANSWER=...`, and the console's
+request screen has the same entry, "Describe the need", with the intake's
+card above the kanban.
+
 ### `./go demo-launch`: go-for-launch, the one human gate
 
 Agents and gates decide everything up to 25% of traffic. The step to 100%
