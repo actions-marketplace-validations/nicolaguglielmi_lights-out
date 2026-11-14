@@ -60,7 +60,11 @@ proven by `ci/attach.sh` case f).
   sprint of 2026-11-12: the why of a NO-GO (ADR 0078), the human gate on
   the card (ADR 0079), the live canary (ADR 0080), the evidence pack per
   release (ADR 0081), `./go dora` (ADR 0082) and `./go spend` with a
-  budget (ADR 0083).
+  budget (ADR 0083). **0.7.0** ships the intake interview (ADR 0090), the
+  flow strip, the role matrix and the burn on the console (ADRs
+  0085-0087), the provider scoreboard and the frozen console (ADRs
+  0088, 0089), adapters outside the repository with GitLab and Jenkins
+  (ADR 0058), and the gates' logic in Python (ADR 0084).
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.
