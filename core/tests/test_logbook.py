@@ -1411,8 +1411,10 @@ class RolesInTheLogbook(unittest.TestCase):
 
     def test_the_dev_worker_runs_on_0003(self):
         r = self.row(self.base(), "dev-worker")
+        # The stub ledger's own harness, provider and model: no model id is written in core/ (ci/model-free).
+        e = Reader.source(self, "0003")["spend"][1]
         self.assertEqual(r["last"], {"ticket": "0003", "step": "rework", "attempt": 2, "at": "2026-11-03T08:15:00Z",
-                                     "harness": "gemini-cli", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": False,
+                                     "harness": e["harness"], "provider": e["provider"], "model": e["model"], "replayed": False,
                                      "tokens": {"input": 400000, "output": 10000, "total": 410000}, "cost_usd": 0.3375,
                                      "failed": None})
         self.assertEqual(r["running"], {"ticket": "0003", "tokens": 2210000, "budget": 2600000, "warn": True})
@@ -1437,15 +1439,17 @@ class RolesInTheLogbook(unittest.TestCase):
                              (None, None, None, "idle", "has not run in this record"), role)
 
     def test_the_summary(self):
+        e = Reader.source(self, "0003")["spend"][1]
         self.assertEqual(self.base()["roles_summary"],
-                         "6 roles on 1 provider: prov; last runs on gemini/gemini-3.8-flash, prov/model-x")
+                         f"6 roles on 1 provider: prov; last runs on {e['provider']}/{e['model']}, prov/model-x")
 
     def test_at_l0_no_provider_and_no_model(self):
         b = self.read(extra={"MODEL_PROVIDER": "", "MODEL": "", "AGENT_HARNESS": "replay"})
         r = self.row(b, "dev-worker")
         self.assertEqual(r["configured"], {"provider": None, "model": None, "harness": "replay", "thinking": "high"})
+        e = Reader.source(self, "0003")["spend"][1]
         self.assertEqual(b["roles_summary"],
-                         "6 roles on no provider: the profile replays recorded runs; last runs on gemini/gemini-3.8-flash, prov/model-x")
+                         f"6 roles on no provider: the profile replays recorded runs; last runs on {e['provider']}/{e['model']}, prov/model-x")
 
     def test_no_roles_directory_is_an_error(self):
         b = self.read(lambda root: shutil.rmtree(root / "roles"))
