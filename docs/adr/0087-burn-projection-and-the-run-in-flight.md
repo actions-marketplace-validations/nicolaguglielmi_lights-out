@@ -131,8 +131,8 @@ it projects.
 - `tokens`: the hook's count; `budget`: the role's `TOKEN_BUDGET`
   (`<ROLES_DIR>/dev-worker/role.env`, `ROLES_DIR` default `roles`), null
   when it has none;
-- `warn`: `tokens >= 0.8 × budget`. Provenance, decision: proposed here,
-  the owner's to confirm; the brief asks for a warning before the stop.
+- `warn`: `tokens >= 0.8 × budget`. Provenance, decision: the owner's,
+  confirmed on 2026-11-14; the brief asks for a warning before the stop.
   On M24's Gemini runs each model call resent about 45,000 tokens
   (measurement, the phase D handoff, section 2): 80% of 2,600,000 leaves
   520,000 tokens, about eleven calls between the warning and the stop.
