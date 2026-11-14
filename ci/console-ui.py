@@ -171,6 +171,21 @@ from the golden's own fields at run time):
      AA and the focus ring at 2 px and 3:1; Enter on 0003's NO-GO test node opens dialog#why and
      Esc gives the focus back to it; over golden-1.5.json no strip anywhere; nothing POSTed.
 
+  af. the role matrix (docs/adr/0086 §2), over the golden in both themes: section#roles after
+     #your-turn, #roles-summary the logbook's words, one tr.role-row[data-role] per role in order,
+     td[data-provider] the configured provider, the provider cell starting with provider and model,
+     the harness, the thinking, the state cell the row's line verbatim, a meter (value used, max
+     budget, a label) exactly where both numbers are there and `no budget` where none; AA; no sideways
+     scroll at 390 px; over golden-1.5.json the sentence naming 1.6 and no row.
+
+  ag. the burn and the run in flight (docs/adr/0087 §5), over the golden in both themes: #spend-burn
+     and #spend-projection the logbook's lines verbatim, data-over from burn.over, svg#spend-hours
+     role=img labelled with the burn line and 24 rect.hour whose heights order as `hourly`,
+     ul#spend-live one li per ticket in flight (`<id>: <line>`); the card in flight's span.live with
+     data-warn, its line as aria-label and a meter, no span.live elsewhere, its back's .live-line;
+     AA; over a derived logbook with a day limit under the projection data-over=true; over
+     golden-1.5.json none of it; nothing POSTed.
+
   agents. the Thresholds screen's Agents panel prints the logbook's lines
      (docs/adr/0073 §10), and each card's back shows its task's MCP calls and
      its review's instructions, and no such row when they are null.
@@ -4925,6 +4940,239 @@ def ae_flow(browser, bases, golden):
         ctx.close()
 
 
+# --- af. the role matrix (docs/adr/0086 §2) ------------------------------------------------------
+
+ROLES_JS = """() => {
+  const sec = document.querySelector('section#roles'), you = document.querySelector('#your-turn');
+  if (!sec) return null;
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  return {after_you: !!you && !!(you.compareDocumentPosition(sec) & Node.DOCUMENT_POSITION_FOLLOWING),
+    text: txt(sec), summary: txt(sec.querySelector('#roles-summary')),
+    rows: [...sec.querySelectorAll('table#role-matrix tr.role-row')].map((r) => {
+      const m = r.querySelector('meter');
+      const cell = (c) => txt(r.querySelector('td.' + c));
+      return {role: r.dataset.role, provider: r.querySelector('td[data-provider]') ? r.querySelector('td[data-provider]').dataset.provider : null,
+        provider_text: txt(r.querySelector('td[data-provider]')), harness: cell('harness'), thinking: cell('thinking'),
+        tokens: cell('tokens'), state: cell('state'),
+        meter: m ? {value: Number(m.getAttribute('value')), max: Number(m.getAttribute('max')), label: m.getAttribute('aria-label')} : null};
+    })};
+}"""
+
+
+def role_problems(info, book):
+    if info is None:
+        return ["no section#roles on #overview"]
+    if "roles" not in book:
+        return [] if "1.6" in info["text"] and not info["rows"] else [f"a logbook before 1.6: section#roles says {info['text']!r} with {len(info['rows'])} row(s)"]
+    bad = []
+    if not info["after_you"]:
+        bad.append("section#roles is not after #your-turn")
+    if info["summary"] != book["roles_summary"]:
+        bad.append(f"#roles-summary is {info['summary']!r}, the logbook's is {book['roles_summary']!r}")
+    rows = book["roles"]
+    if [r["role"] for r in info["rows"]] != [r["role"] for r in rows]:
+        return bad + [f"the rows are {[r['role'] for r in info['rows']]}, the logbook's {[r['role'] for r in rows]}"]
+    for got, r in zip(info["rows"], rows):
+        c = r["configured"] or {}
+        if got["provider"] != (c.get("provider") or ""):
+            bad.append(f"{r['role']}: data-provider {got['provider']!r}, configured {c.get('provider')!r}")
+        if c.get("provider") and c.get("model") and not (got["provider_text"] or "").startswith(f"{c['provider']} {c['model']}"):
+            bad.append(f"{r['role']}: the provider cell {got['provider_text']!r} does not start with {c['provider']} {c['model']}")
+        if (got["harness"], got["thinking"]) != (c.get("harness") or "—", c.get("thinking") or "—"):
+            bad.append(f"{r['role']}: harness and thinking {got['harness']!r}, {got['thinking']!r}, want {c.get('harness')!r}, {c.get('thinking')!r}")
+        if got["state"] != r["line"]:
+            bad.append(f"{r['role']}: the state cell {got['state']!r}, the logbook's line {r['line']!r}")
+        both = isinstance(r["used"], int) and isinstance(r["budget"], int)
+        if both and not (got["meter"] and got["meter"]["max"] == r["budget"] and got["meter"]["value"] == min(r["used"], r["budget"]) and got["meter"]["label"]):
+            bad.append(f"{r['role']}: the meter is {got['meter']}, want value {r['used']} of {r['budget']} with a label")
+        if not both and got["meter"]:
+            bad.append(f"{r['role']}: a meter with used {r['used']} and budget {r['budget']}")
+        if r["budget"] is None and "no budget" not in (got["tokens"] or ""):
+            bad.append(f"{r['role']}: the tokens cell {got['tokens']!r} does not say no budget")
+        if both and f"{r['used']:,} of {r['budget']:,}" not in (got["tokens"] or ""):
+            bad.append(f"{r['role']}: the tokens cell {got['tokens']!r} does not say {r['used']:,} of {r['budget']:,}")
+    return bad
+
+
+def self_checks_roles(golden):
+    need(isinstance(golden.get("roles"), list) and len(golden["roles"]) == 6, "af: the golden has no six roles")
+    good = {"after_you": True, "text": "", "summary": golden["roles_summary"], "rows": [
+        {"role": r["role"], "provider": (r["configured"] or {}).get("provider") or "",
+         "provider_text": f"{r['configured']['provider']} {r['configured']['model']}", "harness": r["configured"]["harness"] or "—",
+         "thinking": r["configured"]["thinking"] or "—", "state": r["line"],
+         "tokens": (f"{r['used']:,} of {r['budget']:,}" if isinstance(r["used"], int) and isinstance(r["budget"], int)
+                    else "no budget" if r["budget"] is None else f"of {r['budget']:,}"),
+         "meter": {"value": min(r["used"], r["budget"]), "max": r["budget"], "label": "x"}
+         if isinstance(r["used"], int) and isinstance(r["budget"], int) else None} for r in golden["roles"]]}
+    need(role_problems(good, golden) == [], f"af self-check: a right matrix is refused: {role_problems(good, golden)}")
+    for what, change in (("the order", lambda g: g["rows"].reverse()), ("the summary", lambda g: g.update(summary="6 roles")),
+                         ("a line", lambda g: g["rows"][1].update(state="idle")), ("a meter", lambda g: g["rows"][1].update(meter=None)),
+                         ("a provider", lambda g: g["rows"][0].update(provider="")), ("the place", lambda g: g.update(after_you=False))):
+        bad = json.loads(json.dumps(good))
+        change(bad)
+        need(role_problems(bad, golden), f"af self-check: a matrix with {what} wrong is accepted")
+
+
+def af_roles(browser, bases, golden):
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        tab.load("#overview")
+        wait_for(tab, "section#roles", f"af ({scheme})")
+        bad = role_problems(tab.page.evaluate(ROLES_JS), golden)
+        need(not bad, f"af ({scheme}): {bad[0] if bad else ''}", *bad)
+        items = tab.page.evaluate(MEASURE_JS, "section#roles")
+        bad = contrast_problems(items, f"af ({scheme}), section#roles")
+        need(not bad, bad[0] if bad else "", *bad[:10])
+        tab.audit(f"af ({scheme})")
+        ctx.close()
+    ctx = browser.new_context(viewport=PHONE)
+    tab = Tab(ctx, bases["golden"])
+    tab.load("#overview")
+    wait_for(tab, "section#roles", "af (390 px)")
+    wide = tab.page.evaluate("() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
+    need(not wide, "af: the Overview scrolls sideways at 390 px with the role matrix")
+    ctx.close()
+    with Console(GOLDEN_15) as old:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, old.base)
+        tab.load("#overview")
+        wait_for(tab, "section#roles", "af (1.5)")
+        bad = role_problems(tab.page.evaluate(ROLES_JS), json.loads(GOLDEN_15.read_text(encoding="utf-8")))
+        need(not bad, f"af (1.5): {bad[0] if bad else ''}", *bad)
+        tab.audit("af (1.5)")
+        ctx.close()
+
+
+# --- ag. the burn, the projection and the run in flight (docs/adr/0087 §5) -----------------------
+
+BURN_JS = """() => {
+  const txt = (n) => (n ? n.textContent.replace(/\\s+/g, ' ').trim() : null);
+  const p = document.querySelector('#spend-projection'), svg = document.querySelector('svg#spend-hours');
+  return {burn: txt(document.querySelector('#spend-burn')), projection: txt(p), over: p ? p.dataset.over : null,
+    svg: svg ? {role: svg.getAttribute('role'), label: svg.getAttribute('aria-label'),
+      bars: [...svg.querySelectorAll('rect.hour')].map((r) => ({hour: Number(r.dataset.hour), height: Number(r.getAttribute('height'))}))} : null,
+    live: [...document.querySelectorAll('ul#spend-live li')].map(txt)};
+}"""
+LIVE_FACE_JS = """() => [...document.querySelectorAll('.card[data-id]')].map((c) => {
+  const b = c.querySelector('span.live');
+  return {id: c.dataset.id, live: b ? {warn: b.dataset.warn, label: b.getAttribute('aria-label'), meter: !!b.querySelector('meter')} : null};
+})"""
+
+
+def burn_problems(info, book):
+    s = book.get("spend") or {}
+    if "burn" not in s:
+        return [] if not info["burn"] and not info["svg"] and not info["live"] else [f"a logbook before 1.6 shows a burn: {info}"]
+    lines = s["lines"]
+    want_burn = next(l for l in lines if l.startswith("burn: "))
+    want_proj = next(l for l in lines if l.startswith("projection: "))
+    bad = []
+    if info["burn"] != want_burn:
+        bad.append(f"#spend-burn is {info['burn']!r}, the logbook's line is {want_burn!r}")
+    if info["projection"] != want_proj:
+        bad.append(f"#spend-projection is {info['projection']!r}, the logbook's line is {want_proj!r}")
+    b = s["burn"]
+    want_over = "" if b is None or b["over"] is None else str(b["over"]).lower()
+    if info["over"] != want_over:
+        bad.append(f"#spend-projection has data-over {info['over']!r}, want {want_over!r}")
+    if b is not None:
+        svg = info["svg"]
+        if not svg or svg["role"] != "img" or svg["label"] != want_burn:
+            bad.append(f"svg#spend-hours is {svg and {k: svg[k] for k in ('role', 'label')}}, want role img labelled with the burn line")
+        elif [x["hour"] for x in svg["bars"]] != list(range(24)):
+            bad.append(f"svg#spend-hours has bars {[x['hour'] for x in svg['bars']]}, want 0 to 23")
+        else:
+            hourly = b["hourly"]
+            for i in range(24):
+                for j in range(24):
+                    if hourly[i] > hourly[j] and not svg["bars"][i]["height"] > svg["bars"][j]["height"]:
+                        bad.append(f"bar {i} ({hourly[i]}) is not taller than bar {j} ({hourly[j]})")
+                        break
+    want_live = [f"{t['id']}: {t['live']['line']}" for t in book["tickets"] if t.get("live")]
+    if info["live"] != want_live:
+        bad.append(f"ul#spend-live holds {info['live']}, want {want_live}")
+    return bad
+
+
+def burn_books(golden):
+    over = json.loads(json.dumps(golden))
+    b = over["spend"]["burn"]
+    b.update(limit_usd=10.0, over=True)
+    over["spend"]["limits"]["SPEND_BUDGET_DAY_USD"] = 10.0
+    over["spend"]["lines"] = [l if not l.startswith("projection: ") else
+                              l.replace("SPEND_BUDGET_DAY_USD no limit", "SPEND_BUDGET_DAY_USD=$10.00: over") for l in over["spend"]["lines"]]
+    return {"over": over}
+
+
+def self_checks_burn(golden):
+    s = golden["spend"]
+    good = {"burn": next(l for l in s["lines"] if l.startswith("burn: ")), "projection": next(l for l in s["lines"] if l.startswith("projection: ")),
+            "over": "", "svg": {"role": "img", "label": next(l for l in s["lines"] if l.startswith("burn: ")),
+                                "bars": [{"hour": i, "height": 1 + 20 * v} for i, v in enumerate(s["burn"]["hourly"])]},
+            "live": [f"{t['id']}: {t['live']['line']}" for t in golden["tickets"] if t.get("live")]}
+    need(good["live"], "ag: the golden has no run in flight")
+    need(burn_problems(good, golden) == [], f"ag self-check: a right panel is refused: {burn_problems(good, golden)}")
+    for what, change in (("the burn line", {"burn": "burn: x"}), ("data-over", {"over": "true"}), ("no live", {"live": []}),
+                         ("flat bars", {"svg": dict(good["svg"], bars=[{"hour": i, "height": 1} for i in range(24)])}),
+                         ("23 bars", {"svg": dict(good["svg"], bars=good["svg"]["bars"][:23])})):
+        need(burn_problems(dict(good, **change), golden), f"ag self-check: a panel with {what} wrong is accepted")
+
+
+def ag_burn(browser, bases, golden, tmp):
+    paths = {}
+    for name, book in burn_books(golden).items():
+        paths[name] = tmp / f"ag-{name}.json"
+        paths[name].write_text(json.dumps(book), encoding="utf-8")
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        tab.load("#overview")
+        wait_for(tab, "#spend-burn", f"ag ({scheme})")
+        bad = burn_problems(tab.page.evaluate(BURN_JS), golden)
+        need(not bad, f"ag ({scheme}): {bad[0] if bad else ''}", *bad)
+        items = tab.page.evaluate(MEASURE_JS, "section#spend")
+        bad = contrast_problems(items, f"ag ({scheme}), section#spend")
+        need(not bad, bad[0] if bad else "", *bad[:10])
+        # The card and the back of the ticket in flight.
+        draw_kanban(tab, f"ag ({scheme})")
+        tab.page.wait_for_timeout(300)
+        by_id = {t["id"]: t for t in golden["tickets"]}
+        for f in tab.page.evaluate(LIVE_FACE_JS):
+            t = by_id[f["id"]]
+            if t.get("live"):
+                need(f["live"] and f["live"]["warn"] == str(t["live"]["warn"]).lower() and f["live"]["label"] == t["live"]["line"] and f["live"]["meter"],
+                     f"ag ({scheme}): card {f['id']}'s span.live is {f['live']}, want data-warn {t['live']['warn']}, its line and a meter")
+            else:
+                need(f["live"] is None, f"ag ({scheme}): card {f['id']} has a span.live with no run in flight")
+        flying = next(t for t in golden["tickets"] if t.get("live"))
+        open_back(tab, flying["id"])
+        said = tab.page.evaluate("() => { const p = document.querySelector('dialog#card-back .live-line'); return p ? p.textContent.replace(/\\s+/g, ' ').trim() : null; }")
+        need(said == flying["live"]["line"], f"ag ({scheme}): the back of {flying['id']} says {said!r}, want its run in flight's line")
+        tab.audit(f"ag ({scheme})")
+        ctx.close()
+    with Console(paths["over"]) as over:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, over.base)
+        tab.load("#overview")
+        wait_for(tab, "#spend-projection", "ag (over)")
+        bad = burn_problems(tab.page.evaluate(BURN_JS), burn_books(golden)["over"])
+        need(not bad, f"ag (over): {bad[0] if bad else ''}", *bad)
+        tab.audit("ag (over)")
+        ctx.close()
+    with Console(GOLDEN_15) as old:
+        ctx = browser.new_context(viewport=DESKTOP)
+        tab = Tab(ctx, old.base)
+        tab.load("#overview")
+        wait_for(tab, "section#spend", "ag (1.5)")
+        bad = burn_problems(tab.page.evaluate(BURN_JS), json.loads(GOLDEN_15.read_text(encoding="utf-8")))
+        need(not bad, f"ag (1.5): {bad[0] if bad else ''}", *bad)
+        draw_kanban(tab, "ag (1.5)")
+        need(tab.page.evaluate("() => document.querySelectorAll('span.live').length") == 0, "ag (1.5): a 1.5 logbook draws a run in flight")
+        tab.audit("ag (1.5)")
+        ctx.close()
+
+
 def main():
     real = sys.stdout
     sys.stdout = sys.stderr  # a library that prints must not break the one-line contract
@@ -4941,6 +5189,8 @@ def main():
         self_checks()
         self_checks_panels(golden)
         self_checks_flow(golden)
+        self_checks_roles(golden)
+        self_checks_burn(golden)
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
             browser = p.chromium.launch()
@@ -4983,6 +5233,8 @@ def main():
                             ab_launch(browser, bases, golden, books)
                             ac_canary(browser, bases, golden)
                             ae_flow(browser, bases, golden)
+                            af_roles(browser, bases, golden)
+                            ag_burn(browser, bases, golden, pathlib.Path(tmp))
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)

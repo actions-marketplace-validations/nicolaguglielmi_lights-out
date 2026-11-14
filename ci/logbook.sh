@@ -38,7 +38,9 @@
 #      four measures; each run again with one fact planted wrong.
 #      The 1.6 flow (docs/adr/0085 §1-§3), by hand from the stub: 0010's
 #      fourteen nodes from the open to 100%, 0003's gates stopping at test,
-#      each gate's seconds on ci and rework; each run again planted wrong.
+#      each gate's seconds on ci and rework; the role matrix (docs/adr/0086),
+#      0003's attempt in flight and the burn of 2026-11-03 (docs/adr/0087); each
+#      run again planted wrong.
 #      golden-1.5.json, golden-1.4.json, golden-1.3.json and golden-1.2.json stay in the
 #      repository, untouched, as the old-logbook fixtures, and validate against
 #      their schemas. The stub root
@@ -624,6 +626,10 @@ jq '(.tickets[] | select(.id == "0007") | .outcome.stop) = "money"' "$golden" > 
 jq '(.tickets[] | select(.id == "0010") | .flow[0].verdict) = "maybe"' "$golden" > "$st/bad-flow-verdict.json"
 jq '(.tickets[] | select(.id == "0010") | .flow) |= .[0:13]' "$golden" > "$st/bad-flow-length.json"
 jq '(.tickets[] | select(.id == "0010") | .ci.seconds.risk) = "1"' "$golden" > "$st/bad-ci-seconds.json"
+# 1.6 (docs/adr/0086, 0087): the roles, the run in flight and the burn are typed.
+jq '.roles[0].state = "busy"' "$golden" > "$st/bad-role-state.json"
+jq '(.tickets[] | select(.id == "0003") | .live.tokens) = "2210000"' "$golden" > "$st/bad-live-tokens.json"
+jq '.spend.burn.hourly |= .[0:23]' "$golden" > "$st/bad-burn-hourly.json"
 (
   cd "$st"
   must_reject "schema validation (an enum value)" valid bad-enum.json
@@ -652,6 +658,9 @@ jq '(.tickets[] | select(.id == "0010") | .ci.seconds.risk) = "1"' "$golden" > "
   must_reject "schema validation (a flow node's verdict outside its four)" valid bad-flow-verdict.json
   must_reject "schema validation (a flow of thirteen nodes)" valid bad-flow-length.json
   must_reject "schema validation (a gate's seconds that is not an integer)" valid bad-ci-seconds.json
+  must_reject "schema validation (a role's state outside running, ran and idle)" valid bad-role-state.json
+  must_reject "schema validation (a run in flight's tokens that is not an integer)" valid bad-live-tokens.json
+  must_reject "schema validation (a burn of 23 hours)" valid bad-burn-hourly.json
   must_accept "schema validation" valid "$golden"
 ) || exit 1
 
@@ -1084,7 +1093,11 @@ stub_commit=2db9f76c0cdf3fcaecdf1f365246546eaef5cc93
 # project map core/map.py builds from that commit, in .crew/map.sqlite.
 mkroot() {
   r=$1
-  mkdir -p "$r/adapters/stub-state" "$r/adapters/stub-delivery" "$r/world" "$r/roles/release"
+  mkdir -p "$r/adapters/stub-state" "$r/adapters/stub-delivery" "$r/world" "$r/.crew"
+  # The six roles (docs/adr/0086 §1), the release role's harness the stub's own,
+  # and the dev-worker's attempt in flight on 0003 (docs/adr/0087 §4).
+  cp -R "$stub/roles" "$r/roles"
+  cp -R "$stub/crew/." "$r/.crew/"
   printf 'THINKING=low\nTIMEOUT_S=900\nHARNESS=stub-harness\n' > "$r/roles/release/role.env"
   ln -s "$repo/core" "$r/core"
   ln -s "$repo/ci" "$r/ci"
@@ -1154,6 +1167,7 @@ run_reader() {
   out=$(cd "$root" && env -u GIT_DIR -u GIT_WORK_TREE LEVEL=l0 WORKLOAD=app CODE_HOST=gitea \
     STATE_STORE=stub-state DELIVERY=stub-delivery TICKETS_DIR=tickets RELEASE_RECORD=release.json \
     RELEASES_LOG=releases.jsonl PROMOTE_OUT=promote POSTMORTEM_DIR=postmortem WORKLOAD_CONTRACT=contract \
+    MODEL_PROVIDER=gemini MODEL=gemini-3.8-flash AGENT_HARNESS=gemini-cli ROLES_DIR= CREW_DIR= \
     WINDOW_DAYS= "$@" sh core/logbook.sh 2>reader.err </dev/null) && rc=0 || rc=$?
 }
 
@@ -1228,8 +1242,8 @@ hand_13() {
   # shellcheck disable=SC2016 # $old is jq's own variable
   # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 and ADR 0078 add none;
   # 1.5 adds `dora` and `spend` (docs/adr/0082, 0083, amendments of 2026-11-13).
-  h13 "nothing new at the top level but agents, dora and spend, and the schema is 1.6" \
-    '.schema == "lights-out/logbook/1.6" and (keys == ($old[0] | keys + ["agents", "dora", "spend"] | sort))' "$1" || return 1
+  h13 "nothing new at the top level but agents, dora, spend, roles and roles_summary, and the schema is 1.6" \
+    '.schema == "lights-out/logbook/1.6" and (keys == ($old[0] | keys + ["agents", "dora", "spend", "roles", "roles_summary"] | sort))' "$1" || return 1
   h13 "0010's two attempts, as the tower recorded them" \
     "$t10 | (.tasks | map(.attempt)) == [1, 2]" "$1" || return 1
   h13 "0010 attempt 1: members impl and tests, in that order, with their harness, model and perimeter" \
@@ -1560,7 +1574,7 @@ hand_15() {
       and (.lines | index("ticket 0010: $0.00 over 2 run(s), 1 of cost unknown; agents 0h00m30s, elapsed 1h30m00s")) != null
       and (.lines | index("role dev-worker: $1.16 over 3 run(s); 0h07m00s")) != null
       and (.lines | index("day 2026-11-02: $0.00 over 2 run(s), 1 of cost unknown")) != null
-      and ([.lines[] | split(" ")[0]] == ["ticket","ticket","ticket","ticket","ticket","ticket","ticket","ticket","ticket","role","role","day","day","budget:"])' "$1" || return 1
+      and ([.lines[] | split(" ")[0]] == ["ticket","ticket","ticket","ticket","ticket","ticket","ticket","ticket","ticket","role","role","day","day","burn:","projection:","budget:"])' "$1" || return 1
   h15 "0007 stopped by the cap: stop cap, its last rework line and judge; no other ticket has a stop" \
     '(.tickets[] | select(.id == "0007") | .outcome) == {verdict: "needs-human", judge: $s7[0].rework[-1].judge, line: $s7[0].rework[-1].line, stop: "cap"}
       and ([.tickets[] | select(.state != "needs-human") | .outcome | has("stop")] | any | not)' "$1" || return 1
@@ -1926,9 +1940,44 @@ hand_16() {
   h16 "0003 and 0010 keep each gate's seconds on ci and on the rework entry" \
     "($t03 | .ci.seconds == \$s3[0].ci.seconds and .rework[0].seconds == \$s3[0].rework[0].seconds)
       and ($t10 | .ci.seconds == \$s10[0].ci.seconds)" "$1" || return 1
+  # docs/adr/0086 §1: the stub's six roles under the profile's gemini, the release
+  # role's harness the stub's own; 0003's attempt in flight (2,210,000 counted).
+  h16 "roles: six rows in the network table's order, configured from the profile and role.env, with their budgets" \
+    '(.roles | map(.role)) == ["architect", "dev-worker", "ops-triage", "product", "release", "test-reviewer"]
+      and ([.roles[] | [.configured.provider, .configured.model, .configured.harness, .configured.thinking, .budget]]
+        == [["gemini", "gemini-3.8-flash", "gemini-cli", "high", 600000], ["gemini", "gemini-3.8-flash", "gemini-cli", "high", 2600000],
+            ["gemini", "gemini-3.8-flash", "adk", "low", null], ["gemini", "gemini-3.8-flash", "adk", "medium", null],
+            ["gemini", "gemini-3.8-flash", "stub-harness", "low", null], ["gemini", "gemini-3.8-flash", "gemini-cli", "high", 1500000]])' "$1" || return 1
+  h16 "the dev-worker runs on 0003 (last: 0003's rework at attempt 2), the test-reviewer last ran on 0010, the four others idle" \
+    '(.roles | map({(.role): [.state, .used, .line, (.last.ticket // null), (.last.step // null)]}) | add)
+      == {"architect": ["idle", null, "has not run in this record", null, null],
+          "dev-worker": ["running", 2210000, "running on 0003: 2,210,000 of 2,600,000 tokens — near the budget", "0003", "rework"],
+          "ops-triage": ["idle", null, "has not run in this record", null, null],
+          "product": ["idle", null, "has not run in this record", null, null],
+          "release": ["idle", null, "has not run in this record", null, null],
+          "test-reviewer": ["ran", 30900, "last ran on 0010 (review, attempt 1) at 2026-11-02T06:40:00Z: 30,900 tokens of 1,500,000", "0010", "review"]}
+      and (.roles[1].running == {ticket: "0003", tokens: 2210000, budget: 2600000, warn: true})' "$1" || return 1
+  h16 "the roles summary" \
+    '.roles_summary == "6 roles on 1 provider: gemini; last runs on gemini/gemini-3.8-flash, prov/model-x"' "$1" || return 1
+  # docs/adr/0087 §4: 0003 at ci-failed after attempt 2, no error last, 2,210,000 counted, no run.json.
+  h16 "0003's attempt 3 in flight, near TOKEN_BUDGET; no other ticket in flight" \
+    "$t03"' | .live == {role: "dev-worker", attempt: 3, tokens: 2210000, budget: 2600000, warn: true,
+      line: "dev-worker, attempt 3: 2,210,000 of 2,600,000 tokens (85%) — near TOKEN_BUDGET, the run stops at 2,600,000"}' "$1" || return 1
+  h16 "no ticket but 0003 has a run in flight" '[.tickets[] | select(.id != "0003") | .live] | all(. == null)' "$1" || return 1
+  # docs/adr/0087 §3: the last day with a run is 2026-11-03, 0003's two runs at 08:05 and 08:15.
+  h16 "the burn of 2026-11-03: \$1.1625 over an hour, 15.75 h left, \$19.471875 projected, no day limit" \
+    '.spend.burn | .day == "2026-11-03" and .first == "2026-11-03T08:05:00Z" and .end == "2026-11-03T08:15:00Z"
+      and .runs == 2 and .unknown == 0 and ((.spent_usd - 1.1625) | fabs) < 0.000001 and .hours == 1
+      and ((.per_hour_usd - 1.1625) | fabs) < 0.000001 and .left_h == 15.75 and ((.projected_usd - 19.471875) | fabs) < 0.000001
+      and .limit_usd == null and .over == null
+      and ([.hourly | to_entries[] | select(.value != 0) | [.key, .value]] == [[8, 1.1625]])' "$1" || return 1
+  h16 "the burn and the projection lines, before the budget's" \
+    '.spend.lines[-3:] == ["burn: $1.16 per hour on 2026-11-03 ($1.16 known in 2 run(s) from 08:05 to 08:15 UTC, over 1.0 h)",
+      "projection: $19.47 by the end of 2026-11-03 UTC at that rate, as of 08:15 UTC; SPEND_BUDGET_DAY_USD no limit",
+      "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"]' "$1" || return 1
 }
-bad=$(hand_16 "$root/out1.json") || nogo "the 1.6 flow over the stub sources: $bad" \
-  "$(jq -c '[.tickets[] | select(.id == "0010" or .id == "0003") | {id, flow}]' "$root/out1.json" 2>&1)"
+bad=$(hand_16 "$root/out1.json") || nogo "the 1.6 fields over the stub sources: $bad" \
+  "$(jq -c '{flow: [.tickets[] | select(.id == "0010" or .id == "0003") | {id, flow, live}], roles, roles_summary, burn: .spend.burn}' "$root/out1.json" 2>&1)"
 plant16() {
   jq "$2" "$root/out1.json" > "$tmp/plant.json"
   if hand_16 "$tmp/plant.json" >/dev/null; then
@@ -1943,6 +1992,16 @@ plant16 "0010's human answer by someone else" "$(tix 0010 '.flow[12].line = "pro
 plant16 "0003's mutation reached" "$(tix 0003 '.flow[8].verdict = "GO"')"
 plant16 "0003's test seconds lost" "$(tix 0003 '.flow[7].seconds = null')"
 plant16 "0003's rework seconds dropped" "$(tix 0003 'del(.rework[0].seconds)')"
+plant16 "two roles swapped" '.roles |= ([.[1], .[0]] + .[2:])'
+plant16 "the dev-worker's model from another profile" '.roles[1].configured.model = "other"'
+plant16 "the dev-worker idle" '.roles[1] |= (.state = "ran" | .running = null)'
+plant16 "the test-reviewer's tokens summed over its ticket" '.roles[5].used = 72000'
+plant16 "the summary counting two providers" '.roles_summary = "6 roles on 2 providers: gemini, prov"'
+plant16 "0003's run in flight under the warning" "$(tix 0003 '.live.warn = false')"
+plant16 "a run in flight on 0005" "$(tix 0005 '.live = {role: "dev-worker", attempt: 1, tokens: 1, budget: 2600000, warn: false, line: "x"}')"
+plant16 "the burn over ten minutes" '.spend.burn.hours = 0.166667'
+plant16 "the projection from a clock" '.spend.burn.left_h = 12'
+plant16 "the projection line after the budget" '.spend.lines |= (.[0:-3] + [.[-2], .[-1], .[-3]])'
 
 cp "$root/state/tickets.0009.json" "$tmp/0009.keep"
 jq '.history[0] += {by: "ada@example.org", via: "console"}' "$tmp/0009.keep" > "$root/state/tickets.0009.json"
