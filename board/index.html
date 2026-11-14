@@ -275,8 +275,8 @@ if(t==="light"||t==="dark")document.documentElement.dataset.theme=t})();
 <!-- core/tower.sh's transition table. ci/board.sh fails when it drifts. -->
 <script type="application/json" id="tower-machine">
 {
-  "precondition": {"clarify": "requested", "answer": "questions", "spec": "spec-ready", "assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "mainline": "merged", "release": "main-green", "rework": "ci-failed"},
-  "next": {"requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "mainline", "main-green": "release", "ci-failed": "rework"}
+  "precondition": {"interview": "intake", "intake-answer": "intake-questions", "perimeter": "drafted", "clarify": "requested", "answer": "questions", "spec": "spec-ready", "assign": "opened", "ci": "pr-opened", "review": "review", "merge": "ci-passed", "mainline": "merged", "release": "main-green", "rework": "ci-failed"},
+  "next": {"intake": "interview", "drafted": "perimeter", "requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "mainline", "main-green": "release", "ci-failed": "rework"}
 }
 </script>
 <script>

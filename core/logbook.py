@@ -2,7 +2,7 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.6` (core/logbook/1.6.schema.json) from the
+Assembles `lights-out/logbook/1.7` (core/logbook/1.7.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
@@ -13,8 +13,9 @@ what its last run used: the task's `mcp` and the review's `instructions`
 and the delivery measures in the words `./go spend` and `./go dora` print
 (docs/adr/0083 and 0082, amendments of 2026-11-13), and each ticket's flow
 strip, its fourteen nodes from the request to 100% (docs/adr/0085), the role
-matrix (docs/adr/0086), the burn and the day's projection, and the dev-worker's
-attempt in flight from the budget hooks' count (docs/adr/0087). Every rule
+matrix (docs/adr/0086), the burn and the day's projection, the dev-worker's
+attempt in flight from the budget hooks' count (docs/adr/0087), and the
+intakes, each with its questions, proposal and confirmation (docs/adr/0090 §7). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -58,7 +59,7 @@ except ImportError:  # run as a script: core/ is sys.path[0]
     import spend as ledger
     import network as contract_network
 
-SCHEMA = "lights-out/logbook/1.6"
+SCHEMA = "lights-out/logbook/1.7"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -353,6 +354,8 @@ def tickets(rels, docs=None):
     get = f"adapters/{store}/get.sh"
     out = []
     for path in sorted(glob.glob(os.path.join(env("TICKETS_DIR", "tickets"), "*.md"))):
+        if path.endswith(INTAKE_SUFFIX):
+            continue  # an intake is never a ticket (docs/adr/0090 §7)
         tid = os.path.basename(path)[:-3]
         rc, stdout, err = run("sh", get, "tickets", tid)
         if rc == 1:
@@ -398,6 +401,60 @@ def tickets(rels, docs=None):
             "timeline": timeline(doc, tid, rels, perimeter(path)),
             "flow": flow(doc, tid, rels, perimeter(path)),
             "live": live(doc, tid),
+            "intake": doc.get("intake") if isinstance(doc.get("intake"), str) else None,
+        })
+    return out
+
+
+# --- the intakes (docs/adr/0090 §7) ---------------------------------------
+
+INTAKE_SUFFIX = ".intake.md"
+PROPOSED_KEYS = ("n", "title", "problem", "criteria", "feature", "priority", "perimeter", "check", "decision",
+                 "ticket")
+
+
+def intakes(docs=None):
+    """One entry per TICKETS_DIR/*.intake.md the tower holds; DOCS collects each document by id."""
+    store = env("STATE_STORE")
+    if not store:
+        return unread("STATE_STORE not set; run this via ./go logbook")
+    get = f"adapters/{store}/get.sh"
+    out = []
+    for path in sorted(glob.glob(os.path.join(env("TICKETS_DIR", "tickets"), "*" + INTAKE_SUFFIX))):
+        iid = os.path.basename(path)[:-len(INTAKE_SUFFIX)]
+        rc, stdout, err = run("sh", get, "tickets", iid)
+        if rc == 1:
+            continue  # absent: written, never started
+        if rc != 0:
+            return unread(err)
+        try:
+            doc = json.loads(stdout)
+        except ValueError:
+            return unread(f"{get} printed no JSON for {iid}")
+        if not isinstance(doc, dict) or doc.get("kind") != "intake":
+            continue
+        if docs is not None:
+            docs[iid] = doc
+        with open(path, encoding="utf-8") as fh:
+            words = fh.read()
+        history = doc.get("history") or []
+        last = history[-1] if history and isinstance(history[-1], dict) else {}
+        started = doc.get("intake") if isinstance(doc.get("intake"), dict) else {}
+        out.append({
+            "id": iid,
+            "state": doc.get("state"),
+            "text": words,
+            "by": started.get("by"),
+            "via": started.get("via"),
+            "at": started.get("at"),
+            "questions": doc.get("questions") or [],
+            "product": pick(doc.get("product"), TASK_KEYS[1:] + ("consulted", "why")),
+            "architect": pick(doc.get("architect"), TASK_KEYS[1:] + ("consulted", "why")),
+            "proposal": [pick(t, PROPOSED_KEYS) for t in doc.get("proposal") or [] if isinstance(t, dict)],
+            "confirmation": pick(doc.get("confirmation"), ("by", "via", "at")),
+            "tickets": doc.get("tickets") if isinstance(doc.get("tickets"), list) else [],
+            "history": history,
+            "stranded": pick(last, ("step", "error", "at")) if last.get("error") else None,
         })
     return out
 
@@ -1263,6 +1320,11 @@ def main(argv):
     rels = releases(record)
     docs = {}
     held = tickets(rels, docs)
+    asked_docs = {}
+    asked = intakes(asked_docs)
+    # An intake's runs count in the spend and the roles (docs/adr/0090 §7); an
+    # intake that ran nothing is no line of the ledger's report.
+    docs.update({k: v for k, v in asked_docs.items() if v.get("spend")})
     holds = perimeters_held(held)
     for t in held if isinstance(held, list) else []:
         t["wait"] = waiting(t, holds)
@@ -1290,6 +1352,7 @@ def main(argv):
         "dora": dora(rels, held),
         "roles": matrix,
         "roles_summary": matrix_summary,
+        "intakes": asked,
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"

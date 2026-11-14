@@ -10,6 +10,8 @@
     POST /v1/answer          the second: ./go answer's recipe (docs/adr/0055 §2)
     POST /v1/spec-check      writes nothing: a draft request through gates/spec.sh (docs/adr/0059 §4)
     POST /v1/request         the third: the draft as TICKETS_DIR/<id>.md, then ./go request's recipe
+    POST /v1/intake          the fourth: a client's words, then ./go intake's recipe (docs/adr/0090 §8)
+    POST /v1/intake-confirm  the fifth: the decisions on a proposed intake, ./go intake-confirm's recipe
 
 It reads one document, the logbook, and nothing behind it: the tower, the
 plane, the policy files and the project map reach it only through
@@ -18,8 +20,11 @@ core/promote.sh, the same script and the same checks as `./go promote`;
 the answer to a ticket's open question through `make answer`, the recipe
 `./go answer` runs; and a new ticket's request, which only a draft the
 spec gate passes reaches, through `make request`; each records who pressed
-and `via: console`. The spec check runs the gate on a draft in a temporary
-directory and deletes it.
+and `via: console`. An intake (docs/adr/0090 §8) starts from a client's
+words through `make intake`, its questions are answered as a ticket's are,
+and its proposed tickets are confirmed, edited or dropped through `make
+intake-confirm`; both record who pressed and `via: console` too. The spec
+check runs the gate on a draft in a temporary directory and deletes it.
 Every rule below is in docs/plans/console.md, "Decided at build".
 
 LIVE (default): core/logbook.sh runs in one loop every CONSOLE_POLL_S
@@ -209,7 +214,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = self.path.split("?")[0]
-        if route not in ("/v1/go-for-launch", "/v1/answer", "/v1/spec-check", "/v1/request"):
+        if route not in ("/v1/go-for-launch", "/v1/answer", "/v1/spec-check", "/v1/request", "/v1/intake",
+                         "/v1/intake-confirm"):
             return self.send(404, {"error": "not found"})
         who, err = identity(self.headers)
         if err:
@@ -224,6 +230,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(who)
         if route in ("/v1/spec-check", "/v1/request"):
             return self.draft(who, route == "/v1/request")
+        if route == "/v1/intake":
+            return self.intake(who)
+        if route == "/v1/intake-confirm":
+            return self.confirm(who)
         can, reason = may_launch(who)
         if not can:
             return self.send(403, {"error": reason})
@@ -283,10 +293,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(409, {"error": "another press is running"})
         try:
             read_once(self.server.logbook_file)
-            tickets = (state["book"] or {}).get("tickets")
-            t = next((x for x in tickets if x.get("id") == ticket), None) if isinstance(tickets, list) else None
+            book = state["book"] or {}
+            # A ticket's open question, or an intake's (docs/adr/0090 §2).
+            listed = [x for key in ("tickets", "intakes") if isinstance(book.get(key), list) for x in book[key]]
+            t = next((x for x in listed if x.get("id") == ticket), None)
             qs = (t or {}).get("questions") or []
-            if not t or t.get("state") != "questions" or index != len(qs) - 1 or qs[index].get("answer"):
+            if not t or t.get("state") not in ("questions", "intake-questions") or index != len(qs) - 1 \
+                    or qs[index].get("answer"):
                 return self.send(409, {"error": f"ticket {ticket} has no open question {index}; nothing recorded"})
             env = {k: v for k, v in os.environ.items() if not k.startswith("ANSWER")}
             env.update(ANSWER=text, ANSWER_BY=who, ANSWER_VIA="console")
@@ -344,6 +357,71 @@ class Handler(BaseHTTPRequestHandler):
             line = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else f"make request exit {p.returncode}"
             read_once(self.server.logbook_file)
             return self.send(200, {"ticket": ticket, "line": line, "exit": p.returncode})
+        finally:
+            press.release()
+
+    def run_make(self, argv, env):
+        """ARGV, a `make` recipe as ./go runs it; its last stdout line and exit."""
+        p = subprocess.run(argv, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                           timeout=900)
+        sys.stderr.write(p.stderr)
+        line = p.stdout.strip().splitlines()[-1] if p.stdout.strip() else f"{' '.join(argv)} exit {p.returncode}"
+        read_once(self.server.logbook_file)
+        return line, p.returncode
+
+    def intake(self, who):
+        """A client's words (docs/adr/0090 §8): `make intake` with the text as
+        INTAKE_FILE, the next free id, who pressed and `via: console`."""
+        if CFG.auth == "public":
+            return self.send(403, {"error": "CONSOLE_AUTH=public: no intake is started here"})
+        if CFG.snapshot:
+            return self.send(403, {"error": "snapshot: no tower behind it, no intake can start"})
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+            assert 0 < length <= DRAFT_MAX
+            body = json.loads(self.rfile.read(length))
+            text = body["text"]
+            assert isinstance(text, str) and text.strip()
+        except (ValueError, KeyError, TypeError, AssertionError):
+            return self.send(400, {"error": f"the body must be {{text}}, a non-empty string, at most {DRAFT_MAX} bytes"})
+        if not press.acquire(blocking=False):
+            return self.send(409, {"error": "another press is running"})
+        try:
+            with tempfile.TemporaryDirectory(prefix="lights-out-intake-") as tmp:
+                words = pathlib.Path(tmp, "words.md")
+                words.write_text(text, encoding="utf-8")
+                env = {k: v for k, v in os.environ.items() if not k.startswith("INTAKE") and k not in ("TEXT", "TICKET")}
+                env.update(INTAKE_FILE=str(words), INTAKE_BY=who, INTAKE_VIA="console")
+                line, rc = self.run_make(["make", "--no-print-directory", "intake"], env)
+            return self.send(200, {"line": line, "exit": rc})
+        finally:
+            press.release()
+
+    def confirm(self, who):
+        """The decisions on a proposed intake (docs/adr/0090 §5, §8): only an
+        intake the logbook shows at `proposed`, one decision per proposed ticket."""
+        if CFG.snapshot:
+            return self.send(403, {"error": "snapshot: no tower behind it, nothing can be confirmed"})
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+            assert 0 < length <= DRAFT_MAX
+            body = json.loads(self.rfile.read(length))
+            intake, decisions = body["intake"], body["decisions"]
+            assert isinstance(intake, str) and isinstance(decisions, list)
+        except (ValueError, KeyError, TypeError, AssertionError):
+            return self.send(400, {"error": "the body must be {intake, decisions: [\"confirm\" | \"drop\" | {edit: {...}}]}"})
+        if not press.acquire(blocking=False):
+            return self.send(409, {"error": "another press is running"})
+        try:
+            read_once(self.server.logbook_file)
+            listed = (state["book"] or {}).get("intakes")
+            t = next((x for x in listed if x.get("id") == intake), None) if isinstance(listed, list) else None
+            if not t or t.get("state") != "proposed" or len(t.get("proposal") or []) != len(decisions):
+                return self.send(409, {"error": f"intake {intake} is not proposed with {len(decisions)} tickets; nothing confirmed"})
+            env = {k: v for k, v in os.environ.items() if not k.startswith(("CONFIRM", "DECISIONS"))}
+            env.update(DECISIONS=json.dumps(decisions), CONFIRM_BY=who, CONFIRM_VIA="console")
+            line, rc = self.run_make(["make", "--no-print-directory", "intake-confirm", f"TICKET={intake}"], env)
+            return self.send(200, {"line": line, "exit": rc})
         finally:
             press.release()
 

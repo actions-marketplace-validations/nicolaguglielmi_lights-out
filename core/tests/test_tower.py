@@ -131,11 +131,12 @@ class Usage(TowerCase):
 
 class Transitions(unittest.TestCase):
     """The states and steps of docs/adr/0019 §1, with rework from docs/adr/0038
-    and the three states before `opened` from docs/adr/0055 §1, and the main check between merge and
-    release from docs/adr/0056 §2."""
+    and the three states before `opened` from docs/adr/0055 §1, the main check between merge and
+    release from docs/adr/0056 §2, and the intake before `requested` from docs/adr/0090 §1."""
 
     def test_each_step_starts_from_its_state(self):
         self.assertEqual(tower.PRECONDITION, {
+            "interview": "intake", "intake-answer": "intake-questions", "perimeter": "drafted",
             "clarify": "requested", "answer": "questions", "spec": "spec-ready",
             "assign": "opened", "ci": "pr-opened", "review": "review",
             "merge": "ci-passed", "mainline": "merged", "release": "main-green",
@@ -143,10 +144,11 @@ class Transitions(unittest.TestCase):
 
     def test_each_state_requests_the_next_step_or_nothing(self):
         self.assertEqual(tower.NEXT, {
+            "intake": "interview", "drafted": "perimeter",
             "requested": "clarify", "spec-ready": "spec", "opened": "assign",
             "pr-opened": "ci", "review": "review", "ci-passed": "merge",
             "merged": "mainline", "main-green": "release", "ci-failed": "rework"})
-        for waiting in ("questions", "rolled-back", "held", "needs-human"):
+        for waiting in ("questions", "intake-questions", "proposed", "confirmed", "rolled-back", "held", "needs-human"):
             self.assertNotIn(waiting, tower.NEXT)
 
     def test_release_no_longer_starts_from_merged(self):
@@ -359,7 +361,8 @@ class RedMain(TowerCase):
     LINE = "NO-GO: gates — test: undefined call(s) foo in 9d41e07"
     REFUSED = (("assign", "opened"), ("rework", "ci-failed"), ("release", "main-green"))
     # ADR 0055's steps before the ticket touch no code: a red main does not stop them.
-    ALLOWED = (("clarify", "requested"), ("answer", "questions"), ("spec", "spec-ready"),
+    ALLOWED = (("interview", "intake"), ("intake-answer", "intake-questions"), ("perimeter", "drafted"),
+               ("clarify", "requested"), ("answer", "questions"), ("spec", "spec-ready"),
                ("ci", "pr-opened"), ("review", "review"), ("merge", "ci-passed"), ("mainline", "merged"))
 
     def main_doc(self, **fields):

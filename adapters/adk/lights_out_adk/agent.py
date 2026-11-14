@@ -14,8 +14,8 @@ from .model import planner_for, select_model
 from .roles import load_role
 
 
-def build(role_name: str, tools: list[Callable]) -> LlmAgent:
-    role = load_role(role_name)
+def build(role_name: str, tools: list[Callable], prompt_file: str = "prompt.md") -> LlmAgent:
+    role = load_role(role_name, prompt_file)
     return LlmAgent(
         name=role_name.replace("-", "_"),
         model=select_model(role_name, role.thinking, role.instruction_sha256),

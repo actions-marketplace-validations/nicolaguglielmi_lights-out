@@ -9,7 +9,9 @@
      core/promote.sh; the answer to a ticket's open question, a POST to
      /v1/answer, which runs ./go answer's recipe (docs/adr/0055 §2); and a
      new ticket's request, a POST to /v1/request, which runs ./go request's
-     recipe (docs/adr/0059 §4). The kanban moves no card: every interaction
+     recipe (docs/adr/0059 §4); a client's words, a POST to /v1/intake, and
+     the decisions on its proposed tickets, a POST to /v1/intake-confirm,
+     which run ./go intake's and ./go intake-confirm's recipes (docs/adr/0090 §8). The kanban moves no card: every interaction
      changes the view, never a column (docs/adr/0059 §1). The theme is the
      colour tokens and nothing else (§2). No build, no asset from the
      network. Built by hand, not from a Stitch design (console/README.md). -->
@@ -327,6 +329,18 @@ aside#drawer h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .0
 .editor input[type=text], .editor textarea { width: 100%; }
 .criterion { display: grid; grid-template-columns: max-content 1fr; gap: 4px 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 0 0 8px; }
 .criterion .muted { font-size: 13px; }
+/* The intakes (docs/adr/0090 §8): one card per intake above the board, each
+   fanning out to the tickets it became. */
+.intakes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 0 0 14px; }
+.intake-card { display: block; background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--band-spec); border-radius: 8px; padding: 10px 12px; color: var(--ink); text-decoration: none; font-size: 13px; }
+.intake-card:focus, .intake-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.intake-card .words { margin: 6px 0; color: var(--ink); }
+.intake-card .fan { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0; }
+.fan a { color: var(--accent); }
+.proposed { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; }
+.proposed fieldset { border: 0; padding: 0; margin: 8px 0 0; display: flex; gap: 14px; flex-wrap: wrap; }
+.proposed .edit label { display: block; font-weight: 600; font-size: 13px; margin: 8px 0 4px; }
+.proposed .edit input[type=text], .proposed .edit textarea { width: 100%; }
 .adr { border-bottom: 1px solid var(--line); padding: 10px 0; }
 .adr:last-child { border-bottom: 0; }
 .links { font-size: 13px; color: var(--muted); }
@@ -435,8 +449,11 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
      holding core/logbook.py's COLUMNS in their order. The page reads no
      other copy, and no sentence carries a number of its own. -->
 <script type="application/json" id="tower-machine">
-{"next": {"requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "mainline", "main-green": "release", "ci-failed": "rework"},
- "who": {"clarify": "The product role reads the request: a question, or the criteria confirmed",
+{"next": {"intake": "interview", "drafted": "perimeter", "requested": "clarify", "spec-ready": "spec", "opened": "assign", "pr-opened": "ci", "review": "review", "ci-passed": "merge", "merged": "mainline", "main-green": "release", "ci-failed": "rework"},
+ "who": {"interview": "The product role interviews the client: a question, or the tickets proposed",
+         "intake-answer": "The product role reads the answer: a question, or the tickets proposed",
+         "perimeter": "The architect role proposes each ticket's perimeter from the project map",
+         "clarify": "The product role reads the request: a question, or the criteria confirmed",
          "answer": "The product role reads the answer: a question, or the criteria confirmed",
          "spec": "The spec gate checks the criteria",
          "assign": "The dev-worker takes it and opens a PR",
@@ -446,7 +463,7 @@ table.net-files tr.net-glob td { font-family: var(--mono); font-weight: 700; bac
          "mainline": "Main's check runs after the merge",
          "release": "The canary goes out, each stage verified before the next",
          "rework": "The dev-worker reworks it with the verdict"},
- "actor": {"clarify": "product", "answer": "product", "spec": "spec", "assign": "dev", "ci": "gates", "review": "reviewer",
+ "actor": {"interview": "product", "intake-answer": "product", "perimeter": "architect", "clarify": "product", "answer": "product", "spec": "spec", "assign": "dev", "ci": "gates", "review": "reviewer",
            "merge": "tower", "mainline": "tower", "release": "canary", "rework": "dev"},
  "bands": [{"band": "spec", "name": "Spec", "states": ["requested", "questions", "spec-ready"]},
            {"band": "build", "name": "Build", "states": ["opened", "pr-opened"]},
@@ -713,12 +730,13 @@ function actorOf(t) {
   const step = t.state === "questions" ? "answer" : MACHINE.next[t.state];
   return step && MACHINE.actor[step] ? MACHINE.actor[step] : null;
 }
-const ACTOR_NAME = {product: "the product role", spec: "the spec gate", dev: "the dev-worker", gates: "the gates", reviewer: "the reviewer",
+const ACTOR_NAME = {product: "the product role", architect: "the architect role", spec: "the spec gate", dev: "the dev-worker", gates: "the gates", reviewer: "the reviewer",
   tower: "the tower", canary: "the canary", you: "you", stopped: "nobody: it is stopped", done: "nobody: it is done"};
 // Inline icons, 16x16, drawn with the text's colour; no asset from the network.
 const ICONS = {
   product: "M3 3h10v7H8l-3 3v-3H3z",
   spec: "M4 2h8v12H4zM6 5h4M6 8h4M6 11h2",
+  architect: "M2 14h12M4 14V7l4-4 4 4v7M7 14v-3h2v3",
   dev: "M6 4L2 8l4 4M10 4l4 4-4 4",
   gates: "M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4zM5.5 8l2 2 3-3.5",
   reviewer: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 6a2 2 0 100 4 2 2 0 000-4z",
@@ -1185,7 +1203,120 @@ function screenKanban() {
     h("span", {}, "Empty columns ", sel("empty", v.empty, [["", "shown"], ["hide", "hidden"]])),
     h("button", {id: "only-mine", cls: "only-mine", "aria-pressed": v.turn === "you" ? "true" : "false",
       onclick: () => setView({turn: kanbanView().turn === "you" ? "" : "you"})}, "Your turn only")),
+    intakesPanel(),
     h("div", {id: "board-area"}));
+  return out;
+}
+// --- the intakes (docs/adr/0090 §8) ---------------------------------------
+// One card per intake, above the board: the client's first words, the
+// interview so far and the tickets it became, each a link to its card.
+// Every value is the logbook's `intakes` field; the page decides nothing.
+function intakesList() { return Array.isArray(book.intakes) ? book.intakes : []; }
+function intakeWords(i, n) { const w = String(i.text || "").replace(/\s+/g, " ").trim(); return w.length > n ? w.slice(0, n - 1) + "…" : w; }
+function intakeChip(i) {
+  const st = String(i.state || "");
+  if (i.stranded) return chip("NO-GO");
+  const cls = st === "confirmed" ? "GO" : st === "intake-questions" || st === "proposed" ? "pending" : "none";
+  return h("span", {cls: "chip " + cls}, st);
+}
+function intakeCounts(i) {
+  const qs = i.questions || [];
+  return qs.length + " question" + (qs.length === 1 ? "" : "s") + ", " + qs.filter((q) => q.answer).length + " answered" +
+    ((i.proposal || []).length ? " · " + i.proposal.length + " proposed" : "");
+}
+function intakesPanel() {
+  if (unread(book.intakes)) return h("section", {id: "intakes"}, h("h2", {}, "Intakes"), h("div", {cls: "panel"}, err(book.intakes)));
+  const all = intakesList();
+  if (!all.length) return null;
+  return h("section", {id: "intakes", "aria-label": "Intakes"}, h("h2", {}, "Intakes"),
+    h("div", {cls: "intakes"}, all.map((i) => h("a", {cls: "intake-card", href: "#intake/" + encodeURIComponent(i.id), "data-intake": i.id,
+      "aria-label": "Intake " + i.id + ", " + i.state + ": " + intakeWords(i, 80)},
+      h("div", {cls: "badges"}, h("b", {}, "Intake " + i.id), intakeChip(i)),
+      h("p", {cls: "words"}, "“" + intakeWords(i, 140) + "”"),
+      h("div", {cls: "muted"}, intakeCounts(i)),
+      (i.tickets || []).length ? h("div", {cls: "fan"}, "→ ", i.tickets.map((id) => h("span", {cls: "mono"}, id))) : null))));
+}
+const intakeEdits = {};  // intake id -> [{action, title, problem, criteria, perimeter, feature, priority}]
+let intakeLine = null;
+function intakeForm(i) {
+  if (!intakeEdits[i.id] || intakeEdits[i.id].length !== (i.proposal || []).length) {
+    intakeEdits[i.id] = (i.proposal || []).map((t) => ({action: "confirm", title: t.title || "", problem: t.problem || "",
+      criteria: (t.criteria || []).join("\n"), perimeter: (t.perimeter || []).join("\n"), feature: t.feature || "", priority: t.priority || ""}));
+  }
+  return intakeEdits[i.id];
+}
+function decisions(i) {
+  return intakeForm(i).map((e) => e.action !== "edit" ? e.action : {edit: {title: e.title, problem: e.problem,
+    criteria: e.criteria.split("\n").map((l) => l.trim()).filter(Boolean),
+    perimeter: e.perimeter.split("\n").map((l) => l.trim()).filter(Boolean), feature: e.feature.trim(), priority: e.priority}});
+}
+async function pressConfirm(i) {
+  busy = true; render();
+  try {
+    const r = await fetch("/v1/intake-confirm", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({intake: i.id, decisions: decisions(i)})});
+    const body = await r.json().catch(() => ({}));
+    intakeLine = body.line || ("refused (" + r.status + "): " + (body.error || r.statusText));
+  } catch (e) { intakeLine = "the console did not answer: " + e; }
+  busy = false; delete intakeEdits[i.id]; await load(); render();
+}
+function proposedTicket(i, t, n, form) {
+  const e = form ? form[n] : null;
+  const where = "intake-" + i.id + "-" + t.n;
+  const pick = e ? h("fieldset", {}, h("legend", {cls: "muted"}, "Ticket " + t.n + ": your decision"),
+    ["confirm", "edit", "drop"].map((a) => h("label", {}, h("input", {type: "radio", name: where + "-action", value: a, checked: e.action === a,
+      onchange: () => { e.action = a; render(); }}), " " + a))) : null;
+  const set = (k) => (ev) => { e[k] = ev.target.value; };
+  const edit = e && e.action === "edit" ? h("div", {cls: "edit"},
+    h("label", {for: where + "-title"}, "Title"), h("input", {type: "text", id: where + "-title", value: e.title, oninput: set("title")}),
+    h("label", {for: where + "-problem"}, "Problem"), h("textarea", {id: where + "-problem", oninput: set("problem")}, e.problem),
+    h("label", {for: where + "-criteria"}, "Acceptance criteria, one Given/When/Then per line"), h("textarea", {id: where + "-criteria", oninput: set("criteria")}, e.criteria),
+    h("label", {for: where + "-perimeter"}, "Perimeter, one path or glob per line"), h("textarea", {id: where + "-perimeter", oninput: set("perimeter")}, e.perimeter),
+    h("label", {for: where + "-feature"}, "Feature (optional)"), h("input", {type: "text", id: where + "-feature", value: e.feature, oninput: set("feature")}),
+    h("label", {for: where + "-priority"}, "Priority (optional)"), h("select", {id: where + "-priority", onchange: set("priority")},
+      [["", "unprioritised"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"]].map(([v, x]) => h("option", {value: v, selected: v === e.priority}, x)))) : null;
+  const line = String(t.check || "");
+  return h("div", {cls: "proposed", "data-n": t.n},
+    h("div", {cls: "badges"}, h("b", {}, t.n + ". " + t.title), t.decision ? h("span", {cls: "chip " + (t.decision === "drop" ? "none" : "GO")}, t.decision) : null),
+    h("p", {}, t.problem),
+    h("ul", {}, (t.criteria || []).map((c) => h("li", {}, c))),
+    dl([["Feature", shown(t.feature)], ["Priority", shown(t.priority)],
+      ["Perimeter", (t.perimeter || []).length ? h("span", {cls: "mono"}, t.perimeter.join(", ")) : h("span", {cls: "muted"}, "none proposed: write it before confirming")],
+      ["Spec gate on the draft", line ? h("span", {}, chip(line.startsWith("GO") ? "GO" : "NO-GO"), " ", h("span", {cls: "mono"}, line)) : "—"],
+      ["Ticket", t.ticket ? h("a", {href: "#ticket/" + encodeURIComponent(t.ticket)}, t.ticket) : "—"]]),
+    pick, edit);
+}
+function screenIntake(id) {
+  const i = intakesList().find((x) => x.id === id);
+  const out = [h("p", {}, h("a", {href: "#kanban"}, "← Kanban"))];
+  if (!i) return out.concat(h("h1", {}, "Intake " + id), h("div", {cls: "panel"}, h("p", {cls: "muted"}, "The logbook holds no intake " + id + ".")));
+  const roleLine = (r, who) => !r ? null : r.consulted === false
+    ? h("p", {cls: "muted"}, "The " + who + " role was not consulted: " + shown(r.why))
+    : h("p", {cls: "muted"}, "The " + who + " role: " + shown(r.harness) + (r.replayed ? ", replayed" : "") + ", " + shown(r.turns) + " turns.");
+  const form = i.state === "proposed" && con.mode !== "snapshot" ? intakeForm(i) : null;
+  out.push(h("h1", {}, "Intake " + i.id, " ", intakeChip(i)),
+    h("p", {cls: "lede"}, "A client's request in their own words, the interview of the product role, the tickets it proposed with the perimeter the architect role proposed, and the person's decision on each (ADR 0090)."),
+    i.stranded ? h("div", {cls: "banner err"}, "Stopped at " + i.stranded.step + ": " + i.stranded.error) : null,
+    h("div", {cls: "panel"}, h("h2", {}, "The request"), h("pre", {cls: "words"}, i.text),
+      h("p", {cls: "muted"}, "By " + shown(i.by) + " via " + shown(i.via) + ", " + shown(i.at) + ".")),
+    h("div", {cls: "panel"}, h("h2", {}, "The interview"), roleLine(i.product, "product"),
+      (i.questions || []).length ? h("ol", {}, i.questions.map((q) => h("li", {}, h("b", {}, q.question),
+        q.answer ? h("p", {}, "“" + q.answer + "” — " + shown(q.answered_by) + " via " + shown(q.answered_via)) : h("p", {cls: "muted"}, "Not answered yet."))))
+        : h("p", {cls: "muted"}, "No question asked.")),
+    answerPanel(i));
+  if ((i.proposal || []).length) {
+    out.push(h("div", {cls: "panel", id: "proposal"}, h("h2", {}, "Proposed tickets"), roleLine(i.architect, "architect"),
+      i.proposal.map((t, n) => proposedTicket(i, t, n, form)),
+      form ? h("div", {cls: "buttons"}, h("button", {cls: "go", id: "confirm-intake", disabled: busy,
+        onclick: () => pressConfirm(i)}, "Confirm these decisions — ./go intake-confirm TICKET=" + i.id)) : null,
+      i.state === "proposed" && con.mode === "snapshot" ? h("p", {cls: "muted"}, "Snapshot: no tower behind it, nothing can be confirmed.") : null,
+      form ? h("p", {cls: "muted"}, "Each ticket you keep is written under the next free id and starts at spec-ready: the spec gate, unchanged, opens it or sends it back with its reason.") : null,
+      busy ? h("p", {cls: "muted"}, "./go intake-confirm is running…") : null,
+      intakeLine ? h("pre", {}, intakeLine) : null));
+  }
+  if (i.confirmation) out.push(h("div", {cls: "panel"}, h("h2", {}, "Confirmed"),
+    h("p", {}, "By " + shown(i.confirmation.by) + " via " + shown(i.confirmation.via) + ", " + shown(i.confirmation.at) + ". "),
+    h("p", {cls: "fan"}, (i.tickets || []).length ? ["Tickets: "].concat(i.tickets.map((tid) => h("a", {href: "#ticket/" + encodeURIComponent(tid)}, tid))) : "No ticket was kept.")));
   return out;
 }
 // The board and the drawer, redrawn in place: the controls keep their focus.
@@ -1384,8 +1515,8 @@ async function pressReply(t, index, box) {
 function answerPanel(t) {
   const qs = t.questions || [];
   const last = qs.length - 1;
-  if (t.state !== "questions" || last < 0 || qs[last].answer) return null;
-  const box = h("textarea", {placeholder: "Your answer, as the product owner"});
+  if ((t.state !== "questions" && t.state !== "intake-questions") || last < 0 || qs[last].answer) return null;
+  const box = h("textarea", {placeholder: "Your answer, as the product owner", "aria-label": "Your answer to the open question"});
   return h("div", {cls: "panel"}, h("h2", {}, "Open question"),
     h("p", {}, h("b", {}, qs[last].from === "spec" ? "The spec gate: " : "The product role: "), qs[last].question),
     con.mode === "snapshot" ? h("p", {cls: "muted"}, "Snapshot: no tower behind it, nothing can be answered.") : box,
@@ -2210,6 +2341,32 @@ async function pressRequest() {
   render();
 }
 function field(label, el) { return [h("label", {}, label), el]; }
+// "Describe the need" (docs/adr/0090 §8): a client's words start an intake.
+const need = {text: ""};
+let needLine = null;
+async function pressIntake() {
+  if (!need.text.trim()) return;
+  busy = true; render();
+  try {
+    const r = await fetch("/v1/intake", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({text: need.text})});
+    const body = await r.json().catch(() => ({}));
+    needLine = body.line || ("refused (" + r.status + "): " + (body.error || r.statusText));
+    if (r.ok && String(body.line || "").startsWith("GO")) need.text = "";
+  } catch (e) { needLine = "the console did not answer: " + e; }
+  busy = false; await load(); render();
+}
+function needPanel() {
+  const m = /intake — (\d{4})/.exec(String(needLine || ""));
+  return h("div", {cls: "panel editor", id: "need"}, h("h2", {}, "Describe the need"),
+    h("p", {cls: "muted"}, "No ticket yet? Write what is needed in your own words. The product role interviews you, one question at a time, then proposes tickets; the architect role proposes where each may change the code; you confirm, edit or drop each one (./go intake)."),
+    h("label", {for: "need-text"}, "The need, in your words"),
+    h("textarea", {id: "need-text", name: "need", oninput: (e) => { need.text = e.target.value; }}, need.text),
+    h("div", {cls: "buttons"}, h("button", {cls: "go", id: "start-intake", disabled: busy || !canSave(),
+      onclick: pressIntake}, "Start the interview — ./go intake")),
+    canSave() ? null : h("p", {cls: "muted"}, con.mode === "snapshot" ? "Snapshot: no tower behind it, no intake can start." : "This console cannot start an intake."),
+    needLine ? h("pre", {id: "need-line"}, needLine) : null,
+    m ? h("p", {}, h("a", {href: "#intake/" + m[1]}, "Intake " + m[1] + " →")) : null);
+}
 function screenRequest() {
   const level = (book.source || {}).level || "";
   const set = (k) => (e) => { draftFields[k] = e.target.value; scheduleCheck(); };
@@ -2223,7 +2380,7 @@ function screenRequest() {
     h("span", {}), h("div", {}, draftFields.criteria.length > 1 ? h("button", {onclick: () => { draftFields.criteria.splice(i, 1); render(); scheduleCheck(); }}, "Remove this criterion") : null)));
   const prio = h("select", {name: "priority", onchange: set("priority")},
     [["", "unprioritised"], ["P0", "P0"], ["P1", "P1"], ["P2", "P2"], ["P3", "P3"]].map(([v, t]) => h("option", {value: v, selected: v === draftFields.priority}, t)));
-  const out = [h("h1", {}, "New request"),
+  const out = [h("h1", {}, "New request"), needPanel(),
     h("p", {cls: "lede"}, "A ticket's request, checked as you type by the spec gate itself (gates/spec.sh, through the console, writing nothing). Saving writes the ticket file and runs ./go request."),
     level === "l0"
       ? h("div", {cls: "banner warn", id: "l0-note"}, "Level l0: the product role replays recordings, and a new request has none. It will not be consulted on this draft; the spec gate alone judges it (ADR 0055 §3). With a key (l1) saving consults it, and its questions come back on the ticket's page.")
@@ -2364,9 +2521,10 @@ function render() {
   header();
   const {screen, arg} = route();
   for (const a of document.querySelectorAll("nav a")) a.classList.toggle("on", a.dataset.s === screen ||
-    (screen === "ticket" && a.dataset.s === "kanban") || (screen === "adr" && a.dataset.s === "adrs"));
+    ((screen === "ticket" || screen === "intake") && a.dataset.s === "kanban") || (screen === "adr" && a.dataset.s === "adrs"));
   let body;
   if (screen === "ticket") body = screenTicket(arg);
+  else if (screen === "intake") body = screenIntake(arg);
   else if (screen === "incidents") body = screenIncidents();
   else if (screen === "launch") body = screenLaunch();
   else if (screen === "thresholds") body = screenThresholds();
@@ -2414,7 +2572,9 @@ async function load() {
 async function tick() {
   const changed = await load();
   if (!book || busy) return;
-  if (changed && route().screen !== "request") render(); else header();
+  // The editor and an intake's open decisions keep their inputs (docs/adr/0090 §8).
+  const editing = route().screen === "request" || (route().screen === "intake" && intakeEdits[route().arg]);
+  if (changed && !editing) render(); else header();
 }
 window.addEventListener("hashchange", () => { render(); });
 load().then(() => render());

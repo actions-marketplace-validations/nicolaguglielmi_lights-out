@@ -7,6 +7,10 @@ its entry point (docs/adr/0052 §3); callers keep calling that.
     python3 core/tower.py open <ticket>          write the document at `opened`, publish `assign`
     python3 core/tower.py request <ticket>       write the document at `requested`, publish `clarify`
     python3 core/tower.py answer <ticket>        record ANSWER on the open question, publish `answer`
+                                                 (`intake-answer` for an intake, docs/adr/0090 §2)
+    python3 core/tower.py intake <id>            write the intake at `intake`, publish `interview` (docs/adr/0090 §1)
+    python3 core/tower.py intake-confirm <id>    apply DECISIONS to a `proposed` intake: the kept tickets
+                                                 at `spec-ready`, `spec` published for each (docs/adr/0090 §5)
     python3 core/tower.py step <ticket> <step>   apply one step: precondition, effect, write, publish next
     python3 core/tower.py resume <ticket>        request again the step whose last attempt failed
     python3 core/tower.py task [--patch] <run.json>  print the task fields a role's run leaves in the document,
@@ -36,6 +40,14 @@ person's ANSWER (ANSWER_BY, default `unauthenticated`; ANSWER_VIA, default
 `answer` step. A step result that carries `task` is also appended, with
 the document's attempt, to `tasks` (§5): every attempt's run is kept.
 
+Before `requested` (docs/adr/0090): `intake` starts an intake document,
+`kind: "intake"`, from TICKETS_DIR/<id>.intake.md, with INTAKE_BY and
+INTAKE_VIA; `intake-questions` and `proposed` wait for a person;
+`intake-confirm` writes each ticket the person keeps (DECISIONS,
+CONFIRM_BY, CONFIRM_VIA) at `spec-ready` and the intake at `confirmed`.
+Every step gets STEP_WHY, a file: a failing step that wrote a line there
+is recorded `step exited <n>: <line>` (§6).
+
 Spend (docs/adr/0083): every run a step's result carries (`task`,
 `review`, `product`) is appended to `spend` with its cost from
 profiles/prices.json. Before `assign` and `rework` the spend is checked
@@ -61,12 +73,15 @@ from datetime import datetime, timezone
 
 COLLECTION = "tickets"
 USAGE = ("usage: tower.sh open <ticket> | request <ticket> | answer <ticket> | step <ticket> <step>"
-         " | resume <ticket> | task [--patch] <run.json>")
+         " | resume <ticket> | intake <id> | intake-confirm <id> | task [--patch] <run.json>")
 
 # The transition table. PRECONDITION: step -> the state it starts from.
 # NEXT: state -> the step requested once the document is there; a state
 # that is not a key is terminal. ci/board.sh checks the board against both.
 PRECONDITION = {
+    "interview": "intake",
+    "intake-answer": "intake-questions",
+    "perimeter": "drafted",
     "clarify": "requested",
     "answer": "questions",
     "spec": "spec-ready",
@@ -79,6 +94,8 @@ PRECONDITION = {
     "rework": "ci-failed",
 }
 NEXT = {
+    "intake": "interview",
+    "drafted": "perimeter",
     "requested": "clarify",
     "spec-ready": "spec",
     "opened": "assign",
@@ -89,6 +106,9 @@ NEXT = {
     "main-green": "release",
     "ci-failed": "rework",
 }
+# The state a person answers in, and the step the answer requests
+# (docs/adr/0055 §2, 0090 §2).
+ANSWERED = {"questions": "answer", "intake-questions": "intake-answer"}
 # Refused while main is red (docs/adr/0056 §5): the `mainline`/`main`
 # document core/mainline.py keeps.
 BLOCKED_BY_RED_MAIN = ("assign", "rework", "release")
@@ -173,6 +193,15 @@ def patch_fields(data, members):
             "files": [files[p] for p in order]}
 
 
+def intake_module():
+    """core/intake.py, imported where it is needed."""
+    try:
+        from . import intake
+    except ImportError:  # run as a script: core/ is sys.path[0]
+        import intake
+    return intake
+
+
 def spend_module():
     """core/spend.py (docs/adr/0083), imported only where a step needs it: a
     module or a check that loads the tower for its tables, `sh` or `task`,
@@ -238,6 +267,15 @@ def compact(doc):
     return json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
 
 
+def first_line(path):
+    """The first non-empty line of PATH, or "" (a step's STEP_WHY, docs/adr/0090 §6)."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return next((line.strip() for line in fh if line.strip()), "")
+    except OSError:
+        return ""
+
+
 def say(line):
     print(line, file=sys.stderr, flush=True)
 
@@ -281,7 +319,7 @@ class Tower:
         if lim.get("SPEND_BUDGET_DAY_USD") is not None:
             docs = {self.ticket: doc}
             for path in sorted(glob.glob(os.path.join(self.tickets_dir, "*.md"))):
-                tid = os.path.basename(path)[:-3]
+                tid = os.path.basename(path)[:-3].removesuffix(".intake")  # an intake's runs count (docs/adr/0090 §7)
                 if tid not in docs:
                     other = self.store_get(tid)
                     if other is not None:
@@ -373,6 +411,66 @@ class Tower:
             raise Refused(f"[tower] {self.ticket}: could not publish clarify")
         self.tell(f"requested by {by} via {via}, clarify requested")
 
+    def intake(self, env):
+        """The intake document (docs/adr/0090 §1): the client's words are TICKETS_DIR/<id>.intake.md."""
+        path = os.path.join(self.tickets_dir, f"{self.ticket}.intake.md")
+        if not os.path.isfile(path):
+            raise Refused(f"[tower] {self.ticket}: no {path}; write it with core/intake.py new")
+        if self.store_get() is not None:
+            raise Refused(f"[tower] {self.ticket}: a document with this id exists; nothing written")
+        by, via, at = env.get("INTAKE_BY") or "unauthenticated", env.get("INTAKE_VIA") or "cli", now()
+        doc = {"id": self.ticket, "kind": "intake", "state": "intake", "intake": {"by": by, "via": via, "at": at},
+               "history": [{"step": "intake", "state": "intake", "at": at, "by": by, "via": via}]}
+        if not self.store_put(doc):
+            raise Refused(f"[tower] {self.ticket}: could not write the document")
+        if not self.publish("interview"):
+            self.tell("could not publish interview")
+            self.record_failure(doc, "interview", "intake", "could not publish interview")
+            raise Refused(None)
+        self.tell(f"intake by {by} via {via}, interview requested")
+
+    def intake_confirm(self, env):
+        """The person's decisions on a proposed intake (docs/adr/0090 §5): every kept
+        ticket written and started at `spec-ready`, then the intake at `confirmed`."""
+        intake = intake_module()
+        doc = self.get()
+        try:
+            decided = intake.decide(doc, intake.parse_decisions(env.get("DECISIONS")))
+        except intake.Refused as exc:
+            raise Refused(f"[tower] {self.ticket}: {exc}") from None
+        by, via, at = env.get("CONFIRM_BY") or "unauthenticated", env.get("CONFIRM_VIA") or "cli", now()
+        proposal, born = [], []
+        for ticket, action in decided:
+            tid = None
+            if action != "drop":
+                try:
+                    tid = intake.write_ticket(ticket, self.ticket, self.tickets_dir)
+                except intake.Refused as exc:
+                    raise Refused(f"[tower] {self.ticket}: {exc}; tickets written so far: {born or 'none'}") from None
+                child = Tower(tid, {"STATE_STORE": self.store_adapter, "EVENT_BUS": self.bus,
+                                    "TOWER_STEPS": self.steps, "TICKETS_DIR": self.tickets_dir})
+                if child.store_get() is not None:
+                    raise Refused(f"[tower] {tid}: a document with this id exists; tickets written so far: {born}")
+                kid = {"id": tid, "state": "spec-ready", "intake": self.ticket,
+                       "spec": {"criteria": ticket.get("criteria") or [], "by": "intake"},
+                       "history": [{"step": "request", "state": "spec-ready", "at": at, "by": by, "via": via,
+                                    "intake": self.ticket}]}
+                if not child.store_put(kid):
+                    raise Refused(f"[tower] {tid}: could not write the document; tickets written so far: {born}")
+                born.append(tid)
+            proposal.append(dict(ticket, decision=action, ticket=tid))
+        done = dict(doc, state="confirmed", proposal=proposal, tickets=born,
+                    confirmation={"by": by, "via": via, "at": at},
+                    history=(doc.get("history") or []) + [
+                        {"step": "confirm", "state": "confirmed", "at": at, "by": by, "via": via}])
+        if not self.store_put(done):
+            raise Refused(f"[tower] {self.ticket}: could not record the confirmation; tickets written: {born or 'none'}")
+        self.tell(f"confirmed by {by} via {via}: {', '.join(born) or 'no ticket kept'}")
+        for tid in born:
+            if not Tower(tid, {"STATE_STORE": self.store_adapter, "EVENT_BUS": self.bus}).publish("spec"):
+                raise Refused(f"[tower] {tid}: could not publish spec; ./go resume does not apply, publish it again")
+            say(f"[tower] {tid}: spec-ready from intake {self.ticket}, spec requested")
+
     def answer(self, env):
         said = (env.get("ANSWER") or "").strip()
         if not said:
@@ -380,8 +478,9 @@ class Tower:
         doc = self.get()
         have = text(doc.get("state")) or "none"
         questions = [dict(q) for q in doc.get("questions") or [] if isinstance(q, dict)]
-        if have != "questions" or not questions or questions[-1].get("answer"):
+        if have not in ANSWERED or not questions or questions[-1].get("answer"):
             raise Refused(f"[tower] {self.ticket}: no open question (state {have}); nothing recorded")
+        step = ANSWERED[have]
         at = now()
         by, via = env.get("ANSWER_BY") or "unauthenticated", env.get("ANSWER_VIA") or "cli"
         questions[-1].update(answer=said, answered_by=by, answered_via=via, answered_at=at)
@@ -389,11 +488,11 @@ class Tower:
             {"step": "answered", "state": have, "at": at, "by": by, "via": via}])
         if not self.store_put(doc):
             raise Refused(f"[tower] {self.ticket}: could not record the answer; nothing requested")
-        if not self.publish("answer"):
-            self.tell("could not publish answer")
-            self.record_failure(doc, "answer", have, "could not publish answer")
+        if not self.publish(step):
+            self.tell(f"could not publish {step}")
+            self.record_failure(doc, step, have, f"could not publish {step}")
             raise Refused(None)
-        self.tell(f"answered by {by} via {via}, answer requested")
+        self.tell(f"answered by {by} via {via}, {step} requested")
 
     def step(self, step):
         want = PRECONDITION.get(step)
@@ -428,21 +527,24 @@ class Tower:
 
         self.tell(f"{step} (state {have})")
         began = time.time() - 1  # the file system's clock is coarser than ours
-        with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as doc_file:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8") as doc_file, \
+                tempfile.TemporaryDirectory(prefix="lights-out-step-") as why_dir:
             doc_file.write(compact(doc) + "\n")
             doc_file.flush()
-            env = dict(os.environ, TICKET=self.ticket, DOC_FILE=doc_file.name, SPEND_STOP=budget,
+            why_file = os.path.join(why_dir, "why")
+            env = dict(os.environ, TICKET=self.ticket, DOC_FILE=doc_file.name, SPEND_STOP=budget, STEP_WHY=why_file,
                        PR_NUMBER=text(dig(doc, "pr", "number")),
                        BASE_SHA=text(dig(doc, "pr", "base_sha")),
                        HEAD_SHA=text(dig(doc, "pr", "head_sha")))
             ran = sh(script, stdout=subprocess.PIPE, text=True, env=env)
+            named = first_line(why_file) if ran.returncode != 0 else ""
         if ran.returncode != 0:
             rc = ran.returncode if ran.returncode > 0 else 128 - ran.returncode
             self.tell(f"step {step} failed; state stays {have}")
             run = self.failed_run(doc, step, began) if step in BUDGETED else None
             if run:
                 self.tell(f"the failed attempt's run is in the ledger ({run['failed']})")
-            self.record_failure(doc, step, have, f"step exited {rc}", run)
+            self.record_failure(doc, step, have, f"step exited {rc}" + (f": {named}" if named else ""), run)
             raise Refused(None)
         try:
             result = json.loads(ran.stdout)
@@ -528,7 +630,7 @@ def main(argv, env=None):
             return 2
     cmd = argv[0] if argv else ""
     ticket = argv[1] if len(argv) > 1 else ""
-    if not cmd or not ticket or cmd not in ("open", "request", "answer", "step", "resume"):
+    if not cmd or not ticket or cmd not in ("open", "request", "answer", "step", "resume", "intake", "intake-confirm"):
         say(USAGE)
         return 2
     tower = Tower(ticket, env)
@@ -539,6 +641,10 @@ def main(argv, env=None):
             tower.request(env)
         elif cmd == "answer":
             tower.answer(env)
+        elif cmd == "intake":
+            tower.intake(env)
+        elif cmd == "intake-confirm":
+            tower.intake_confirm(env)
         elif cmd == "step":
             tower.step(argv[2] if len(argv) > 2 else "")
         else:

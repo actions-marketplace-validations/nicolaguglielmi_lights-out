@@ -582,6 +582,66 @@ No GitHub Actions job runs `demo-postmortem`, so its own output is not
 shown here. Its last line is `GO: demo-postmortem`, with the fix ticket's
 path on stderr (README: recorded once at L1 on 2026-11-04).
 
+### `./go intake`: a need, before any ticket
+
+A client rarely writes a ticket. `./go intake` starts from their words
+(ADR 0090): the product role interviews them, one question at a time and
+at most five, then proposes tickets with criteria, feature and priority;
+the architect role proposes each ticket's perimeter from the project map;
+the spec gate checks each one as a draft; and nothing opens until a person
+confirms, edits or drops each ticket with `./go intake-confirm`. No plane
+is needed. At L0 the interview replays the one recorded on the committed
+request about the meetup app (recorded on Gemini 3.8 Flash on 2026-11-14):
+
+<!-- source: local run on podman, commit 16c97e7, 2026-11-14, a full clone of the M57 branch, L0 -->
+```sh
+./go intake TICKET=0030 INTAKE_FILE=fixtures/intake/request.md
+./go answer TICKET=0030 ANSWER="A button on the meetup page; then they are no longer registered and one more seat is free."
+./go answer TICKET=0030 ANSWER="The organiser sees the names and the free seats on the meetup page; other members see only the free seats."
+```
+
+```
+GO: intake — 0030 at intake-questions
+GO: answer
+[tower] 0030: intake-answer → drafted
+[tower] 0030: perimeter (state drafted)
+[tower] 0030: perimeter → proposed
+GO: answer
+```
+
+The first answer brings the second question; the second makes the request
+clear, and the product role proposes two tickets, "Allow registered
+members to give back their meetup seat" and "Display attendee list to
+organisers while keeping attendee names private from other members",
+both `- Feature: rsvp-cancellation`, `- Priority: P1`. The architect role
+proposed six paths for each, and the spec gate said `GO: spec` on both as
+drafts. Under replay your answers' words are not compared with the
+recording: any answer replays the same proposal. Keep the first ticket and
+drop the second:
+
+```sh
+./go intake-confirm TICKET=0030 DECISIONS='["confirm","drop"]'
+```
+
+```
+[tower] 0030: confirmed by unauthenticated via cli: 0031
+[tower] 0031: spec-ready from intake 0030, spec requested
+GO: spec
+[tower] 0031: spec → opened
+[tower] 0031: assign (state opened)
+```
+
+Ticket 0031 is written to the tickets directory, with `- Intake: 0030`, and is
+opened by the spec gate. The orchestrator then requests `assign`, which
+needs the plane and a dev-worker for the new ticket: without the plane,
+`assign` fails and the command ends NO-GO, the ticket stranded at
+`opened` and resumable, as a new `./go request` would be. An intake whose
+words were never recorded is refused at L0 with one line that names the
+command that records it, and nothing is proposed in its place: a raw
+request has no criteria to fall back on. The console's request screen has
+the same entry, "Describe the need", and each intake's card sits above
+the kanban.
+
 ### `./go demo-launch`: go-for-launch, the one human gate
 
 Agents and gates decide everything up to 25% of traffic. The step to 100%

@@ -541,6 +541,23 @@ the change may touch. A diff outside the perimeter is refused before a PR
 exists (ADR 0021 §5). `tickets/0005.md` in lights-out is a complete
 example.
 
+No ticket yet, only a need? Start an intake instead (ADR 0090):
+
+```sh
+./go intake INTAKE_FILE=need.md PROFILE=l1
+./go answer TICKET=<id> ANSWER="..." PROFILE=l1     # once per question
+./go intake-confirm TICKET=<id> DECISIONS='["confirm","drop"]'
+```
+
+The product role interviews you, at most five questions, then proposes
+tickets with their criteria, feature and priority; the architect role
+proposes each perimeter from your project map; the spec gate checks each
+as a draft. Only the tickets you confirm are written to
+`.lights-out/tickets/` and enter the tower, at `spec-ready`. Edit one with
+`{"edit": {"perimeter": ["src/x.py"]}}` in its place in `DECISIONS`. At L0
+an intake replays a recording or is refused with the command that records
+it.
+
 A real agent run needs L1 and a Gemini API key in `.env` (see
 `.env.example`):
 

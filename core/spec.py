@@ -250,11 +250,12 @@ def gated(doc, line):
     return {"state": "questions", "questions": questions, "spec": {"verdict": "NO-GO", "line": line, "at": at}}
 
 
-_TICKET_FILE = re.compile(r"^(\d{4})\.md$")
+# An intake's file takes its id too (docs/adr/0090 §1).
+_TICKET_FILE = re.compile(r"^(\d{4})(?:\.intake)?\.md$")
 
 
 def next_id(tickets_dir):
-    """The next four-digit id after the highest in TICKETS_DIR (docs/adr/0059 §4)."""
+    """The next four-digit id after the highest in TICKETS_DIR, tickets and intakes (docs/adr/0059 §4, 0090 §1)."""
     try:
         names = os.listdir(tickets_dir)
     except FileNotFoundError:

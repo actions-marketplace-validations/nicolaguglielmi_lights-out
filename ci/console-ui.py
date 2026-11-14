@@ -12,7 +12,7 @@ job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 Written from docs/adr/0059 and the DOM contract it names (and, for t-z, from
 docs/adr/0071; for `agents`, from docs/adr/0073), not from console/index.html.
 It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.6.json, and drives it with Playwright:
+fixtures/logbook/golden-1.7.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -186,6 +186,18 @@ from the golden's own fields at run time):
      AA; over a derived logbook with a day limit under the projection data-over=true; over
      golden-1.5.json none of it; nothing POSTed.
 
+  ah. the intakes (docs/adr/0090 §8), over the golden in both themes: section#intakes on
+     #kanban holds one a.intake-card[data-intake] per logbook intake, in its order, each
+     naming the tickets it became; Tab reaches a card and Enter opens #intake/<id>, whose
+     div.proposed rows are the logbook's proposal with their check line and ticket link,
+     and whose open question has an answer box with a label; AA for #intakes and for the
+     intake screen; #request has #need with a labelled textarea and #start-intake, disabled
+     in a snapshot. On a LIVE console SIMULATED over a logbook derived from the golden with
+     the open intake at `proposed`: one radio group per proposed ticket, "edit" opens its
+     labelled fields, and #confirm-intake POSTs /v1/intake-confirm {intake, decisions} with
+     one decision per ticket in order (intercepted). No other POST; no sideways scroll at
+     390 px.
+
   agents. the Thresholds screen's Agents panel prints the logbook's lines
      (docs/adr/0073 §10), and each card's back shows its task's MCP calls and
      its review's instructions, and no such row when they are null.
@@ -209,7 +221,7 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.6.json"
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.7.json"
 GOLDEN_15 = ROOT / "fixtures" / "logbook" / "golden-1.5.json"
 GOLDEN_14 = ROOT / "fixtures" / "logbook" / "golden-1.4.json"
 SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds", "network", "network/0010"]
@@ -1765,9 +1777,9 @@ def k_editor(browser, bases):
 # Written from docs/adr/0068, its acceptance criteria in docs/PLAN.md and the DOM contract
 # the task names, not from console/index.html.
 
-ACTORS = ("product", "spec", "dev", "gates", "reviewer", "tower", "canary")
+ACTORS = ("product", "architect", "spec", "dev", "gates", "reviewer", "tower", "canary")
 # §2: the actor of each step of core/tower.py's PRECONDITION.
-ACTOR_OF_STEP = {"clarify": "product", "answer": "product", "spec": "spec", "assign": "dev", "rework": "dev",
+ACTOR_OF_STEP = {"interview": "product", "intake-answer": "product", "perimeter": "architect", "clarify": "product", "answer": "product", "spec": "spec", "assign": "dev", "rework": "dev",
                  "ci": "gates", "review": "reviewer", "merge": "tower", "mainline": "tower", "release": "canary"}
 MOVED_ID, MOVED_FROM, MOVED_TO = "0005", "opened", "pr-opened"
 # Live, the age counts to the console's read_at: days after the golden's newest entry, so that it
@@ -5173,6 +5185,129 @@ def ag_burn(browser, bases, golden, tmp):
         ctx.close()
 
 
+# --- ah. the intakes (docs/adr/0090 §8) ------------------------------------------------------------
+
+INTAKES_JS = """() => [...document.querySelectorAll('section#intakes a.intake-card')].map((a) => ({
+  id: a.dataset.intake, href: a.getAttribute('href'), label: a.getAttribute('aria-label'),
+  fan: [...a.querySelectorAll('.fan .mono')].map((n) => n.textContent.trim())}))"""
+INTAKE_SCREEN_JS = """() => ({
+  h1: (document.querySelector('main h1') || {}).textContent || '',
+  rows: [...document.querySelectorAll('#proposal div.proposed')].map((d) => ({n: Number(d.dataset.n),
+    text: d.textContent.replace(/\\s+/g, ' '), links: [...d.querySelectorAll('a[href^="#ticket/"]')].map((a) => a.getAttribute('href'))})),
+  open: [...document.querySelectorAll('main h2')].some((n) => n.textContent.trim() === 'Open question'),
+  answer: (() => { const t = document.querySelector('main textarea[aria-label]'); return t ? t.getAttribute('aria-label') : null; })(),
+  radios: [...document.querySelectorAll('#proposal fieldset')].map((f) => [...f.querySelectorAll('input[type=radio]')].map((r) => r.value)),
+  unlabelled: [...document.querySelectorAll('main input, main textarea, main select')].filter((el) =>
+    !(el.labels && el.labels.length) && !el.getAttribute('aria-label') && !el.closest('label')).map((el) => el.id || el.name || el.tagName),
+})"""
+
+
+def ah_intakes(browser, bases, golden):
+    intakes = golden.get("intakes")
+    need(isinstance(intakes, list) and intakes, "ah: the golden holds no intake to draw")
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        tab.load("#kanban")
+        wait_for(tab, "section#intakes a.intake-card", f"ah ({scheme})")
+        cards = tab.page.evaluate(INTAKES_JS)
+        need([c["id"] for c in cards] == [i["id"] for i in intakes],
+             f"ah ({scheme}): the intake cards are {[c['id'] for c in cards]}, the logbook's intakes {[i['id'] for i in intakes]}")
+        for c, i in zip(cards, intakes):
+            need(c["href"] == "#intake/" + i["id"], f"ah: intake {i['id']}'s card links {c['href']}")
+            need(c["fan"] == list(i.get("tickets") or []), f"ah: intake {i['id']}'s card names {c['fan']}, its tickets are {i.get('tickets')}")
+            need(c["label"] and i["state"] in c["label"], f"ah: intake {i['id']}'s card has no label naming its state")
+        bad = contrast_problems(tab.page.evaluate(MEASURE_JS, "section#intakes"), f"ah ({scheme}), section#intakes")
+        need(not bad, bad[0] if bad else "", *bad[:10])
+        # The keyboard: Tab reaches an intake card, Enter opens its screen.
+        tab.page.focus("body")
+        reached = None
+        for _ in range(300):
+            tab.page.keyboard.press("Tab")
+            reached = tab.page.evaluate("() => document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.intake || null : null")
+            if reached:
+                break
+        need(reached, f"ah ({scheme}): Tab never reached an intake card")
+        tab.page.keyboard.press("Enter")
+        tab.wait("(id) => location.hash === '#intake/' + id", reached, f"ah ({scheme}): Enter on intake {reached}")
+        for i in intakes:
+            tab.load("#intake/" + i["id"])
+            info = tab.page.evaluate(INTAKE_SCREEN_JS)
+            need(i["id"] in info["h1"], f"ah: #intake/{i['id']}'s title is {info['h1']!r}")
+            need([r["n"] for r in info["rows"]] == [t["n"] for t in i.get("proposal") or []],
+                 f"ah: #intake/{i['id']} draws proposed tickets {[r['n'] for r in info['rows']]}")
+            for r, t in zip(info["rows"], i.get("proposal") or []):
+                need(t["title"] in r["text"] and (not t.get("check") or t["check"] in r["text"]),
+                     f"ah: #intake/{i['id']} ticket {t['n']} lacks its title or its check line")
+                want = ["#ticket/" + t["ticket"]] if t.get("ticket") else []
+                need(r["links"] == want, f"ah: #intake/{i['id']} ticket {t['n']} links {r['links']}, want {want}")
+            qs = i.get("questions") or []
+            open_ = i["state"] == "intake-questions" and qs and not qs[-1].get("answer")
+            need(info["open"] == bool(open_), f"ah: #intake/{i['id']} open question shown={info['open']}, in the logbook={bool(open_)}")
+            need(not info["answer"], f"ah: #intake/{i['id']} has an answer box in a snapshot")
+            need(not info["unlabelled"], f"ah: #intake/{i['id']} has controls without a label: {info['unlabelled']}")
+            bad = contrast_problems(tab.page.evaluate(MEASURE_JS, "main"), f"ah ({scheme}), #intake/{i['id']}")
+            need(not bad, bad[0] if bad else "", *bad[:10])
+        tab.load("#request")
+        wait_for(tab, "#need textarea#need-text", f"ah ({scheme}): #request")
+        need(tab.page.evaluate("() => document.querySelector('#need-text').labels.length === 1"), "ah: the need's textarea has no label")
+        need(tab.page.evaluate("() => document.querySelector('#start-intake').disabled"), "ah: #start-intake is enabled in a snapshot")
+        bad = contrast_problems(tab.page.evaluate(MEASURE_JS, "#need"), f"ah ({scheme}), #need")
+        need(not bad, bad[0] if bad else "", *bad[:10])
+        tab.audit(f"ah ({scheme})")
+        ctx.close()
+    # The decisions, on a LIVE console SIMULATED over a proposed intake.
+    book = json.loads(json.dumps(golden))
+    target = next((i for i in book["intakes"] if i["state"] != "confirmed"), book["intakes"][0])
+    target.update(state="proposed", stranded=None, proposal=[
+        {"n": 1, "title": "One", "problem": "p1", "criteria": ["Given a When b Then c is shown"], "feature": None, "priority": None,
+         "perimeter": ["app/a.py"], "check": "GO: spec", "decision": None, "ticket": None},
+        {"n": 2, "title": "Two", "problem": "p2", "criteria": ["Given d When e Then f is shown"], "feature": None, "priority": None,
+         "perimeter": [], "check": "NO-GO: spec — ## Perimeter declares no path", "decision": None, "ticket": None},
+        {"n": 3, "title": "Three", "problem": "p3", "criteria": ["Given g When h Then i is shown"], "feature": None, "priority": None,
+         "perimeter": ["app/c.py"], "check": "GO: spec", "decision": None, "ticket": None}])
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    real = json.loads(urllib.request.urlopen(bases["golden"] + "/v1/console.json", timeout=5).read())
+    tab.page.route("**/v1/console.json", lambda route: route.fulfill(status=200, content_type="application/json",
+        body=json.dumps({**real, "mode": "live", "auth": "loopback", "snapshot": None})))
+    served = {"book": golden}
+    tab.page.route("**/v1/logbook.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(served["book"])))
+    asking = next((i for i in golden["intakes"] if i["state"] == "intake-questions"), None)
+    need(asking, "ah: the golden holds no intake with an open question")
+    tab.load("#intake/" + asking["id"])
+    info = tab.page.evaluate(INTAKE_SCREEN_JS)
+    need(info["open"] and info["answer"], f"ah: live, #intake/{asking['id']} draws no labelled answer box for its open question")
+    served["book"] = book
+    tab.page.goto("about:blank")
+    sent = []
+    tab.page.route("**/v1/intake-confirm", lambda route: (sent.append(json.loads(route.request.post_data or "null")),
+        route.fulfill(status=200, content_type="application/json", body=json.dumps({"line": "GO: intake-confirm — 0099", "exit": 0}))))
+    tab.load("#intake/" + target["id"])
+    info = tab.page.evaluate(INTAKE_SCREEN_JS)
+    need(info["radios"] == [["confirm", "edit", "drop"]] * 3, f"ah: the decisions drawn are {info['radios']}, want one confirm/edit/drop group per ticket")
+    tab.page.check(f'input[name="intake-{target["id"]}-2-action"][value="edit"]')
+    wait_for(tab, f'#intake-{target["id"]}-2-perimeter', "ah: edit opens the ticket's fields")
+    tab.page.fill(f'#intake-{target["id"]}-2-perimeter', "app/b.py")
+    tab.page.check(f'input[name="intake-{target["id"]}-3-action"][value="drop"]')
+    need(not tab.page.evaluate(INTAKE_SCREEN_JS)["unlabelled"], "ah: the edit fields have no label")
+    tab.page.click("#confirm-intake")
+    tab.wait("() => document.body.textContent.includes('GO: intake-confirm')", None, "ah: the confirmation's line")
+    need(len(sent) == 1, f"ah: #confirm-intake sent {len(sent)} POSTs to /v1/intake-confirm, want 1")
+    d = sent[0]["decisions"]
+    need(sent[0]["intake"] == target["id"] and d[0] == "confirm" and d[2] == "drop" and isinstance(d[1], dict)
+         and d[1]["edit"]["perimeter"] == ["app/b.py"] and d[1]["edit"]["title"] == "Two",
+         f"ah: the decisions sent are {sent[0]}")
+    tab.audit("ah (live)", allow=("/v1/intake-confirm",))
+    ctx.close()
+    ctx = browser.new_context(viewport=PHONE)
+    tab = Tab(ctx, bases["golden"])
+    tab.load("#intake/" + intakes[0]["id"])
+    wide = tab.page.evaluate("() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
+    need(not wide, "ah: #intake scrolls sideways at 390 px")
+    ctx.close()
+
+
 def main():
     real = sys.stdout
     sys.stdout = sys.stderr  # a library that prints must not break the one-line contract
@@ -5180,7 +5315,7 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(golden.get("schema") == "lights-out/logbook/1.6", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.6")
+        need(golden.get("schema") == "lights-out/logbook/1.7", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.7")
         need(GOLDEN_15.is_file(), f"{GOLDEN_15.relative_to(ROOT)} not found: the 1.5 degradation (ae) reads it")
         need(GOLDEN_14.is_file(), f"{GOLDEN_14.relative_to(ROOT)} not found: the 1.4 degradation (ad) reads it")
         need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 or later logbook")
@@ -5235,6 +5370,7 @@ def main():
                             ae_flow(browser, bases, golden)
                             af_roles(browser, bases, golden)
                             ag_burn(browser, bases, golden, pathlib.Path(tmp))
+                            ah_intakes(browser, bases, golden)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)
