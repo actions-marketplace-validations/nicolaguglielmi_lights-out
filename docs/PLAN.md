@@ -1153,6 +1153,18 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 
 *Stato 2026-11-14 (sessione M57, branch `claude/m57-intake-6ec974`, sopra `land/sprint-1114` 3924ebf):* ADR 0090 e i criteri qui sopra prima del codice; `ci/intake.sh` e `core/tests/test_intake.py` scritti da un subagente dall'ADR senza vedere l'implementazione. La torre ha `intake` → `interview` → `intake-questions` | `drafted` → `perimeter` → `proposed` → `intake-confirm` → `confirmed`; i ticket confermati partono da `spec-ready` con `spec.by: intake` e passano il gate invariato. `product` ha l'agenda e `propose_ticket`; `architect` propone i perimetri su ADK con `find_files` sulla mappa e un prompt a sé (`roles/architect/perimeter.md`). Un passo che fallisce può dire perché (`STEP_WHY`). Logbook 1.7, solo aggiunte; console con la carta dell'intake sopra la kanban, `#intake/<id>`, "Describe the need", due scritture nuove; `ci/console-ui.py` sezione ah. `./go ci` verde da un clone pieno (a95689d, 334 s). **Scostamenti:** un `propose_ticket` per ticket invece di `propose_tickets` con una lista di oggetti (schema portabile fra i fornitori); la registrazione dell'intake di esempio è fatta il 2026-11-14 con l'autorizzazione dell'owner (Gemini 3.8 Flash, ≤ $1): `product` due domande e due ticket, `architect` 74 turni con 72 `find_files`, 1.502.166 token in ingresso (1.305.937 in cache) e 26.774 in uscita, circa $0,35 al prezzo della cache e $1,23 a listino senza cache, sopra la stima e oltre $1 se la cache non è stata applicata; un ruolo ADK non ha un tetto di turni e il passo `perimeter` ne vuole uno, in un emendamento; `./go ci` riproduce l'intake da capo a fine a L0 e prova il rifiuto su un intake non registrato; i ticket modificati nella console li giudica il gate dopo la conferma, non mentre si scrive; la sezione ah di `ci/console-ui.py` è scritta in sessione dall'ADR; `./go demo` locale fermo a `./go up` perché la porta 3000 dell'host era occupata da un altro progetto, provato su GitHub Actions.
 
+
+#### M57, emendamento — Un tetto ai turni dei ruoli ADK (ADR 0090, emendamento del 2026-11-14)
+
+*Decisione dell'owner, 2026-11-14: M57 atterra, il tetto prima della 0.7.0.* La registrazione dell'intake di esempio ha misurato 74 turni dell'architect (72 `find_files`) contro una stima di 8–10, e nessun ruolo ADK ha un tetto.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - Ogni ruolo ADK dichiara `ADK_MAX_TURNS` nel suo `role.env` con la provenienza (product 16, architect 10, ops-triage 4, release 4); senza, il ruolo non parte.
+  - Un run dal vivo piantato oltre il tetto si ferma prima del turno in più, con una riga che nomina il tetto, e il registro della spesa lo conta (`STEP_RUN`): NO-GO prima del fix, GO dopo.
+  - Il replay di una registrazione più lunga del tetto è rifiutato prima del primo turno, con una riga chiara: mai tagliato in silenzio.
+  - L'architect cerca in una chiamata sola (`find_files` con una lista di al massimo 10 query).
+  - La registrazione da 74 turni esce; la nuova si fa solo con l'approvazione dell'owner e la sua stima; `./go ci` verde da un clone pieno.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
