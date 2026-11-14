@@ -656,3 +656,32 @@ measure with `data-key` and `data-measured`) and `section#spend`
 `#spend-budget`) after "Where the tickets are". Every word is the
 command's own: the page formats no number. A logbook before 1.5 says it
 has neither.
+
+## 1.6: the flow, the roles, the burn and the run in flight (ADR 0085, 0086, 0087)
+
+All optional; the schema is `core/logbook/1.6.schema.json`.
+
+| Field | From | Rule |
+|---|---|---|
+| `tickets[].flow` | the tower document, the release log | fourteen nodes in order, `ticket`, `perimeter`, one `gate` per Makefile `GATES`, `pr`, `canary`, `human`, `full`; each `{node, gate, verdict, started_at, ended_at, seconds, line}`, `verdict` one of `GO`, `NO-GO`, `running`, `not-reached`; times are the record's, never a clock; the rules node by node in ADR 0085 §3 |
+| `tickets[].ci.seconds`, `tickets[].rework[].seconds` | the `gates` recipe's `seconds` file, through `core/steps/ci.sh` and `rework.sh` | `{gate: whole seconds}` for the gates that ran; `null` when none ran |
+| `tickets[].live` | `CREW_DIR/<id>/out/tokens` (default `.crew`), the budget hooks' count; `ROLES_DIR/dev-worker/role.env` | only at `opened` or `ci-failed` with no error last, a count there and no `run.json` beside it: `{role, attempt, tokens, budget, warn, line}`, `warn` from 80% of `TOKEN_BUDGET`; `null` otherwise |
+| `roles` | `ROLES_DIR` (default `roles`), the profile's `MODEL_PROVIDER`, `MODEL`, `AGENT_HARNESS`, every ticket's `spend` ledger, `tickets[].live` | one row per role, in `core/network.py`'s order: `{role, configured, budget, last, running, used, state, line}`; `{ok: false, error}` with no `roles/` |
+| `roles_summary` | `roles` | one sentence: how many roles on which configured providers, and the provider/model of every last run |
+| `spend.burn` | the ledgers, through `core/spend.py`'s `burn` | the last day that has a run: `{day, first, end, runs, unknown, spent_usd, hours, per_hour_usd, left_h, projected_usd, limit_usd, over, hourly}`, as of its last run; `null` with no run |
+| `spend.lines` | `./go spend` | two more lines, `burn: …` and `projection: …`, before the budget's |
+
+The card's face draws `ol.flow` (role `img`, an `aria-label` naming every
+node and its verdict; `li.flow-node` with `data-node`, `data-gate`,
+`data-verdict` and the line as `title`; no tab stop) and, for a ticket in
+flight, `span.live[data-warn]` with a `meter`. The card's back draws
+`ol.flow.flow-detail` and the timeline `ol#flow.flow-detail`: every node a
+tab stop with its `.flow-why` (`aria-describedby`), `data-seconds` when it
+has seconds; a `NO-GO` gate with a why opens `dialog#why`; and
+`p.live-line`. The Overview draws `section#roles` after `#your-turn`
+(`#roles-summary`, `table#role-matrix`, `tr.role-row[data-role]` with
+`td[data-provider]`, `td.harness`, `td.thinking`, `td.tokens` with a
+`meter`, `td.state` the row's line) and, in `section#spend`,
+`#spend-burn`, `svg#spend-hours` (24 `rect.hour[data-hour]`, labelled
+with the burn line), `#spend-projection[data-over]` and `ul#spend-live`.
+A logbook before 1.6 draws none of them, and the matrix says so.
