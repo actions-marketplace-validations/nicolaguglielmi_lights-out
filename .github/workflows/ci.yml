@@ -401,15 +401,20 @@ jobs:
 
   # M32 (docs/adr/0058 §7): another CI as a surface. Jenkinsfile Runner
   # judges a PR on a Gitea of its own through the wrapper and posts the line
-  # as the lights-out/jenkins status. Host-side, like demo-package.
+  # as the lights-out/jenkins status. Host-side, like demo-package. The
+  # wrapper runs this commit's gates image, built here, as the package
+  # workflow's action job does: a release commit names a version whose
+  # image the tag has not published yet.
   jenkins:
     runs-on: ubuntu-latest
     needs: plan
     if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    env:
+      CONTAINER_ENGINE: docker
+      LIGHTS_OUT_IMAGE: localhost/lights-out-gates:dev
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - run: ./go package-gates
       - run: ./go demo-jenkins
-        env:
-          CONTAINER_ENGINE: docker
