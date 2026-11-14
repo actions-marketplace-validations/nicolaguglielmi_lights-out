@@ -555,7 +555,10 @@ class ThinkingTokens(unittest.TestCase):
     at the committed price, $0.0566. Before, with 443 output, $0.046."""
 
     def test_the_measured_run_costs_what_its_thinking_makes_it(self):
-        run_ = {"harness": "adk", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": False,
+        # The model is the profile's (l1), never named in core/ (ci/model-free.sh).
+        l1 = (REPO / "profiles" / "l1.env").read_text(encoding="utf-8")
+        model = next(line.split("=", 1)[1].strip() for line in l1.splitlines() if line.startswith("MODEL="))
+        run_ = {"harness": "adk", "provider": "gemini", "model": model, "replayed": False,
                 "tokens": {"input": 59753, "output": 3139, "total": 62892}, "duration_s": 43.4}
         got = spend.entries("perimeter", {"architect": run_}, None, "2026-11-14T16:26:55Z",
                             path=REPO / "profiles" / "prices.json")
