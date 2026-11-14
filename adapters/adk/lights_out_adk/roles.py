@@ -27,6 +27,8 @@ class Role:
     instruction: str
     thinking: str
     timeout_s: int
+    # The model turns one run may take (docs/adr/0090, amendment A1).
+    max_turns: int
 
     @property
     def instruction_sha256(self) -> str:
@@ -58,9 +60,14 @@ def load_role(name: str, prompt_file: str = "prompt.md") -> Role:
     thinking = values.get("THINKING", "").lower()
     if thinking not in ("low", "medium", "high"):
         raise ValueError(f"roles/{name}/role.env: THINKING must be low, medium or high, got {thinking!r}")
+    raw = values.get("ADK_MAX_TURNS", "")
+    if not raw.isdigit() or int(raw) <= 0:
+        raise ValueError(f"roles/{name}/role.env: ADK_MAX_TURNS must be a positive integer, got {raw!r} "
+                         "(docs/adr/0090, amendment A1)")
     return Role(
         name=name,
         instruction=prompt.read_text(),
         thinking=thinking,
         timeout_s=int(values.get("TIMEOUT_S", "900")),
+        max_turns=int(raw),
     )

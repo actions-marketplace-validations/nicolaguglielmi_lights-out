@@ -1,6 +1,6 @@
 # ADR 0090 — The intake interview: a raw request, a guided conversation with `product`, proposed tickets with a perimeter from `architect`, and a person who confirms each one
 
-- Status: proposed (M57)
+- Status: proposed (M57); amended 2026-11-14 (turn caps, the perimeter's search in one call)
 - Date: 2026-11-14
 - Milestone: M57 (docs/PLAN.md, "M57 — Il colloquio di intake (ADR 0090)")
 - Amends: ADR 0055 §1 (the tower's table gains four states and three
@@ -332,3 +332,122 @@ Read in this checkout on 2026-11-14 (`land/sprint-1114`, 3924ebf):
 `./go demo` gains no image, no key and no stage. `./go ci` runs the
 intake on the workbench's Python and the ADK replay model, no key.
 Passes.
+
+## Amendment 2026-11-14: a turn cap on every ADK role, and the perimeter's search in one call
+
+*Owner's decision, the same day, after the demo intake's recording.* M57
+landed with the recording; this amendment lands before 0.7.0.
+
+### Context
+
+The recording of the demo intake (16c97e7, Gemini 3.8 Flash, high thinking
+for the architect) measured what §3 did not bound. The architect's
+perimeter run took **74 model turns, 72 of them `find_files` calls**, one
+query each, and 1,482,329 input tokens (1,299,118 cached). The handoff's
+estimate had been **8 to 10 turns**. The whole recording cost about $0.35 at
+the cached rate and $1.23 at list price, over the $1 the owner approved. It
+could not be stopped mid-run: no ADK role has a turn cap. `MAX_TURNS=60` in
+`roles/architect/role.env` belongs to the architect's coding harness (ADR
+0021 §7), and the ADK path never read it. The other ADK roles' recordings
+measure: ops-triage 2 turns in all four, release 2 in both, product 2, 4
+and 6 (the 6 is the demo intake: two questions, then both tickets proposed
+in one turn).
+
+### Decision
+
+A1. **Every ADK role declares `ADK_MAX_TURNS` in its `role.env`**, the
+    model turns one run may take, the whole conversation counted (a
+    replayed earlier turn is a turn: every run sends the conversation
+    again, ADR 0055 §2). `lights_out_adk.roles.load_role` refuses an ADK
+    role whose `role.env` lacks it, naming the file. The values:
+
+    | role | `ADK_MAX_TURNS` | provenance |
+    |---|---|---|
+    | product | 16 | decision: two turns per question (the call and its sentence) at §2's cap of five, 10, plus a proposal of up to five tickets one call per turn and its sentence, 6; measured 2, 4 and 6 |
+    | architect (perimeter) | 10 | decision: the upper bound of the 8–10 estimate the recording was approved on; measured 74 with one query per call. With A3 a proposal of N tickets takes at most N + 2 turns (the search, one turn per ticket, the sentence), so 10 fits eight tickets |
+    | ops-triage | 4 | decision: twice the measured 2 (one decision call and its sentence), room for one call the model repeats |
+    | release | 4 | the same rule over the measured 2 |
+
+    `MAX_TURNS=60` stays the architect's coding-harness cap; the ADK path
+    reads `ADK_MAX_TURNS` only.
+
+A2. **On the cap, the run stops and says so.**
+    - Live (and under `ADK_RECORD`): before the model is asked for turn
+      cap + 1, the harness stops the run: exit 1, one stderr line, `harness-adk:
+      <role>: ADK_MAX_TURNS=<n> reached`, and `run.json` carries the turns and
+      tokens spent so far with `stop: "ADK_MAX_TURNS=<n>"`. Nothing it decided
+      is used.
+    - Under replay, a recording with more responses than the cap is
+      refused before its first turn: `recording <key> of role <role> holds <m>
+      turns, over its ADK_MAX_TURNS=<n>; re-record it`. It is never replayed
+      in part. It is not `no_recording`: a step that falls back when no
+      recording exists (ADR 0055 §3, §3 here) fails instead.
+    - The steps that run an ADK role in the tower (`clarify`, `answer`,
+      `interview`, `intake-answer`, `perimeter`) refuse with that line in
+      `STEP_WHY`.
+
+A3. **The ledger records a stopped run.** The tower gives every step a
+    second file, `STEP_RUN`. A step that fails after a role ran writes the
+    run there, `{<field>: <task of run.json>}` with the field a step result
+    would use (`product`, `architect`); the tower appends its ledger entry
+    (ADR 0083 §3) with `failed` set to the run's `stop`, or `the run failed`,
+    in the same write as the failed history entry. A step that writes
+    nothing changes nothing. `assign` and `rework` keep ADR 0087 §1's way.
+
+A4. **The architect searches once.** `find_files(queries)` takes a list
+    of at most 10 queries and answers, for each, at most 40 paths (§3's
+    limit) and how many more matched. Provenance of the 10, decision: ten
+    queries of forty paths answer at most 400 paths, about half the 786
+    files the map held at 3924ebf, so one answer stays well under the map
+    itself. `roles/architect/perimeter.md` asks for one call with every word
+    the tickets need, then one `propose_perimeter` per ticket.
+
+A5. **The recording.** The 74-turn architect recording is over its cap
+    and is removed: at L0 the demo intake's perimeters are then not
+    consulted (§3), and `./go ci` still drives the intake through the tower.
+    Re-recording it takes a live call the owner approves with its estimate;
+    the product recording (6 turns, under 16) stays.
+
+### Alternatives rejected
+
+- **A cap on tokens instead of turns** (`TOKEN_BUDGET`, as the coding
+  harnesses have). ADK reports tokens after the call, so the overrun is
+  spent before it is seen; a turn is counted before the call.
+- **The whole map in the architect's first message.** Rejected in §3: the
+  replay key would change on every commit.
+- **A replay that stops at the cap.** A recording cut at turn n replays a
+  conversation that never ended that way: a decision nobody made.
+- **One cap for every role.** Ops-triage needs 2 turns, the product
+  interview up to 16; one number would be too tight for one or too loose
+  for the other.
+
+## Amendment 2026-11-14 (second): the architect searches the workload only, and at most twice
+
+*Owner's decision, the same day, after the re-recording stopped at the cap.*
+
+- **Measured.** With the batched search (A4) and the cap (A1), the
+  architect's re-recording took its ten turns as ten `find_files` calls
+  of 2 to 10 queries each and proposed nothing. Its later queries were
+  lights-out's own paths (`roles/architect`, `fixtures/logbook`,
+  `core/perimeter`): the map covered this whole repository, not the app
+  the tickets are about. It spent 59,753 input and 3,139 output tokens,
+  $0.057 at list price.
+
+A6. **The map the architect searches is the workload's.** The perimeter
+    step passes `INTAKE_SCOPE`, the workload's directory inside its
+    repository (`git -C "$WORKLOAD" rev-parse --show-prefix`: `app` for
+    the bundled app, empty for an attached repository, whose whole tree is
+    the workload). `find_files` answers only paths under it. A step with
+    no `WORKLOAD` refuses, naming it, rather than search a tree that may
+    not be the workload. Proposed paths stay repository-relative, as every
+    ticket's perimeter is.
+
+A7. **A search budget.** `find_files` answers at most two calls per run;
+    the third and later answer `{"error": "search budget of 2 used:
+    propose now with propose_perimeter", "results": []}`. Provenance,
+    decision: one search with every query the tickets need, plus one to
+    look again where a ticket found nothing (the rule `perimeter.md`
+    already states); measured, ten searches without a proposal. With the
+    budget a proposal of N tickets takes at most N + 4 turns (two
+    searches, one refused, one turn per ticket, the sentence), so A1's
+    cap of 10 still fits six tickets.

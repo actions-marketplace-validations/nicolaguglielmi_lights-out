@@ -549,5 +549,24 @@ class Lines(unittest.TestCase):
         self.assertTrue(last.startswith("[spend] budget: SPEND_BUDGET_TICKET_USD"), ran.stderr)
 
 
+class ThinkingTokens(unittest.TestCase):
+    """docs/adr/0083, Amendment 2026-11-14: the measured architect run (prompt
+    59,753, candidates 443, thoughts 2,696) is billed on 3,139 output tokens
+    at the committed price, $0.0566. Before, with 443 output, $0.046."""
+
+    def test_the_measured_run_costs_what_its_thinking_makes_it(self):
+        # The model is the profile's (l1), never named in core/ (ci/model-free.sh).
+        l1 = (REPO / "profiles" / "l1.env").read_text(encoding="utf-8")
+        model = next(line.split("=", 1)[1].strip() for line in l1.splitlines() if line.startswith("MODEL="))
+        run_ = {"harness": "adk", "provider": "gemini", "model": model, "replayed": False,
+                "tokens": {"input": 59753, "output": 3139, "total": 62892}, "duration_s": 43.4}
+        got = spend.entries("perimeter", {"architect": run_}, None, "2026-11-14T16:26:55Z",
+                            path=REPO / "profiles" / "prices.json")
+        self.assertEqual(len(got), 1)
+        self.assertIsNone(got[0]["cost_unknown"])
+        self.assertAlmostEqual(got[0]["cost_usd"], 0.0566, places=3)
+        self.assertEqual(round(got[0]["cost_usd"], 3), 0.057)
+
+
 if __name__ == "__main__":
     unittest.main()

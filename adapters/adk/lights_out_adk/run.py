@@ -11,7 +11,9 @@ never by core directly.
 
 Under replay, a run that fails because no recording exists for INPUT says
 so in run.json, `no_recording: true`, so the caller can tell it from any
-other failure (docs/adr/0055 §3).
+other failure (docs/adr/0055 §3). A run stopped at its role's ADK_MAX_TURNS
+keeps the turns and tokens it spent and says `stop: "ADK_MAX_TURNS=<n>"`
+(docs/adr/0090, amendment A2).
 """
 
 from __future__ import annotations
@@ -31,37 +33,47 @@ from google.genai import types
 
 
 def _tokens(usage) -> dict:
+    """Output is the candidates plus the thinking: the provider bills both as
+    output (docs/adr/0083, amendment 2026-11-14)."""
     if usage is None:
         return {"input": 0, "output": 0, "total": 0}
     return {
         "input": usage.prompt_token_count or 0,
-        "output": usage.candidates_token_count or 0,
+        "output": (usage.candidates_token_count or 0) + (getattr(usage, "thoughts_token_count", None) or 0),
         "total": usage.total_token_count or 0,
     }
+
+
+def in_chain(error: BaseException, kind: type) -> BaseException | None:
+    """The first exception of KIND in ERROR's cause/context chain, or None."""
+    seen = set()
+    while error is not None and id(error) not in seen:
+        if isinstance(error, kind):
+            return error
+        seen.add(id(error))
+        error = error.__cause__ or error.__context__
+    return None
 
 
 def no_recording(error: BaseException) -> bool:
     """Whether the replay model's own NoRecording is anywhere in the chain."""
     from lights_out_adk.replay import NoRecording
 
-    seen = set()
-    while error is not None and id(error) not in seen:
-        if isinstance(error, NoRecording):
-            return True
-        seen.add(id(error))
-        error = error.__cause__ or error.__context__
-    return False
+    return in_chain(error, NoRecording) is not None
 
 
-async def run(role: str, input_text: str, answers: list[str] = ()) -> tuple[list[dict], str, dict]:
+async def run(role: str, input_text: str, answers: list[str] = (), progress: dict | None = None) -> tuple[list[dict], str, dict]:
+    """PROGRESS, when given, holds the turns and tokens counted so far, so a
+    run that raises still reports what it spent (docs/adr/0090, amendment A2)."""
     package = f"agents.{role.replace('-', '_')}"
     root_agent = importlib.import_module(package).root_agent
     runner = InMemoryRunner(agent=root_agent, app_name=root_agent.name)
     session = await runner.session_service.create_session(app_name=root_agent.name, user_id="lights-out")
     calls: list[dict] = []
     final = ""
-    turns = 0
-    tokens = {"input": 0, "output": 0, "total": 0}
+    progress = {} if progress is None else progress
+    progress.update(turns=0, tokens={"input": 0, "output": 0, "total": 0}, model=None)
+    tokens = progress["tokens"]
     served = None
     for text_in in [input_text, *answers]:
         message = types.Content(role="user", parts=[types.Part(text=text_in)])
@@ -71,9 +83,9 @@ async def run(role: str, input_text: str, answers: list[str] = ()) -> tuple[list
             for fc in event.get_function_calls():
                 calls.append({"name": fc.name, "args": dict(fc.args or {})})
             if getattr(event, "model_version", None):
-                served = event.model_version
+                served = progress["model"] = event.model_version
             if event.usage_metadata is not None:
-                turns += 1
+                progress["turns"] += 1
                 for k, v in _tokens(event.usage_metadata).items():
                     tokens[k] += v
             if event.is_final_response() and event.content and event.content.parts:
@@ -82,7 +94,7 @@ async def run(role: str, input_text: str, answers: list[str] = ()) -> tuple[list
                     final = text
     # The model that answered, not the one requested (docs/adr/0018,
     # 0040 §3): the last non-empty model_version the responses carried.
-    return calls, final, {"model": served or "unknown", "turns": turns, "tokens": tokens}
+    return calls, final, {"model": served or "unknown", "turns": progress["turns"], "tokens": tokens}
 
 
 def main() -> int:
@@ -100,15 +112,27 @@ def main() -> int:
     stats: dict = {"model": None, "turns": 0, "tokens": {"input": 0, "output": 0, "total": 0}}
     replay = os.environ.get("AGENT_HARNESS", "replay") == "replay"
     unrecorded = False
+    stop = None
+    progress: dict = {}
     try:
         answers = json.loads(Path(os.environ["ANSWERS"]).read_text()) if os.environ.get("ANSWERS") else []
         if not isinstance(answers, list) or not all(isinstance(a, str) for a in answers):
             raise ValueError(f"ANSWERS {os.environ['ANSWERS']} is not a JSON list of strings")
-        calls, final, stats = asyncio.run(run(role, input_path.read_text(), answers))
+        calls, final, stats = asyncio.run(run(role, input_path.read_text(), answers, progress))
     except Exception as e:  # one stderr line, the adapter convention
-        print(f"harness-adk: {role}: {type(e).__name__}: {e}", file=sys.stderr)
+        from lights_out_adk.agent import TurnCapReached
+
+        capped = in_chain(e, TurnCapReached)
+        shown = capped or e
+        print(f"harness-adk: {role}: {type(shown).__name__}: {shown}", file=sys.stderr)
         exit_code = 1
         unrecorded = replay and no_recording(e)
+        if capped is not None:
+            stop = str(capped).removesuffix(" reached")
+        # What the stopped run spent is still the run's (amendment A2).
+        if progress:
+            stats = {"model": progress.get("model") or "unknown", "turns": progress["turns"],
+                     "tokens": progress["tokens"]}
     (out / "calls.json").write_text(json.dumps(calls, indent=2) + "\n")
     (out / "final.md").write_text(final + ("\n" if final and not final.endswith("\n") else ""))
     run_json = {
@@ -123,6 +147,8 @@ def main() -> int:
     }
     if unrecorded:
         run_json["no_recording"] = True
+    if stop:
+        run_json["stop"] = stop
     if replay:
         # A replay never claims a model or tokens it did not use (docs/adr/
         # 0017 §2, 0040 §3): provider and model are null, and the fixture's

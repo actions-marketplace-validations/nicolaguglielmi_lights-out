@@ -185,7 +185,11 @@ def last_line(path):
 
 
 class Refused(Exception):
-    pass
+    """A refusal; RUN, when given, is the stopped run the tower ledgers (docs/adr/0090, amendment A3)."""
+
+    def __init__(self, message, run=None):
+        super().__init__(message)
+        self.run = run
 
 
 def clarify(request, doc, run_dir, rc, env):
@@ -199,7 +203,8 @@ def clarify(request, doc, run_dir, rc, env):
             criteria = criteria_of(request) or []
             return {"state": "spec-ready", "product": dict(product, consulted=False, why=why),
                     "spec": {"criteria": criteria, "by": "request"}}
-        raise Refused(f"the product role failed: {why}")
+        failed = dict(product, stop=run.get("stop")) if isinstance(run, dict) else product
+        raise Refused(f"the product role failed: {why}", {"product": failed})
     calls = load(os.path.join(run_dir, "out", "calls.json"), [])
     decided = [c for c in calls if isinstance(c, dict) and c.get("name") in DECISIONS]
     if not decided:
@@ -344,6 +349,13 @@ def main(argv, env=None):
             return 2
     except (Refused, OSError) as exc:
         print(f"spec: {exc}", file=sys.stderr)
+        for var, body in (("STEP_WHY", str(exc)), ("STEP_RUN", json.dumps(getattr(exc, "run", None) or ""))):
+            if env.get(var) and body not in ("", '""'):
+                try:
+                    with open(env[var], "w", encoding="utf-8") as fh:
+                        fh.write(body + "\n")
+                except OSError:
+                    pass
         return 1
     return 0
 

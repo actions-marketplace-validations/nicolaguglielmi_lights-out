@@ -55,7 +55,17 @@ _ID = re.compile(r"^\d{4}$")
 
 
 class Refused(Exception):
-    pass
+    """A refusal; RUN, when given, is the step result's run field the tower
+    ledgers for a stopped run (`{"architect": {...}}`, amendment A3)."""
+
+    def __init__(self, message, run=None):
+        super().__init__(message)
+        self.run = run
+
+
+def stopped(field, run):
+    """The STEP_RUN object of a role's run that failed: its task and its stop."""
+    return {field: dict(task(run), stop=run.get("stop"))}
 
 
 def now():
@@ -158,7 +168,7 @@ def interview(doc, run_dir, rc, env):
         if env.get("AGENT_HARNESS") == "replay" and run.get("no_recording"):
             raise Refused("no recording of this intake's interview at L0 (fixtures/adk/product); record it at L1 "
                           f"with ./go intake ... ADK_RECORD=extend, then ./go resume TICKET={doc.get('id', '<id>')}")
-        raise Refused(f"the product role failed: {why}")
+        raise Refused(f"the product role failed: {why}", stopped("product", run))
     calls = [c for c in _calls(run_dir) if c.get("name") in DECISIONS]
     if not calls:
         raise Refused("the product role neither asked nor proposed")
@@ -223,7 +233,7 @@ def perimeter(doc, run_dir, rc, env, check=gate_line):
     if rc != 0:
         why = _last_line(os.path.join(run_dir, "run.err")) or f"the architect role exited {rc}"
         if not (env.get("AGENT_HARNESS") == "replay" and run.get("no_recording")):
-            raise Refused(f"the architect role failed: {why}")
+            raise Refused(f"the architect role failed: {why}", stopped("architect", run))
         architect = dict(task(run), consulted=False, why=why)
     else:
         for c in _calls(run_dir):
@@ -319,6 +329,17 @@ def write_ticket(ticket, intake_id, tickets_dir):
 # --- the command line -------------------------------------------------------
 
 
+def write_step_files(env, why, run=None):
+    """A refusal's reason to STEP_WHY (§6) and its stopped run to STEP_RUN (amendment A3)."""
+    for var, body in (("STEP_WHY", why + "\n"), ("STEP_RUN", json.dumps(run) + "\n" if run else None)):
+        if env.get(var) and body:
+            try:
+                with open(env[var], "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            except OSError:
+                pass
+
+
 def read(path):
     with open(path, encoding="utf-8") as fh:
         return fh.read()
@@ -353,12 +374,7 @@ def main(argv, env=None):
     except (Refused, OSError) as exc:
         line = f"intake: {exc}"
         print(line, file=sys.stderr)
-        if env.get("STEP_WHY"):
-            try:
-                with open(env["STEP_WHY"], "w", encoding="utf-8") as fh:
-                    fh.write(str(exc) + "\n")
-            except OSError:
-                pass
+        write_step_files(env, str(exc), getattr(exc, "run", None))
         return 1
     return 0
 
