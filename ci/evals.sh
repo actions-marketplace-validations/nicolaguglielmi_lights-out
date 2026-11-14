@@ -4,7 +4,8 @@
 # ci-evals: docs/adr/0020 §3, §8, the agents' own regression suite.
 # (a) the `adk` CLI must be in the image; (b) every root_agent's toolset
 # must equal the ADR's list (docs/adr/0020 §3, ops_triage's amended to
-# four tools by docs/adr/0044 §4), always all three roles, under whatever
+# four tools by docs/adr/0044 §4, product's three and the architect's intake
+# agent by docs/adr/0090 §2-§3), always all four agents, under whatever
 # AGENT_HARNESS the profile already exported -- never set here, never
 # overridden: a replay-backed toolset check is still a toolset check;
 # (c) the replay model's own unit tests; (d) `adk eval` per evalset,
@@ -13,7 +14,7 @@
 # limits which roles actually run an eval (record-evals's one-role-at-a-
 # time use); default is every agent dir under adapters/adk/agents/ that
 # has an evals/ directory. The toolset check in (b) always covers all
-# three regardless of ROLES. PLANE_HOST is pinned to an address that
+# four regardless of ROLES. PLANE_HOST is pinned to an address that
 # resolves nowhere for the whole gate: nothing an eval calls may reach
 # the plane -- a triage or a brief that touched it cannot pass, by
 # construction, not by inspection (docs/adr/0020 §3).
@@ -31,13 +32,14 @@ export PLANE_HOST
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# --- (b) toolset check: all three roles, regardless of ROLES ---
+# --- (b) toolset check: all four ADK agents, regardless of ROLES ---
 toolset_log="$work/toolset.log"
 if ! python3 - >"$toolset_log" 2>&1 <<'PY'
 import sys
 
 want = {
-    "product": {"ask_product_owner", "confirm_acceptance"},
+    "product": {"ask_product_owner", "confirm_acceptance", "propose_ticket"},  # propose_ticket: docs/adr/0090 §2
+    "architect": {"find_files", "propose_perimeter"},  # the intake's perimeter, docs/adr/0090 §3
     "ops_triage": {"file_incident", "file_postmortem", "propose_rollback", "propose_hold"},
     "release": {"submit_brief", "decline_brief"},
 }
