@@ -5,7 +5,9 @@
 # records the board's scenarios with Playwright, takes stills of the
 # console's screens (the ADR search over this repository's own project map,
 # so git comes first: a checkout without it has no history to map) and
-# encodes them with ffmpeg, all inside the Playwright image,
+# encodes them with ffmpeg, all inside the Playwright image; renders the
+# provider scoreboard (docs/adr/0088) and freezes the latest demo's console
+# from the ci workflow's artifact (docs/adr/0089), checked in a browser;
 # then uploads the Pages artifact and, for review, the screenshots. `deploy`
 # publishes it, on main only. The videos and stills are build outputs: never in git.
 # GitHub-only, every job: the L0 Gitea runner reads this directory too
@@ -24,6 +26,9 @@ on:
       - core/map.py
       - core/logbook.py
       - core/spec.py
+      - core/scoreboard.py
+      - core/freeze.py
+      - docs/scoreboard/**
       - gates/spec.sh
       - docs/assets/**
       - .github/workflows/site.yml
@@ -42,6 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.server_url == 'https://github.com'
     timeout-minutes: 30
+    # actions: read, for the latest demo's logbook in the ci workflow's
+    # artifact (docs/adr/0089 §6).
+    permissions:
+      actions: read
+      contents: read
     container:
       # Playwright 1.64.1 with Chromium and the Python package, verified on
       # mcr.microsoft.com 2026-11-05; the digest is the multi-arch index's.
@@ -66,6 +76,19 @@ jobs:
           cp site/index.html _site/
           cp board/index.html _site/board/
           cp docs/assets/lights-out.jpg _site/assets/
+      # The provider scoreboard from the committed dataset (docs/adr/0088 §8),
+      # and the console of this commit over the logbook of the latest
+      # ./go demo on main, from the ci workflow's artifact (docs/adr/0089 §6).
+      - name: the scoreboard and the latest demo's console, frozen
+        run: |
+          mkdir -p _site/scoreboard _site/console
+          python3 core/scoreboard.py --data docs/scoreboard/m24-tenacity.json --html _site/scoreboard/index.html
+          info=$(python3 site/demo-logbook.py "$RUNNER_TEMP/logbook-demo.json")
+          run=$(printf '%s' "$info" | cut -f1)
+          python3 core/freeze.py --logbook "$RUNNER_TEMP/logbook-demo.json" --out _site/console/snapshot.html \
+            --prefix "./go demo at L0, no API key, ci run $run"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: the videos, from the board
         run: python3 site/render.py _site
         env:
@@ -84,6 +107,8 @@ jobs:
             _site/media/console-*.jpg
             _site/media/network.jpg
             _site/media/network.mp4
+            _site/scoreboard/index.html
+            _site/console/snapshot.html
           retention-days: 14
 
   deploy:
