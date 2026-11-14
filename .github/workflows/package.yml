@@ -2,15 +2,26 @@
 # §8; 0057). On every push: the gates image built through package/build.sh
 # and the wrapper's acceptance on it (./go demo-package), the full image
 # built and both measured, and the root Action's own test with each of its
-# three `gates` values. On a v* tag or a manual dispatch only: publish both
-# images to ghcr.io and sign them keyless, the one job with packages: write
-# and id-token: write. GitHub-only, every job: the L0 Gitea runner reads
-# this directory too and holds the engine socket (docs/adr/0039).
+# three `gates` values. On a v* tag: the release, six jobs (docs/adr/0075,
+# 0077): dist (the wheel built and checked), publish (both images to
+# ghcr.io, signed keyless and verified), pypi (trusted publishing, no
+# token), actions (the two Action repositories synced and tagged, their
+# releases drafted), release (this repository's release drafted with the
+# digests) and wiki (the wiki rendered from the tag and pushed). A manual
+# dispatch is a dry run unless dry_run is false: every job shows what it
+# would do and nothing leaves the runner. GitHub-only, every job: the L0
+# Gitea runner reads this directory too and holds the engine socket
+# (docs/adr/0039).
 name: package
 
 on:
   push:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Show every release step and publish nothing (false pushes sha-<commit> images only; PyPI, the Action repositories and the release need a v* tag)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -264,19 +275,86 @@ jobs:
           check "lights-out test-proof (Action test" success "$PROOF" 2
           check "lights-out test-integrity (Action test" success "$INTEGRITY" 2
 
-  # Publishing is the owner's act: never on a branch push, only on a v*
-  # tag (which must equal the wrapper's version=) or a manual dispatch.
+
+  # docs/adr/0075 §1: the release starts here, before anything is pushed.
+  # One version in the tag, the wrapper and pyproject.toml; the sdist and
+  # the wheel built with uv at the workbench's pin, the wheel looked inside
+  # and run; dist/ handed to the pypi job, which holds the OIDC token and
+  # never runs the build tool. The `if` says "a v* tag or a dispatch"
+  # without `||`: the triggers are push and workflow_dispatch only, and
+  # ci/package.sh keeps `||` out of every guard but publish's.
+  dist:
+    runs-on: ubuntu-latest
+    if: github.server_url == 'https://github.com' && !(github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: uv at the workbench's pin
+        run: |
+          set -eu
+          v=$(sed -n 's/^ARG UV_VERSION=//p' workbench/Containerfile)
+          sha=$(sed -n 's/^ARG UV_SHA256_AMD64=//p' workbench/Containerfile)
+          mkdir -p "$RUNNER_TEMP/bin"
+          sh workbench/fetch.sh "https://github.com/astral-sh/uv/releases/download/$v/uv-x86_64-unknown-linux-gnu.tar.gz" "$sha" "$RUNNER_TEMP/uv.tar.gz"
+          tar -xzf "$RUNNER_TEMP/uv.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: The tag, the wrapper and pyproject.toml carry one version
+        run: |
+          set -eu
+          v=$(sed -n 's/^version=//p' lights-out)
+          p=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)
+          [ -n "$v" ] && [ "$p" = "$v" ] || { echo "pyproject.toml's version $p is not the wrapper's version=$v"; exit 1; }
+          case "$GITHUB_REF" in
+            refs/tags/v*) [ "${GITHUB_REF#refs/tags/v}" = "$v" ] || { echo "tag ${GITHUB_REF#refs/tags/} is not v$v"; exit 1; } ;;
+          esac
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - name: Build the sdist and the wheel, look inside, run the wheel
+        run: |
+          set -eu
+          uv build --out-dir dist
+          whl=$(ls dist/lights_out_gates-"$VERSION"-py3-none-any.whl)
+          ls dist/lights_out_gates-"$VERSION".tar.gz >/dev/null
+          python3 -m zipfile -l "$whl" | awk '{print $1}' > "$RUNNER_TEMP/wheel.txt"
+          for f in lights_out/perimeter.sh lights_out/platform_policy/merge.env lights_out/__main__.py; do
+            awk -v f="$f" '$1 == f { found = 1 } END { exit !found }' "$RUNNER_TEMP/wheel.txt" || { echo "the wheel has no $f"; exit 1; }
+          done
+          ! awk '/(^|\/)tests\//' "$RUNNER_TEMP/wheel.txt" | awk 'END { exit !NR }' || { echo "the wheel ships tests/"; exit 1; }
+          out=$(uv tool run --isolated --from "$whl" lights-out-gates version)
+          echo "$out"
+          case "$out" in "lights-out-gates $VERSION "*) ;; *) echo "the wheel's lights-out-gates version is not $VERSION"; exit 1 ;; esac
+          { echo "### dist"; echo '```'; ls -l dist; echo "$out"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "A dry run: the upload the pypi job makes at the tag"
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          { echo "### pypi (at a v* tag only, environment pypi, OIDC)"; echo '```sh'
+            echo "uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*"
+            echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
   # Both images, amd64 and arm64 through QEMU and buildx, the same
   # package/build.sh; then each signed keyless by its digest (docs/adr/0057
   # §4): the signer is this workflow at this ref, through GitHub's OIDC,
-  # recorded in Sigstore's public log. No key, no secret.
+  # recorded in Sigstore's public log. No key, no secret. Then each
+  # signature verified against this workflow at this ref (ADR 0075 §1).
+  # Only after dist; on a dispatch with dry_run (the default) it builds
+  # nothing and prints what it would run.
   publish:
     runs-on: ubuntu-latest
+    needs: dist
     if: github.server_url == 'https://github.com' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       packages: write
       id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      gates: ${{ steps.sign.outputs.gates || 'unpublished' }}
+      full: ${{ steps.sign.outputs.full || 'unpublished' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: The tag is the wrapper's version
@@ -284,6 +362,7 @@ jobs:
         run: |
           set -eu
           version=$(sed -n 's/^version=//p' lights-out)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           case "$GITHUB_REF" in
             refs/tags/v*)
               [ "${GITHUB_REF#refs/tags/v}" = "$version" ] \
@@ -291,13 +370,29 @@ jobs:
               echo "tag=$version" >> "$GITHUB_OUTPUT" ;;
             *) echo "tag=sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT" ;;
           esac
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: "A dry run: what this job runs"
+        if: ${{ inputs.dry_run }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          { echo "### publish (dry run: nothing built, pushed or signed)"; echo '```sh'
+            for f in gates full; do
+              [ "$f" = gates ] && img=ghcr.io/nicolaguglielmi/lights-out-gates || img=ghcr.io/nicolaguglielmi/lights-out
+              echo "PACKAGE_FLAVOUR=$f sh package/build.sh \"docker buildx\" $img:$TAG --platform linux/amd64,linux/arm64 --push --metadata-file \$RUNNER_TEMP/$f.json"
+              echo "cosign sign --yes $img@<digest>"
+              echo "cosign verify $img@<digest> --certificate-identity https://github.com/$GITHUB_WORKFLOW_REF --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            done; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - if: ${{ !inputs.dry_run }}
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - if: ${{ !inputs.dry_run }}
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to ghcr.io
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
       - name: Build both images for amd64 and arm64, push
+        if: ${{ !inputs.dry_run }}
         run: |
           set -eu
           PACKAGE_FLAVOUR=gates sh package/build.sh "docker buildx" "ghcr.io/nicolaguglielmi/lights-out-gates:${{ steps.version.outputs.tag }}" \
@@ -307,6 +402,8 @@ jobs:
       # cosign at the workbench's pin, fetched and checked the way the
       # workbench fetches it: one version and one hash in the repository.
       - name: Sign both indexes keyless, by digest
+        id: sign
+        if: ${{ !inputs.dry_run }}
         run: |
           set -eu
           v=$(sed -n 's/^ARG COSIGN_VERSION=//p' workbench/Containerfile)
@@ -314,10 +411,171 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bin"
           sh workbench/fetch.sh "https://github.com/sigstore/cosign/releases/download/v$v/cosign-linux-amd64" "$sha" "$RUNNER_TEMP/bin/cosign"
           chmod +x "$RUNNER_TEMP/bin/cosign"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
           PATH="$RUNNER_TEMP/bin:$PATH"
           for f in gates full; do
             name=$(jq -r '."image.name"' "$RUNNER_TEMP/$f.json" | cut -d, -f1 | sed 's/:[^:/]*$//')
             digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/$f.json")
             cosign sign --yes "$name@$digest"
+            echo "$f=$digest" >> "$GITHUB_OUTPUT"
             printf '%s@%s signed\n' "$name" "$digest" | tee -a "$GITHUB_STEP_SUMMARY"
           done
+      - name: Verify both signatures against this workflow at this ref
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -eu
+          for f in gates full; do
+            name=$(jq -r '."image.name"' "$RUNNER_TEMP/$f.json" | cut -d, -f1 | sed 's/:[^:/]*$//')
+            digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/$f.json")
+            cosign verify "$name@$digest" --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+            printf '%s@%s verified\n' "$name" "$digest" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+  # docs/adr/0075 §2: the light tier to PyPI by trusted publishing. PyPI
+  # trusts this repository, package.yml and the environment pypi; the job
+  # gets a token from GitHub's OIDC that lasts minutes. No secret. A v* tag
+  # only: a version on PyPI cannot be uploaded twice, so a dispatch never
+  # reaches this job (dist prints the command instead).
+  pypi:
+    runs-on: ubuntu-latest
+    needs: [dist, publish]
+    if: github.server_url == 'https://github.com' && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/lights-out-gates/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: workbench
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: uv at the workbench's pin, then the upload
+        run: |
+          set -eu
+          v=$(sed -n 's/^ARG UV_VERSION=//p' workbench/Containerfile)
+          sha=$(sed -n 's/^ARG UV_SHA256_AMD64=//p' workbench/Containerfile)
+          mkdir -p "$RUNNER_TEMP/bin"
+          sh workbench/fetch.sh "https://github.com/astral-sh/uv/releases/download/$v/uv-x86_64-unknown-linux-gnu.tar.gz" "$sha" "$RUNNER_TEMP/uv.tar.gz"
+          tar -xzf "$RUNNER_TEMP/uv.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/bin"
+          PATH="$RUNNER_TEMP/bin:$PATH"
+          uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*
+
+  # docs/adr/0075 §3: actions/test-proof and actions/test-integrity copied
+  # to the root of their own repositories, committed, tagged v<version> and
+  # a draft release made in each, through the one secret of this file, a
+  # token scoped to those two repositories. On a dispatch both are cloned
+  # anonymously, committed and tagged on the runner, and nothing is pushed.
+  actions:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.server_url == 'https://github.com'
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.publish.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: "A dry run: both repositories committed and tagged here, nothing pushed"
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -eu
+          for a in test-proof test-integrity; do
+            { echo "### $a"; echo '```'; sh package/sync-action.sh "$a" "$VERSION" "$RUNNER_TEMP/$a"; echo '```'
+              echo "at the tag: gh release create v$VERSION --repo nicolaguglielmi/$a --draft --verify-tag --title \"lights-out $a $VERSION\", with these notes:"
+              echo; sh package/release-notes.sh action "$a" "$VERSION"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Sync, tag and push both repositories, and draft their releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ACTION_REPOS_TOKEN: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ACTION_REPOS_TOKEN || '' }}
+        run: |
+          set -eu
+          [ -n "$ACTION_REPOS_TOKEN" ] || { echo "::error::the secret ACTION_REPOS_TOKEN is not set (docs/launch/checklist.md, Release automation)"; exit 1; }
+          for a in test-proof test-integrity; do
+            sh package/sync-action.sh "$a" "$VERSION" "$RUNNER_TEMP/$a" --push | tee -a "$GITHUB_STEP_SUMMARY"
+            if GH_TOKEN=$ACTION_REPOS_TOKEN gh release view "v$VERSION" --repo "nicolaguglielmi/$a" >/dev/null 2>&1; then
+              echo "nicolaguglielmi/$a: a release v$VERSION exists, left as it is" | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            sh package/release-notes.sh action "$a" "$VERSION" > "$RUNNER_TEMP/$a-notes.md"
+            GH_TOKEN=$ACTION_REPOS_TOKEN gh release create "v$VERSION" --repo "nicolaguglielmi/$a" --draft --verify-tag \
+              --title "lights-out $a $VERSION" --notes-file "$RUNNER_TEMP/$a-notes.md"
+            echo "nicolaguglielmi/$a: draft release v$VERSION created; publish it to the Marketplace by hand" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+  # docs/adr/0075 §4: this repository's release drafted with both digests,
+  # a cosign verify per image, the PyPI line and the two Actions; the prose
+  # from docs/releases/v<version>.md when the release commit wrote it. A
+  # draft that exists is left alone. Publishing it, and the Marketplace, are
+  # the owner's (passkey).
+  release:
+    runs-on: ubuntu-latest
+    needs: [publish, actions]
+    if: github.server_url == 'https://github.com'
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.publish.outputs.version }}
+      GATES: ${{ needs.publish.outputs.gates }}
+      FULL: ${{ needs.publish.outputs.full }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The notes
+        run: |
+          set -eu
+          sh package/release-notes.sh lights-out "$VERSION" "$GATES" "$FULL" > "$RUNNER_TEMP/notes.md"
+          { echo "### release v$VERSION (draft)"; echo; cat "$RUNNER_TEMP/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "A dry run: the draft the tag makes"
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          echo "at the tag: gh release create v$VERSION --draft --verify-tag --title \"lights-out $VERSION\" --notes-file notes.md" | tee -a "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/notes.md"
+      - name: Draft the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "a release v$VERSION exists, left as it is" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            gh release create "v$VERSION" --draft --verify-tag --title "lights-out $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+            echo "draft release v$VERSION created; publish it, with the Marketplace box ticked, by hand" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # docs/adr/0077: the wiki rendered from the repository at the tag by
+  # package/wiki.py and pushed by package/sync-wiki.sh with this workflow's
+  # own token, after the release is drafted: a failed release leaves the
+  # wiki as it was. On a dispatch the pages are rendered and listed, and
+  # nothing is cloned or pushed (the wiki's repository exists only once the
+  # owner saves its first page).
+  wiki:
+    runs-on: ubuntu-latest
+    needs: release
+    if: github.server_url == 'https://github.com'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Render the pages
+        run: |
+          set -eu
+          python3 -I package/wiki.py "$RUNNER_TEMP/wiki-pages"
+          { echo "### wiki"; echo '```'; (cd "$RUNNER_TEMP/wiki-pages" && wc -c -- *.md); echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "A dry run: the push the tag makes"
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          echo "at the tag: sh package/sync-wiki.sh \$RUNNER_TEMP/wiki-pages \$RUNNER_TEMP/wiki --push, with WIKI_TOKEN the job's GITHUB_TOKEN" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Push the wiki
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          WIKI_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          sh package/sync-wiki.sh "$RUNNER_TEMP/wiki-pages" "$RUNNER_TEMP/wiki" --push > "$RUNNER_TEMP/wiki.txt"
+          cat "$RUNNER_TEMP/wiki.txt" >> "$GITHUB_STEP_SUMMARY"

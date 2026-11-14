@@ -12,6 +12,7 @@
 #   ./go demo           the demo, as far as the current milestone takes it
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
+#   ./go demo-dast      prove the passive DAST scan at staging: the stable against itself GO, a leaky canary rolled back
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
 #   ./go demo-seam      prove attach and the Workload port on workloads/minimal as its own repository
 #   ./go attach <path>  make a repository of yours the workload (its .lights-out/ is the contract, if it has one)
@@ -23,6 +24,7 @@
 #   ./go demo-network   prove a network of members on one ticket, governed end to end (ADR 0036)
 #   ./go e2e            run the full tower: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited
 #   ./go audit          rebuild the chain from a ticket's state: TICKET=<id>
+#   ./go evidence       the evidence pack of a release, signed with the plane's key and verified: VERSION=<v> (ADR 0081)
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
 #   ./go request        start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> [REQUEST_BY=<who>]
 #   ./go answer         answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text>
@@ -40,6 +42,8 @@
 #   ./go console        the client's console on localhost:8098: the record, and go-for-launch from a browser (ADR 0047)
 #   ./go logbook        write the logbook, the one versioned record the console reads: [LOGBOOK_FILE=<file>]
 #   ./go network        one ticket's agent network in text, the console's #network in the same words: [TICKET=] [ATTEMPT=]
+#   ./go dora           the four delivery measures (DORA) over the last WINDOW_DAYS days, from the logbook (ADR 0082)
+#   ./go spend          cost and time per ticket, per role and per day, from the tower's spend ledger (ADR 0083)
 #   ./go demo-console   prove go-for-launch pressed from the console: held canary, POST GO → 100%, then the un-promote
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
@@ -48,6 +52,7 @@
 #   ./go harness-conformance  every CLI harness against a scripted model, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041)
 #   ./go argo-conformance  the Delivery suite on adapters/argo-rollouts, a local k3s beside the plane (ADR 0051)
 #   ./go codehost-conformance  ten cases on the CODE_HOST set: Gitea with the plane up, or CODE_HOST=github on an attached repository (ADR 0043)
+#   ./go gitlab-conformance  the same ten cases on adapters/gitlab, GitLab CE in a container beside the plane, no plane needed (ADR 0058)
 #   ./go engine-compat  host-side engine gate: versions, then up and smoke
 #   ./go doctor         engine, versions, ports, the key: one line each, then GO or NO-GO (host-side)
 #   ./go doctor --level <l0|l1|l2|l3>   what that level still lacks, one line per item (host-side, ADR 0057)
@@ -55,6 +60,7 @@
 #   ./go package        build the full lights-out image, localhost/lights-out:dev (host-side)
 #   ./go package-gates  build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (host-side)
 #   ./go demo-package   prove the wrapper: init, gates, test-proof and test-integrity from the gates image on workloads/minimal
+#   ./go demo-jenkins   prove Jenkins as a surface: Jenkinsfile Runner posts the gates line on a local Gitea PR (ADR 0058)
 #   ./go shell          interactive shell inside workbench
 #   ./go clean          remove the workbench image
 #
@@ -220,6 +226,12 @@ fi
 if [ "$cmd" = demo-package ]; then
   CONTAINER_ENGINE="$engine" exec sh "$here/package/demo.sh"
 fi
+# Another CI as a surface (docs/adr/0058 §7): Jenkinsfile Runner judges a PR
+# on a Gitea of its own, through the wrapper and the host engine, as a
+# Jenkins agent would.
+if [ "$cmd" = demo-jenkins ]; then
+  CONTAINER_ENGINE="$engine" exec sh "$here/surfaces/jenkins/demo.sh"
+fi
 
 # 2. Build the workbench image once per Containerfile revision. A run
 # that has to build it is a first run: demo reports its time instead of
@@ -251,9 +263,9 @@ fi
 # a NO-GO naming it inside, never a silent in-process run.
 socket_flags=""
 socket_optional=""
-case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook|network) socket_optional=1 ;; esac
+case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook|network|dora) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|network|demo-console|request|answer)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-dast|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|gitlab-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|network|dora|demo-console|request|answer)
     sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
@@ -316,6 +328,20 @@ fi
 for v in $(awk '/^[A-Za-z0-9_]*(_KEY|_TOKEN|_SECRET|_PASSWORD)=/ || /^METRICS_AUTH_HEADER=/ { sub(/=.*/, ""); print }' "$here/.env.example" | sort -u); do
   if env | grep -q "^$v="; then port_flags="$port_flags -e $v"; fi
 done
+
+# Adapters outside the repository (docs/adr/0058 §1): ADAPTERS_PATH, from
+# this environment, else .env, else the profile, is mounted read-only at
+# its own path, where make finds it and core/adapters.py links from it.
+adapters_path=${ADAPTERS_PATH:-}
+for f in "$here/.env" "$here/profiles/${PROFILE:-l0}.env"; do
+  [ -z "$adapters_path" ] && [ -f "$f" ] || continue
+  adapters_path=$(awk -F= '/^ADAPTERS_PATH=/ { sub(/^ADAPTERS_PATH=/, ""); v = $0 } END { print v }' "$f")
+done
+if [ -n "$adapters_path" ]; then
+  case "$adapters_path" in /*) ;; *) die "ADAPTERS_PATH=$adapters_path is not an absolute path (docs/adr/0058 §1)" ;; esac
+  [ -d "$adapters_path" ] || die "ADAPTERS_PATH=$adapters_path is not a directory"
+  port_flags="$port_flags -e ADAPTERS_PATH=$adapters_path -v $adapters_path:$adapters_path:ro$(printf '%s' "$label" | tr ':' ',')"
+fi
 
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
 run() {

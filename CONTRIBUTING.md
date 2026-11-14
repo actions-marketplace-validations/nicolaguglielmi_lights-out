@@ -27,6 +27,11 @@ project's licence.
 git commit -s
 ```
 
+Use your own address, the one your GitHub account knows. A
+`users.noreply.github.com` address needs its account id
+(`<id>+<login>@users.noreply.github.com`): without the id it can belong to
+someone else's account. `./go ci` checks every commit (`ci/authors.sh`).
+
 There is no CLA. Contributions are licensed under Apache 2.0, like the
 rest of the repository (its §5).
 
@@ -36,6 +41,13 @@ rest of the repository (its §5).
   `GO: <name>` or `NO-GO: <name> — <reason>`, and exits 0 or 1. Tool noise
   goes to stderr. No colour when stdout is not a TTY. Use `ci/lib.sh`;
   `ci/contract.sh` checks every gate.
+- **Shell is the contract, Python is the logic.** Shell stays on the host
+  (`./go`), in adapter verbs and in thin wrappers; a gate's wrapper keeps
+  its guards and ends in `verdict core.gates.<x>`, and the rule lives in
+  `core/gates/<x>.py` with `unittest` tests in `core/tests/`. A shell file
+  in `core/` or `gates/` has at most 30 code lines; `ci/shell-boundary.sh`
+  holds it ([ADR 0052](docs/adr/0052-where-shell-is-allowed.md),
+  [ADR 0084](docs/adr/0084-gates-under-the-shell-boundary.md)).
 - **No hidden mocks.** If something is simulated at a level, the README
   says so and the code fails with a clear message. Nothing pretends to work.
 - **Tests come from the spec**, never from the implementation.

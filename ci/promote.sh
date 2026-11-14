@@ -14,6 +14,10 @@
 # GO_FOR_LAUNCH_VIA), the release log's answer lines (RELEASES_LOG), a NO-GO
 # that is recorded, the brief written with no answer, and an answer on the
 # brief already shown (GO_FOR_LAUNCH_BRIEF_SHA256).
+# Cases q-t are docs/adr/0079 §1: the answer's record and log line carry
+# `reason` (GO_FOR_LAUNCH_REASON, null without one), `brief_sha256` (the
+# sha256 of the brief promote wrote in PROMOTE_OUT) and `brief_author` (the
+# first line of its brief.author); the CLI never requires a reason.
 # Written from docs/adr/0020 §4, §8, docs/adr/0026 §2, docs/adr/0047 §3 and
 # ticket 0008, not from core/promote.sh.
 set -eu
@@ -165,7 +169,7 @@ harness_calls() { cat "$root/harness.log" 2>/dev/null || true; }
 # through "$@", and a shell only recognises literal NAME=value tokens as
 # prefix assignments, never the result of an expansion.
 run_promote() {
-  out=$(env -u GO_FOR_LAUNCH -u GO_FOR_LAUNCH_BY -u GO_FOR_LAUNCH_VIA -u GO_FOR_LAUNCH_BRIEF_SHA256 \
+  out=$(env -u GO_FOR_LAUNCH -u GO_FOR_LAUNCH_BY -u GO_FOR_LAUNCH_VIA -u GO_FOR_LAUNCH_BRIEF_SHA256 -u GO_FOR_LAUNCH_REASON \
     DELIVERY=stub-delivery AGENT_HARNESS=stub-harness PLANE_HOST=nowhere.invalid \
     RELEASE_RECORD="$record" RELEASES_LOG="$releases_log" PROMOTE_OUT="$out_dir" "$@" \
     sh core/promote.sh 2>"$log" </dev/null) && rc=0 || rc=$?
@@ -437,6 +441,77 @@ if [ -z "$mismatch" ]; then
   cmp -s "$record" "$root/record.before" || fail_case p "the record changed: $(cat "$record")"
   cmp -s "$out_dir/brief.md" "$root/brief.before" || fail_case p "the brief on disk changed"
   no_answer p
+fi
+
+# why_ok CASE KEY REASON: record entry KEY (promoted|rejected) and the log's
+# answer line carry the reason (REASON, or null when empty), the sha256 of the
+# brief on disk and the first line of its brief.author (docs/adr/0079 §1).
+why_ok() {
+  [ -s "$out_dir/brief.author" ] || { fail_case "$1" "no brief.author to compare"; return 0; }
+  want_sha=$(sha_of "$out_dir/brief.md")
+  want_author=$(head -n 1 "$out_dir/brief.author")
+  for f in "$record:.$2" "$releases_log:."; do
+    jq -e --arg r "$3" --arg s "$want_sha" --arg a "$want_author" "${f#*:}"'
+      | .reason == (if $r == "" then null else $r end) and .brief_sha256 == $s and .brief_author == $a
+      and (.brief_sha256 | test("^[0-9a-f]{64}$"))' "${f%%:*}" >/dev/null \
+      || fail_case "$1" "${f%%:*}: $(cat "${f%%:*}"), want reason '$3', brief_sha256 $want_sha, brief_author '$want_author'"
+  done
+}
+
+# (q) GO with a reason: record.promoted and the answer line carry it, the
+# brief's own sha256 and its author.
+if [ -z "$mismatch" ]; then
+  reset
+  held_record
+  good_brief_calls
+  run_promote GO_FOR_LAUNCH=GO GO_FOR_LAUNCH_REASON="numbers hold at 25%"
+  want_one_line q
+  [ "$out" = "GO: go-for-launch" ] || fail_case q "stdout: $out"
+  [ "$(effects)" = "shift 100" ] || fail_case q "effects: $(effects), want exactly 'shift 100'"
+  one_answer q GO unauthenticated cli
+  why_ok q promoted "numbers hold at 25%"
+fi
+
+# (r) NO-GO with a reason: the same, in record.rejected, and it still rolls back.
+if [ -z "$mismatch" ]; then
+  reset
+  held_record
+  good_brief_calls
+  run_promote GO_FOR_LAUNCH=NO-GO GO_FOR_LAUNCH_REASON="p99 too close to the limit"
+  want_one_line r
+  [ "$out" = "NO-GO: go-for-launch — human said NO-GO" ] || fail_case r "stdout: $out"
+  [ "$rc" -eq 1 ] || fail_case r "exit $rc, want 1"
+  [ "$(effects)" = "rollback" ] || fail_case r "effects: $(effects), want exactly 'rollback'"
+  one_answer r NO-GO unauthenticated cli
+  why_ok r rejected "p99 too close to the limit"
+fi
+
+# (s) no reason: `reason` is null on GO; the brief's sha and author are
+# there all the same.
+if [ -z "$mismatch" ]; then
+  reset
+  held_record
+  good_brief_calls
+  run_promote GO_FOR_LAUNCH=GO
+  want_one_line s
+  one_answer s GO unauthenticated cli
+  why_ok s promoted ""
+  jq -e 'has("reason") and .reason == null' "$releases_log" >/dev/null || fail_case s "the answer line has no null reason: $(cat "$releases_log")"
+fi
+
+# (t) the CLI never requires a reason: a NO-GO without one is recorded and rolls back.
+if [ -z "$mismatch" ]; then
+  reset
+  held_record
+  good_brief_calls
+  run_promote GO_FOR_LAUNCH=NO-GO
+  want_one_line t
+  [ "$out" = "NO-GO: go-for-launch — human said NO-GO" ] || fail_case t "stdout: $out"
+  [ "$rc" -eq 1 ] || fail_case t "exit $rc, want 1"
+  [ "$(effects)" = "rollback" ] || fail_case t "effects: $(effects), want exactly 'rollback': a missing reason must not stop the CLI"
+  one_answer t NO-GO unauthenticated cli
+  why_ok t rejected ""
+  jq -e '.rejected | has("reason") and .reason == null' "$record" >/dev/null || fail_case t "rejected has no null reason: $(cat "$record")"
 fi
 
 cd "$repo"

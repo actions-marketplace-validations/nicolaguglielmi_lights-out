@@ -84,6 +84,9 @@ the front door. Facts, verified 2026-11-08:
    `cosign verify ghcr.io/nicolaguglielmi/lights-out-gates:<v>
    --certificate-identity-regexp '^https://github.com/nicolaguglielmi/lights-out/.github/workflows/package.yml@refs/tags/v'
    --certificate-oidc-issuer https://token.actions.githubusercontent.com`.
+   (ADR 0075 amends this: the job `pypi` of the same workflow holds
+   `id-token: write` too, for PyPI's trusted publishing; a dispatch is a
+   dry run by default; `publish` verifies both signatures after signing.)
 5. **The wrapper, `lights-out` 0.3.0** (the next tag's). `init`, `gates`,
    `test-proof`, `test-integrity` default to the gates image; `triage`,
    `postmortem` to the full one; `LIGHTS_OUT_IMAGE` overrides every
@@ -120,7 +123,10 @@ the front door. Facts, verified 2026-11-08:
    checklist.md`). Before the tag exists, the shims are proven with the ref
    set to the branch commit in the owner's private probe repository (owner
    decision, 2026-11-08); this repository keeps `v$version`, which
-   `ci/package.sh` checks.
+   `ci/package.sh` checks. (ADR 0075 amends this: from the release after
+   0.3.1 the tag's `actions` job copies, commits and tags both
+   repositories and drafts their releases; the Marketplace publish stays
+   the owner's.)
 8. **`./go doctor --level <l0|l1|l2|l3>`**, in `core/doctor.sh` (host shell,
    ADR 0052 §1; `./go` passes its arguments). Without `--level`, unchanged.
    With it, one stderr line per item, read from `profiles/<level>.env`:

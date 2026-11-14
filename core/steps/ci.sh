@@ -11,7 +11,8 @@
 # document. Next state: ci-passed on GO + auto-merge, review on GO +
 # review (core/steps/review.sh picks it up from there, docs/adr/0021),
 # ci-failed on NO-GO, with the failed gate's own details as ci.details —
-# what core/steps/rework.sh hands back to the worker (docs/adr/0038).
+# what core/steps/rework.sh hands back to the worker (docs/adr/0038) — and,
+# for sast, the new findings as ci.sast (docs/adr/0078 §1).
 # Called by the tower (PR_NUMBER, BASE_SHA,
 # HEAD_SHA from the document) and by the Makefile's crew-run (from
 # .crew/<id>/pr-opened.env): one code path for both.
@@ -126,8 +127,11 @@ sh "adapters/$CODE_HOST/status.sh" "$HEAD_SHA" "$status" gates "$out" \
   || { printf 'step-ci: could not post the status\n' >&2; exit 1; }
 [ "$state" != review ] || printf '[ci] risk %s: review requested; test-reviewer picks it up next (docs/adr/0021)\n' "$level" >&2
 
+# ci.sast: on a sast NO-GO, the findings sast.json's `new` says this diff
+# introduces, as core/sastdiff.py wrote them; null for any other gate
+# (docs/adr/0078 §1).
 jq -cn --arg state "$state" --arg verdict "$verdict" --arg failed "$failed" \
   --arg level "$level" --arg decision "$decision" --arg head "$HEAD_SHA" --arg line "$out" \
-  --argjson details "$details" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
+  --argjson details "$details" --argjson sast "$( { [ "$failed" = sast ] && jq -c '[.new[]? | {rule, file, line}] | if length > 0 then . else null end' "$gates_dir/sast.json" 2>/dev/null; } || echo null)" --argjson lines "$(if [ -f "${gates_dir:-$tmp}/lines" ]; then jq -R . < "${gates_dir:-$tmp}/lines" | jq -cs .; else echo null; fi)" \
   '{state: $state, ci: {verdict: $verdict, failed: (if $failed == "" then null else $failed end),
-    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, lines: $lines}}'
+    risk_level: $level, decision: $decision, head_sha: $head, line: $line, details: $details, sast: $sast, lines: $lines}}'

@@ -413,7 +413,7 @@ async def shots(site, out):
 # (REPO below): its ADRs are the real ones. A demo's own logbook is not
 # committed: a threshold's name in its `key` field reads as a secret to
 # gitleaks, and a change cannot excuse its own finding (docs/adr/0049 §4).
-GOLDEN = "fixtures/logbook/golden-1.3.json"
+GOLDEN = "fixtures/logbook/golden-1.5.json"
 REPO = "this repository's map"
 DRAFT = [("input[name=title]", "Show who requested a ticket on its card"),
          ("textarea[name=context]", "A card says what a ticket is, not who asked for it."),

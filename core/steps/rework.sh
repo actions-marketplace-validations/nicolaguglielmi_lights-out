@@ -34,9 +34,9 @@ judged=$(jq -r '.pr.head_sha // empty' "$DOC_FILE")
 
 entry=$(jq -c --argjson n "$attempt" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
   if .mainline.verdict == "NO-GO" or .ci.verdict == "NO-GO" then (if .mainline.verdict == "NO-GO" then .mainline else .ci + {judge: "gates"} end) as $v |
-    {attempt: $n, judge: $v.judge, head_sha: .pr.head_sha, line: $v.line, details: ($v.details // []), lines: .ci.lines, at: $at}
+    {attempt: $n, judge: $v.judge, failed: ($v.failed // null), head_sha: .pr.head_sha, line: $v.line, details: ($v.details // []), sast: ($v.sast // null), lines: .ci.lines, at: $at}
   elif .review.verdict == "changes-requested" then
-    {attempt: $n, judge: "review", head_sha: .pr.head_sha,
+    {attempt: $n, judge: "review", failed: null, sast: null, head_sha: .pr.head_sha,
      line: "CHANGES-REQUESTED — \(.review.role)", details: (.review.reason // "" | split("\n")), lines: .ci.lines, at: $at}
   else empty end' "$DOC_FILE")
 [ -n "$entry" ] || {
@@ -45,10 +45,14 @@ entry=$(jq -c --argjson n "$attempt" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
 }
 rework=$(jq -c --argjson e "$entry" '(.rework // []) + [$e]' "$DOC_FILE")
 
-if [ "$attempt" -ge "$REWORK_MAX_ATTEMPTS" ]; then
-  printf '[rework] ticket %s: attempt %s of %s rejected (%s); a human is needed\n' \
-    "$TICKET" "$attempt" "$REWORK_MAX_ATTEMPTS" "$(printf '%s' "$entry" | jq -r .line)" >&2
-  jq -cn --argjson rework "$rework" '{state: "needs-human", rework: $rework}'
+# The cap, or the spend budget (docs/adr/0083 §4): the tower sets
+# SPEND_STOP to the one-line reason when a limit is reached; the attempt
+# is recorded as always, the next one is not launched, and the line is
+# kept as budget.line.
+if [ -n "${SPEND_STOP:-}" ] || [ "$attempt" -ge "$REWORK_MAX_ATTEMPTS" ]; then
+  printf '[rework] ticket %s: attempt %s of %s rejected (%s); %sa human is needed\n' \
+    "$TICKET" "$attempt" "$REWORK_MAX_ATTEMPTS" "$(printf '%s' "$entry" | jq -r .line)" "${SPEND_STOP:+$SPEND_STOP; }" >&2
+  jq -cn --argjson rework "$rework" --arg line "${SPEND_STOP:-}" '{state: "needs-human", rework: $rework} + (if $line == "" then {} else {budget: {line: $line}} end)'
   exit 0
 fi
 

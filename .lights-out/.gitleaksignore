@@ -4,7 +4,8 @@
 # each under the reason a human judged it a false positive.
 
 # docs/adr/0025 quotes the header line of a cosign private key, in prose:
-# no key follows it. Excused inline with gitleaks:allow in 3fb56bf, which
+# no key follows it. Excused inline with gitleaks:allow in aedc195 (3fb56bf before the
+# rewrite of 2026-11-12, docs/adr/0074 §5), which
 # the attached scan ignores by design. Listed by core/history-findings.sh
 # on Actions, 2026-11-05.
-3fb56bf3fdb13a95b9c88f9c5d57fa2c2cb139a0:docs/adr/0025-release-artefact-build-sign-verify.md:private-key:167
+aedc195733468a21bf945d65457cdcfcb8b9b3ba:docs/adr/0025-release-artefact-build-sign-verify.md:private-key:167

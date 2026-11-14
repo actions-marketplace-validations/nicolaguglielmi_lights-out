@@ -49,7 +49,18 @@ proven by `ci/attach.sh` case f).
 - **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
   package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
   Marketplace. **0.3.1** (2026-11-10) ships the first run that drafts the
-  contract (ADR 0064); on the Marketplace too since 2026-11-10.
+  contract (ADR 0064); on the Marketplace too since 2026-11-10. **0.4.0**
+  (tagged 2026-11-12) ships the agent network (ADR 0071), per-role
+  instructions and MCP servers (ADR 0073), the toolbelt (ADR 0069), the
+  Trello-style kanban (ADR 0068), and `self` judged from its last green
+  ancestor with the mutants in shards (ADR 0074). The Marketplace and PyPI
+  steps are the owner's. **0.5.0** ships security scanning (ADR 0072):
+  SAST on the diff, a signed SBOM, passive DAST at staging; it is the
+  first release cut by its own tag (ADR 0075). **0.6.0** ships the
+  sprint of 2026-11-12: the why of a NO-GO (ADR 0078), the human gate on
+  the card (ADR 0079), the live canary (ADR 0080), the evidence pack per
+  release (ADR 0081), `./go dora` (ADR 0082) and `./go spend` with a
+  budget (ADR 0083).
 - **M24 — the public legacy experiment.** Plan §14's experiment on a
   well-known open-source legacy repository, with every ticket run on the
   three providers and all three verdicts published, GO and NO-GO alike.
@@ -64,6 +75,11 @@ proven by `ci/attach.sh` case f).
   adapter can live outside this repository once it passes its conformance
   suite; other CIs show the gates' verdict and never judge; Jenkins and
   GitLab proven locally; one more delivery adapter when someone needs it.
+  Built 2026-11-13: `ADAPTERS_PATH` and `outside/<name>`, proven for a
+  StateStore; `adapters/gitlab/`, proven by `./go gitlab-conformance`; the
+  Jenkins recipe, proven with Jenkinsfile Runner by `./go demo-jenkins`.
+  Left: Flagger, an outside AgentHarness, recipes for GitLab CI and
+  CircleCI, and the full tower on GitLab and on a real Jenkins.
 
 The adoption roadmap behind M31, M34 and M35, with what to drop, what to
 change and the sequence after them (attestation, the jury, `./go
@@ -78,7 +94,7 @@ demo-loop`, the toolbelt, then the launch), is
   ticket, attempt, worker and threshold you changed. The console (M29)
   already shows the tickets, their timelines and the thresholds; its
   first slice (ADR 0063) says on each ticket whose turn it is.
-- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), deferred by the owner on 2026-11-11, nothing built): SAST judged on the diff as dependencies already are, a signed SBOM with every release, and a passive DAST scan of the canary before it takes traffic.
+- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M43): all three slices are built: SAST judged on the diff as dependencies already are, a signed SBOM with every release, attested before the signature and carried by the release record and `./go audit`, and a passive DAST scan at staging (`./go demo-dast`), off by default until the owner turns it on. The console's timeline does not show the SBOM or the dast line yet.
 
 ## When someone needs it
 

@@ -12,8 +12,8 @@ name=core-tests
 # import classify` resolves the same way whether this runs via `sh
 # ci/core-tests.sh`, `./go ci` or plain `python3 -m unittest`.
 python3 -m unittest discover -s core/tests -t . >&2 || nogo "unittest reported failures"
-# The python stack's runner tests (docs/adr/0042, amendment 2026-11-11):
-# beside stacks/python/runners/, never copied into a repository by init.
-python3 -m unittest discover -s stacks/python/tests >&2 || nogo "unittest reported failures in stacks/python/tests"
+# The python stack's runners, run for real (docs/adr/0074, amendment of
+# 2026-11-11; docs/adr/0076).
+python3 -m unittest discover -s stacks/python/tests -t stacks/python >&2 || nogo "stacks/python/tests reported failures"
 
 go

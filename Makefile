@@ -38,6 +38,21 @@ include $(WORKLOAD_CONTRACT)/workload.env
 endif
 export
 
+# Adapters outside the repository (docs/adr/0058 §4): a port set to
+# outside/<name> runs $(ADAPTERS_PATH)/<name> only if its port's suite said
+# GO on those exact bytes, on record in .crew/adapters/register. Refused, make
+# stops here, before any goal, in one line. A command line of *-conformance
+# goals only tries the adapter instead: its recipe goes through `conform`.
+OUTSIDE_PORTS := AGENT_HARNESS CODE_HOST DELIVERY STATE_STORE EVENT_BUS TRACKER ORCHESTRATOR METRICS FLAGS REGISTRY
+ifneq ($(filter outside/%,$(foreach p,$(OUTSIDE_PORTS),$($(p)))),)
+ifneq ($(filter-out %-conformance,$(or $(MAKECMDGOALS),help)),)
+ADMIT := $(shell python3 core/adapters.py admit 2>&1)
+ifneq ($(ADMIT),)
+$(error $(ADMIT))
+endif
+endif
+endif
+
 # COMPOSE_FILE merges the workload's compose file after the plane's; these
 # are := and exported, never ?=, because demo-seam and demo-gates re-enter
 # make with a different WORKLOAD and export is what hands the parent's
@@ -210,18 +225,19 @@ help: ## List the targets
 	@printf 'lights-out  (profile: %s)\n\n' "$(PROFILE)"
 	@awk 'BEGIN{FS=":.*## "} /^[a-z][a-z0-9-]*:.*## /{printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
-	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
+	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
 		doctor "engine, versions, ports, the key: one line each, then GO or NO-GO; --level <l0|l1|l2|l3>: what that level lacks (docs/adr/0045 §4, 0057 §8)" \
 		package "build the full lights-out image, localhost/lights-out:dev (docs/adr/0045 §1)" \
 		package-gates "build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (docs/adr/0057 §3)" \
 		demo-package "prove the wrapper from the gates image: init, gates, test-proof and test-integrity on workloads/minimal (docs/adr/0045 §8, 0057)" \
+		demo-jenkins "prove Jenkins as a surface: Jenkinsfile Runner posts the gates line on a local Gitea PR (docs/adr/0058 §7)" \
 		attach "clone a repository and make it the workload; with a .lights-out/ contract it is checked: ./go attach <path> (docs/adr/0037, 0042)" \
 		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -320,6 +336,20 @@ network: ## The agent network of one ticket in text: the graph, every attempt wi
 	if [ -z "$$book" ]; then sh core/logbook.sh >&2 || exit 1; book="$${LOGBOOK_FILE:-.crew/logbook.json}"; fi; \
 	python3 core/network.py --logbook "$$book" --ticket "$(if $(filter file,$(origin TICKET)),,$(TICKET))" --attempt "$(ATTEMPT)"
 
+# The delivery measures (docs/adr/0082): DORA's four keys over the last
+# WINDOW_DAYS days, from the logbook (written first unless DORA_LOGBOOK
+# names one); one contract line on stdout, the measures on stderr and in
+# DORA_OUT.
+.PHONY: dora
+dora: ## The four delivery measures over a window, from the logbook: [WINDOW_DAYS=30] [DORA_LOGBOOK=<file>] [DORA_OUT=.crew/dora.json] (docs/adr/0082)
+	@WINDOW_DAYS="$(WINDOW_DAYS)" DORA_LOGBOOK="$(DORA_LOGBOOK)" DORA_OUT="$(DORA_OUT)" sh core/dora.sh
+
+# Cost and time per ticket (docs/adr/0083 §5): per ticket, role and day,
+# from every ticket's spend ledger; one contract line on stdout.
+.PHONY: spend
+spend: ## Cost and time per ticket, per role and per day, from the tower's spend ledger; a model with no price is cost unknown (docs/adr/0083)
+	@sh core/spend.sh
+
 # The console (docs/adr/0047, 0055, 0059, 0071): the client's eleven screens over the
 # logbook and three writes, go-for-launch through core/promote.sh, the
 # answer to a ticket's open question through `make answer` and a new
@@ -340,7 +370,7 @@ console: ## The console on localhost:8098: eleven screens (kanban, the agent net
 # runs first in CI) is removed first: this run prepares its own.
 DEMO_CONSOLE_PORT ?= 18098
 .PHONY: demo-console
-demo-console: ## Prove go-for-launch pressed from the console: held canary, brief, POST GO → 100%, via console, then the un-promote (docs/adr/0047 §4)
+demo-console: ## Prove go-for-launch pressed from the console: a held canary rolled back with a reason, a second promoted with one, via console, then the un-promote (docs/adr/0047 §4, 0079 §5)
 	@backup=$$(mktemp); \
 	cp "$(FLAGS_FILE)" "$$backup"; \
 	restore() { [ -f "$$backup" ] || return 0; cat "$$backup" > "$(FLAGS_FILE)"; rm -f "$$backup"; }; \
@@ -355,34 +385,56 @@ demo-console: ## Prove go-for-launch pressed from the console: held canary, brie
 	$(MAKE) --no-print-directory kill-switch || exit 1; \
 	stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
 	printf '[demo-console] stable is %s; releasing %s with %s off\n' "$$stable" "$(CANARY_VERSION)" "$(WORKLOAD_KILL_SWITCH)" >&2; \
-	if ! $(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION); then \
-		printf 'NO-GO: demo-console — release rolled back; expected a hold at 25%%\n'; exit 1; \
-	fi; \
 	post() { curl -sS --max-time 600 -X POST "$$url/v1/go-for-launch" -H 'Content-Type: application/json' -H "Origin: $$url" -d "$$1"; }; \
 	launch() { curl -fsS --max-time 10 "$$url/v1/logbook.json" | jq -c .launch; }; \
-	i=0; l=""; \
-	while [ "$$i" -lt 60 ]; do \
-		l=$$(launch 2>/dev/null) || l=""; \
-		[ "$$(printf '%s' "$$l" | jq -r '.record.verdict // empty' 2>/dev/null)" = held ] && break; \
-		i=$$((i + 1)); sleep 1; \
-	done; \
-	[ "$$(printf '%s' "$$l" | jq -r .preparable)" = true ] \
-		|| { printf 'NO-GO: demo-console — the console offers no brief to prepare: %s\n' "$$(printf '%s' "$$l" | jq -r '.disabled_reason // "no logbook"')"; cat .crew/demo-console.log >&2; exit 1; }; \
-	v=$$(printf '%s' "$$l" | jq -r .record.version); held=$$(printf '%s' "$$l" | jq -r .record.held_at); \
-	r=$$(post "{\"answer\":\"PREPARE\",\"version\":\"$$v\",\"held_at\":$$held}"); \
-	printf '[demo-console] prepare the brief: %s\n' "$$(printf '%s' "$$r" | jq -r '.line // .error')" >&2; \
-	l=$$(launch); \
-	[ "$$(printf '%s' "$$l" | jq -r .pressable)" = true ] \
-		|| { printf 'NO-GO: demo-console — the button is disabled: %s\n' "$$(printf '%s' "$$l" | jq -r .disabled_reason)"; exit 1; }; \
-	sha=$$(printf '%s' "$$l" | jq -r .brief.sha256); \
-	printf '[demo-console] the brief for %s, sha256 %s, by %s; pressing GO\n' "$$v" "$$sha" "$$(printf '%s' "$$l" | jq -r .brief.author)" >&2; \
-	r=$$(post "{\"answer\":\"GO\",\"version\":\"$$v\",\"held_at\":$$held,\"brief_sha256\":\"$$sha\"}"); \
-	line=$$(printf '%s' "$$r" | jq -r '.line // ("refused: " + .error)'); \
+	held() { \
+		rm -rf "$${PROMOTE_OUT:-.crew/promote}"; \
+		$(MAKE) --no-print-directory release CANARY_VERSION=$(CANARY_VERSION) \
+			|| { printf 'NO-GO: demo-console — release rolled back; expected a hold at 25%%\n'; exit 1; }; \
+		i=0; l=""; \
+		while [ "$$i" -lt 60 ]; do \
+			l=$$(launch 2>/dev/null) || l=""; \
+			[ "$$(printf '%s' "$$l" | jq -r '.record.verdict // empty' 2>/dev/null)" = held ] \
+				&& [ "$$(printf '%s' "$$l" | jq -r '.record | has("promoted") or has("rejected")' 2>/dev/null)" = false ] \
+				&& [ "$$(printf '%s' "$$l" | jq -r .preparable 2>/dev/null)" = true ] && break; \
+			i=$$((i + 1)); sleep 1; \
+		done; \
+		[ "$$(printf '%s' "$$l" | jq -r .preparable)" = true ] \
+			|| { printf 'NO-GO: demo-console — the console offers no brief to prepare: %s\n' "$$(printf '%s' "$$l" | jq -r '.disabled_reason // "no logbook"')"; cat .crew/demo-console.log >&2; exit 1; }; \
+		v=$$(printf '%s' "$$l" | jq -r .record.version); held=$$(printf '%s' "$$l" | jq -r .record.held_at); \
+		r=$$(post "{\"answer\":\"PREPARE\",\"version\":\"$$v\",\"held_at\":$$held}"); \
+		printf '[demo-console] prepare the brief: %s\n' "$$(printf '%s' "$$r" | jq -r '.line // .error')" >&2; \
+		l=$$(launch); \
+		[ "$$(printf '%s' "$$l" | jq -r .pressable)" = true ] \
+			|| { printf 'NO-GO: demo-console — the button is disabled: %s\n' "$$(printf '%s' "$$l" | jq -r .disabled_reason)"; exit 1; }; \
+		sha=$$(printf '%s' "$$l" | jq -r .brief.sha256); author=$$(printf '%s' "$$l" | jq -r .brief.author); \
+	}; \
+	answered() { \
+		got=$$(jq -c --arg f "$$1" '.[$$f] | {via, reason, brief_sha256, brief_author}' "$(RELEASE_RECORD)"); \
+		want=$$(jq -cn --arg r "$$3" --arg s "$$sha" --arg a "$$author" '{via: "console", reason: $$r, brief_sha256: $$s, brief_author: $$a}'); \
+		[ "$$got" = "$$want" ] || { printf 'NO-GO: demo-console — the record'"'"'s %s is %s, want %s\n' "$$1" "$$got" "$$want"; exit 1; }; \
+		got=$$(tail -n 1 "$(RELEASES_LOG)" | jq -c '{kind, answer, via, reason, brief_sha256}'); \
+		want=$$(jq -cn --arg a "$$2" --arg r "$$3" --arg s "$$sha" '{kind: "answer", answer: $$a, via: "console", reason: $$r, brief_sha256: $$s}'); \
+		[ "$$got" = "$$want" ] || { printf 'NO-GO: demo-console — the release log ends with %s, want %s\n' "$$got" "$$want"; exit 1; }; \
+	}; \
+	body() { jq -cn --arg a "$$1" --arg v "$$v" --argjson h "$$held" --arg s "$$sha" --arg r "$$2" '{answer: $$a, version: $$v, held_at: $$h, brief_sha256: $$s} + (if $$r == "" then {} else {reason: $$r} end)'; }; \
+	held; \
+	r=$$(post "$$(body NO-GO "")"); \
+	[ -n "$$(printf '%s' "$$r" | jq -r '.error // empty')" ] || { printf 'NO-GO: demo-console — a rollback with no reason was not refused: %s\n' "$$r"; exit 1; }; \
+	why="the rollback the card's drag confirms, proved first"; \
+	printf '[demo-console] the brief for %s, sha256 %s; rolling back with a reason: %s\n' "$$v" "$$sha" "$$why" >&2; \
+	line=$$(post "$$(body NO-GO "$$why")" | jq -r '.line // ("refused: " + .error)'); \
+	case "$$line" in "NO-GO: go-for-launch — human said NO-GO"*) : ;; *) printf 'NO-GO: demo-console — the console answered: %s\n' "$$line"; cat .crew/demo-console.log >&2; exit 1 ;; esac; \
+	answered rejected NO-GO "$$why"; \
+	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
+	[ "$$canary_w" = "0" ] || { printf 'NO-GO: demo-console — Envoy reports weights.canary=%s after the console'"'"'s rollback, want 0\n' "$$canary_w"; exit 1; }; \
+	printf '[demo-console] rolled back, the reason on the record; a second release, to promote\n' >&2; \
+	held; \
+	why="every stage passed verify; the card's drag confirms the promotion"; \
+	printf '[demo-console] the brief for %s, sha256 %s, by %s; pressing GO\n' "$$v" "$$sha" "$$author" >&2; \
+	line=$$(post "$$(body GO "$$why")" | jq -r '.line // ("refused: " + .error)'); \
 	[ "$$line" = "GO: go-for-launch" ] || { printf 'NO-GO: demo-console — the console answered: %s\n' "$$line"; cat .crew/demo-console.log >&2; exit 1; }; \
-	via=$$(jq -r '.promoted.via // empty' "$(RELEASE_RECORD)"); \
-	[ "$$via" = console ] || { printf 'NO-GO: demo-console — the record says promoted via %s, want console\n' "$${via:-nothing}"; exit 1; }; \
-	logged=$$(tail -n 1 "$(RELEASES_LOG)" | jq -r '"\(.kind) \(.answer) \(.via)"'); \
-	[ "$$logged" = "answer GO console" ] || { printf 'NO-GO: demo-console — the release log ends with %s, want the console'"'"'s GO\n' "$$logged"; exit 1; }; \
+	answered promoted GO "$$why"; \
 	canary_w=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(ENVOY_ADMIN_URL)/runtime" | jq -r '.entries["weights.canary"].final_value // "none"'); \
 	[ "$$canary_w" = "100" ] || { printf 'NO-GO: demo-console — Envoy reports weights.canary=%s after the press, want 100\n' "$$canary_w"; exit 1; }; \
 	ok=0; total=10; i=0; \
@@ -489,7 +541,10 @@ gates: ## Judge a PR: BASE=<ref> HEAD=<ref> (default: the last commit) — risk,
 # a verify wired to always pass -- or fail -- would pass its own demo too).
 # Each fixture is a real commit applied by `git am` in its own throwaway
 # worktree off the workload repository's HEAD, judged as the range
-# HEAD..<applied>, then discarded. A bundled workload's worktree carries
+# HEAD..<applied>, then discarded. A fixture with a base/ directory has its
+# patches applied first, and the commit they make is the range's base: a
+# base that is already red, for a gate that judges the diff (docs/adr/0072
+# §1). A bundled workload's worktree carries
 # this checkout, so make runs inside it, as before; an attached one's
 # carries only the target, so make runs here with WORKLOAD pointing at it
 # (docs/adr/0037 §4).
@@ -514,20 +569,24 @@ demo-gates: ## Prove every PR gate GO and NO-GO on the committed fixtures (docs/
 		err=$$(git -C "$(WORKLOAD)" worktree add --detach "$$wt" HEAD 2>&1 >/dev/null) || { \
 			printf 'NO-GO: demo-gates — %s: git worktree add failed: %s\n' "$$name" "$$err"; exit 1; \
 		}; \
-		if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
-				am "$$f"*.patch >/dev/null 2>&1; then \
-			git -C "$$wt" am --abort >/dev/null 2>&1 || true; \
-			drop_wt; \
-			printf 'NO-GO: demo-gates — %s does not apply; regenerate\n' "$$name"; \
-			exit 1; \
-		fi; \
+		for patches in base/ ""; do \
+			[ -n "$$patches" ] || base_sha=$$(git -C "$$wt" rev-parse HEAD); \
+			[ -z "$$patches" ] || [ -d "$$f$$patches" ] || continue; \
+			if ! git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid \
+					-c commit.gpgsign=false am "$$f$$patches"*.patch >/dev/null 2>&1; then \
+				git -C "$$wt" am --abort >/dev/null 2>&1 || true; \
+				drop_wt; \
+				printf 'NO-GO: demo-gates — %s does not apply; regenerate\n' "$$name"; \
+				exit 1; \
+			fi; \
+		done; \
 		head_sha=$$(git -C "$$wt" rev-parse HEAD); \
 		if [ -n "$(WORKLOAD_ATTACHED)" ]; then \
 			verdict="$$wtd/gates-out/verdict.env"; \
-			out=$$($(MAKE) --no-print-directory gates WORKLOAD="$$wt" GATES_OUT="$$wtd/gates-out" BASE="$$main_sha" HEAD="$$head_sha"); \
+			out=$$($(MAKE) --no-print-directory gates WORKLOAD="$$wt" GATES_OUT="$$wtd/gates-out" BASE="$$base_sha" HEAD="$$head_sha"); \
 		else \
 			verdict="$$wt/$(GATES_OUT)/verdict.env"; \
-			out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$main_sha" HEAD="$$head_sha") ); \
+			out=$$( (cd "$$wt" && $(MAKE) --no-print-directory gates BASE="$$base_sha" HEAD="$$head_sha") ); \
 		fi; \
 		printf '[demo-gates] %s: %s\n' "$$name" "$$out" >&2; \
 		sort "$$verdict" > "$$tmp1" 2>/dev/null || : > "$$tmp1"; \
@@ -692,6 +751,76 @@ demo-rollback: ## Release the failing default and prove the canary rolls back on
 	fi; \
 	printf 'GO: demo-rollback\n'
 
+# The passive DAST scan at staging, both verdicts, at L0 with no key
+# (docs/adr/0072 §3). The plane must be up. First the pinned scanner's
+# pull, timed. Then DAST_RUNS times the stable against itself: the stable's
+# own image deployed as the canary under another version, verify/dast.sh,
+# rolled back; each run must be GO with nothing new, the "empty diff" the
+# ADR requires before DAST may be on by default. Then a canary built from
+# the workload's fixtures/dast/leaky-header patch, published and signed as
+# any release, released with DAST=on: the launchpad must roll it back at
+# staging on the dast line, before any traffic, with the stable intact.
+# Each step's time goes to stderr, prefixed `[demo-dast] measure:`.
+DAST_RUNS ?= 2
+.PHONY: demo-dast
+demo-dast: ## Prove the passive DAST scan at staging both ways at L0: the stable against itself GO, a leaky canary rolled back (docs/adr/0072 §3)
+	@stable=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -er .version) \
+		|| { printf 'NO-GO: demo-dast — no stable version at %s/healthz; run ./go up\n' "$(APP_URL)"; exit 1; }; \
+	[ -f "adapters/$(DELIVERY)/canary-url.sh" ] \
+		|| { printf 'NO-GO: demo-dast — DELIVERY=%s has no canary-url.sh\n' "$(DELIVERY)"; exit 1; }; \
+	patches="$(WORKLOAD_CONTRACT)/fixtures/dast/leaky-header"; \
+	ls "$$patches"/*.patch >/dev/null 2>&1 || { printf 'NO-GO: demo-dast — no patch in %s\n' "$$patches"; exit 1; }; \
+	t0=$$(date +%s); \
+	$(COMPOSE) --profile dast pull zap >&2 || { printf 'NO-GO: demo-dast — could not pull the zap image\n'; exit 1; }; \
+	printf '[demo-dast] measure: pull of the zap image %ss\n' "$$(($$(date +%s) - t0))" >&2; \
+	image=$$(sh "adapters/$(REGISTRY)/verify.sh" "$(APP_TAG)") \
+		|| { printf 'NO-GO: demo-dast — the stable image %s does not verify; run ./go up\n' "$(APP_TAG)"; exit 1; }; \
+	run=1; \
+	while [ "$$run" -le "$(DAST_RUNS)" ]; do \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2; \
+		sh "adapters/$(DELIVERY)/deploy.sh" "$$stable-dast" "$$image" >&2 \
+			|| { printf 'NO-GO: demo-dast — the stable image did not come up as the canary\n'; exit 1; }; \
+		t0=$$(date +%s); \
+		out=$$(CANARY_VERSION="$$stable-dast" STABLE_VERSION="$$stable" sh verify/dast.sh); \
+		printf '[demo-dast] measure: stable against stable, run %s: %ss, %s\n' "$$run" "$$(($$(date +%s) - t0))" "$$out" >&2; \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2; \
+		case "$$out" in \
+			"GO: dast — canary $$stable-dast: nothing new ("*) ;; \
+			*) printf 'NO-GO: demo-dast — the stable against itself, run %s: [%s], want GO with nothing new\n' "$$run" "$$out"; exit 1 ;; \
+		esac; \
+		run=$$((run + 1)); \
+	done; \
+	wtd=$$(mktemp -d); wt=$$wtd/wt; \
+	trap 'git -C "$(WORKLOAD)" worktree remove --force "$$wt" >/dev/null 2>&1 || :; rm -rf "$$wtd"' EXIT; \
+	git -C "$(WORKLOAD)" worktree add -q --detach "$$wt" HEAD >&2; \
+	git -C "$$wt" -c user.name=lights-out-fixtures -c user.email=fixtures@lights-out.invalid -c commit.gpgsign=false \
+		am "$$(CDPATH= cd -- "$$patches" && pwd)"/*.patch >/dev/null 2>&1 \
+		|| { printf 'NO-GO: demo-dast — %s does not apply; regenerate\n' "$$patches"; exit 1; }; \
+	inside=$$(git -C "$(WORKLOAD)" rev-parse --show-prefix); \
+	t0=$$(date +%s); \
+	if [ -n "$(WORKLOAD_ATTACHED)" ]; then \
+		$(MAKE) --no-print-directory publish TAG=dast-leaky WORKLOAD="$$wt" >/dev/null; \
+	else \
+		env -u APP_TAG -u CANARY_TAG -u CANARY_IMAGE COSIGN_KEY="$$PWD/.crew/cosign.key" \
+			$(MAKE) -C "$$wt" --no-print-directory publish TAG=dast-leaky WORKLOAD="$${inside%/}" >/dev/null; \
+	fi || { printf 'NO-GO: demo-dast — publishing the leaky canary failed; see above\n'; exit 1; }; \
+	printf '[demo-dast] measure: build, SBOM, sign of the leaky canary %ss\n' "$$(($$(date +%s) - t0))" >&2; \
+	rm -f "$(RELEASE_RECORD)"; \
+	t0=$$(date +%s); \
+	if $(MAKE) --no-print-directory release DAST=on CANARY_VERSION="$$stable-leaky" CANARY_TAG=dast-leaky; then \
+		printf 'NO-GO: demo-dast — the leaky canary was released; expected a NO-GO at staging\n'; \
+		sh "adapters/$(DELIVERY)/rollback.sh" >&2; exit 1; \
+	fi; \
+	printf '[demo-dast] measure: release of the leaky canary to its rollback %ss\n' "$$(($$(date +%s) - t0))" >&2; \
+	rec=$$(jq -r '[.verdict, (.stages | length), (.dast // "")] | @tsv' "$(RELEASE_RECORD)" 2>/dev/null); \
+	case "$$rec" in \
+		"rolled-back	0	NO-GO: dast — canary $$stable-leaky raises "*) ;; \
+		*) printf 'NO-GO: demo-dast — the leaky canary'"'"'s record is [%s], want rolled-back at staging on the dast line\n' "$$rec"; exit 1 ;; \
+	esac; \
+	v=$$(curl -fsS --connect-timeout 1 --max-time 3 "$(APP_URL)/healthz" | jq -r .version); \
+	[ "$$v" = "$$stable" ] || { printf 'NO-GO: demo-dast — after the rollback %s answers %s, want the stable %s\n' "$(APP_URL)" "$$v" "$$stable"; exit 1; }; \
+	printf 'GO: demo-dast — the stable against itself nothing new %s time(s); the leaky canary rolled back at staging\n' "$(DAST_RUNS)"
+
 # demo-hold rolls back its own held canary, so every rollback here goes
 # through unhold: a `held` record turns `rolled-back` (stages kept, plus
 # rolled_back_by), never left describing a canary the plane no longer
@@ -830,6 +959,14 @@ demo-network: ## Prove a network of members on ticket 0012: one PR, gated, merge
 .PHONY: audit
 audit: ## Rebuild the chain deploy → merge → PR → ticket → spec from the state store and the code host: TICKET=<id> (docs/adr/0019 §6)
 	@TICKET="$(TICKET)" sh core/audit.sh
+
+# The evidence pack of one release (docs/adr/0081): the release record, its
+# stages, every gate line of its PR, the rework, the review, the spec, the
+# digests and the human answer, each entry naming its source and every gap
+# named; signed with the plane's cosign key and verified in the same run.
+.PHONY: evidence
+evidence: ## Build, sign and verify the evidence pack of a release: VERSION=<v> → .crew/evidence/<v>.json (docs/adr/0081)
+	@VERSION="$(VERSION)" sh core/evidence.sh
 
 # A ticket whose last step failed stays at that step's starting state
 # with nothing queued (docs/adr/0034). resume asks the tower to request
@@ -1331,9 +1468,25 @@ attached: ## Check the attached repository's .lights-out/ contract (docs/adr/003
 # sets CONFORMANCE=1, so ci/contract.sh's cold run stays instant. At L0
 # against Gitea (ci.yml's launch job, plane up); with CODE_HOST=github
 # against the attached throwaway repository (the nightly).
+# conform PORT,SUITE: the suite's gate on PORT's adapter. One of ours runs
+# as it always did; an outside one (docs/adr/0058 §3) goes on trial first,
+# linked unproven with its hash recorded, the makes the suite starts admit
+# it on that hash (ADAPTERS_TRIAL), and only a GO on the same bytes is
+# registered; GO or NO-GO, the trial ends with the suite. stdout stays the gate's one line, or one NO-GO of this glue.
+define conform
+	@python3 core/adapters.py trial $(1) >&2 \
+		|| { printf 'NO-GO: %s — %s=%s could not go on trial; see the line above\n' '$(2)' '$(1)' '$($(1))'; exit 1; }; \
+	line=$$(ADAPTERS_TRIAL=$(1) CONFORMANCE=1 sh gates/$(2).sh); rc=$$?; \
+	if [ "$$rc" -ne 0 ]; then python3 core/adapters.py untrial $(1); \
+	elif ! python3 core/adapters.py register $(1) $(2) >&2; then \
+		printf 'NO-GO: %s — %s=%s changed while the suite ran; nothing registered\n' '$(2)' '$(1)' '$($(1))'; exit 1; \
+	fi; \
+	printf '%s\n' "$$line"; exit "$$rc"
+endef
+
 .PHONY: codehost-conformance
 codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST set: Gitea at L0 (plane up), CODE_HOST=github on an attached throwaway repository (docs/adr/0043 §5)
-	@CONFORMANCE=1 sh gates/codehost-conformance.sh
+	$(call conform,CODE_HOST,codehost-conformance)
 
 # The M8 acceptance command (docs/adr/0026 §4): the suite refuses to run by
 # accident (ci/contract.sh's cold run of every gates/*.sh sees CONFORMANCE
@@ -1348,13 +1501,13 @@ codehost-conformance: ## Ten-case CodeHost conformance suite on the CODE_HOST se
 # with it named first. The bus suite refuses a bus that is not idle.
 .PHONY: statestore-conformance eventbus-conformance
 statestore-conformance: ## Eight-case StateStore conformance suite on the STATE_STORE set: sqlite at L0, no plane (docs/adr/0060 §4)
-	@CONFORMANCE=1 sh gates/statestore-conformance.sh
+	$(call conform,STATE_STORE,statestore-conformance)
 eventbus-conformance: ## Six-case EventBus conformance suite on the EVENT_BUS set, an idle bus: spool at L0, no plane; the redelivery case needs CONFORMANCE_ACK_DEADLINE (docs/adr/0060 §4)
-	@CONFORMANCE=1 sh gates/eventbus-conformance.sh
+	$(call conform,EVENT_BUS,eventbus-conformance)
 
 .PHONY: delivery-conformance
 delivery-conformance: ## Six-case Delivery/Flags conformance suite, real releases on the plane (docs/adr/0026)
-	@CONFORMANCE=1 sh gates/delivery-conformance.sh
+	$(call conform,DELIVERY,delivery-conformance)
 
 # The argo-rollouts Delivery adapter's proof (docs/adr/0051 §6): the same
 # six-case suite, unchanged, with DELIVERY=argo-rollouts and APP_URL on
@@ -1378,6 +1531,21 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 		|| { printf 'NO-GO: delivery-conformance — argo-rollouts: the local cluster did not come up\n'; exit 1; }; \
 	$(MAKE) --no-print-directory delivery-conformance DELIVERY=argo-rollouts \
 		APP_URL=http://$(PLANE_HOST):$(ARGO_APP_PORT) KUBECONFIG=$(CURDIR)/.crew/argo/kubeconfig
+
+# The gitlab CodeHost adapter's proof (docs/adr/0058 §8): the same ten-case
+# suite, unchanged, with CODE_HOST=gitlab, against GitLab CE in its own
+# compose project beside the plane (adapters/gitlab/instance.sh), which it
+# takes down after the suite; KEEP_GITLAB=1 leaves it up for a look. No
+# plane needed, and none beside it on a small VM: the instance alone holds
+# 2.4 GB (measured 2026-11-13). Not part of ./go demo.
+GITLAB_PORT ?= 8929
+export GITLAB_PORT
+.PHONY: gitlab-conformance
+gitlab-conformance: ## The CodeHost conformance suite on adapters/gitlab, against GitLab CE beside the plane, no plane needed (docs/adr/0058 §8)
+	@[ -n "$(KEEP_GITLAB)" ] || trap 'sh adapters/gitlab/instance.sh down' EXIT; \
+	sh adapters/gitlab/instance.sh up >&2 \
+		|| { printf 'NO-GO: codehost-conformance — gitlab: the instance did not come up\n'; exit 1; }; \
+	$(MAKE) --no-print-directory codehost-conformance CODE_HOST=gitlab
 
 # Every CLI harness against a scripted model (docs/adr/0041 §8): its image is
 # built, its run.sh driven nine ways, no key, no account. CONFORMANCE=1 for

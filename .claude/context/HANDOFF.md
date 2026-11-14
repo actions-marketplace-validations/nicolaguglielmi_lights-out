@@ -34,6 +34,20 @@ PyPI refused the first upload of `lights-out` ("too similar to an existing proje
 
 Release commit 995ba3f on `main`, tag `v0.3.1`, images published and signed (package.yml run 42790042827), signatures verified; `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity` refreshed and tagged. Three draft releases wait for the owner's Marketplace publish. The podman workflow's harness-conformance timed out twice in 40 runs ("the scripted model did not answer within 60 s"): worth a session of its own if it happens again. My landing gate's `grep -q -v` never failed (grep is ugrep in this shell); replaced by awk.
 
+## Release 0.4.0, 2026-11-12
+
+The release commit 1626e63 was cut on dee4e34. `self` on dee4e34 was cancelled at 360 minutes: the old judge mutated about 774 mutants that no green had judged. The way out was a bootstrap. `fix/mutation-shards` (bf618fa) put ADR 0074's judge and the sharded mutation runner (`MUTATION_SHARDS`, ADR 0074's 2026-11-11 amendment) on top of the last green, with `ci/init.sh` g-self comparing the runners committed at HEAD. Once it was green, the release was merged onto it (0213078). `self` on that merge took 3 h 10 min (run 43104690404); `main` and `fix/adr-still-header` were then fast-forwarded to 0213078. The tag `v0.4.0` is on 0213078. `package.yml` run 43131164910 published and signed both images, and both signatures were verified. Digests: `lights-out-gates@sha256:520fe8a40fc59759d7607bff209660c14a64e1606a691e0a3cd08ad9fab46a80`, `lights-out@sha256:d092fb9697520a35ecbd7b16fe7d6dafaf03e0f2d3001cbb7702178b5923fb04`. The site serves 0.4.0, and its 11 media files and the README's 5 images return 200. `test-proof` and `test-integrity` are tagged and released at `v0.4.0`. The three releases are published, not drafts. The owner's steps: the Marketplace box on each, and the PyPI upload.
+
+A GitHub glitch left runs on bf618fa queued with no jobs, and cancelling them returned 409. Pushing the same sha to a second ref (`fix/mutation-shards-run`) started them again; a waiter must take the newest run per workflow.
+
+## Release 0.5.0, 2026-11-12
+
+Security scanning (ADR 0072) landed as M43, not M42: main had given M42 to ADR 0073. The merge of the new main into `claude/security-scanning` turned `self` red at `secrets`: the branch's last green ancestor carried the excuse that names the pre-rewrite 3fb56bf. It landed instead as a merge with main as its first parent (1387a74), judged from 09bbd37. The `dast` job flaked once (run 43236481626): ZAP 2.17's passive scanner on its default threads; fixed on one thread and landed as 9772522. The version is 0.5.0, not 0.4.1. The release commit is the first one for ADR 0075's tag, which waits for the owner's three settings and the wiki's first page (checklist, "Release automation" and "The wiki").
+
+## Release 0.6.0, 2026-11-13
+
+The sprint of 2026-11-12 landed in three merges: streams B and C (a741bf0), stream A (8d36f9f) and the console's DORA and spend panels on logbook 1.5 (563ecbf), each with every workflow green on its landing branch. 0.5.0's three drafts were published to the Marketplace by the owner the same morning. The release commit bumps the same files as 0.5.0's; the tag waits for the owner's go.
+
 ## Branches landed, one handoff each
 
 Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/context/handoffs/`; this file is the coordinator's: the state of the integration branch and one line per branch landed.
@@ -51,4 +65,9 @@ Since docs/adr/0065 §5 each branch writes its own handoff under `.claude/contex
 - `claude/adoring-poitras-b31f86`: the podman harness-conformance port race, [handoffs/claude-adoring-poitras-b31f86.md](handoffs/claude-adoring-poitras-b31f86.md)
 - `claude/m17-network-edfb56`: M17's third slice, the agent network, ADR 0071, logbook 1.3, [handoffs/claude-m17-network-edfb56.md](handoffs/claude-m17-network-edfb56.md)
 - `claude/m24-phase-a-5dacb7`: M24 on tenacity, five tests-only tickets merged live, three fixes, [handoffs/claude-m24-phase-a-5dacb7.md](handoffs/claude-m24-phase-a-5dacb7.md)
-- Waiting: `claude/roles-and-mcp-0504cc` also wrote a logbook 1.3 of its own; its session reconciles it onto this merge before it lands
+- `claude/roles-and-mcp-0504cc`: M42, per-role instructions and MCP servers for the dev-worker, ADR 0073; its logbook 1.3 reconciled with M17's into one (dee4e34), [handoffs/claude-roles-and-mcp-0504cc.md](handoffs/claude-roles-and-mcp-0504cc.md)
+- `fix/mutation-shards`: the bootstrap, ADR 0074's judge and the mutants in shards, landed with the release as 0213078
+- Release 0.4.0 cut on dee4e34; `claude/security-scanning` (ADR 0072, built by a headless run on key2, $59.72) landed as 1387a74 for 0.5.0
+- `claude/release-automation-005454`: ADR 0075, a `v*` tag runs the whole release from the release after 0.4.0, once the owner has set up three things (checklist, "Release automation"); merged as 28eaa07, [handoffs/claude-release-automation-005454.md](handoffs/claude-release-automation-005454.md)
+- `claude/mutation-coverage`: a mutant runs the tests that reach it, ADR 0076 (0075 on its branch, renumbered at the merge); core/ mutation from 3,467 s to 251 s, same score and survivors; merged as fc1ff59, [handoffs/claude-mutation-coverage.md](handoffs/claude-mutation-coverage.md)
+- `claude/amazing-khorana-533a7b`: the DAST stable against itself, ZAP's passive scanner on one thread (ADR 0072 amended), merged as 9772522

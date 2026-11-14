@@ -1,10 +1,30 @@
 {
   "id": "0003",
   "state": "ci-failed",
+  "attempt": 2,
   "history": [
     {"step": "open", "state": "opened", "at": "2026-11-03T08:00:00Z"},
-    {"step": "ci", "state": "ci-failed", "at": "2026-11-03T08:20:00Z"}
+    {"step": "assign", "state": "pr-opened", "at": "2026-11-03T08:05:00Z", "attempt": 1},
+    {"step": "ci", "state": "ci-failed", "at": "2026-11-03T08:10:00Z", "attempt": 1},
+    {"step": "rework", "state": "pr-opened", "at": "2026-11-03T08:12:00Z", "attempt": 2},
+    {"step": "ci", "state": "ci-failed", "at": "2026-11-03T08:20:00Z", "attempt": 2}
   ],
-  "ci": {"verdict": "NO-GO", "failed": "tests", "risk_level": "low", "decision": null, "line": "NO-GO: tests — 2 failed",
-         "details": ["FAILED tests/a.py::one", "FAILED tests/a.py::two"], "head_sha": "h3"}
+  "pr": {"number": 3, "url": "http://codehost.invalid/o/r/pulls/3", "base_sha": "b3", "head_sha": "h3"},
+  "rework": [
+    {"attempt": 1, "judge": "gates", "failed": "sast", "head_sha": "h3a",
+     "line": "NO-GO: gates — sast: NO-GO: sast — in the workbench: this diff introduces 2 finding(s); list on stderr",
+     "details": ["new: B602 README.md:7", "new: B105 README.md:9"],
+     "sast": [{"rule": "B602", "file": "README.md", "line": 7}, {"rule": "B105", "file": "README.md", "line": 9}],
+     "lines": ["GO: risk — low, auto-merge", "GO: secrets", "GO: test-weakening", "GO: deps",
+               "NO-GO: sast — in the workbench: this diff introduces 2 finding(s); list on stderr"],
+     "at": "2026-11-03T08:12:00Z"}
+  ],
+  "ci": {"verdict": "NO-GO", "failed": "test", "risk_level": "low", "decision": null, "line": "NO-GO: gates — test: NO-GO: test — 2 failed",
+         "details": ["FAILED tests/a.py::one", "FAILED tests/a.py::two"], "head_sha": "h3", "sast": null,
+         "lines": ["GO: risk — low, auto-merge", "GO: secrets", "GO: test-weakening", "GO: deps", "GO: sast — in the workbench, none new (0 inherited)",
+                   "NO-GO: test — 2 failed"]},
+  "spend": [
+    {"step": "assign", "attempt": 1, "role": "dev-worker", "harness": "gemini-cli", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": false, "tokens": {"input": 1000000, "output": 20000, "total": 1020000}, "duration_s": 300, "cost_usd": 0.825, "cost_unknown": null, "at": "2026-11-03T08:05:00Z"},
+    {"step": "rework", "attempt": 2, "role": "dev-worker", "harness": "gemini-cli", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": false, "tokens": {"input": 400000, "output": 10000, "total": 410000}, "duration_s": 120, "cost_usd": 0.3375, "cost_unknown": null, "at": "2026-11-03T08:15:00Z"}
+  ]
 }

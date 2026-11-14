@@ -64,14 +64,21 @@ fail_case() {
 
 # runners_drift <repository> <scratch dir>: why lights-out's own runners
 # are out of step (case k's rule), nothing when they are not.
+# Bytecode is never a difference: stacks/python/tests leaves the hook's
+# __pycache__ behind, and a second ./go ci in one clone would see it.
 runners_drift() {
   rm -rf "$2" && mkdir -p "$2"
+  if ! git -C "$1" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    diff -r -x self-checks.sh -x __pycache__ "$1/stacks/python/runners" "$1/.lights-out/runners" >/dev/null 2>&1 \
+      || echo "with no commit, .lights-out/runners differs from stacks/python/runners"
+    return 0
+  fi
   git -C "$1" archive HEAD stacks/python/runners .lights-out/runners | tar -x -C "$2" \
     || { echo "could not read the runners committed at HEAD"; return 0; }
-  diff -r -x self-checks.sh "$2/stacks/python/runners" "$2/.lights-out/runners" >/dev/null 2>&1 \
+  diff -r -x self-checks.sh -x __pycache__ "$2/stacks/python/runners" "$2/.lights-out/runners" >/dev/null 2>&1 \
     || { echo "at HEAD, .lights-out/runners differs from stacks/python/runners"; return 0; }
-  diff -r "$1/stacks/python/runners" "$2/stacks/python/runners" >/dev/null 2>&1 && return 0
-  diff -r -x self-checks.sh "$1/stacks/python/runners" "$1/.lights-out/runners" >/dev/null 2>&1 && return 0
+  diff -r -x __pycache__ "$1/stacks/python/runners" "$2/stacks/python/runners" >/dev/null 2>&1 && return 0
+  diff -r -x self-checks.sh -x __pycache__ "$1/stacks/python/runners" "$1/.lights-out/runners" >/dev/null 2>&1 && return 0
   echo "stacks/python/runners has an uncommitted edit that .lights-out/runners does not have"
 }
 

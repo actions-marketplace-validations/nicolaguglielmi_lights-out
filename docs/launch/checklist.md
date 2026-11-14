@@ -184,7 +184,8 @@ Nothing here has run yet. Publishing is your act (ADR 0057).
   same way. At the next version, copy `actions/test-proof/` (or
   `actions/test-integrity/`) to the root again and tag. The copies can lag
   a version without any check failing: `ci/package.sh` checks the sources
-  here, never the copies.
+  here, never the copies. From the release after 0.4.0 the tag does it
+  (section "Release automation").
 - [x] **Measure the first pull.** Done 2026-11-09, each Action in a job of
   its own: 27 s, 14 s and 25 s, all GO (probe run 42589663783), written in
   the README's step 1, which now links the probe: keep it public, or
@@ -214,6 +215,77 @@ HEAD-relative fix. The light tier is unchanged: no new upload to PyPI.
   Action to the GitHub Marketplace" ticked: `lights-out`, `test-proof`,
   `test-integrity`. Published 2026-11-10, the owner confirming with a passkey;
   the three Marketplace pages show 0.3.1.
+
+### Release 0.4.0 (2026-11-11)
+
+The agent network in the console and `./go network` (ADR 0071), per-role
+instructions and MCP servers for the dev-worker (ADR 0073, M42), the
+agent's toolbelt (ADR 0069, M39), the Trello-style kanban (ADR 0068),
+`self` judged from its last green ancestor (ADR 0074), the podman port
+fix, M24's fixes. Security scanning (ADR 0072) ships in 0.5.0.
+
+- [x] **The release commit** (1626e63, landed on `main` as the merge
+  0213078): `version=` in `lights-out`, `version` in `pyproject.toml`, the
+  three plugin manifests and the landing page at 0.4.0, every usage pinned
+  to `@v0.4.0`. `self` on the merge ran 3 h 10 min (run 43104690404): the
+  first `self` judged by ADR 0074's judge, with the mutants in 4 shards.
+  The two before it were cancelled at GitHub's 360-minute limit.
+- [x] **Tag `v0.4.0`** on 0213078: `package.yml` run 43131164910 published
+  and signed both images; both signatures verified with the workbench's
+  cosign.
+- [x] **The two Actions' repositories** refreshed from `actions/` and
+  tagged `v0.4.0`.
+- [ ] **The three releases `v0.4.0` are published, not drafts**:
+  `lights-out`, `test-proof`, `test-integrity`. On the Marketplace: edit
+  each one, tick "Publish this Action to the GitHub Marketplace" and save
+  (owner, passkey).
+- [ ] **PyPI**: `lights-out-gates` 0.4.0, which adds `lights-out-gates mcp`
+  and `spec` (owner, the token in the keychain).
+
+### Release 0.5.0 (2026-11-12)
+
+Security scanning (ADR 0072, M43): SAST judged on the diff, an SPDX SBOM
+attested per released image, passive DAST at staging, off by default. The
+first release cut by its own tag (ADR 0075), with the wiki rendered at the
+tag (ADR 0077), and the mutants that run only the tests that reach them
+(ADR 0076). Named 0.5.0, not 0.4.1: it adds features, and nothing in it is
+a fix of 0.4.0 alone.
+
+- [x] **The release commit** (67a63d1, landed on `main` as the merge
+  cf2955c): `version=` in `lights-out`, `version` in `pyproject.toml`,
+  the three plugin manifests and the landing page at 0.5.0, every usage
+  pinned to `@v0.5.0`, the prose in `docs/releases/v0.5.0.md`.
+- [x] **Rehearsal**: `package.yml` dispatched on the merge with `dry_run`
+  (run 43303067425), every job green, `pypi` skipped.
+- [x] **The three one-time settings** of "Release automation" and the
+  wiki's first page (owner, 2026-11-12).
+- [x] **Tag `v0.5.0`** on cf2955c: `package.yml` run 43309065223, all
+  nine jobs green; `lights-out-gates` 0.5.0 on PyPI by trusted publishing,
+  both Action repositories tagged with a draft each, the wiki rendered.
+- [x] **The three drafts `v0.5.0` published to the Marketplace** (owner,
+  passkey, 2026-11-13): `lights-out`, `test-integrity` and `test-proof`
+  each show 0.5.0 as Latest, and their three Marketplace pages list v0.5.0.
+
+### Release 0.6.0 (2026-11-13)
+
+The sprint of 2026-11-12 (M45–M50): the why of a NO-GO (ADR 0078), the
+human gate on the card (ADR 0079), the live canary (ADR 0080), the
+evidence pack per release (ADR 0081), the delivery measures (ADR 0082),
+cost and time per ticket with a budget (ADR 0083), and the console's
+Overview panels for the last two. Named 0.6.0: it adds features.
+
+- [x] **The release commit**: the wrapper, `pyproject.toml`, the three
+  plugin manifests and the landing page at 0.6.0, every usage pinned to
+  `@v0.6.0`, the prose in `docs/releases/v0.6.0.md`.
+- [x] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`):
+  run 43414295511, every job green, `pypi` skipped as a dry run does.
+- [x] **Tag `v0.6.0`** on the release merge 397e08d: `package.yml` run
+  43414807364, all ten jobs green; `lights-out-gates` 0.6.0 on PyPI by
+  trusted publishing, both Action repositories tagged with a draft each,
+  the wiki rendered.
+- [x] **The three drafts `v0.6.0` published to the Marketplace** (owner,
+  passkey, 2026-11-13): `lights-out`, `test-integrity` and `test-proof`
+  each show 0.6.0 as Latest, and their three Marketplace pages list v0.6.0.
 
 ### The Python package on PyPI (M35)
 
@@ -253,8 +325,9 @@ the root `pyproject.toml` (ADR 0061). Publishing it is the owner's act.
   ```sh
   uv publish
   ```
-  No workflow publishes it: trusted publishing from GitHub Actions would be
-  a new workflow, a repository change.
+  No workflow published it then. From the release after 0.4.0 the tag
+  uploads it by trusted publishing (section "Release automation"), and
+  the project-scoped token can be revoked once that has worked once.
 - [x] **After the upload** (done 2026-11-09: `GO: gates-light` from PyPI
   with an empty uv cache), on a clean machine: `uvx lights-out-gates
   --light` in a repository with a contract. Then drop "Not on PyPI yet"
@@ -333,6 +406,104 @@ again the day you list.
   every release, as the two standalone Actions' repositories. Then
   `gemini extensions install https://github.com/nicolaguglielmi/lights-out-gemini`
   on a clean machine.
+
+### Release automation (ADR 0075)
+
+From the release after 0.4.0, a `v*` tag runs the whole release in
+`.github/workflows/package.yml`. The jobs are `dist` (the wheel built,
+looked inside and run), `publish` (both images pushed, signed and
+verified), `pypi` (trusted publishing, no token), `actions` (both Action
+repositories synced, tagged and given a draft release) and `release` (this
+repository's draft, with both digests and the cosign commands). Three
+settings come first, once. Until they exist, the first tag's `pypi` job,
+or its `actions` job, fails and says why.
+
+- [ ] **The trusted publisher on PyPI.** pypi.org → Your projects →
+  `lights-out-gates` → Manage → Publishing → add a new publisher on the
+  GitHub Actions tab, with these fields:
+  - **Owner**: `nicolaguglielmi`
+  - **Repository name**: `lights-out`
+  - **Workflow name**: `package.yml`
+  - **Environment name**: `pypi`
+
+  PyPI then accepts an upload only from that job, through GitHub's OIDC
+  token. Once a release has uploaded this way, revoke the project-scoped
+  API token in the keychain (PyPI → Account settings → API tokens).
+- [ ] **The environment `pypi`.** This repository → Settings →
+  Environments → New environment → `pypi`. Under "Deployment branches and
+  tags", pick "Selected branches and tags" and add a tag rule `v*`. Add no
+  required reviewer: the tag is already your gate. The job runs only on a
+  `v*` tag. The rule makes sure no other ref can borrow PyPI's trust.
+- [ ] **The token for the two Action repositories.** github.com →
+  Settings → Developer settings → Personal access tokens → Fine-grained
+  tokens → Generate new token:
+  - **Resource owner**: `nicolaguglielmi`
+  - **Repository access**: "Only select repositories",
+    `nicolaguglielmi/test-proof` and `nicolaguglielmi/test-integrity`, and
+    nothing else
+  - **Repository permissions**: Contents, read and write (commits, tags,
+    releases). Metadata, read-only, is added by GitHub. Nothing else.
+  - **Expiration**: your choice. Write the date down: a tag after it fails
+    in `actions`.
+
+  Then this repository → Settings → Secrets and variables → Actions → New
+  repository secret, named `ACTION_REPOS_TOKEN`, holding that token. Do
+  not commit it anywhere and do not put it in `.env`. Only the `actions`
+  job reads it, and only on a `v*` tag.
+
+Each release, then:
+
+- [ ] **Rehearse on the release commit** before you tag it: Actions →
+  `package` → Run workflow → the branch, `dry_run` ticked (the default).
+  Every job writes what it would do in the run's summary: the wheel built
+  and run, the image commands, both Action repositories committed and
+  tagged on the runner with their diffs, the notes of the three drafts.
+  Nothing is pushed, uploaded or tagged. If you want the prose of the
+  release written, commit it in the release commit as
+  `docs/releases/v<version>.md`. It comes first in the draft.
+- [ ] **Tag** from the merge on `main`, with the version moved in the
+  release commit (`lights-out`, `pyproject.toml`, the plugin manifests,
+  the landing page):
+  ```sh
+  git tag v<version> && git push origin v<version>
+  ```
+  `dist` refuses the tag unless it equals the wrapper's `version=` and
+  `pyproject.toml`'s `version`.
+- [ ] **Publish the three drafts to the Marketplace**, the one step left
+  by hand (a passkey): `lights-out`, `test-proof` and `test-integrity` →
+  Releases → the draft `v<version>` → Edit → tick "Publish this Action to
+  the GitHub Marketplace" → Publish. Read the notes first. They hold both
+  digests and the verify commands, which `publish` has already run.
+- [ ] **If a job failed**, fix the cause and use "Re-run failed jobs".
+  Every job is safe to re-run:
+  - `pypi` skips files PyPI already has (`--check-url`).
+  - `actions` stops with success when the tag already holds the same
+    files, and fails, without moving anything, when it holds other files.
+  - An existing draft is left as it is.
+  - `wiki` pushes nothing when the pages are unchanged.
+
+### The wiki (ADR 0077)
+
+From the next tag, the release's last job, `wiki`, renders the wiki from
+the repository at the tag (`package/wiki.py`: the README, the tutorial,
+the guide, the reference, production, the architecture, one row per ADR,
+the releases) and pushes it with the workflow's own `GITHUB_TOKEN`. There
+is no secret to add. Nobody edits the wiki: every release replaces every
+page, and each page links the file it comes from.
+
+- [ ] **Save a first page in the Wiki tab**, once, before the next tag.
+  GitHub creates the wiki's git repository only then, and no API does it:
+  this repository → Wiki → "Create the first page" → leave the title
+  `Home`, any text → Save page. The tag replaces it. Until then, the tag's
+  `wiki` job fails and says so; the rest of the release is already done.
+- [ ] **Keep "Restrict editing to collaborators only" ticked**: this
+  repository → Settings → General → Features → Wikis. It is GitHub's
+  default for a public repository.
+- [ ] **After the first tag, read the `wiki` job.** GitHub does not
+  document whether `GITHUB_TOKEN` may push to a wiki; widely used wiki
+  Actions do it with `contents: write`, which the job holds. If the job
+  fails with a 403 from `lights-out.wiki.git`, the job needs a token, and
+  that is an amendment to ADR 0077, not a setting.
 
 ### The README's front page
 
@@ -435,4 +606,6 @@ there happens once, so it waits for the prerequisites.
 | Eight good-first-issue drafts from real findings | [good-first-issues.md](good-first-issues.md) |
 | The README states what is real, recorded, hand-written and not yet published | `README.md`, "What is real and what is recorded" |
 | The image and the Action built and tested on every push; `publish` only on a `v*` tag or a dispatch | `.github/workflows/package.yml` |
+| The release on a `v*` tag: the wheel checked, the images signed and verified, PyPI by trusted publishing, the two Action repositories synced and tagged, three draft releases; a dispatch is a dry run (ADR 0075) | `.github/workflows/package.yml`, `package/sync-action.sh`, `package/release-notes.sh`, `ci/release.sh` |
+| The wiki rendered from the repository at the tag and pushed by the release; a dispatch renders and lists the pages (ADR 0077) | `.github/workflows/package.yml`, `package/wiki.py`, `package/sync-wiki.sh`, `ci/wiki.sh` |
 | The nightly against GitHub, skipping with a notice while its variable is unset | `.github/workflows/nightly-github.yml` |

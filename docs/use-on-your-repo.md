@@ -24,9 +24,11 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The Action's first check on a repository with no contract: NO-GO, a draft from the base in the summary and as an artifact, committed, then GO (ADR 0064) | Proven in lights-out's own `package` workflow, on a scratch repository made from `workloads/minimal/` without its `workload.env`. Ships after 0.3.0. Not proven on any other repository |
 | The image `ghcr.io/nicolaguglielmi/lights-out:0.2.0` published | **Yes**, 2026-11-08, tag `v0.2.0` (0.1.0 on 2026-11-05), public, amd64 and arm64, unsigned (pin it by digest). CI builds and tests the image on every push |
 | The hook recipes (section 5) | The `--light` recipes **verified** once per CLI on 2026-11-08 (Claude Code 2.1.311, Codex 0.166.0, Gemini CLI 0.61.0-preview.0) against the scripted model, not a vendor; each recipe says what was not covered. The full variant was not run against the CLIs |
-| The light tier, `lights-out-gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the nine fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. On PyPI as `lights-out-gates` since 2026-11-09, and `uvx lights-out-gates --light` from PyPI answered GO on this repository that day |
+| The light tier, `lights-out-gates --light` (ADR 0061) | Proven in `./go ci` (`ci/gates-light.sh`): on the eleven fixtures of `./go demo-gates` it agrees with the full gates where both run, and it answers on this repository in under 10 s. On PyPI as `lights-out-gates` since 2026-11-09, and `uvx lights-out-gates --light` from PyPI answered GO on this repository that day |
 | The Claude Code plugin and `lights-out-gates mcp` (ADR 0069) | **Verified** once on 2026-11-10, Claude Code 2.1.311 with the scripted model, the plugin from a local marketplace directory: `claude plugin validate --strict` passed, `/lights-out:gates` answered its line, the MCP server answered a tool call, the hook stopped a commit that weakened a test. Not listed anywhere yet; `/lights-out:spec` and the MCP server need the next release of the package (section 5) |
 | The Codex plugin and the Gemini CLI extension (ADR 0069, amendment 2026-11-11) | **Verified** once on 2026-11-11, Codex 0.166.0 and Gemini CLI 0.61.0-preview.0 with the scripted model, each from a local copy of this repository: the gates line reached the model, and the hook stopped a commit that weakened a test. Not listed anywhere yet; the trust steps a person takes were not run |
+| An adapter outside the repository, admitted by the hash of its tree and a conformance GO (ADR 0058) | Proven for a StateStore, by `ci/outside.sh` in `./go ci`. Not proven for `CODE_HOST`, `DELIVERY` or `EVENT_BUS`; `AGENT_HARNESS` is refused |
+| Jenkins as a surface: the line posted as `lights-out/jenkins` | Proven with Jenkinsfile Runner by `./go demo-jenkins`. Not proven on a real Jenkins controller |
 | A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
 
 Known limits today, before you start:
@@ -185,8 +187,8 @@ contract, `WORKLOAD_TEST_PATHS` is ADR 0053's, and the last four are ADR
 | `WORKLOAD_TEST_PATHS` | Which files are tests, `:`-separated globs relative to the repository's root, `*` crossing `/`. `test-proof` runs the ones a change adds or edits on the base, where they must fail; `test-weakening` refuses a change that deletes them, drops assertions or tests, or adds skips. `./go init` drafts your stack's default discovery |
 | `TOOLCHAIN_IMAGE` | Where the three toolchain gates run their commands: `workbench`, `compose:<service>` or an image reference. The three forms are below |
 | `TEST_CMD` | The test command, one `sh -c` line, run from the repository's root. Its exit code is the verdict of the `test` gate |
-| `SAST_CMD` | The static analysis command, one `sh -c` line. It prints one line, `{"findings": N}`. Any finding is a NO-GO. A non-zero exit with no findings parsed is one too |
-| `MUTATION_CMD` | The mutation command, one `sh -c` line. It reads `MUTATION_LINES` (`all` for the whole scope, as init uses it) and prints one line, `{"total","killed","survived","score"}`. The gate compares the score with `MUTATION_BASELINE` and `MUTATION_MARGIN`. The python runner's quoted test command is run by cosmic-ray without a shell, so it cannot start with `VAR=value`: put the variable before the runner (`VAR=value sh .lights-out/runners/mutation.sh …`). A test command cosmic-ray cannot start is a failed run, not a score |
+| `SAST_CMD` | The static analysis command, one `sh -c` line. It prints one line, `{"findings": N, "items": [{"rule", "file", "line"}]}`, with `file` relative to the directory the command runs from. The gate judges the diff: a finding HEAD has and the base does not is a NO-GO, an inherited one is listed on stderr (ADR 0072 §1). A runner that prints no `items`, such as a copy made before ADR 0072, keeps the whole-tree verdict until `./go init` refreshes it. A non-zero exit with no findings parsed is a NO-GO too |
+| `MUTATION_CMD` | The mutation command, one `sh -c` line. It reads `MUTATION_LINES` (`all` for the whole scope, as init uses it) and prints one line, `{"total","killed","survived","score"}`. The gate compares the score with `MUTATION_BASELINE` and `MUTATION_MARGIN`. The python runner splits the mutants into `MUTATION_SHARDS` parallel shards, one per processor by default, with the same score as a single run; each mutant runs only the `unittest.TestCase` tests that executed its statement in the clean run (`MUTATION_SELECT=off` runs the whole suite for every mutant). The python runner's quoted test command is run by cosmic-ray without a shell, so it cannot start with `VAR=value`: put the variable before the runner (`VAR=value sh .lights-out/runners/mutation.sh …`). A test command cosmic-ray cannot start is a failed run, not a score |
 
 A key that is empty or names a missing path makes its gate answer NO-GO and
 name the key. A typo never turns into a silent GO.
@@ -251,7 +253,10 @@ NO-GO that names the socket. It never falls back to the workbench.
   (`docker.io/library/node:<major>`). Those are tags. The comment asks you to
   pin them by digest before you commit.
 - **`SAST_CMD` and `MUTATION_CMD`.** The stack's runners over the scope, read
-  from `.lights-out/runners/`. Their comments say `default:`.
+  from `.lights-out/runners/`. Their comments say `default:`. The SAST runner
+  prints the findings' rule, file and line, so the gate can judge the diff. A
+  runner copied before ADR 0072 does not, and keeps the whole-tree verdict
+  until `./go init` refreshes it.
 - **`MUTATION_BASELINE`.** Init runs `MUTATION_CMD` once over the whole scope,
   on the same toolchain, and writes the score. A failed run is a NO-GO that
   names the command, and it leaves the key empty. Every mutation gate refuses
@@ -727,7 +732,7 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.1
+  - uses: nicolaguglielmi/lights-out@v0.6.0
 ```
 
 - **The check run's summary** has one line per gate, the gates that did not
@@ -744,12 +749,12 @@ steps:
   that the tests a change adds or changes fail on its base.
   `test-integrity` runs test-weakening, then mutation on the changed lines.
 - **Two standalone Actions** run one of those each:
-  `nicolaguglielmi/lights-out/actions/test-proof@v0.3.1` and
-  `nicolaguglielmi/lights-out/actions/test-integrity@v0.3.1`. Their sources
+  `nicolaguglielmi/lights-out/actions/test-proof@v0.6.0` and
+  `nicolaguglielmi/lights-out/actions/test-integrity@v0.6.0`. Their sources
   are `actions/test-proof/` and `actions/test-integrity/`. Each also has a
   repository of its own for its Marketplace page, with a copy at the same
-  version: `nicolaguglielmi/test-proof@v0.3.1` and
-  `nicolaguglielmi/test-integrity@v0.3.1`.
+  version: `nicolaguglielmi/test-proof@v0.6.0` and
+  `nicolaguglielmi/test-integrity@v0.6.0`.
 - Linux runners only. The Action needs docker.
 - A fork PR's token cannot write checks. The post is skipped with a warning,
   and the job status still carries the verdict.
@@ -1072,6 +1077,70 @@ Limits:
 - What a CLI does when a hook times out was not verified.
 - The Action is the real gate. The hook is a convenience, and the light tier
   is not the judge.
+
+## Your own adapter, outside the repository
+
+A port is a plugin, and you can keep yours in a directory of your own
+(ADR 0058). Put its directory under one parent, set that parent in `.env`
+as an absolute path, and name the adapter on the port:
+
+```sh
+ADAPTERS_PATH=/home/you/adapters       # in .env, with STATE_STORE=outside/json-files
+./go statestore-conformance            # the proof, recorded on GO
+```
+
+From then on every `./go` goal runs with it.
+
+The name matches `[a-z0-9][a-z0-9-]*`. The adapter runs only after its
+port's conformance suite said GO on its exact bytes. The proof is the
+sha256 of the whole tree, written to `.crew/adapters/register` in this
+checkout. Change one byte and it is refused again. Without a proof, every
+`./go` goal stops in one line:
+
+```
+STATE_STORE=outside/json-files is refused: sha256 267adb317a89 has no statestore-conformance GO on record for its suite as it is; run ./go statestore-conformance STATE_STORE=outside/json-files
+```
+
+The suites are `codehost-`, `delivery-`, `statestore-` and
+`eventbus-conformance`, one per wired port (`CODE_HOST`, `DELIVERY`,
+`STATE_STORE`, `EVENT_BUS`). `./go` mounts `ADAPTERS_PATH` read-only, and
+your verbs run with the lights-out checkout as their working directory. A
+code host names the secret for the suite's case 10 as `CODEHOST_SECRET` in
+its `env.sh`. A symlink anywhere in the tree is refused.
+
+What is proven: a test StateStore, `fixtures/outside-adapters/json-files/`,
+by `ci/outside.sh` in `./go ci`. Not proven: an outside `CODE_HOST`,
+`DELIVERY` or `EVENT_BUS`. An outside `AGENT_HARNESS` is refused, and so is
+`outside/` on a port with no suite (`TRACKER`, `ORCHESTRATOR`, `METRICS`,
+`FLAGS`, `REGISTRY`). The register guards against mistakes and drift, not
+against whoever owns the checkout.
+
+## Your CI as a surface: Jenkins
+
+Another CI can show the gates' verdict. It never gives it (ADR 0033, ADR
+0058 §6). [`surfaces/jenkins/Jenkinsfile`](../surfaces/jenkins/Jenkinsfile)
+is the recipe. The agent runs `lights-out gates`, prints the line, and
+posts it as the commit status `lights-out/jenkins`. It never posts `gates`
+or `review`, the contexts the tower posts, and the tower reads no commit
+status at all (`ci/outside.sh` checks both), so it never reads this one.
+
+The agent needs:
+
+- the `lights-out` wrapper on its PATH, and git, curl and iconv;
+- a container engine for the wrapper, podman or docker;
+- in its environment, `LIGHTS_OUT_STATUSES`, the statuses endpoint of a
+  GitHub-shaped API (GitHub or Gitea), and the token as
+  `LIGHTS_OUT_STATUS_TOKEN`. Environment variables, not build parameters:
+  Jenkins drops the parameters of a job's first run.
+
+The status description is cut to 140 characters.
+
+`./go demo-jenkins` proves the recipe on your machine. It starts a Gitea of
+its own, makes `workloads/minimal` a repository with a PR, and has
+Jenkinsfile Runner judge it. It prints GO when Gitea shows the status on
+the PR head. The only official Jenkinsfile Runner image is old (2022, amd64,
+Java 8), so on arm64 it runs under emulation. Not proven: a real Jenkins
+controller. The recipes for GitLab CI and CircleCI are not written.
 
 ## When something does not fit
 

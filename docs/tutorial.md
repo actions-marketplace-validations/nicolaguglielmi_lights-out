@@ -220,24 +220,26 @@ in under 15 minutes, with no account and no key.
 
 ### The gates saying no
 
-The demo shows the gates saying GO. `./go demo-gates` judges nine committed
+The demo shows the gates saying GO. `./go demo-gates` judges eleven committed
 fixture patches, and shows the test-weakening, test, mutation, SAST, test-proof
 and deps gates saying NO-GO, and risk sending a change to review:
 
-<!-- source: GitHub Actions run 42421450841 (commit 2a0427c), job gates (128550543246), step "./go demo-gates"; only the [demo-gates] lines and the last line -->
+<!-- source: GitHub Actions run 43003750178 (commit 19be6c3), job gates (130466613265), step "./go demo-gates"; only the [demo-gates] lines and the last line -->
 ```
 [demo-gates] assertion-removed: NO-GO: gates — test-weakening: NO-GO: test-weakening — 1 test file finding that no ## Removes tests in the ticket declares: app/backend/tests/test_meetups.py: loses 1 assertion; details on stderr
 [demo-gates] failing-test: NO-GO: gates — test: NO-GO: test — in compose:backend-test: the test command failed (exit 1), see stderr
 [demo-gates] fake-test: NO-GO: gates — mutation: NO-GO: mutation — in compose:backend-test: 4/8 mutants on changed lines killed (0.500 < 0.666); survivors on stderr
 [demo-gates] honest-fix: GO: gates — risk low, auto-merge, in compose:backend-test
 [demo-gates] migration: GO: gates — risk high, review, in compose:backend-test
-[demo-gates] sast-finding: NO-GO: gates — sast: NO-GO: sast — in compose:backend-test: 1 SAST finding(s) in the workload's scope
+[demo-gates] sast-added-on-red-base: NO-GO: gates — sast: NO-GO: sast — in compose:backend-test: this diff introduces 1 finding(s); list on stderr
+[demo-gates] sast-finding: NO-GO: gates — sast: NO-GO: sast — in compose:backend-test: this diff introduces 1 finding(s); list on stderr
+[demo-gates] sast-inherited: GO: gates — risk low, auto-merge, in compose:backend-test
 [demo-gates] test-edited: GO: gates — risk low, auto-merge, in compose:backend-test
-[demo-gates] test-passes-on-base: NO-GO: gates — test-proof: NO-GO: test-proof — in compose:backend-test: the changed tests pass on the base 2a0427c too, so they do not prove the change
+[demo-gates] test-passes-on-base: NO-GO: gates — test-proof: NO-GO: test-proof — in compose:backend-test: the changed tests pass on the base 19be6c3 too, so they do not prove the change
 [demo-gates] vulnerable-dep: NO-GO: gates — deps: NO-GO: deps — this diff introduces 4 advisory finding(s); list on stderr
 GO: demo-gates
 ```
-*GitHub Actions run 42421450841, job gates: the `[demo-gates]` lines and
+*GitHub Actions run 43003750178, job gates: the `[demo-gates]` lines and
 the last line.*
 
 `fake-test` is the same fix as `honest-fix` with a test that does not
@@ -305,6 +307,75 @@ verdict let it merge, which ticket and which agent wrote it, and the
 spec: the sha256 of the ticket file as the agent read it. `harness
 replay, model gemini-3.8-flash` says the PR was replayed, and which model
 wrote the recording. The image digest is the one the launchpad verified.
+
+### `./go evidence`: the release, packed and signed
+
+```sh
+./go evidence VERSION=0.2.0-waitlist
+```
+
+The audit answers about a ticket on your screen. The evidence pack
+answers about a release, in a file you can hand to someone else
+(ADR 0081). It writes `.crew/evidence/<version>.json`, signs it with the
+plane's cosign key and verifies the signature in the same command. It is
+not a stage of `./go demo`. Run after the demo, it packs e2e's release:
+
+<!-- source: local run on podman, commit 38e7d23, 2026-11-12, after ./go demo; left out: cosign's own progress lines and its tlog warnings -->
+```
+missing: release.held_at
+missing: stages[0].started_at
+missing: stages[0].judged_at
+missing: artefacts.dast
+missing: answer
+missing: prs[0].review
+evidence: verify with: cosign verify-blob --key .crew/cosign.pub --insecure-ignore-tlog --bundle .crew/evidence/0.2.0-waitlist.json.bundle .crew/evidence/0.2.0-waitlist.json
+GO: evidence — .crew/evidence/0.2.0-waitlist.json signed and verified; 6 missing
+```
+
+Every value in the pack says where it came from, for example
+`{"source": "state store sqlite: tickets/0001 .ci.lines", "value": ["GO: risk", "GO: secrets", …]}`.
+The six gaps are named, never filled in. The release was not held, so it
+has no hold and no human answer. DAST was off. The gates decided
+auto-merge, so no review was asked for. The stage times arrive with a
+later milestone. Change one byte of the file and the verify command
+fails.
+
+### `./go dora` and `./go spend`: how delivery went, and what it cost
+
+```sh
+./go dora
+./go spend
+```
+
+`./go dora` reads the logbook and prints DORA's four delivery measures
+over the last `WINDOW_DAYS` days (ADR 0082). `./go spend` adds up every
+run the tower priced into each ticket's ledger, per ticket, per role and
+per day, and names the budget (ADR 0083). Run after the demo:
+
+<!-- source: local run on podman, commit 37ca51a, 2026-11-13, after ./go demo -->
+```
+[dora] window: 30 days, 2026-10-14T08:59:42Z to 2026-11-13T08:59:42Z
+[dora] deployment frequency: 0 promoted to 100%, 0.000 per day
+[dora] lead time: not measured — no release of a ticket reached 100% in the window
+[dora] change fail rate: 100%: 2 of 2 decided release(s) rolled back, 0 pending
+[dora] recovery time: median 1 min from the failing stage's start to the rollback over 2 release(s), 0 unmeasured
+GO: dora — .crew/dora.json, 3 of 4 measured over 30 days
+[spend] ticket 0001: $0.00 over 1 run(s); agents 0h00m00s, elapsed 0h03m51s
+[spend] role dev-worker: $0.00 over 1 run(s); 0h00m00s
+[spend] day 2026-11-13: $0.00 over 1 run(s)
+[spend] budget: SPEND_BUDGET_TICKET_USD no limit, SPEND_BUDGET_DAY_USD no limit
+GO: spend — 1 tickets, 1 runs, $0.00 known, 0 of cost unknown
+```
+
+Nothing reached 100%, so there is no lead time to measure, and the
+command says so instead of guessing. Both canaries the demo ran were
+rolled back. The run was replayed at L0, so it cost nothing and its
+agents' time is not counted. Set `SPEND_BUDGET_TICKET_USD` or
+`SPEND_BUDGET_DAY_USD` in `policy/rework.env` and the tower launches no
+attempt past the limit: the ticket goes to `needs-human` with the
+budget's line. The console's Overview shows the same lines, read from
+the logbook. Its window ends at the record's last event, not at the
+moment you look.
 
 ## 2. The short looks
 
@@ -692,7 +763,7 @@ steps:
   - uses: actions/checkout@v7
     with:
       fetch-depth: 0
-  - uses: nicolaguglielmi/lights-out@v0.3.1
+  - uses: nicolaguglielmi/lights-out@v0.6.0
 ```
 
 **Proven on one outside repository.** With `@v0.3.0` published, the Action

@@ -2,14 +2,16 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.3` (core/logbook/1.3.schema.json) from the
+Assembles `lights-out/logbook/1.5` (core/logbook/1.5.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
 project map's ADRs and tests (MAP_FILE, docs/adr/0059 §3, docs/adr/0071 §1), what the
 contract gives the agents (core/agents.py, docs/adr/0073 §10), and per ticket
 what its last run used: the task's `mcp` and the review's `instructions`
-(docs/adr/0073 §10, the ticket's back). Every rule
+(docs/adr/0073 §10, the ticket's back), the spend per ticket, role and day
+and the delivery measures in the words `./go spend` and `./go dora` print
+(docs/adr/0083 and 0082, amendments of 2026-11-13). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -40,14 +42,18 @@ try:
     from .assign import HOLDING, overlaps
     from .map import SCHEMA as MAP_SCHEMA
     from . import agents as contract_agents
+    from . import dora as delivery
+    from . import spend as ledger
 except ImportError:  # run as a script: core/ is sys.path[0]
     from policy import PolicyError, effective
     from spec import fields
     from assign import HOLDING, overlaps
     from map import SCHEMA as MAP_SCHEMA
     import agents as contract_agents
+    import dora as delivery
+    import spend as ledger
 
-SCHEMA = "lights-out/logbook/1.3"
+SCHEMA = "lights-out/logbook/1.5"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -194,12 +200,19 @@ def governing(book_adrs, tickets):
 # --- releases -------------------------------------------------------------
 
 
+# What an answer records beside who and how (docs/adr/0079 §1); null when
+# a record from before it has none.
+ANSWER_WHY = ("reason", "brief_sha256", "brief_author")
+
+
 def answer_of(obj):
-    """{answer, by, via, at} from a record's promoted/rejected object, else None."""
+    """{answer, by, via, at, reason, brief_sha256, brief_author} from a
+    record's promoted/rejected object, else None."""
     for key, answer in (("promoted", "GO"), ("rejected", "NO-GO")):
         a = obj.get(key) if isinstance(obj, dict) else None
         if isinstance(a, dict) and all(k in a for k in ("by", "via", "at")):
-            return {"answer": answer, "by": a["by"], "via": a["via"], "at": a["at"]}
+            return dict({"answer": answer, "by": a["by"], "via": a["via"], "at": a["at"]},
+                        **{k: a.get(k) for k in ANSWER_WHY})
     return None
 
 
@@ -211,6 +224,7 @@ def release_entry(record, at, ticket, answer, origin):
         "stages": record.get("stages") or [],
         "verdict": record.get("verdict"),
         "held_at": record.get("held_at"),
+        "reason": record.get("reason"),
         "at": at,
         "ticket": ticket,
         "answer": answer,
@@ -240,7 +254,7 @@ def releases(record):
             if later.get("kind") == "release":
                 break
             if later.get("kind") == "answer" and later.get("version") == rec.get("version"):
-                answer = {k: later.get(k) for k in ("answer", "by", "via", "at")}
+                answer = {k: later.get(k) for k in ("answer", "by", "via", "at") + ANSWER_WHY}
                 break
         out.append(release_entry(rec, line.get("at"), line.get("ticket"), answer, "releases.jsonl"))
     if isinstance(record, dict) and not is_unread(record) and record.get("verdict") in ("held", "rolled-back"):
@@ -293,8 +307,13 @@ def outcome(doc, tid, rels):
     if isinstance(last, dict) and last.get("error"):
         return {"verdict": "stranded", "judge": "step", "line": last["error"]}
     if state == "needs-human":
+        # The budget's reason, when it is what stopped the next attempt (docs/adr/0083,
+        # amendment §4); the judge stays the one that rejected the last attempt.
         r = (doc.get("rework") or [{}])[-1]
-        return {"verdict": "needs-human", "judge": r.get("judge"), "line": r.get("line")}
+        budget = doc.get("budget") if isinstance(doc.get("budget"), dict) else {}
+        if budget.get("line"):
+            return {"verdict": "needs-human", "judge": r.get("judge"), "line": budget["line"], "stop": "budget"}
+        return {"verdict": "needs-human", "judge": r.get("judge"), "line": r.get("line"), "stop": "cap"}
     release = doc.get("release") or {}
     if state == "rolled-back":
         return {"verdict": "NO-GO", "judge": "verify", "line": release.get("verdict")}
@@ -321,7 +340,8 @@ def outcome(doc, tid, rels):
     return {"verdict": "pending", "judge": None, "line": None}
 
 
-def tickets(rels):
+def tickets(rels, docs=None):
+    """The tickets the tower holds; DOCS, when given, collects each one's tower document by id."""
     store = env("STATE_STORE")
     if not store:
         return unread("STATE_STORE not set; run this via ./go logbook")
@@ -338,6 +358,8 @@ def tickets(rels):
             doc = json.loads(stdout)
         except ValueError:
             return unread(f"{get} printed no JSON for {tid}")
+        if docs is not None and isinstance(doc, dict):
+            docs[tid] = doc
         file_title, origin = ticket_file_facts(path)
         with open(path, encoding="utf-8") as fh:
             declared = fields(fh.read())
@@ -359,7 +381,7 @@ def tickets(rels):
             "task": pick(doc.get("task"), TASK_KEYS + ("mcp",)),
             "rework": [judged(r) for r in doc.get("rework") or []],
             "pr": pick(doc.get("pr"), ("number", "url", "base_sha", "head_sha")),
-            "ci": judged(pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha", "lines"))),
+            "ci": ci_entry(doc),
             "review": pick(doc.get("review"), ("role", "verdict", "reason", "harness", "model", "instructions")),
             "merge": pick(doc.get("merge"), ("sha", "head_sha")),
             "map": pick(doc.get("map"), ("sha", "docs_ticket")),
@@ -371,6 +393,57 @@ def tickets(rels):
             "timeline": timeline(doc, tid, rels, perimeter(path)),
         })
     return out
+
+
+def spend(held, docs):
+    """`./go spend`'s report and words over the documents read for `tickets`
+    (docs/adr/0083, amendment §2); the tickets' error when they are unread."""
+    if is_unread(held):
+        return held
+    got = ledger.report(docs)
+    try:
+        lim = ledger.limits()
+    except ValueError as exc:
+        lim = str(exc)
+    got.update(limits=unread(lim) if isinstance(lim, str) else lim, lines=ledger.lines(got, lim),
+               summary=ledger.summary(got))
+    return got
+
+
+def last_event(rels, held):
+    """The record's last time: the tickets' history, the releases and their answers."""
+    times = []
+    for t in held if isinstance(held, list) else []:
+        times += [h.get("at") for h in t.get("history") or [] if isinstance(h, dict)]
+    for r in rels if isinstance(rels, list) else []:
+        times += [r.get("at"), (r.get("answer") or {}).get("at")]
+    moments = [m for m in (delivery.when(x) for x in times) if m is not None]
+    return max(moments) if moments else None
+
+
+def dora(rels, held):
+    """`./go dora`'s measures over the logbook's own releases and tickets, the
+    window ending at the record's last event, not a clock (docs/adr/0082,
+    amendment §1-§2)."""
+    raw = env("WINDOW_DAYS") or "30"
+    if not raw.isdigit() or int(raw) < 1:
+        return unread(f"WINDOW_DAYS={raw!r} is not a whole number of days, 1 or more")
+    end = last_event(rels, held)
+    if end is None:
+        return unread("no time in the record to end the window at: no ticket history and no release")
+    got = delivery.measures({"releases": rels, "tickets": held}, int(raw), end)
+    got["lines"] = [line[len("[dora] "):] for line in delivery.lines(got)]
+    return got
+
+
+def ci_entry(doc):
+    """The ticket's ci, judged; its `why` only on a NO-GO, for the attempt
+    the ticket is at (docs/adr/0078 §2)."""
+    ci = pick(doc.get("ci"), ("verdict", "failed", "risk_level", "decision", "line", "details", "head_sha", "lines",
+                              "sast"))
+    if ci is None:
+        return None
+    return judged(ci, doc.get("attempt"), ci.get("verdict") == "NO-GO")
 
 
 def gate_rows(lines):
@@ -386,12 +459,48 @@ def gate_rows(lines):
     return rows
 
 
-def judged(entry):
-    """A ci or rework entry with `gates` in place of its raw `lines`."""
+def secrets_go(gates):
+    """Whether the attempt's secrets gate said GO (docs/adr/0071 §1)."""
+    return any(g.get("gate") == "secrets" and g.get("verdict") == "GO" for g in gates or [])
+
+
+def withheld(attempt):
+    return unread(f"withheld: the secrets gate did not say GO on attempt {attempt}")
+
+
+def why(entry, attempt, judge):
+    """Why an attempt was rejected (docs/adr/0078 §2-§3): the gate, its
+    line, its details and the new SAST findings, the last two withheld
+    until the same attempt's secrets gate said GO."""
+    gates = gate_rows(entry.get("lines")) or []
+    gate = entry.get("failed") if isinstance(entry.get("failed"), str) and entry.get("failed") else None
+    if gate is None:
+        gate = next((g["gate"] for g in gates if g["verdict"] == "NO-GO"), None)
+    shown = secrets_go(gates)
+    details, sast = entry.get("details"), entry.get("sast")
+    return {
+        "attempt": attempt,
+        "judge": entry.get("judge") or judge,
+        "gate": gate,
+        "line": entry.get("line"),
+        "details": (details if isinstance(details, list) else []) if shown else withheld(attempt),
+        "sast": None if sast is None else sast if shown else withheld(attempt),
+    }
+
+
+def judged(entry, attempt=None, rejected=True):
+    """A ci or rework entry with `gates` in place of its raw `lines`, and
+    its `why` when it rejected the attempt (docs/adr/0078 §2): its 1.3
+    `details` null where `why` withholds them."""
     if not isinstance(entry, dict):
         return entry
     out = {k: v for k, v in entry.items() if k != "lines"}
     out["gates"] = gate_rows(entry.get("lines"))
+    out["why"] = why(entry, entry.get("attempt", attempt), "gates") if rejected else None
+    if out["why"] and is_unread(out["why"]["details"]):
+        out["details"] = None
+    if out["why"] and is_unread(out["why"]["sast"]):
+        out["sast"] = None
     return out
 
 
@@ -400,7 +509,7 @@ def shown_patch(patch, gates, attempt):
     (docs/adr/0071 §1): a key a worker pasted never reaches a snapshot."""
     if patch is None:
         return None
-    if any(g.get("gate") == "secrets" and g.get("verdict") == "GO" for g in gates or []):
+    if secrets_go(gates):
         return patch
     return unread(f"withheld: the secrets gate did not say GO on attempt {attempt}")
 
@@ -604,7 +713,8 @@ def timeline(doc, tid, rels, globs):
             current = i == last["ci"]
             rows.append(row("gates", at, ci.get("line") if current else None, "tower ci", state, attempt=h.get("attempt")))
             if current:
-                rows += [row("gate", at, d, "tower ci details") for d in ci.get("details") or []]
+                shown = why(ci, doc.get("attempt"), "gates")["details"] if ci.get("verdict") == "NO-GO" else ci.get("details")
+                rows += [row("gate", at, d, "tower ci details") for d in (shown if isinstance(shown, list) else [])]
         elif step == "review":
             r = doc.get("review") or {}
             rows.append(row("review", at, (r.get("reason") or "").split("\n")[0] or None if i == last["review"] else None,
@@ -617,13 +727,16 @@ def timeline(doc, tid, rels, globs):
                 if isinstance(rels, list) else []
             for stage in (mine[-1]["stages"] if mine else []):
                 said = str(stage.get("verdict") or "")
-                rows.append(row("canary", mine[-1]["at"], said, "release log", "GO" if said.startswith("GO") else "NO-GO",
-                                pct=stage.get("pct"), numbers=stage.get("numbers") or []))
+                # A stage judged after docs/adr/0080 §1 has its own time and numbers.
+                more = {"slo": stage["slo"]} if isinstance(stage.get("slo"), list) else {}
+                rows.append(row("canary", stage.get("judged_at") or mine[-1]["at"], said, "release log",
+                                "GO" if said.startswith("GO") else "NO-GO",
+                                pct=stage.get("pct"), numbers=stage.get("numbers") or [], **more))
             rows.append(row("release", at, rel.get("verdict"), "tower release", state))
             answer = mine[-1]["answer"] if mine else None
             if answer:
                 rows.append(row("sign-off", answer.get("at"), f"{answer.get('answer')} by {answer.get('by')}",
-                                "release log", answer.get("answer"), via=answer.get("via")))
+                                "release log", answer.get("answer"), via=answer.get("via"), reason=answer.get("reason")))
         elif step == "resume":
             rows.append(row("resume", at, f"{h.get('resumed')} requested again", "tower history"))
     end = outcome(doc, tid, rels)
@@ -827,7 +940,8 @@ def main(argv):
 
     record = read_json(env("RELEASE_RECORD", ".crew/release.json"))
     rels = releases(record)
-    held = tickets(rels)
+    docs = {}
+    held = tickets(rels, docs)
     holds = perimeters_held(held)
     for t in held if isinstance(held, list) else []:
         t["wait"] = waiting(t, holds)
@@ -850,6 +964,8 @@ def main(argv):
         "perimeters_held": holds,
         "docs_to_realign": docs_to_realign(held),
         "adrs": decisions,
+        "spend": spend(held, docs),
+        "dora": dora(rels, held),
     }
     text = json.dumps(book, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     tmp = args.out + ".tmp"

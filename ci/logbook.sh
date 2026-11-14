@@ -9,11 +9,12 @@
 # or console/.
 #   a. With stub sources in a throwaway root, core/logbook.sh runs twice:
 #      one GO line each, the two files byte-equal, and byte-equal to the
-#      golden fixtures/logbook/golden-1.3.json, written by hand from the
+#      golden fixtures/logbook/golden-1.5.json, written by hand from the
 #      plan at 1.0, its 1.1 rows checked one by one against ADR 0055 §6 and
 #      its 1.2 `adrs` against the stub map (docs/adr/0059 §3), its 1.3
-#      `agents` against the stub contract (docs/adr/0073 §10), and its 1.3
-#      fields of ticket 0010, the network ticket, one by one against the
+#      `agents` against the stub contract (docs/adr/0073 §10), its 1.4 `why`
+#      (docs/adr/0078 §2, §3) against the stub's tower documents (below), and
+#      its 1.3 fields of ticket 0010, the network ticket, one by one against the
 #      stub's tower documents and ADR 0071 (docs/adr/0071 §8): each task's
 #      members (ids, harness, model, hand-written), files with their added
 #      and removed counts, the patch shown, ci.gates (eight GO in the
@@ -21,8 +22,23 @@
 #      raw `lines`, the patch of 0004's attempt in flight withheld with the
 #      contract's error, and tickets[].files rows (glob, member, attempts,
 #      tests, adrs, held_by), each hand check run again on a logbook with
-#      one fact planted wrong, which it must refuse. golden-1.2.json stays in
-#      the repository, untouched, as the old-logbook fixture. The stub root
+#      one fact planted wrong, which it must refuse. The 1.4 `why`, by hand
+#      from ADR 0078 and the stub: ticket 0003's ci.why (attempt 2, gates, the
+#      test gate, its line verbatim, its two FAILED lines, sast null) and its
+#      rework[0].why (attempt 1, the sast gate, details shown, the two new
+#      findings {rule, file, line}); ticket 0002's rework[0].why, recorded with
+#      no gate lines, withheld with the exact error and its 1.3 `details`
+#      null; ticket 0010's rework[0].why shown (mutation); every ci that said
+#      GO has ci.why null; each run again on a logbook with one fact planted
+#      wrong. The 1.5 `spend` and `dora` (docs/adr/0083 and 0082, amendments
+#      of 2026-11-13), by hand from the stub: the ledger of 0003 and 0010 per
+#      ticket, role and day, the summary, the limits and the budget line;
+#      0007's stop the cap and, with a budget line in its document, the budget
+#      and that line; the window ending at the record's last event and the
+#      four measures; each run again with one fact planted wrong.
+#      golden-1.4.json, golden-1.3.json and golden-1.2.json stay in the
+#      repository, untouched, as the old-logbook fixtures, and validate against
+#      their schemas. The stub root
 #      holds three ADRs, the files they cite, the notifier and its test, and
 #      a ticket that names one in its one commit; its map is built from that
 #      commit with core/map.py,
@@ -37,7 +53,9 @@
 #      The kanban's every card sits in its ticket's state's column, and moves
 #      when the tower moves the ticket (docs/adr/0055 §7).
 #   b. The golden validates against every committed schema of its major
-#      (1.0 to 1.3), and against the schema file of its own minor.
+#      (1.0 to 1.5), and against the schema file of its own minor; so do the
+#      old fixtures, golden-1.4.json, golden-1.3.json and golden-1.2.json (their own minors
+#      and the ones before).
 #   c. The committed snapshot, when there is one, validates, and its
 #      spec.sha256 values are the committed tickets' (§4). A README with no
 #      snapshot is drift; with neither, this point is skipped.
@@ -45,8 +63,10 @@
 #      `core/logbook.sh`, `core/promote.sh`, `gates/spec.sh`,
 #      `core/spec.py draft` and `make answer` / `make request` only, and has
 #      four POST routes (docs/adr/0055 §2, docs/adr/0059 §4); index.html
-#      fetches /v1/ only, POSTs to those four routes and declares no
-#      `draggable` and no drag or drop listener (docs/adr/0059 §1). The
+#      fetches /v1/ only, POSTs to those four routes; `draggable` and the drag or drop handlers
+#      appear only in the launch code, and a `draggable` value is conditional,
+#      so only the held release's card drags (docs/adr/0079 §3, §5, which
+#      amends docs/adr/0059 §1 for that one gesture). The
 #      page's `#network-words` is `python3 core/network.py --table` as JSON,
 #      its roles are the directories of roles/ and its gates the Makefile's
 #      `GATES :=` (docs/adr/0071 §5), a wrong copy refused; and `make network
@@ -64,7 +84,19 @@
 #      as it was; a request is refused in snapshot, public and without the
 #      proxy header, refuses a NO-GO draft with nothing written, and on a GO
 #      draft writes the next id and runs `make request` with who pressed and
-#      `via: console` (docs/adr/0059 §4).
+#      `via: console` (docs/adr/0059 §4). The press's reason (docs/adr/0079
+#      §2): a NO-GO with no reason, a blank one or a reason that is not a
+#      string is refused with 400 before anything runs; a NO-GO with a reason
+#      runs promote and the record's `rejected.reason` is it, via console; a
+#      GO with a reason records it in `promoted.reason`, and both carry the
+#      brief's sha256 (docs/adr/0079 §1).
+#      The 1.4 canary fields (docs/adr/0080 §1-§4), by hand from the stub's
+#      first log line and release.json: 0.2.0-a's reason and stage times and
+#      slo, the others' none, launch.record's times, slo, reason and no running,
+#      ticket 0001's canary row at the stage's judged_at with its slo, the rows
+#      of the older releases at the release's at with none; a record in
+#      progress surfaces `running` verbatim in launch.record; each check run
+#      again on a logbook with one fact planted wrong.
 #   f. Every numeric policy key has a "# Provenance, <kind>:" line above it
 #      (Consequences).
 # Before any of that, every checker runs on a bad input and must reject it:
@@ -75,7 +107,10 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.3.json"
+golden="$repo/fixtures/logbook/golden-1.5.json"
+golden14="$repo/fixtures/logbook/golden-1.4.json"
+golden13="$repo/fixtures/logbook/golden-1.3.json"
+golden12="$repo/fixtures/logbook/golden-1.2.json"
 tmp=$(mktemp -d)
 pids=""
 # shellcheck disable=SC2154 # p is the loop's own variable, assigned when the trap runs
@@ -85,7 +120,10 @@ for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.3.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.5.json not found"
+[ -f "$golden14" ] || nogo "fixtures/logbook/golden-1.4.json not found (the old-logbook fixture)"
+[ -f "$golden13" ] || nogo "fixtures/logbook/golden-1.3.json not found (the old-logbook fixture)"
+[ -f "$golden12" ] || nogo "fixtures/logbook/golden-1.2.json not found (the old-logbook fixture)"
 [ -d "$stub" ] || nogo "fixtures/logbook/stub not found"
 
 # --- the checkers, one python file, one subcommand each ---------------------
@@ -251,18 +289,39 @@ def cmd_index(path):
     for banned in ("XMLHttpRequest", "sendBeacon", "<form"):
         if banned in src:
             die(f"{path} uses {banned}; the page reads with GET fetch and writes with POST fetch")
-    # No drag and drop (docs/adr/0055 §7, docs/adr/0059 §1): a card moves only
-    # when the tower moves its ticket. The attribute, the property, the
-    # handler attributes and a listener named by a string; prose is not read.
-    for form, what in ((r"\bdraggable\s*[=:]", "a draggable attribute or key"),
+    # Drag and drop only for the one gesture (docs/adr/0079 §3, §5; the rest of
+    # docs/adr/0059 §1 and 0068 §1 stands): `draggable` and the drag or drop
+    # handlers may appear only inside a function of the page that is about the
+    # launch (its body names "launch": the held card's, the two targets'), and
+    # a `draggable` value must be conditional (`held ? "true" : null`), so a
+    # card that is not the held release has none. The property, setAttribute,
+    # a handler or attribute outside any function (markup), and a listener
+    # named by a string are the same sites and take the same rule; prose and
+    # the CSS selector `[draggable=...]` are not read.
+    spans = [(m.start(), m.group(1)) for m in re.finditer(r"^function\s+(\w+)", src, re.M)]
+    def enclosing(pos):
+        start = max((s for s, _ in spans if s <= pos), default=None)
+        if start is None:
+            return None
+        end = re.compile(r"^\}", re.M).search(src, start)
+        end = end.end() if end else len(src)
+        return src[start:end] if pos < end else None
+    for form, what in ((r"(?<!\[)\bdraggable\s*[=:]", "a draggable attribute or key"),
                        (r"\.draggable\b", "the draggable property"),
                        (r"""\bsetAttribute\s*\(\s*['"`]draggable['"`]""", "setAttribute('draggable')"),
                        (r"\bon" + DRAG + r"\s*[=:]", "a drag or drop handler attribute or key"),
                        (r"""['"`]on""" + DRAG + r"""['"`]""", "a drag or drop handler named by a string"),
                        (r"""\baddEventListener\s*\(\s*['"`]""" + DRAG + r"""['"`]""", "a drag or drop listener")):
-        hit = re.search(form, src)
-        if hit:
-            die(f"{path} has {what} ({hit.group(0).strip()}); a card moves only when the tower moves its ticket")
+        for hit in re.finditer(form, src):
+            body = enclosing(hit.start())
+            line = src[src.rfind("\n", 0, hit.start()) + 1:src.find("\n", hit.end())]
+            if body is None or "launch" not in body.lower():
+                die(f"{path} has {what} ({hit.group(0).strip()}) outside the launch code; only the held release's card and its two targets may drag or take a drop")
+            if what in ("the draggable property", "setAttribute('draggable')"):
+                die(f"{path} has {what}; `draggable` is a conditional attribute of the held card only")
+            value = re.match(r"draggable\s*[=:]\s*([^,}\n]*)", src[hit.start():]).group(1) if what == "a draggable attribute or key" else "?"
+            if "?" not in value:
+                die(f"{path} sets draggable with no condition ({line.strip()[:60]}); only the held release's card drags")
     posted = set()
     root_literals = re.findall(r"""(['"`])(/[A-Za-z0-9_.\-][^'"`\s]*)\1""", src)
     stray = sorted({lit for _, lit in root_literals if not lit.startswith("/v1/")})
@@ -545,6 +604,17 @@ jq '(.tickets[] | select(.id == "0010") | .tasks[0].members) = "impl"' "$golden"
 jq '(.tickets[] | select(.id == "0010") | .files[0].tests) = "tests/test_notify.py"' "$golden" > "$st/bad-files-tests.json"
 jq '(.tickets[] | select(.id == "0010") | .files[0].attempts) = [1, "2"]' "$golden" > "$st/bad-files-attempts.json"
 jq '(.tickets[] | select(.id == "0010") | .tasks[0].patch.bytes) = "577"' "$golden" > "$st/bad-patch-bytes.json"
+# 1.4 (docs/adr/0078 §2): `why` is typed, on ci and on a rework entry.
+jq '(.tickets[] | select(.id == "0003") | .ci.why.attempt) = "2"' "$golden" > "$st/bad-why-attempt.json"
+jq '(.tickets[] | select(.id == "0003") | .ci.why.details) = "FAILED tests/a.py::one"' "$golden" > "$st/bad-why-details.json"
+jq '(.tickets[] | select(.id == "0003") | .rework[0].why.sast[0].line) = "7"' "$golden" > "$st/bad-why-sast.json"
+jq '(.tickets[] | select(.id == "0003") | .rework[0].why.gate) = 5' "$golden" > "$st/bad-why-gate.json"
+# 1.5 (docs/adr/0082, 0083, amendments of 2026-11-13): dora, spend and the outcome's stop are typed.
+jq '.dora.window_days = "30"' "$golden" > "$st/bad-dora-window.json"
+jq '.dora.lines = "window: 30 days"' "$golden" > "$st/bad-dora-lines.json"
+jq '.spend.lines = "budget: none"' "$golden" > "$st/bad-spend-lines.json"
+jq '.spend.limits.SPEND_BUDGET_TICKET_USD = "1.00"' "$golden" > "$st/bad-spend-limit.json"
+jq '(.tickets[] | select(.id == "0007") | .outcome.stop) = "money"' "$golden" > "$st/bad-stop.json"
 (
   cd "$st"
   must_reject "schema validation (an enum value)" valid bad-enum.json
@@ -561,6 +631,15 @@ jq '(.tickets[] | select(.id == "0010") | .tasks[0].patch.bytes) = "577"' "$gold
   must_reject "schema validation (a file's tests that is not a list)" valid bad-files-tests.json
   must_reject "schema validation (a file's attempts that are not integers)" valid bad-files-attempts.json
   must_reject "schema validation (a patch's bytes that is not an integer)" valid bad-patch-bytes.json
+  must_reject "schema validation (a why's attempt that is not an integer)" valid bad-why-attempt.json
+  must_reject "schema validation (a why's details that is neither a list nor the withheld reason)" valid bad-why-details.json
+  must_reject "schema validation (a sast finding's line that is not an integer)" valid bad-why-sast.json
+  must_reject "schema validation (a why's gate that is not a string or null)" valid bad-why-gate.json
+  must_reject "schema validation (a dora window that is not an integer)" valid bad-dora-window.json
+  must_reject "schema validation (dora lines that are not a list)" valid bad-dora-lines.json
+  must_reject "schema validation (spend lines that are not a list)" valid bad-spend-lines.json
+  must_reject "schema validation (a spend limit that is not a number or null)" valid bad-spend-limit.json
+  must_reject "schema validation (an outcome's stop outside budget and cap)" valid bad-stop.json
   must_accept "schema validation" valid "$golden"
 ) || exit 1
 
@@ -634,10 +713,22 @@ for v in adapter two-posts shell route git delete make no-request-recipe two-tar
 done
 
 # index.html: GET fetch on /v1/, a POST fetch to each of the four routes, and
-# no drag and drop (docs/adr/0059 §1).
+# drag and drop only for the held release (docs/adr/0079 §3, §5).
 cat > "$st/index-good.html" <<'HTML'
-<!-- no drag-and-drop here: a card is not draggable, and a dropdown is a select -->
+<!-- no drag-and-drop here but the held release's: a dropdown is a select -->
+<style>.card[draggable="true"] { cursor: grab; }</style>
 <script>
+function card(t) {
+  const held = launchTicket() === t;
+  return h("div", {cls: "card", draggable: held ? "true" : null, "data-launch": held ? "v" : null,
+    ondragstart: held ? (e) => begin(e) : null});
+}
+function launchDrop() {
+  return h("button", {id: "drop-rollback", ondragover: (e) => e.preventDefault(), ondragleave: stop, ondrop: (e) => ask(e)});
+}
+function column(c) {
+  return h("div", {cls: "col"});
+}
 fetch('/v1/logbook.json').then(r => r.json());
 fetch("/v1/go-for-launch", {method: 'POST', body: '{}'});
 fetch("/v1/answer", {method: 'POST', body: '{}'});
@@ -670,10 +761,22 @@ sed 's|<script>|<script>col.addEventListener("dragover", stop);|' "$st/index-goo
 sed 's|<script>|<script>col.addEventListener("dragenter", stop);|' "$st/index-good.html" > "$st/index-listener-dragenter.html"
 sed 's|<script>|<script>col.addEventListener("dragleave", stop);|' "$st/index-good.html" > "$st/index-listener-dragleave.html"
 sed 's|<script>|<script>card.addEventListener("dragstart", begin);|' "$st/index-good.html" > "$st/index-listener-dragstart.html"
+# docs/adr/0079 §3, §5: the same sites, in a function that is not the launch's,
+# or with no condition on the card, are refused.
+sed 's|{cls: "col"}|{cls: "col", draggable: held ? "true" : null}|' "$st/index-good.html" > "$st/index-draggable-other-card.html"
+sed 's|{cls: "col"}|{cls: "col", draggable: "true"}|' "$st/index-good.html" > "$st/index-draggable-column.html"
+sed 's|draggable: held ? "true" : null|draggable: "true"|' "$st/index-good.html" > "$st/index-draggable-unconditional.html"
+sed 's|{cls: "col"}|{cls: "col", ondrop: move}|' "$st/index-good.html" > "$st/index-ondrop-column.html"
+sed 's|{cls: "col"}|{cls: "col", ondragover: stop}|' "$st/index-good.html" > "$st/index-ondragover-column.html"
+sed 's|return h("div", {cls: "col"});|col.addEventListener("dragover", stop); return h("div", {cls: "col"});|' "$st/index-good.html" > "$st/index-listener-column.html"
+sed 's|<style>|<div draggable="true">x</div><style>|' "$st/index-good.html" > "$st/index-draggable-markup.html"
+sed 's|return h("div", {cls: "col"});|x.draggable = true; launch(); return h("div", {cls: "col"});|' "$st/index-good.html" > "$st/index-draggable-prop-launch.html"
 must_accept "index.html" index "$st/index-good.html"
 for v in external other put post-elsewhere get-go get-answer get-spec get-request no-request no-spec xhr \
   draggable-attr draggable-key draggable-prop draggable-set ondrop-attr ondragover-key ondragstart-string ondragend-prop \
-  listener-drop listener-dragover listener-dragenter listener-dragleave listener-dragstart; do
+  listener-drop listener-dragover listener-dragenter listener-dragleave listener-dragstart \
+  draggable-other-card draggable-column draggable-unconditional ondrop-column ondragover-column listener-column \
+  draggable-markup draggable-prop-launch; do
   must_reject "index.html ($v)" index "$st/index-$v.html"
 done
 
@@ -1039,7 +1142,7 @@ run_reader() {
   out=$(cd "$root" && env -u GIT_DIR -u GIT_WORK_TREE LEVEL=l0 WORKLOAD=app CODE_HOST=gitea \
     STATE_STORE=stub-state DELIVERY=stub-delivery TICKETS_DIR=tickets RELEASE_RECORD=release.json \
     RELEASES_LOG=releases.jsonl PROMOTE_OUT=promote POSTMORTEM_DIR=postmortem WORKLOAD_CONTRACT=contract \
-    "$@" sh core/logbook.sh 2>reader.err </dev/null) && rc=0 || rc=$?
+    WINDOW_DAYS= "$@" sh core/logbook.sh 2>reader.err </dev/null) && rc=0 || rc=$?
 }
 
 [ -f "$repo/core/logbook.sh" ] || nogo "core/logbook.sh not found"
@@ -1058,7 +1161,7 @@ run_reader LOGBOOK_FILE=out2.json
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.3.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.5.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
 # the day it was blessed; these are the rules, worked out again from the
@@ -1111,9 +1214,10 @@ t10='(.tickets[] | select(.id == "0010"))'
 t04='(.tickets[] | select(.id == "0004"))'
 hand_13() {
   # shellcheck disable=SC2016 # $old is jq's own variable
-  # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 adds none.
-  h13 "nothing new at the top level but agents, and the schema is 1.3" \
-    '.schema == "lights-out/logbook/1.3" and (keys == ($old[0] | keys + ["agents"] | sort))' "$1" || return 1
+  # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 and ADR 0078 add none;
+  # 1.5 adds `dora` and `spend` (docs/adr/0082, 0083, amendments of 2026-11-13).
+  h13 "nothing new at the top level but agents, dora and spend, and the schema is 1.5" \
+    '.schema == "lights-out/logbook/1.5" and (keys == ($old[0] | keys + ["agents", "dora", "spend"] | sort))' "$1" || return 1
   h13 "0010's two attempts, as the tower recorded them" \
     "$t10 | (.tasks | map(.attempt)) == [1, 2]" "$1" || return 1
   h13 "0010 attempt 1: members impl and tests, in that order, with their harness, model and perimeter" \
@@ -1154,8 +1258,9 @@ hand_13() {
       and .[6].line == \"NO-GO: mutation — 3 of 12 mutants survived, score 75% below the baseline of 80%\"" "$1" || return 1
   h13 "the raw lines are not exposed, on ci nor on a rework entry" \
     "[.tickets[] | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(has(\"gates\") and (has(\"lines\") | not))" "$1" || return 1
+  # Ticket 0003 is the other one whose stub records gate lines (ADR 0078 §5): hand_14 reads it.
   h13 "a ticket whose gates recorded no lines has gates null, ci and rework alike" \
-    "[.tickets[] | select(.id != \"0010\") | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(.gates == null)" "$1" || return 1
+    "[.tickets[] | select(.id != \"0010\" and .id != \"0003\") | (.ci | select(type == \"object\")), (.rework | select(type == \"array\") | .[])] | all(.gates == null)" "$1" || return 1
   h13 "0004's attempt in flight: the patch is withheld with the contract's error, its files and null members stay" \
     "$t04 | .tasks[0].patch == {ok: false, error: \"withheld: the secrets gate did not say GO on attempt 1\"}
       and .tasks[0].files == \$s4[0].tasks[0].files and .tasks[0].members == null" "$1" || return 1
@@ -1218,6 +1323,297 @@ plant "0004's tests known" "$(tix 0004 '.files[0].tests = []')"
 plant "a field new at the top level" '. + {network: {}}'
 plant "another schema" '.schema = "lights-out/logbook/1.2"'
 
+# The 1.4 fields (docs/adr/0078 §2, §3, §5), worked out from the stub's tower
+# documents (state/tickets.0003.json, 0002, 0010) and written down by hand; the
+# reader's code is not read. Ticket 0003 is at attempt 2 (PR 3): attempt 1 was
+# sent back by a sast NO-GO (secrets GO, two new findings), the current ci is
+# a test NO-GO (secrets GO, two FAILED lines). Ticket 0002's one rework entry
+# was recorded with no gate lines, so its details are withheld. Ticket 0010's
+# rework entry (the mutation NO-GO) ran secrets GO, so it is shown.
+h14() {
+  jq -e --slurpfile s3 "$stub/state/tickets.0003.json" --slurpfile s2 "$stub/state/tickets.0002.json" \
+    --slurpfile s10 "$stub/state/tickets.0010.json" --slurpfile rel "$stub/releases.jsonl" --slurpfile cur "$stub/release.json" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+t03='(.tickets[] | select(.id == "0003"))'
+t02='(.tickets[] | select(.id == "0002"))'
+hand_14() {
+  h14 "the schema is 1.5 (1.4's fields are kept)" '.schema == "lights-out/logbook/1.5"' "$1" || return 1
+  h14 "0003 is at attempt 2, PR 3, with two ci runs and one rework in its history" \
+    "$t03 | .attempt == 2 and .pr.number == 3 and ([.history[] | select(.step == \"ci\")] | length) == 2
+      and ([.history[] | select(.step == \"rework\")] | length) == 1" "$1" || return 1
+  h14 "0003's ci.why: attempt 2, gates, the test gate, the line verbatim, the two FAILED lines, sast null" \
+    "$t03 | .ci.why == {attempt: 2, judge: \"gates\", gate: \"test\", line: \"NO-GO: gates — test: NO-GO: test — 2 failed\",
+        details: [\"FAILED tests/a.py::one\", \"FAILED tests/a.py::two\"], sast: null}
+      and .ci.why.line == \$s3[0].ci.line and .ci.details == \$s3[0].ci.details" "$1" || return 1
+  h14 "0003's rework[0].why: attempt 1, gates, the sast gate, details shown, the two findings {rule, file, line}" \
+    "$t03 | .rework | length == 1 and (.[0].why == {attempt: 1, judge: \"gates\", gate: \"sast\", line: \$s3[0].rework[0].line,
+        details: [\"new: B602 README.md:7\", \"new: B105 README.md:9\"],
+        sast: [{rule: \"B602\", file: \"README.md\", line: 7}, {rule: \"B105\", file: \"README.md\", line: 9}]})
+      and .[0].details == [\"new: B602 README.md:7\", \"new: B105 README.md:9\"]" "$1" || return 1
+  h14 "0003's ci.gates: risk, secrets, test-weakening, deps, sast GO, then test NO-GO; rework[0].gates ends on the sast NO-GO, each line verbatim" \
+    "$t03 | (.ci.gates | map(.gate + \":\" + .verdict)) == [\"risk:GO\", \"secrets:GO\", \"test-weakening:GO\", \"deps:GO\", \"sast:GO\", \"test:NO-GO\"]
+      and (.ci.gates | map(.line)) == \$s3[0].ci.lines
+      and (.rework[0].gates | map(.gate + \":\" + .verdict)) == [\"risk:GO\", \"secrets:GO\", \"test-weakening:GO\", \"deps:GO\", \"sast:NO-GO\"]
+      and (.rework[0].gates | map(.line)) == \$s3[0].rework[0].lines" "$1" || return 1
+  h14 "0003's timeline: gates rows for attempts 1 and 2, a rework row for attempt 2, and one gate row per shown detail" \
+    "$t03 | ([.timeline[] | select(.phase == \"gates\") | .attempt]) == [1, 2]
+      and ([.timeline[] | select(.phase == \"rework\") | .attempt]) == [2]
+      and ([.timeline[] | select(.phase == \"gate\") | .line]) == [\"FAILED tests/a.py::one\", \"FAILED tests/a.py::two\"]" "$1" || return 1
+  h14 "0002's rework[0].why is withheld with the exact error for attempt 1, its 1.3 details are null, and the text is nowhere in the entry" \
+    "$t02 | .rework | length == 1 and (.[0].why == {attempt: 1, judge: \"gates\", gate: null, line: \$s2[0].rework[0].line,
+        details: {ok: false, error: \"withheld: the secrets gate did not say GO on attempt 1\"}, sast: null})
+      and .[0].details == null and (.[0] | tojson | contains(\"test_join\") | not)" "$1" || return 1
+  h14 "0010's rework[0].why is shown: the mutation gate, the survivor, sast null" \
+    "$t10 | .rework[0].why == {attempt: 1, judge: \"gates\", gate: \"mutation\", line: \$s10[0].rework[0].line,
+        details: \$s10[0].rework[0].details, sast: null} and .rework[0].details == \$s10[0].rework[0].details" "$1" || return 1
+  h14 "every ci that said GO has a ci.why that is null (the key is there), and a NO-GO has one that is not" \
+    "[.tickets[] | .ci | select(type == \"object\")] | length > 0
+      and all(if .verdict == \"GO\" then (has(\"why\") and .why == null) else (.why | type) == \"object\" end)" "$1" || return 1
+  h14 "every rework entry of every ticket has a why of its own attempt, judge and line" \
+    "[.tickets[] | (.rework | select(type == \"array\") | .[])] | length > 0 and all(.why.attempt == .attempt and .why.judge == .judge and .why.line == .line)" "$1" || return 1
+  # docs/adr/0079 §1: an answer carries reason, brief_sha256 and brief_author
+  # beside by and via. Carol's 0.4.0-c NO-GO is the one answer line of the stub
+  # that holds them, and the check reads its three values from that line; the
+  # other answers say none, as null, the keys there.
+  h14 "every answer of releases[] has the keys reason, brief_sha256 and brief_author" \
+    "[.releases[] | .answer | select(. != null)] | length == 3 and all(has(\"reason\") and has(\"brief_sha256\") and has(\"brief_author\"))" "$1" || return 1
+  h14 "carol's 0.4.0-c NO-GO carries the reason, brief_sha256 and brief_author of the stub's answer line, by and via with them" \
+    "([\$rel[] | select(.kind == \"answer\" and .version == \"0.4.0-c\")][0]) as \$l
+      | (\$l.reason == \"the error budget is spent for the week\" and (\$l.brief_sha256 | type) == \"string\"
+        and (.releases[] | select(.version == \"0.4.0-c\") | .answer)
+          == {answer: \"NO-GO\", at: \$l.at, by: \"carol\", via: \"cli\", reason: \"the error budget is spent for the week\",
+              brief_sha256: \$l.brief_sha256, brief_author: \"the release role, stub-harness\"})" "$1" || return 1
+  h14 "the answers that say no reason, no brief sha and no author say null for each" \
+    "[.releases[] | select(.version == \"0.2.5-n\" or .version == \"0.3.0-b\") | .answer]
+      | length == 2 and all(.reason == null and .brief_sha256 == null and .brief_author == null)" "$1" || return 1
+  h14 "no release without an answer has one made up" \
+    "[.releases[] | select(.version == \"0.2.0-a\" or .version == \"0.5.0-d\") | .answer] == [null, null]" "$1" || return 1
+  h14 "each sign-off row's reason is its release's answer's reason (a key, null here)" \
+    ". as \$b | [.tickets[] | . as \$t | .timeline[] | select(.phase == \"sign-off\")
+      | has(\"reason\") and .reason == (\$b.releases[] | select(.version == \$t.release.version) | .answer.reason)]
+      | length == 2 and all" "$1" || return 1
+  h14 "a ticket's sign-off rows are exactly the two the stub's answers give it" \
+    "[.tickets[] | select(any(.timeline[]; .phase == \"sign-off\")) | .id] == [\"0002\", \"0010\"]" "$1" || return 1
+  # docs/adr/0080 §1, §4: stage times and numbers as structures, a rolled-back
+  # release's reason, the canary rows' judged_at and slo. The values are the stub's
+  # first log line (0.2.0-a, rolled back at 5%) and release.json (0.5.0-d, held),
+  # written out by hand here; the stages of the older log lines have none.
+  h14 "0.2.0-a's reason is the stub's, and its stage's started_at, judged_at and slo are the stub's, by hand" \
+    "(\$rel[0].record) as \$r | (.releases[] | select(.version == \"0.2.0-a\"))
+      | (.reason == \"5%: error_rate 1.000\" and .reason == \$r.reason
+        and .stages[0].started_at == \"2026-11-01T09:27:30Z\" and .stages[0].judged_at == \"2026-11-01T09:28:31Z\"
+        and .stages[0].started_at == \$r.stages[0].started_at and .stages[0].judged_at == \$r.stages[0].judged_at
+        and .stages[0].slo == [{query: \"error_rate\", canary: 1.0, stable: 0.0, delta: 1.0, max_delta: 0.01}]
+        and .stages[0].slo == \$r.stages[0].slo)" "$1" || return 1
+  h14 "no other release has a reason (null, or no key where the source has none)" \
+    "[.releases[] | select(.version != \"0.2.0-a\") | .reason] | length == 4 and all(. == null)" "$1" || return 1
+  h14 "the releases whose log lines predate the fields have no stage times and no slo" \
+    "[.releases[] | select(.version == \"0.2.5-n\" or .version == \"0.3.0-b\" or .version == \"0.4.0-c\") | .stages[]]
+      | length == 5 and all(.started_at == null and .judged_at == null and .slo == null)" "$1" || return 1
+  h14 "0.5.0-d, from release.json, has its two stages' times and slo as the stub's, by hand" \
+    "(.releases[] | select(.version == \"0.5.0-d\") | .stages) as \$s | \$cur[0].stages as \$c
+      | (\$s | length) == 2 and \$s[0].started_at == \"2026-11-04T10:00:00Z\" and \$s[0].judged_at == \"2026-11-04T10:01:02Z\"
+        and \$s[1].started_at == \"2026-11-04T10:01:05Z\" and \$s[1].judged_at == \"2026-11-04T10:02:07Z\"
+        and \$s[1].slo == [{query: \"error_rate\", canary: 0.001, stable: 0.0, delta: 0.001, max_delta: 0.01}]
+        and all(range(0; 2); \$s[.].slo == \$c[.].slo and \$s[.].judged_at == \$c[.].judged_at)" "$1" || return 1
+  h14 "launch.record is the stub's record as written: its stages' times and slo, reason null, no running" \
+    ".launch.record as \$l | \$cur[0] as \$c
+      | (\$l | has(\"reason\") and .reason == null and (has(\"running\") | not))
+        and (\$l.stages | length) == 2
+        and all(range(0; 2); \$l.stages[.].started_at == \$c.stages[.].started_at and \$l.stages[.].judged_at == \$c.stages[.].judged_at
+          and \$l.stages[.].slo == \$c.stages[.].slo and \$l.stages[.].slo[0].max_delta == 0.01)" "$1" || return 1
+  h14 "ticket 0001's canary row is at the stage's judged_at and carries the stage's slo" \
+    "(.tickets[] | select(.id == \"0001\") | [.timeline[] | select(.phase == \"canary\")]) as \$c
+      | (\$c | length) == 1 and \$c[0].at == \"2026-11-01T09:28:31Z\" and \$c[0].at == \$rel[0].record.stages[0].judged_at
+        and \$c[0].slo == [{query: \"error_rate\", canary: 1.0, stable: 0.0, delta: 1.0, max_delta: 0.01}]
+        and \$c[0].slo == \$rel[0].record.stages[0].slo" "$1" || return 1
+  h14 "the canary rows of releases with no judged_at keep the release's at and have no slo" \
+    "[.tickets[] | select(.id != \"0001\") | . as \$t | .timeline[] | select(.phase == \"canary\")
+      | (.slo == null) and .at == (\$rel[] | select(.kind == \"release\" and .ticket == \$t.id) | .at)]
+      | length == 4 and all" "$1" || return 1
+}
+bad=$(hand_14 "$root/out1.json") || nogo "the 1.4 fields over the stub sources: $bad" \
+  "$(jq -c "{t3: ($t03 | {attempt, ci_why: .ci.why, rework_why: [.rework[].why]}), t2: ($t02 | [.rework[].why])}" "$root/out1.json" 2>&1)"
+plant14() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_14 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.4 fields accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+plant14 "the schema 1.3" '.schema = "lights-out/logbook/1.3"'
+plant14 "0003's attempt null" "$(tix 0003 '.attempt = null')"
+plant14 "0003's ci.why gone" "$(tix 0003 '.ci.why = null')"
+plant14 "0003's ci.why gate changed" "$(tix 0003 '.ci.why.gate = "tests"')"
+plant14 "0003's ci.why attempt changed" "$(tix 0003 '.ci.why.attempt = 1')"
+plant14 "0003's ci.why judge changed" "$(tix 0003 '.ci.why.judge = "review"')"
+plant14 "0003's ci.why line trimmed" "$(tix 0003 '.ci.why.line = "NO-GO: test — 2 failed"')"
+plant14 "0003's ci.why details cut to one" "$(tix 0003 '.ci.why.details |= .[0:1]')"
+plant14 "0003's ci.why details withheld" "$(tix 0003 '.ci.why.details = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 2"}')"
+plant14 "0003's ci.why with a sast list" "$(tix 0003 '.ci.why.sast = []')"
+plant14 "0003's rework[0].why gone" "$(tix 0003 '.rework[0].why = null')"
+plant14 "0003's rework[0].why gate changed" "$(tix 0003 '.rework[0].why.gate = "test"')"
+plant14 "0003's rework[0].why sast finding's line changed" "$(tix 0003 '.rework[0].why.sast[1].line = 10')"
+plant14 "0003's rework[0].why sast finding dropped" "$(tix 0003 '.rework[0].why.sast |= .[0:1]')"
+plant14 "0003's rework[0].why sast null" "$(tix 0003 '.rework[0].why.sast = null')"
+plant14 "0003's rework[0].why sast withheld" "$(tix 0003 '.rework[0].why.sast = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 1"}')"
+plant14 "0003's rework[0].why details withheld" "$(tix 0003 '.rework[0].why.details = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 1"}')"
+plant14 "0003's rework[0] 1.3 details null" "$(tix 0003 '.rework[0].details = null')"
+plant14 "0003's timeline with no gate rows" "$(tix 0003 '.timeline |= map(select(.phase != "gate"))')"
+plant14 "0002's details shown" "$(tix 0002 '.rework[0].why.details = ["FAILED tests/test_w.py::test_join"]')"
+plant14 "0002's withheld error for another attempt" "$(tix 0002 '.rework[0].why.details.error = "withheld: the secrets gate did not say GO on attempt 2"')"
+plant14 "0002's withheld error reworded" "$(tix 0002 '.rework[0].why.details.error = "withheld"')"
+plant14 "0002's 1.3 details still shown" "$(tix 0002 '.rework[0].details = ["FAILED tests/test_w.py::test_join"]')"
+plant14 "0002's why gone" "$(tix 0002 '.rework[0].why = null')"
+plant14 "0010's rework why withheld" "$(tix 0010 '.rework[0].why.details = {ok: false, error: "withheld: the secrets gate did not say GO on attempt 1"}')"
+plant14 "0010's rework why gate changed" "$(tix 0010 '.rework[0].why.gate = "test"')"
+plant14 "0010's rework why gone" "$(tix 0010 'del(.rework[0].why)')"
+plant14 "a GO ci with a why" "$(tix 0010 '.ci.why = {attempt: 2, judge: "gates", gate: null, line: "GO: gates", details: [], sast: null}')"
+plant14 "a GO ci with no why key" "$(tix 0010 'del(.ci.why)')"
+plant14 "a rework why of another attempt" "$(tix 0010 '.rework[0].why.attempt = 2')"
+rel14() { printf '.releases |= map(if .version == "%s" then %s else . end)' "$1" "$2"; }
+plant14 "carol's reason changed" "$(rel14 0.4.0-c '.answer.reason = "the budget is fine"')"
+plant14 "carol's reason null" "$(rel14 0.4.0-c '.answer.reason = null')"
+plant14 "carol's brief_sha256 null" "$(rel14 0.4.0-c '.answer.brief_sha256 = null')"
+plant14 "carol's brief_sha256 another" "$(rel14 0.4.0-c '.answer.brief_sha256 = "0000"')"
+plant14 "carol's brief_author null" "$(rel14 0.4.0-c '.answer.brief_author = null')"
+plant14 "carol's brief_author dropped" "$(rel14 0.4.0-c 'del(.answer.brief_author)')"
+plant14 "carol's reason key dropped" "$(rel14 0.4.0-c 'del(.answer.reason)')"
+plant14 "a reason made up for bob's GO" "$(rel14 0.2.5-n '.answer.reason = "fine"')"
+plant14 "a brief sha made up for alice's GO" "$(rel14 0.3.0-b '.answer.brief_sha256 = "ab"')"
+plant14 "a brief author made up for bob's GO" "$(rel14 0.2.5-n '.answer.brief_author = "bob"')"
+plant14 "an answer made up for an unanswered release" "$(rel14 0.5.0-d '.answer = {answer: "GO", at: "2026-11-04T00:00:00Z", by: "x", via: "cli", reason: null, brief_sha256: null, brief_author: null}')"
+plant14 "0002's sign-off row with a reason" "$(tix 0002 '(.timeline[] | select(.phase == "sign-off") | .reason) = "fine"')"
+plant14 "0010's sign-off row with no reason key" "$(tix 0010 '.timeline |= map(if .phase == "sign-off" then del(.reason) else . end)')"
+plant14 "0002's sign-off row dropped" "$(tix 0002 '.timeline |= map(select(.phase != "sign-off"))')"
+# docs/adr/0080 §1, §4: the stage times, the numbers and the reason, each one planted wrong.
+plant14 "0.2.0-a's reason changed" "$(rel14 0.2.0-a '.reason = "5%: latency"')"
+plant14 "0.2.0-a's reason null" "$(rel14 0.2.0-a '.reason = null')"
+plant14 "0.2.0-a's reason dropped" "$(rel14 0.2.0-a 'del(.reason)')"
+plant14 "a reason made up for 0.3.0-b" "$(rel14 0.3.0-b '.reason = "5%: error_rate 1.000"')"
+plant14 "0.2.0-a's stage started_at changed" "$(rel14 0.2.0-a '.stages[0].started_at = "2026-11-01T09:27:31Z"')"
+plant14 "0.2.0-a's stage judged_at null" "$(rel14 0.2.0-a '.stages[0].judged_at = null')"
+plant14 "0.2.0-a's stage slo delta changed" "$(rel14 0.2.0-a '.stages[0].slo[0].delta = 0.5')"
+plant14 "0.2.0-a's stage slo max_delta changed" "$(rel14 0.2.0-a '.stages[0].slo[0].max_delta = 0.05')"
+plant14 "0.2.0-a's stage slo gone" "$(rel14 0.2.0-a 'del(.stages[0].slo)')"
+plant14 "a slo made up for 0.3.0-b's stage" "$(rel14 0.3.0-b '.stages[0].slo = [{query: "error_rate", canary: 0.0, stable: 0.0, delta: 0.0, max_delta: 0.01}]')"
+plant14 "a judged_at made up for 0.4.0-c's stage" "$(rel14 0.4.0-c '.stages[0].judged_at = "2026-11-03T12:00:00Z"')"
+plant14 "0.5.0-d's second stage judged_at changed" "$(rel14 0.5.0-d '.stages[1].judged_at = "2026-11-04T10:02:08Z"')"
+plant14 "0.5.0-d's first stage slo gone" "$(rel14 0.5.0-d '.stages[0].slo = []')"
+plant14 "launch.record's stage slo gone" '.launch.record.stages[1].slo = null'
+plant14 "launch.record's stage judged_at changed" '.launch.record.stages[0].judged_at = "2026-11-04T10:01:03Z"'
+plant14 "launch.record's started_at dropped" 'del(.launch.record.stages[0].started_at)'
+plant14 "launch.record with a reason" '.launch.record.reason = "5%: error_rate 1.000"'
+plant14 "launch.record with no reason key" 'del(.launch.record.reason)'
+plant14 "launch.record with a running stage" '.launch.record.running = {pct: 25, started_at: "2026-11-04T10:01:05Z", judge_after_s: 60}'
+plant14 "0001's canary row with its release's at" "$(tix 0001 '(.timeline[] | select(.phase == "canary") | .at) = "2026-11-01T09:29:00Z"')"
+plant14 "0001's canary row with no slo" "$(tix 0001 '(.timeline[] | select(.phase == "canary") | .slo) = null')"
+plant14 "0001's canary row with another delta" "$(tix 0001 '(.timeline[] | select(.phase == "canary") | .slo[0].delta) = 0.0')"
+plant14 "0002's canary row with a slo made up" "$(tix 0002 '(.timeline[] | select(.phase == "canary") | .slo) = [{query: "error_rate", canary: 0.0, stable: 0.0, delta: 0.0, max_delta: 0.01}]')"
+plant14 "0002's canary row at another time" "$(tix 0002 '(.timeline[] | select(.phase == "canary") | .at) = "2026-11-02T10:00:00Z"')"
+
+# The 1.5 fields (docs/adr/0083 and 0082, amendments of 2026-11-13), worked out
+# from the stub's tower documents and release log and written down by hand; the
+# reader's code is not read. The ledger: 0003's assign ($0.825, 300 s,
+# 2026-11-03) and rework ($0.3375, 120 s, 2026-11-03), 0010's replayed assign
+# ($0, 48 s, not counted as agents' time) and its review at a model with no price
+# (unknown, 30 s, 2026-11-02). The stub's policy/rework.env sets
+# SPEND_BUDGET_TICKET_USD=1.00 and no day limit. The window: 30 days ending at
+# 0009's last history entry, 2026-11-07T08:10:07Z, the record's last event.
+h15() {
+  jq -e --slurpfile s7 "$stub/state/tickets.0007.json" "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+# shellcheck disable=SC2016 # $t, $s7 and the dollar amounts are jq's and the record's, not the shell's
+hand_15() {
+  h15 "the schema is 1.5" '.schema == "lights-out/logbook/1.5"' "$1" || return 1
+  h15 "spend per ticket: 0003 \$1.1625 over 2 runs, 420 s of agents, 1,200 s elapsed; 0010 \$0 over 2, 1 unknown, 30 s, 5,400 s; the others 0 runs with their elapsed time" \
+    '.spend.tickets as $t | ($t | keys) == ["0001","0002","0003","0004","0005","0007","0008","0009","0010"]
+      and ($t["0003"] | .runs == 2 and .unknown == 0 and .agent_s == 420 and .elapsed_s == 1200 and ((.cost_usd - 1.1625) | fabs) < 0.000001)
+      and ($t["0010"] | .runs == 2 and .unknown == 1 and .agent_s == 30 and .elapsed_s == 5400 and .cost_usd == 0)
+      and ([$t["0001","0002","0004","0005","0007","0008","0009"] | .elapsed_s] == [1800, 7200, 300, 60, 3000, 2400, 607])
+      and ([$t["0001","0002","0004","0005","0007","0008","0009"] | .runs + .unknown + .agent_s + .cost_usd] | all(. == 0))' "$1" || return 1
+  h15 "spend per role: dev-worker \$1.1625, 3 runs, 420 s; test-reviewer \$0, 1 run, 1 unknown, 30 s" \
+    '.spend.roles | keys == ["dev-worker", "test-reviewer"]
+      and (.["dev-worker"] | .runs == 3 and .unknown == 0 and .agent_s == 420 and ((.cost_usd - 1.1625) | fabs) < 0.000001)
+      and (.["test-reviewer"] | .runs == 1 and .unknown == 1 and .agent_s == 30 and .cost_usd == 0)' "$1" || return 1
+  h15 "spend per day and in all: 2026-11-02 \$0, 2 runs, 1 unknown; 2026-11-03 \$1.1625, 2 runs; \$1.1625, 4 runs, 1 unknown" \
+    '.spend | (.days | keys) == ["2026-11-02", "2026-11-03"]
+      and (.days["2026-11-02"] | .runs == 2 and .unknown == 1 and .cost_usd == 0)
+      and (.days["2026-11-03"] | .runs == 2 and .unknown == 0 and ((.cost_usd - 1.1625) | fabs) < 0.000001)
+      and (.total | .runs == 4 and .unknown == 1 and ((.cost_usd - 1.1625) | fabs) < 0.000001)' "$1" || return 1
+  h15 "spend's summary, limits and budget line, as ./go spend words them" \
+    '.spend | .summary == "9 tickets, 4 runs, $1.16 known, 1 of cost unknown"
+      and .limits == {SPEND_BUDGET_TICKET_USD: 1, SPEND_BUDGET_DAY_USD: null}
+      and .lines[-1] == "budget: SPEND_BUDGET_TICKET_USD=$1.00, SPEND_BUDGET_DAY_USD no limit"
+      and (.lines | index("ticket 0003: $1.16 over 2 run(s); agents 0h07m00s, elapsed 0h20m00s")) != null
+      and (.lines | index("ticket 0010: $0.00 over 2 run(s), 1 of cost unknown; agents 0h00m30s, elapsed 1h30m00s")) != null
+      and (.lines | index("role dev-worker: $1.16 over 3 run(s); 0h07m00s")) != null
+      and (.lines | index("day 2026-11-02: $0.00 over 2 run(s), 1 of cost unknown")) != null
+      and ([.lines[] | split(" ")[0]] == ["ticket","ticket","ticket","ticket","ticket","ticket","ticket","ticket","ticket","role","role","day","day","budget:"])' "$1" || return 1
+  h15 "0007 stopped by the cap: stop cap, its last rework line and judge; no other ticket has a stop" \
+    '(.tickets[] | select(.id == "0007") | .outcome) == {verdict: "needs-human", judge: $s7[0].rework[-1].judge, line: $s7[0].rework[-1].line, stop: "cap"}
+      and ([.tickets[] | select(.state != "needs-human") | .outcome | has("stop")] | any | not)' "$1" || return 1
+  h15 "dora's window: 30 days ending at the record's last event" \
+    '.dora | .schema == "dora/1" and .window_days == 30 and .from == "2026-10-08T08:10:07Z" and .to == "2026-11-07T08:10:07Z"' "$1" || return 1
+  h15 "dora's measures: 2 deployments; lead time 7,650 s over 2; 2 failed of 4 decided; recovery 90 s over 1, 1 unmeasured" \
+    '.dora.measures | (.deployment_frequency | .measured and .count == 2 and ((.per_day - (2 / 30)) | fabs) < 0.000001)
+      and .lead_time == {measured: true, median_s: 7650, n: 2, without_ticket: 0}
+      and .change_fail_rate == {measured: true, rate: 0.5, failed: 2, decided: 4, pending: 0}
+      and .recovery_time == {measured: true, median_s: 90, n: 1, unmeasured: 1}' "$1" || return 1
+  h15 "dora's lines: the window line, then one per measure in order, as ./go dora words them" \
+    '.dora.lines == ["window: 30 days, 2026-10-08T08:10:07Z to 2026-11-07T08:10:07Z",
+      "deployment frequency: 2 promoted to 100%, 0.067 per day",
+      "lead time: median 2.1 h from request to 100% over 2 release(s), 0 without a ticket",
+      "change fail rate: 50%: 2 of 4 decided release(s) rolled back, 0 pending",
+      "recovery time: median 2 min from the failing stage'"'"'s start to the rollback over 1 release(s), 1 unmeasured"]' "$1" || return 1
+}
+bad=$(hand_15 "$root/out1.json") || nogo "the 1.5 fields over the stub sources: $bad" \
+  "$(jq -c '{spend: (.spend | del(.tickets)), dora}' "$root/out1.json" 2>&1)"
+plant15() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_15 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.5 fields accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+plant15 "the schema 1.4" '.schema = "lights-out/logbook/1.4"'
+plant15 "0003's cost changed" '.spend.tickets["0003"].cost_usd = 1.16'
+plant15 "0010's replayed run counted as agents' time" '.spend.tickets["0010"].agent_s = 78'
+plant15 "0010's unknown run counted as known" '.spend.tickets["0010"].unknown = 0'
+plant15 "a ticket dropped from spend" '.spend.tickets |= del(.["0005"])'
+plant15 "0009's elapsed changed" '.spend.tickets["0009"].elapsed_s = 600'
+plant15 "a role renamed" '.spend.roles |= with_entries(if .key == "test-reviewer" then .key = "reviewer" else . end)'
+plant15 "a day's runs changed" '.spend.days["2026-11-02"].runs = 1'
+plant15 "the total's unknown dropped" '.spend.total.unknown = 0'
+# shellcheck disable=SC2016 # $t, $s7 and the dollar amounts are jq's and the record's, not the shell's
+plant15 "the summary reworded" '.spend.summary = "9 tickets, 4 runs, $1.16 known"'
+plant15 "a day limit made up" '.spend.limits.SPEND_BUDGET_DAY_USD = 5'
+plant15 "the budget line not last" '.spend.lines |= ([.[-1]] + .[0:-1])'
+# shellcheck disable=SC2016 # $t, $s7 and the dollar amounts are jq's and the record's, not the shell's
+plant15 "a ticket line reworded" '.spend.lines |= map(if startswith("ticket 0003") then "ticket 0003: $1.16" else . end)'
+plant15 "0007 with no stop" "$(tix 0007 'del(.outcome.stop)')"
+plant15 "0007 stopped by the budget" "$(tix 0007 '.outcome.stop = "budget"')"
+plant15 "0007's line not its last rework's" "$(tix 0007 '.outcome.line = "spend budget: x"')"
+plant15 "a stop on a ticket that is not at needs-human" "$(tix 0003 '.outcome.stop = "cap"')"
+plant15 "dora's window ending at a clock" '.dora.to = "2026-11-13T00:00:00Z"'
+plant15 "dora's window of 7 days" '.dora.window_days = 7'
+plant15 "a third deployment" '.dora.measures.deployment_frequency.count = 3'
+plant15 "the mean lead time" '.dora.measures.lead_time.median_s = 7651'
+plant15 "0.4.0-c counted as a success" '.dora.measures.change_fail_rate |= (.failed = 1 | .rate = 0.25)'
+plant15 "0.4.0-c's recovery estimated" '.dora.measures.recovery_time |= (.n = 2 | .unmeasured = 0)'
+plant15 "dora's lines without the window" '.dora.lines |= .[1:]'
+plant15 "dora's lines reformatted" '.dora.lines[2] = "lead time: median 7650 s"'
+
+# The budget's reason on the card (docs/adr/0083, amendment §4): 0007's document
+# with a budget line, read again.
+cp "$root/state/tickets.0007.json" "$tmp/0007.keep"
+bline="spend budget: this ticket spent \$4.20, at or over SPEND_BUDGET_TICKET_USD=\$4.00; the next attempt is not launched"
+jq --arg l "$bline" '.budget = {line: $l}' "$tmp/0007.keep" > "$root/state/tickets.0007.json"
+run_reader LOGBOOK_FILE=out7.json
+jq -e --arg l "$bline" --slurpfile s7 "$tmp/0007.keep" '(.tickets[] | select(.id == "0007") | .outcome)
+    == {verdict: "needs-human", judge: $s7[0].rework[-1].judge, line: $l, stop: "budget"}' "$root/out7.json" >/dev/null \
+  || nogo "a needs-human ticket whose document carries budget.line does not say the budget stopped it, with that line" \
+    "$(jq -c '.tickets[] | select(.id == "0007") | .outcome' "$root/out7.json" 2>&1)"
+cp "$tmp/0007.keep" "$root/state/tickets.0007.json"
+
 # The kanban (docs/adr/0055 §7): every card's column is its ticket's tower
 # state, and every ticket is on exactly one card. Then the tower moves a
 # ticket, and its card moves with it, and nothing else does.
@@ -1266,12 +1662,20 @@ jq -c '. + {rejected: {at: "2026-11-04T10:00:00Z", by: "bob", via: "cli"}}' "$ro
 var_case "a promoted record" '
   .launch.pressable == false and .launch.preparable == false
   and .launch.disabled_reason == "release 0.5.0-d was already answered GO by bob via cli"
-  and (.releases[-1] | .from == "release.json" and .answer == {answer: "GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z"})' \
+  and (.releases[-1] | .from == "release.json" and .answer == {answer: "GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z", reason: null, brief_sha256: null, brief_author: null})' \
   RELEASE_RECORD=release.promoted.json
+# docs/adr/0079 §1: a record that holds them, and the logbook says so in the
+# release's answer and in launch.record.
+jq -c '. + {promoted: {weight: 100, at: "2026-11-04T10:00:00Z", by: "bob", via: "console", reason: "numbers hold", brief_sha256: "ab12", brief_author: "the release role"}}' "$root/release.json" > "$root/release.promoted-why.json"
+var_case "a promoted record with its reason" '
+  .launch.record.promoted.reason == "numbers hold" and .launch.record.promoted.brief_sha256 == "ab12"
+  and .launch.record.promoted.brief_author == "the release role"
+  and (.releases[-1].answer == {answer: "GO", by: "bob", via: "console", at: "2026-11-04T10:00:00Z", reason: "numbers hold", brief_sha256: "ab12", brief_author: "the release role"})' \
+  RELEASE_RECORD=release.promoted-why.json
 var_case "a rejected record" '
   .launch.pressable == false
   and .launch.disabled_reason == "release 0.5.0-d was already answered NO-GO by bob via cli"
-  and .releases[-1].answer == {answer: "NO-GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z"}' \
+  and .releases[-1].answer == {answer: "NO-GO", by: "bob", via: "cli", at: "2026-11-04T10:00:00Z", reason: null, brief_sha256: null, brief_author: null}' \
   RELEASE_RECORD=release.rejected.json
 
 # The plane runs another canary: promote's own sentence.
@@ -1319,6 +1723,28 @@ var_case "a rolled-back record" '
   (.launch.pressable == false
   and (.launch.disabled_reason | startswith("release 0.5.0-d is rolled-back")))
   and (.releases[-1] | .from == "release.json" and .verdict == "rolled-back")' RELEASE_RECORD=release.rb.json
+# docs/adr/0080 §2, §4: a record in progress that names its running stage is
+# in launch.record as written, `running` verbatim.
+jq -c '.verdict = "in-progress" | .held_at = null | del(.reason) | .stages |= .[0:1]
+  | .running = {pct: 25, started_at: "2026-11-04T10:01:05Z", judge_after_s: 60}' "$root/release.json" > "$root/release.running.json"
+running_expr='.launch.record.running == {pct: 25, started_at: "2026-11-04T10:01:05Z", judge_after_s: 60}
+  and .launch.record.verdict == "in-progress" and (.launch.record.stages | length) == 1
+  and .launch.record.stages[0].slo[0].max_delta == 0.01 and .launch.pressable == false'
+var_case "an in-progress record with its running stage" "$running_expr" RELEASE_RECORD=release.running.json
+# The check refuses a logbook that dropped or changed the running stage.
+for bad in 'del(.launch.record.running)' '.launch.record.running.pct = 5' '.launch.record.running.started_at = "2026-11-04T10:00:00Z"' \
+  '.launch.record.running.judge_after_s = 30' '.launch.record.running.judge_after_s = "60"' '.launch.record.running = null'; do
+  jq "$bad" "$root/var.json" > "$tmp/var-bad.json"
+  if jq -e "$running_expr" "$tmp/var-bad.json" >/dev/null 2>&1; then
+    nogo "the in-progress hand check accepts a logbook with '$bad'; a gate that cannot fail is not a gate"
+  fi
+done
+# A rolled-back record keeps its reason in launch.record and in releases[-1].
+jq -c '.verdict = "rolled-back" | .held_at = null | .reason = "25%: error_rate 0.050"' "$root/release.json" > "$root/release.rbwhy.json"
+var_case "a rolled-back record with its reason" '
+  .launch.record.reason == "25%: error_rate 0.050" and (.launch.record | has("running") | not)
+  and (.releases[-1] | .from == "release.json" and .reason == "25%: error_rate 0.050")' RELEASE_RECORD=release.rbwhy.json
+
 # A record the last log entry already is: no second entry.
 jq -c 'select(.kind == "release" and .record.version == "0.4.0-c") | .record' "$root/releases.jsonl" > "$root/release.same.json"
 var_case "a record equal to the last log entry" '(.releases | length) == 4 and all(.releases[]; .from == "releases.jsonl")' \
@@ -1448,7 +1874,17 @@ var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009")
 cp "$tmp/0009.keep" "$root/state/tickets.0009.json"
 
 # --- b. the golden against every committed schema of its major ---------------
+for n in 0 1 2 3 4 5; do
+  [ -f "core/logbook/1.$n.schema.json" ] || nogo "core/logbook/1.$n.schema.json not found: the golden validates against 1.0 to 1.5"
+done
 chk valid "$golden" >"$tmp/chk.out" || nogo "the golden does not validate" "$(cat "$tmp/chk.out")"
+# The old-logbook fixtures stay valid against their own major's schemas, untouched.
+chk valid "$golden14" >"$tmp/chk.out" || nogo "golden-1.4.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+[ "$(jq -r .schema "$golden14")" = "lights-out/logbook/1.4" ] || nogo "golden-1.4.json is not a 1.4 logbook: the old fixture was changed"
+chk valid "$golden13" >"$tmp/chk.out" || nogo "golden-1.3.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+chk valid "$golden12" >"$tmp/chk.out" || nogo "golden-1.2.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+[ "$(jq -r .schema "$golden13")" = "lights-out/logbook/1.3" ] || nogo "golden-1.3.json is not a 1.3 logbook: the old fixture was changed"
+[ "$(jq -r .schema "$golden12")" = "lights-out/logbook/1.2" ] || nogo "golden-1.2.json is not a 1.2 logbook: the old fixture was changed"
 
 # --- c. the committed snapshot -----------------------------------------------
 if [ -f console/snapshot/logbook.json ]; then
@@ -1532,6 +1968,14 @@ base() { printf 'http://127.0.0.1:%s' "$port"; }
 # identity) in front of the call.
 press() {
   p_body=$(printf '{"answer":"%s","version":"%s","held_at":%s,"brief_sha256":"%s"}' "$1" "$2" "$3" "$4")
+  req -X POST -H 'Content-Type: application/json' -H "Origin: ${PO:-http://127.0.0.1:$port}" \
+    -H "${PH:-X-Noop: 1}" -d "$p_body" "$(base)/v1/go-for-launch"
+}
+
+# press_why ANSWER VERSION HELD_AT SHA EXTRA: the same POST, with EXTRA (raw
+# JSON members such as ',"reason":"x"', or nothing) added to the body.
+press_why() {
+  p_body=$(printf '{"answer":"%s","version":"%s","held_at":%s,"brief_sha256":"%s"%s}' "$1" "$2" "$3" "$4" "$5")
   req -X POST -H 'Content-Type: application/json' -H "Origin: ${PO:-http://127.0.0.1:$port}" \
     -H "${PH:-X-Noop: 1}" -d "$p_body" "$(base)/v1/go-for-launch"
 }
@@ -1651,7 +2095,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.3.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.5.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -1661,7 +2105,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.3.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.5.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"
@@ -1835,6 +2279,28 @@ press MAYBE 0.5.0-d 25 "$want_sha"
 req -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" -d '{"answer":"GO"}' "$(base)/v1/go-for-launch"
 [ "$code" = 400 ] || nogo "a POST without version, held_at and brief_sha256 answered $code, want 400"
 untouched "malformed bodies"
+# docs/adr/0079 §2: a NO-GO needs a reason (missing, empty, blank, null: 400,
+# nothing runs); a reason is a string, on a GO too.
+press_why NO-GO 0.5.0-d 25 "$want_sha" ''
+[ "$code" = 400 ] || nogo "a NO-GO with no reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with no reason"
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":""'
+[ "$code" = 400 ] || nogo "a NO-GO with an empty reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with an empty reason"
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":"   \t "'
+[ "$code" = 400 ] || nogo "a NO-GO with a blank reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with a blank reason"
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":null'
+[ "$code" = 400 ] || nogo "a NO-GO with a null reason answered $code, want 400" "$(cat "$body")"
+untouched "NO-GO with a null reason"
+for r in 7 true '["too slow"]' '{"text":"x"}'; do
+  press_why NO-GO 0.5.0-d 25 "$want_sha" ",\"reason\":$r"
+  [ "$code" = 400 ] || nogo "a NO-GO whose reason is $r answered $code, want 400" "$(cat "$body")"
+  untouched "NO-GO with a reason that is $r"
+  press_why GO 0.5.0-d 25 "$want_sha" ",\"reason\":$r"
+  [ "$code" = 400 ] || nogo "a GO whose reason is $r answered $code, want 400" "$(cat "$body")"
+  untouched "GO with a reason that is $r"
+done
 stop_console
 
 # --- e4. LIVE behind a proxy: the identity header ------------------------------
@@ -1891,13 +2357,39 @@ cp "$tmp/releases.held.jsonl" "$live/releases.jsonl"
 start_console "$live" "$tmp/live2.log" $(live_env) TMPDIR="$tmp/ctmp"
 first_read
 pressable_again
-press GO 0.5.0-d 25 "$want_sha"
+want_author=$(head -n 1 "$live/promote/brief.author" 2>/dev/null || true)
+# docs/adr/0079 §1, §2: a NO-GO with a reason runs promote; the record's
+# `rejected` and the log's answer line carry the reason, the brief's sha256
+# (and its author, null when the brief has none), via console.
+press_why NO-GO 0.5.0-d 25 "$want_sha" ',"reason":"  p99 is too close to the limit  "'
+[ "$code" = 200 ] || nogo "a NO-GO POST with a reason answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/live2.log")"
+jq -e '.line == "NO-GO: go-for-launch — human said NO-GO" and .exit == 1' "$body" >/dev/null \
+  || nogo "the answer to a NO-GO POST is not {line: 'NO-GO: go-for-launch — human said NO-GO', exit: 1}" "$(cat "$body")"
+[ "$(cat "$live/effects.log")" = "rollback" ] || nogo "the delivery stub saw '$(cat "$live/effects.log")' after the NO-GO, want exactly 'rollback'"
+jq -e --arg s "$want_sha" --arg a "$want_author" '.rejected.reason == "p99 is too close to the limit" and .rejected.via == "console"
+  and .rejected.brief_sha256 == $s and .rejected.brief_author == (if $a == "" then null else $a end) and (has("promoted") | not)' "$live/release.json" >/dev/null \
+  || nogo "the record after the NO-GO press does not hold its reason, the brief's sha256 and author, via console" "$(cat "$live/release.json")"
+tail -n 1 "$live/releases.jsonl" | jq -e --arg s "$want_sha" '.kind == "answer" and .answer == "NO-GO" and .via == "console"
+  and .reason == "p99 is too close to the limit" and .brief_sha256 == $s' >/dev/null \
+  || nogo "the release log's new line is not the console's NO-GO answer with its reason and brief sha" "$(tail -n 1 "$live/releases.jsonl")"
+# The held record again, for the GO.
+cp "$tmp/release.held.json" "$live/release.json"
+cp "$tmp/releases.held.jsonl" "$live/releases.jsonl"
+: > "$live/effects.log"
+sleep 3
+pressable_again
+press_why GO 0.5.0-d 25 "$want_sha" ',"reason":" numbers hold at 25% "'
 [ "$code" = 200 ] || nogo "a correct GO POST answered $code, want 200" "$(cat "$body")" "$(cat "$tmp/live2.log")"
 jq -e '.line == "GO: go-for-launch" and .exit == 0' "$body" >/dev/null \
   || nogo "the answer to a correct GO POST is not {line: 'GO: go-for-launch', exit: 0}" "$(cat "$body")"
 [ "$(cat "$live/effects.log")" = "shift 100" ] || nogo "the delivery stub saw '$(cat "$live/effects.log")', want exactly 'shift 100'"
 jq -e '.promoted.weight == 100 and .promoted.by == "unauthenticated" and .promoted.via == "console" and (.promoted.at | type == "string") and (has("rejected") | not)' "$live/release.json" >/dev/null \
   || nogo "the record after the press is not promoted by unauthenticated via console" "$(cat "$live/release.json")"
+jq -e --arg s "$want_sha" --arg a "$want_author" '.promoted.reason == "numbers hold at 25%" and .promoted.brief_sha256 == $s
+  and .promoted.brief_author == (if $a == "" then null else $a end)' "$live/release.json" >/dev/null \
+  || nogo "the record after the GO press does not hold its reason and the brief's sha256 and author" "$(cat "$live/release.json")"
+tail -n 1 "$live/releases.jsonl" | jq -e '.reason == "numbers hold at 25%"' >/dev/null \
+  || nogo "the release log's GO answer does not hold the reason" "$(tail -n 1 "$live/releases.jsonl")"
 [ "$(wc -l < "$live/releases.jsonl")" -eq "$(($(wc -l < "$tmp/releases.held.jsonl") + 1))" ] \
   || nogo "the release log did not gain exactly one line from the press"
 tail -n 1 "$live/releases.jsonl" | jq -e '.kind == "answer" and .version == "0.5.0-d" and .answer == "GO" and .by == "unauthenticated" and .via == "console"' >/dev/null \

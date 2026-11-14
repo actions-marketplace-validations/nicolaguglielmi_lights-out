@@ -56,3 +56,25 @@ jobs:
       - run: ./go harness-conformance CONFORMANCE_HARNESS=claude-code
         env:
           CONTAINER_ENGINE: podman
+
+  # docs/adr/0072 §3 on the reference engine: the same `./go demo-dast` as
+  # ci.yml's dast job, on rootless podman, for the cold pull of the scanner
+  # and the scans measured on both engines, five stable-against-itself runs
+  # as there.
+  dast-podman:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: |
+          podman --version
+          systemctl --user enable --now podman.socket || { nohup podman system service --time=0 >/tmp/podman-service.log 2>&1 & sleep 3; }
+      - run: ./go up
+        env:
+          CONTAINER_ENGINE: podman
+      - run: ./go demo-dast DAST_RUNS=5
+        env:
+          CONTAINER_ENGINE: podman

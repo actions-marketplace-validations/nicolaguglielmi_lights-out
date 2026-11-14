@@ -86,7 +86,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | Porta | Adapter | Note |
 |---|---|---|
 | `AgentHarness` | `replay`, `gemini-cli`, `claude-code`, `codex`, `antigravity-cli`, `antigravity-sdk`, `adk` | esegue un ruolo su un workspace e restituisce artefatti |
-| `CodeHost` | `gitea`, `github` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |
+| `CodeHost` | `gitea`, `github`, `gitlab` | branch, PR, commenti, merge, stato di un commit e attesa di quello stato (`await.sh`, ADR 0025 §5); `github` esiste da M21 (ADR 0043), solo per un repo attaccato |; `gitlab` da M32 (ADR 0058), provato dalla sua suite di conformità |
 | `Tracker` | `file`, `github-issues`, `linear` | il ticket è la sorgente del lavoro; `file` legge e scrive: `get.sh` e, da M22, `put.sh <titolo> <origine>` (corpo su stdin, idempotente sull'origine) |
 | `EventBus` | `spool`, `pubsub-emulator`, `pubsub` | `spool` (default a L0 e L1, ADR 0060): una coda in un file SQLite sotto `.crew/`; gli emulatori opt-in; `pubsub` stesso codice dell'emulatore, cambia l'endpoint |
 | `StateStore` | `sqlite`, `firestore-emulator`, `firestore` | stato del workflow, idempotenza; `sqlite` (default a L0 e L1, ADR 0060): un file sotto `.crew/` che sopravvive a `./go down` |
@@ -105,6 +105,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `artifact-registry`, `cloud-deploy`, `managed-prometheus`, flagd su Cloud Run | Registry, Delivery, Metrics, Flags | M8, track cloud (il percorso di rilascio su GCP) |
 | `pubsub`, `firestore`, `github-issues`, `cloud-workflows` | EventBus, StateStore, Tracker, Orchestrator | M10 (la tower gira su GCP) |
 | `github` | CodeHost | M21 (GitHub come code host, ADR 0043) |
+| `gitlab` | CodeHost | M32 (GitLab CE, ADR 0058) |
 | `grafana`, `cloud-monitoring` | Charts | M11 (console) |
 | `antigravity-sdk`, `linear`, `unleash` | AgentHarness, Tracker, Flags | da assegnare: ognuno con un ADR e la sua suite di conformità |
 | `argo-rollouts` | Delivery | M25 (Kubernetes con Argo Rollouts, ADR 0051) |
@@ -118,6 +119,8 @@ Regola: **un adapter non può introdurre concetti nuovi nel nucleo.** Se Cloud D
 *Emendamento 2026-11-03 (ADR 0037):* un workload può stare in un repository suo. `./go attach <path>` lo clona in `.attached/`, che diventa il `WORKLOAD` di default; il contratto di un workload attaccato sta in `.lights-out/` alla radice del suo repository (`workload.env`, frammento compose, `flags/`, `smoke.sh`, `load.sh`, `fixtures/gates/`, `worker.md`, `policy.env`, `tickets/`), quello di un workload dentro lights-out resta nella sua cartella (`app/`). La riga `Workload` della tabella vale per entrambi; `workloads/minimal` è ora un repo attaccabile, provato da `./go demo-seam`.
 
 *Emendamento 2026-11-07 (ADR 0050):* `AgentHarness` guadagna `antigravity-cli`, Antigravity CLI (`agy`) 1.5.1, solo Gemini, **opzionale e sperimentale**: si sceglie solo con `AGENT_HARNESS=antigravity-cli`, e `gemini-cli` resta il default per `gemini` finché un run live di agy sul ticket 0001 non passa i gate. Un provider può quindi avere più di un harness (emenda ADR 0041 §2). Il binario è proprietario e senza licenza: pinnato per versione e sha256 per architettura in `release.env`, scaricato solo al build dell'immagine, mai pubblicato; il proxy di egress nega telemetria e auto-update, ed è questo a tenere fermo il pin. Il guard è lo stesso `guard.sh`, dietro uno shim, con un nome di hook casuale a ogni run; passa `./go harness-conformance` (casi 0–9) contro il modello scriptato. **Buco aperto, registrato e non chiuso:** gli hook `SessionStart` e `PreToolUse` del `.agents/hooks.json` del repository girano dentro il container, fuori dal guard; non possono spegnerlo né scavalcarne il deny, ma girano (ADR 0050 §7).
+
+*Emendamento 2026-11-13 (ADR 0058):* un adapter può stare fuori dal repository. `ADAPTERS_PATH` nomina una directory assoluta, una porta si imposta a `outside/<nome>`, e l'adapter gira solo se la suite di conformità della sua porta ha dato GO sui suoi byte esatti (sha256 dell'albero, registrato in `.crew/adapters/register`, locale a ogni checkout); senza prova ogni obiettivo di `./go` si ferma in una riga. Porte cablate: `CodeHost`, `Delivery`, `StateStore`, `EventBus`. `AgentHarness` fuori è rifiutato; le porte senza suite (`Tracker`, `Orchestrator`, `Metrics`, `Flags`, `Registry`) pure. La tabella resta il catalogo dei nostri.
 
 ---
 
@@ -810,6 +813,8 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - `gates/codehost-conformance.sh` è GO su GitLab;
   - `./go demo` resta invariato.
 
+*Stato 2026-11-13:* costruito (ADR 0058). Adapter fuori dal repo: `ADAPTERS_PATH`, `outside/<nome>`, hash dell'albero, registro locale, rifiuto in una riga; quattro porte cablate (CodeHost, Delivery, StateStore, EventBus), provato con uno StateStore di prova (`ci/outside.sh`, in `./go ci`). `adapters/gitlab/` con `./go gitlab-conformance`, job CI `gitlab`. `surfaces/jenkins/Jenkinsfile` con `./go demo-jenkins` (Gitea a sé, Jenkinsfile Runner, stato `lights-out/jenkins`), job CI `jenkins`. Verificato prima di scrivere: l'immagine ufficiale di Jenkinsfile Runner è ferma al 2022, solo amd64, Java 8, e l'ultima release è la 1.0-beta-32 del 2023-11; GitLab CE 19.5.5 gira senza account ma occupa 2,4 GB e impiega 224 s a rispondere, quindi non sta accanto al piano; Flagger v1.45.0 esiste, non costruito, lasciato. Non provato: un adapter esterno su CodeHost, Delivery o EventBus; la torre intera su GitLab; Jenkins su un controller vero. Non scritte: le ricette per GitLab CI e CircleCI. Lasciato: `AgentHarness` fuori dal repo.
+
 ### M33 — La console come banco di lavoro: kanban interattiva, tema, ADR, spec (ADR 0059)
 
 *Aggiunto 2026-11-08, decisione dell'owner.* La console di M29 si legge, ma non si usa per lavorare: la kanban è una fotografia, il tema segue solo il sistema, le decisioni del progetto stanno fuori, e una spec si scrive in un editor qualunque e si scopre al gate se manca qualcosa. Quattro pezzi, dentro i vincoli di ADR 0047 e ADR 0055.
@@ -968,9 +973,18 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
   - `docs/use-on-your-repo.md` ha "Customize the agents" (cosa si personalizza oggi, come, cosa è fisso per scelta e perché); README e `docs/reference.md` dove elencano il contratto; `lights-out init` lo dice in una riga. `ci/docs-drift.sh` verde, `./go ci` verde da un clone pulito, i sei workflow verdi, `./go demo` invariato a L0 senza chiave.
 - **Fuori:** server MCP remoti provati dal vivo (solo traduzione unit-testata; il primo run remoto è dell'owner), remoti su gemini-cli, istruzioni per i ruoli ADK, tool MCP per i revisori, antigravity-cli con MCP.
 
-### Più avanti — Scansione di sicurezza: SAST sul diff, SBOM firmato, DAST passivo (ADR 0072)
+### M43 — Scansione di sicurezza: SAST sul diff, SBOM firmato, DAST passivo (ADR 0072)
 
-*Aggiunto 2026-11-11, decisione dell'owner: più avanti nella roadmap.* Su sqlparse e tenacity (M24, 2026-11-10) la base era rossa a `sast` per un `assert` (B101) e per `random` usato come jitter (B311), e ogni ticket aspettava che un umano aggiungesse `# nosec`. ADR 0072 (proposta, rimandata, niente costruito) decide per dopo: il gate `sast` giudica il diff come `deps` (impronta: regola, file, hash del testo della riga; i finding ereditati elencati, mai bloccanti) e `sast` esce dal controllo della base verde; un SBOM SPDX 2.3 per immagine rilasciata, prodotto da osv-scanner già nel workbench e attestato con cosign accanto alla firma, separato dall'attestazione di K3 (M36), che lo nomina; una scansione passiva ZAP baseline del canary allo staging, prima di ogni traffico, NO-GO solo per gli alert che lo stabile non ha, spenta di default a L0 e L1 finché pull e durata non sono misurati contro i 222 s di margine sui 900 s; la stessa riga del gate in `./go`, nel wrapper e nella console.
+*Aggiunto 2026-11-11, decisione dell'owner: ADR 0072, scritta come proposta e rimandata la mattina, si costruisce in tre fette, ognuna verde prima della successiva.* Su sqlparse e tenacity (M24, 2026-11-10) la base era rossa a `sast` per un `assert` (B101) e per `random` usato come jitter (B311), e ogni ticket aspettava che un umano aggiungesse `# nosec`. Nessuna milestone M40/M41: sono riservate dalla roadmap di adozione (K7).
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - **Prima fetta, SAST sul diff (decisione 1).** Il runner stampa `{"findings": N, "items": [{"rule", "file", "line"}]}`, `file` relativo alla cartella da cui gira il comando (la `WORKLOAD_TEST_ROOT` del contratto), che il gate riporta alla radice del repository; i cinque runner (`app/`, `workloads/minimal`, gli stack python e javascript e le loro copie) lo fanno. `gates/sast.sh` esegue il runner su HEAD e, se HEAD ha finding con `items`, sul merge-base in un worktree; l'impronta è regola, file seguito attraverso i rename di `git diff -M`, sha256 del testo della riga con gli spazi tolti; i duplicati contano. NO-GO solo per un'impronta che HEAD ha più volte della base, con le righe di ADR 0072; gli ereditati su stderr e in `sast.json` (`new`, `inherited`). Un runner senza `items`, su uno dei due lati, giudica HEAD intero come oggi e lo dice su stderr. La logica è in `core/sastdiff.py`, con i test in `core/tests/` scritti dall'ADR. `sast` esce da `core/base-gates.sh` e da `ci/assign.sh`. Prove: le nove fixture di `./go demo-gates` restano col loro verdetto; due nuove, con una base rossa a `sast` (una cartella `base/` di patch applicate prima, che diventa la base del range): `sast-inherited`, la modifica non aggiunge niente e sposta la riga del finding, GO; `sast-added-on-red-base`, la modifica ne aggiunge uno, NO-GO a `sast`. `ci/gates-light.sh` capisce `base/`.
+  - **Seconda fetta, SBOM (decisione 2).** Prima si verifica che osv-scanner 2.6.0, il pin, abbia `scan image --archive` e `--format spdx-2-3`; se non li ha, la fetta si ferma e lo dice, senza binari nuovi. Se li ha: `adapters/zot/publish.sh` salva l'immagine in un archivio, ne fa un documento SPDX 2.3 (exit 0 o 1 accettati), lo attesta con `cosign attest --type spdxjson` con la stessa chiave e gli stessi flag della firma; un passo che fallisce fa fallire publish. Il record del rilascio ha `sbom`, il digest dell'attestazione. Prova di andata e ritorno sul registry locale: `cosign verify-attestation --type spdxjson` accetta l'attestazione e il predicato è SPDX 2.3; il tempo aggiunto a `./go demo` misurato.
+  - **Terza fetta, DAST (decisioni 3 e 4).** Un verbo Delivery opzionale, `canary-url.sh`, che stampa un URL che raggiunge solo il canary; `verify/dast.sh` esegue ZAP baseline, passivo, pinnato per digest, contro lo stabile e contro il canary dopo `deploy.sh` e prima del 5%; un alert è `(plugin id, metodo, path senza query)`; NO-GO solo per un alert che il canary ha e lo stabile no, a ogni livello di rischio; exit 3 o un report illeggibile è un canary che non si può giudicare (rollback, ADR 0066). `DAST=off` di default a L0 e L1; con `DAST=on` un adapter senza `canary-url.sh` è rifiutato prima dello staging. `./go demo-dast` a L0, senza chiavi, prova i due verdetti. Misurati e scritti nell'ADR con la provenienza: il pull a freddo, una scansione, una corsa stabile contro stabile (diff vuoto); solo dopo si dice se sta nei 222 s di margine. La riga del gate nel record del rilascio; `./go audit` mostra gli ereditati di `sast` e il digest dello SBOM col comando `cosign verify-attestation` accanto.
+  - Lo stato di ADR 0072 aggiornato e datato a ogni fetta; `./go ci` verde da questo clone prima di ogni push; i workflow sul branch letti e i loro id nell'handoff; `./go demo` invariato nel verdetto.
+- **Fuori:** SBOM e DAST nel wrapper (non ha rilascio né socket, ADR 0045); un gate che giudica lo SBOM; K3 (M36); la scansione attiva di ZAP.
+
+*Stato 2026-11-11 (branch `claude/security-scanning`):* le tre fette costruite, ognuna verde prima della successiva. **SAST sul diff:** i test scritti da un subagente dall'ADR senza l'implementazione; `./go demo-gates` GO sulle undici fixture in locale e su Actions (run 43003750178). **SBOM:** osv-scanner 2.6.0 ha già `scan image --archive` e `spdx-2-3`, nessun binario nuovo; l'archivio esce dal socket dell'engine (`GET /images/<name>/get`); attestazione e lettura con `cosign verify-attestation` prima della firma, a ogni publish; 10–16 s per publish su docker, 4–5 s su podman, quattro publish per demo; l'inventario copre i 40 pacchetti di runtime di `uv.lock`. **DAST:** `./go demo-dast` GO in locale e nei job `dast` (docker) e `dast-podman`; pull a freddo 298 s sulla VM, 21–22 s su Actions; una scansione 34–40 s; stabile contro stabile due volte, diff vuoto. **Scostamenti dal piano:** il digest dello SBOM nel record passa da un verbo opzionale nuovo del Registry, `sbom.sh` (l'ADR non lo nominava: decisione dell'owner); `canary-url.sh` di envoy-canary è un listener di Envoy solo canary sulla rete del piano, senza porta pubblicata; la riga del gate DAST sta nel record e in `./go audit`, non in `GATES_OUT/lines` (non è un gate di PR); la console e gli ereditati di `sast` in `./go audit` non sono fatti (schema del logbook, `sast.json` non entra nel documento della tower). **DAST resta spenta a L0:** sulla regola dell'ADR ci starebbe (99 s contro 204 s sul job più lento), ma il pull a freddo da una connessione normale (298 s sulla VM) porta la prima demo oltre i 900 s; la regola d'oro vince e la scelta è dell'owner.
 
 ### M44 — Il deploy sui principali cloud: connettori e plugin per GCP, AWS, Azure, Hetzner (pianificata, non sviluppata)
 
@@ -981,6 +995,99 @@ Il terzo candidato di ADR 0024 §5, costruito. Oggi un team che rilascia già su
 - **Le regole che valgono.** Nessuna credenziale di lunga durata nel repository: federazione OIDC da GitHub Actions o identità del workload, come il deploy di oggi. Canary, verify e rollback automatico identici al piano locale; l'unico gate umano prima del 100% non cambia. Ogni fornitore costa a ogni run: una nightly per fornitore, attivata solo da chi lo usa, e il costo per run misurato e scritto prima di accenderla.
 - **Prima di scrivere.** Verificare in quel momento le API di ciascun fornitore (la regola di CLAUDE.md: le API cambiano in fretta), scrivere l'ADR con le alternative scartate e la provenienza di ogni numero, partire dal fornitore che un utente chiede per primo.
 - **Fatto quando (per fornitore):** `gates/delivery-conformance.sh` invariata stampa `GO: delivery-conformance` contro quel fornitore in una nightly reale; `./go demo` resta invariato, a L0, senza account; la guida `docs/use-on-your-repo.md` dice come attivarlo e quanto costa un run.
+
+### Sprint 2026-11-12 — Sei feature per il primo colpo d'occhio e per l'utente vero (M45–M50)
+
+*Aggiunto 2026-11-12, decisione dell'owner: le sei proposte del coordinatore, tutte nello sprint della notte.* Ognuna ha il suo ADR, numerato qui per evitare collisioni fra i branch paralleli: 0078 (M47), 0079 (M45), 0080 (M46), 0081 (M49), 0082 (M48), 0083 (M50). Tre filoni con file disgiunti, perché quattro feature toccano il logbook e la console (lettura del codice, 2026-11-12):
+
+- **Filone A, la console del rilascio** (un branch, tre fette in ordine, ognuna verde prima della successiva): M47, M45, M46. È l'unico che tocca `core/logbook.py`, lo schema (1.4), il golden, `console/index.html`, `console/serve.py`, `core/promote.sh`, `core/releases.py`, `launchpad.sh`.
+- **Filone B, il pacchetto di evidenze**: M49. Tocca `core/audit.py`, un nuovo `core/evidence.py`, i suoi test; legge `releases.jsonl` e lo stato della tower senza cambiarne il formato.
+- **Filone C, misure e spesa**: M48 e M50, solo comandi e core (`core/dora.py`, il prezzo per run, il budget nella tower). Non tocca logbook né console: i pannelli di M48 e M50 nella console sono una fetta finale, dopo che il filone A è atterrato.
+
+Valgono per tutte: test scritti dall'ADR prima del codice; contratto dei gate per ogni comando nuovo (una riga su stdout, il resto su stderr); `./go demo` invariato a L0 senza chiave; niente chiamate a modelli dal vivo (modello scriptato); ogni soglia con la sua provenienza; `./go ci` verde da un clone sotto `.crew/` prima di ogni push; i workflow del branch letti prima di chiedere l'atterraggio; il coordinatore fa il merge, mai un push su `main` da un branch di sprint.
+
+#### M47 — Il perché di un NO-GO, con un clic (ADR 0078; filone A, prima fetta)
+
+Oggi la console mostra la riga del motivo e, per il solo ci corrente, i `details`; i `details` dei tentativi di rework, gli `items` di `sast.json` e il testo del test che fallisce di un tentativo vecchio non arrivano (lettura del codice: `logbook.py:595-607`, nessun `.details` in `index.html`).
+
+- **Criteri di accettazione:**
+  - Il logbook 1.4 porta, per ogni tentativo (ci corrente e `rework[]`), i `details` del gate che ha detto NO-GO e, per `sast`, i finding nuovi (`new` di `sast.json`, regola, file, riga), copiati nella tower dal passo ci; un logbook 1.3 resta leggibile e la console lo mostra come oggi.
+  - Un clic su un gate rosso (card, retro, timeline, rete) apre un pannello: la riga del gate, i dettagli, il tentativo, quanti tentativi restano su `REWORK_MAX_ATTEMPTS` e la prossima mossa (di chi è il turno, ADR 0063). Da tastiera come da mouse.
+  - Nessun dettaglio prima che `secrets` abbia detto GO sullo stesso tentativo, come per la patch nella rete (`logbook.py:398-405`).
+  - Golden 1.4 nuovo, controllato a mano; `ci/logbook.sh`, `ci/console-ui.py` e `site/render.py` aggiornati; un ticket dello stub con un NO-GO di `test` e uno di `sast`.
+
+#### M45 — Il gate umano sulla card (ADR 0079; filone A, seconda fetta)
+
+Il gate prima del 100% esiste (`core/promote.sh`, `POST /v1/go-for-launch`), ma il record non porta il motivo, lo sha del brief né l'autore del brief (`releases.py:112-123`). Decisione dell'owner, 2026-11-12: il drag torna, solo per questo gesto; emenda il rifiuto di ADR 0059 e la regola di ADR 0068 §1, che restano valide per ogni altra card.
+
+- **Criteri di accettazione:**
+  - La card di un rilascio `held` si trascina su due bersagli, "Promuovi al 100%" e "Rollback", e il drag apre lo stesso pannello del pulsante: il brief, le soglie con la loro provenienza, i numeri di ogni stadio, il rischio, i gate del PR. Niente si muove senza la conferma nel pannello; ogni altra card resta senza `draggable`.
+  - Il pannello chiede un motivo (obbligatorio per il rollback, facoltativo per la promozione); il record e `releases.jsonl` portano `reason`, `brief_sha256`, `brief_author` accanto a `by` e `via`.
+  - Nessuna nuova strada di scrittura: lo stesso `POST /v1/go-for-launch`, con le stesse regole (`CONSOLE_AUTH`, `CONSOLE_LAUNCHERS`, Origin, il lock). Un'alternativa da tastiera equivalente al drag.
+  - `./go demo-console` e `ci/promote.sh` provano promozione e rollback dal drag; `production-readiness` invariato.
+
+#### M46 — Il canary dal vivo (ADR 0080; filone A, terza fetta)
+
+Oggi ogni stadio ha solo il verdetto e le righe `slo:` in testo, senza tempo (`releases.py:131-134`); la console interroga ogni 2 s.
+
+- **Criteri di accettazione:**
+  - Ogni stadio registra `started_at`, `judged_at`, la percentuale e i numeri strutturati (`{query, canary, stable, delta, max_delta}`) accanto alle righe `slo:` di oggi, che restano.
+  - Durante un rilascio la console mostra il canary che avanza: la percentuale di traffico, errore e latenza del canary contro lo stabile e contro la soglia, il tempo che manca al giudizio dello stadio, e il rollback automatico quando arriva, con il suo motivo. Al più un punto per stadio: non è una serie temporale (ADR 0047 resta), è lo stadio in corso.
+  - `./go demo` con la console aperta (`./go demo-console`) mostra il canary salire e, nella demo di rollback, il rollback con la riga che lo ha deciso; il tempo di `./go demo` misurato prima e dopo, nessun secondo in più oltre la misura.
+
+#### M49 — Il pacchetto di evidenze per rilascio (ADR 0081; filone B)
+
+`./go audit` ricostruisce la catena su stderr, ma senza le righe dei gate, i `details`, l'approvazione (chi, quando) e i tempi; nessun pacchetto firmato (`core/audit.py:128-162`).
+
+- **Criteri di accettazione:**
+  - `./go evidence VERSION=<v>` scrive `.crew/evidence/<v>.json`: il record del rilascio, gli stadi, le righe di ogni gate di ogni PR del rilascio, i tentativi di rework, la review, lo sha della spec, il digest dell'immagine e dello SBOM, la riga DAST, la risposta umana con chi, quando e via; ogni voce con la sua fonte. Il formato ha uno schema versionato.
+  - Il pacchetto è firmato con la chiave cosign del piano a L0 (`cosign sign-blob`) e verificato nello stesso comando; una riga del contratto dei gate su stdout, il comando di verifica su stderr. Un'evidenza che manca (per esempio nessuna risposta umana) è nominata nel pacchetto come mancante, mai inventata.
+  - `./go audit` resta com'è; i test da ADR prima del codice; `./go demo` invariato.
+
+#### M48 — Le misure di consegna, dal logbook (ADR 0082; filone C)
+
+Nessun codice di misure di consegna esiste; i tempi ci sono per ticket (history) e per rilascio (`releases.jsonl`), mancano il tempo per stadio e un "ripristinato" esplicito.
+
+- **Criteri di accettazione:**
+  - `./go dora` stampa una riga del contratto e, su stderr e in `.crew/dora.json`, le quattro misure su una finestra (`WINDOW_DAYS`, default 30, decisione dell'owner da scrivere nell'ADR): frequenza dei rilasci, lead time dal `request` al 100%, change failure rate (rollback su rilasci), tempo di ripristino. Una misura che i dati non permettono è stampata come non misurata, con il motivo; mai stimata.
+  - Le definizioni nell'ADR, con la fonte (il rapporto DORA) e lo scarto dichiarato fra la definizione e quello che lights-out registra.
+  - Test su uno stato di fixture con i risultati scritti a mano dall'ADR.
+
+#### M50 — Costo e tempo per ticket, con un budget che ferma il run (ADR 0083; filone C)
+
+`run.json` porta i token, `roles/*/role.env` un `TOKEN_BUDGET` per run; nessun prezzo, nessun limite per ticket o per giorno.
+
+- **Criteri di accettazione:**
+  - Una tabella dei prezzi per modello in `profiles/` (solo lì e in `adapters/` vivono gli id dei modelli), ogni prezzo con la fonte e la data; il costo di ogni run calcolato da input e output e scritto nella tower accanto ai token; il run del ruolo di rilascio (`promote.sh`) registrato come gli altri.
+  - `SPEND_BUDGET_TICKET_USD` e `SPEND_BUDGET_DAY_USD` nella policy, vuoti di default (nessun limite, `./go demo` invariato): oltre il limite la tower non lancia il tentativo successivo e il ticket va a `needs-human` con il motivo in una riga.
+  - `./go spend` stampa una riga del contratto e, su stderr, costo e tempo per ticket, per ruolo e per giorno.
+  - Test da ADR prima del codice; nessun prezzo inventato: un modello senza prezzo è "costo non noto", e il budget lo dice.
+
+#### Fetta finale — I pannelli di M48 e M50 nella console (dopo il filone A)
+
+Le misure di `./go dora` e la spesa di `./go spend` nella schermata Overview, dal logbook 1.4 o da un suo emendamento; un solo branch, dopo che A è atterrato.
+
+*Nota 2026-11-13 (fetta costruita, branch `claude/sprint-console-panels-af00df`).* Il logbook passa a 1.5 (emendamenti di ADR 0082 e 0083): `dora` con la finestra che finisce all'ultimo evento del record, non a un orologio, e `spend` con il budget; entrambi portano le righe dei due comandi, e i pannelli le stampano tali e quali. Un ticket fermato dal budget mostra la riga del budget. Il falso positivo di gitleaks su `.crew/logbook.json` è chiuso da un'eccezione limitata a quella regola, quel percorso e quelle righe. Resta fuori il run del ruolo di rilascio nel ledger: serve un ADR suo (ADR 0079 §2 vieta una nuova strada di scrittura).
+
+### M51 — Il confine della shell in `gates/` (ADR 0084)
+
+*Aggiunto 2026-11-13, decisione dell'owner.* Il primo feedback esterno nomina "troppa logica in shell"; l'owner chiede meno shell e più Python. Misurato il 2026-11-13 sui file tracciati: 31.175 righe `.sh` (ci/ 17.043, adapters/ 4.730, gates/ 4.074, core/ 2.107) contro 33.035 di Python; in `gates/` 2.670 righe di codice shell in 18 file, 916 righe di Python. ADR 0052 ha messo `core/` sotto la regola delle 30 righe; `gates/` ne restava fuori, con programmi Python dentro heredoc, filtri `jq` e intere suite di conformità scritte in `sh`.
+
+- **Il confine, esteso.** `gates/` entra sotto la regola di ADR 0052: resta shell il wrapper del gate che fa `. ci/lib.sh` e stampa l'unica riga, la colla che lancia processi (`core/toolchain.sh`, `require_range`, `effective_policy`). La logica va in un pacchetto Python `core/gates/`, solo libreria standard, eseguito come `python3 -m core.gates.<x>` dalla radice del repository, fuori dal wheel `lights-out-gates`.
+- **Un solo aiuto nuovo**, `verdict` in `ci/lib.sh`: esegue il modulo e trasforma la sua uscita in `go`/`go_with`/`nogo` (0 GO con la prima riga come dettaglio, 1 NO-GO con la prima riga come motivo e le altre come dettagli). Un gate che usa la toolchain la chiama da Python attraverso `sh core/toolchain-run.sh`, un entry point di poche righe sopra `core/toolchain.sh`, che resta shell (debito di `core/`, una fetta sua).
+- **Questa fetta:** `production-readiness`, `deps`, `sast`, `mutation`, `test-proof`, `risk` e le quattro suite di conformità delle porte (`statestore`, `eventbus`, `codehost`, `delivery`). `spec`, `test`, `test-weakening` sono già sotto le 30 righe. La coppia `harness-conformance.sh` e `harness-conformance/proof.sh` (1.431 righe di codice, orchestrazione di compose e del finto harness) resta nella lista del debito col conteggio esatto: la prossima fetta.
+- **Il controllo** `ci/shell-boundary.sh` guarda anche `gates/`: stessa soglia di 30 righe di codice (decisione dell'owner, ADR 0052 §4), stessa lista del debito che può solo scendere, provata su un albero temporaneo con una violazione piantata in `gates/`.
+- **Fuori scope:** `ci/` (le nostre verifiche, una fetta successiva) e `adapters/` (una sessione M32 in parallelo).
+
+- **Criteri di accettazione:**
+  - ADR 0084 scritta, con la provenienza di ogni soglia; ADR 0052 rimanda a lei.
+  - Ogni gate migrato tiene percorso, argomenti, ambiente, riga su stdout e file in `.gates-out/` di prima; i chiamanti (`Makefile`, `./go`, `ci/*.sh`) non cambiano, tranne i link degli alberi temporanei che devono vedere `core/`.
+  - Test `unittest` in `core/tests/` scritti dalle ADR e dalle intestazioni dei gate, mai traducendo la shell: ogni regola dichiarata nell'intestazione ha almeno un test.
+  - `ci/shell-boundary.sh` GO e mostrato fallire su un file di `gates/` piantato oltre 30 righe e su un debito di `gates/` alzato; `ci/contract.sh` GO.
+  - `./go ci` GO e `./go demo` verde da un clone pieno sotto `.crew/`, tempo non peggiore di main; docs-drift GO; tutti i workflow GitHub verdi sul branch.
+  - Le righe shell di `gates/` prima e dopo, per directory, nel commit e nel handoff.
+
+*Stato 2026-11-13 (sessione M51, branch `claude/m51-python-gates-7e292c`):* ADR 0084 scritta; dieci gate in `core/gates/` dietro `verdict`, la coppia harness nella lista del debito (693 e 738). Shell in `gates/` da 4.074 a 2.489 righe (codice da 2.670 a 1.539; gli undici wrapper toccati da 1.210 a 87). 103 test unitari nuovi. `./go ci` verde da clone pieno; i cinque workflow verdi su e0e6db3, con le suite codehost, statestore, eventbus, delivery e harness girate davvero in Actions. Demo in Actions 856 e 841 s contro 696–826 s di main sullo stesso tipo di runner: l'unica differenza costante sono i test nuovi (+4–6 s); in locale 1.235 s su una VM appena ripresa da un blocco, non ripetibile con il piano occupato da un'altra sessione.
 
 ### Dopo
 

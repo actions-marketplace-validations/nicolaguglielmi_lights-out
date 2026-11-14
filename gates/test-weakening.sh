@@ -22,16 +22,4 @@ trap 'rm -f "$diff"' EXIT
 git -C "$WORKLOAD" -c core.quotePath=false diff --no-color --no-ext-diff -M -U0 "$base" "$head" > "$diff" \
   || nogo "could not read the diff for $base..$head"
 
-out=$(python3 core/testdiff.py weakening "$WORKLOAD_TEST_PATHS" "$prefix" "${GATES_TICKET:-}" < "$diff") \
-  && go_with "$out"
-
-reason=$(printf '%s\n' "$out" | head -n 1)
-old_ifs=$IFS
-IFS='
-'
-set -f
-# shellcheck disable=SC2046 # one finding per line, split on newlines only
-set -- $(printf '%s\n' "$out" | tail -n +2)
-set +f
-IFS=$old_ifs
-nogo "$reason" "$@"
+verdict core.testdiff weakening "$WORKLOAD_TEST_PATHS" "$prefix" "${GATES_TICKET:-}" < "$diff"

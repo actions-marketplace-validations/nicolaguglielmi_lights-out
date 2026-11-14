@@ -2,6 +2,11 @@
 
 Where to read what. Everything here is in English except `PLAN.md`.
 
+From the release after 0.4.0, the README and the documents under "Start
+here", "Using it" and "How it is built" are also the repository's
+wiki, rendered from the tag by the release and never edited there
+([ADR 0077](adr/0077-the-wiki-is-rendered-at-the-tag.md)).
+
 ## Start here
 
 | Document | Read it when |
