@@ -44,12 +44,14 @@ def read_env(path: Path) -> dict[str, str]:
     return values
 
 
-def load_role(name: str) -> Role:
+def load_role(name: str, prompt_file: str = "prompt.md") -> Role:
+    """The role's instruction is roles/<name>/<prompt_file>: prompt.md, or
+    another task's prompt of the same role (docs/adr/0090 §3)."""
     d = repo_root() / "roles" / name
-    prompt = d / "prompt.md"
+    prompt = d / prompt_file
     env = d / "role.env"
     if not prompt.is_file():
-        raise FileNotFoundError(f"roles/{name}/prompt.md not found")
+        raise FileNotFoundError(f"roles/{name}/{prompt_file} not found")
     if not env.is_file():
         raise FileNotFoundError(f"roles/{name}/role.env not found")
     values = read_env(env)

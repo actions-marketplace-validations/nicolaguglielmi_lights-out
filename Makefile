@@ -237,7 +237,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase intake assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -1012,8 +1012,43 @@ request: ## Start a ticket at requested: the product role asks or confirms, then
 	printf '[request] ticket %s is at %s\n' "$(TICKET)" "$$state" >&2
 	@printf 'GO: request\n'
 
+# Before the request (docs/adr/0090): intake writes the client's words to
+# TICKETS_DIR/<id>.intake.md (the next free id without TICKET) and starts
+# the interview: the product role asks one question at a time, answered
+# with `answer` as a ticket's are, then proposes tickets; the architect
+# role proposes their perimeters from the project map; each is checked by
+# the spec gate. intake-confirm applies the person's DECISIONS: the kept
+# tickets start at spec-ready. TEXT, INTAKE_*, DECISIONS and CONFIRM_*
+# reach core/intake.py and core/tower.sh from make's command line. At L0
+# an intake replays its recording or is refused; record one at L1 with
+# ADK_RECORD=extend on intake and on each answer (§4).
+.PHONY: intake
+intake: ## Start an intake from a client's words: the product role interviews and proposes tickets, the architect their perimeters: [TICKET=<id>] TEXT=<text>|INTAKE_FILE=<file> [INTAKE_BY=<who>] [INTAKE_VIA=<how>] (docs/adr/0090)
+	@tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
+	if [ -n "$(INTAKE_FILE)" ]; then cat "$(INTAKE_FILE)" > "$$tmp" || { printf 'NO-GO: intake — cannot read INTAKE_FILE=%s\n' "$(INTAKE_FILE)"; exit 1; }; \
+	else printf '%s\n' "$${TEXT:-}" > "$$tmp"; fi; \
+	id=$$(python3 core/intake.py new "$$tmp" "$(TICKETS_DIR)" $(TICKET)) \
+		|| { printf 'NO-GO: intake — nothing written; see the intake: line above\n'; exit 1; }; \
+	printf '[intake] %s/%s.intake.md written\n' "$(TICKETS_DIR)" "$$id" >&2; \
+	sh core/tower.sh intake "$$id" || { printf 'NO-GO: intake — %s was not started; see the [tower] line above\n' "$$id"; exit 1; }; \
+	if ! sh adapters/$(ORCHESTRATOR)/run.sh; then \
+		why=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$$id" | jq -r '.history[-1].error // "a step failed"'); \
+		printf 'NO-GO: intake — %s: %s\n' "$$id" "$$why"; exit 1; \
+	fi; \
+	state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$$id" | jq -r .state); \
+	printf '[intake] %s is at %s\n' "$$id" "$$state" >&2; \
+	printf 'GO: intake — %s at %s\n' "$$id" "$$state"
+
+.PHONY: intake-confirm
+intake-confirm: ## Confirm, edit or drop each ticket a proposed intake holds; the kept ones start at spec-ready: TICKET=<id> DECISIONS=<json>|@<file> [CONFIRM_BY=<who>] (docs/adr/0090 §5)
+	@sh core/tower.sh intake-confirm "$(TICKET)" || { printf 'NO-GO: intake-confirm — nothing confirmed; see the [tower] line above\n'; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: intake-confirm — a step failed; see the [tower] lines above\n'; exit 1; }
+	@born=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r '.tickets | join(" ")'); \
+	printf '[intake-confirm] intake %s kept: %s\n' "$(TICKET)" "$${born:-no ticket}" >&2; \
+	printf 'GO: intake-confirm — %s\n' "$${born:-no ticket kept}"
+
 .PHONY: answer
-answer: ## Answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text> [ANSWER_BY=<who>] (docs/adr/0055 §2)
+answer: ## Answer a ticket's or an intake's open question, then the product role again: TICKET=<id> ANSWER=<text> [ANSWER_BY=<who>] (docs/adr/0055 §2, 0090 §2)
 	@sh core/tower.sh answer "$(TICKET)" || { printf 'NO-GO: answer — nothing recorded; see the [tower] line above\n'; exit 1; }
 	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: answer — a step failed; see the [tower] lines above\n'; exit 1; }
 	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \

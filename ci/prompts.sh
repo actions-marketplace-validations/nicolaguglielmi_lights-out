@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# ci-prompts: ticket 0004 / docs/adr/0020 §6. A `roles/*/prompt.md` states
+# ci-prompts: ticket 0004 / docs/adr/0020 §6. A `roles/*/*.md` prompt states
 # the objective and its acceptance; it names no gate, no gate's tool, no
 # Makefile target, and not even the entrypoints themselves — a model told
 # what judges it tries to run the judge. Forbidden, case-insensitive,
@@ -122,7 +122,7 @@ fi
 first_file=""
 first_word=""
 detail=""
-for f in roles/*/prompt.md; do
+for f in roles/*/*.md; do  # prompt.md and a task prompt such as architect/perimeter.md (docs/adr/0090 §3)
   [ -e "$f" ] || continue
   if out=$(check_file "$f"); then
     continue

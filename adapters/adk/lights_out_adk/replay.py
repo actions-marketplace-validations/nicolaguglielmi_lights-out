@@ -116,7 +116,10 @@ class ReplayLlm(BaseLlm):
 
 class RecordingLlm(BaseLlm):
     """Wraps the real model at L1 (ADK_RECORD=1) and writes what it answered,
-    call by call, to the file ReplayLlm reads."""
+    call by call, to the file ReplayLlm reads. With extend (ADK_RECORD=extend,
+    docs/adr/0090 §4), a turn the recording already holds is replayed, not
+    asked again: an interview the tower re-runs on every answer pays each
+    turn once, and the person answers the question the recording holds."""
 
     model: str
     provider: str
@@ -124,6 +127,7 @@ class RecordingLlm(BaseLlm):
     fixtures_dir: str
     inner: BaseLlm
     instruction_sha256: Optional[str] = None
+    extend: bool = False
 
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
@@ -132,7 +136,12 @@ class RecordingLlm(BaseLlm):
         key = key_for(input_text)
         index = model_turns(llm_request)
         path = fixture_path(self.fixtures_dir, self.role, key)
-        if index == 0 or not path.is_file():
+        if self.extend and path.is_file():
+            held = json.loads(path.read_text()).get("responses", [])
+            if index < len(held):
+                yield LlmResponse.model_validate(held[index])
+                return
+        if (index == 0 and not self.extend) or not path.is_file():
             recording = {
                 "input": canonical(input_text),
                 "instruction_sha256": self.instruction_sha256,

@@ -112,11 +112,12 @@ def select_model(role: str, thinking: str, instruction_sha256: str | None = None
             reasoning_effort=thinking_map(provider, thinking),
             api_key=key,
         )
-    if os.environ.get("ADK_RECORD") == "1":
+    if os.environ.get("ADK_RECORD") in ("1", "extend"):
         # The wrapper carries the requested model id: ADK copies it into
         # every request; the recording says which provider answered.
         return RecordingLlm(
             model=real.model, provider=provider, role=role, fixtures_dir=fixtures_dir(),
             inner=real, instruction_sha256=instruction_sha256,
+            extend=os.environ.get("ADK_RECORD") == "extend",
         )
     return real

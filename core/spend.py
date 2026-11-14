@@ -24,7 +24,8 @@ POLICY = "policy/rework.env"
 LIMIT_KEYS = ("SPEND_BUDGET_TICKET_USD", "SPEND_BUDGET_DAY_USD")
 # The step result keys that carry a role's run (§3), and the role of one
 # whose object does not name it.
-RUN_FIELDS = (("task", None), ("review", None), ("product", "product"))
+# The architect's run of an intake's perimeter step counts as product's does (docs/adr/0090 §7).
+RUN_FIELDS = (("task", None), ("review", None), ("product", "product"), ("architect", "architect"))
 _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DECIMAL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
@@ -111,7 +112,7 @@ def entries(step, result, attempt, at, path=PRICES):
         run = result.get(key) if isinstance(result, dict) else None
         if not isinstance(run, dict) or "harness" not in run:
             continue
-        if key == "product" and run.get("consulted") is False:
+        if key in ("product", "architect") and run.get("consulted") is False:
             continue
         if prices is None and unread is None:
             prices, unread = load_prices(path)
