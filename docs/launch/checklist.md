@@ -304,8 +304,9 @@ every ADK role (ADR 0090, M57). Named 0.7.0: it adds features.
 - [x] **Tag `v0.7.0`** on main (6f134db, the release merge and the
   jenkins job's fix), every job green: run 43652010467, PyPI 0.7.0, the
   wiki rendered, three drafts.
-- [ ] **The three drafts `v0.7.0` published to the Marketplace** (owner,
-  passkey).
+- [x] **The three drafts `v0.7.0` published to the Marketplace** (owner,
+  passkey, 2026-11-15): `lights-out`, `test-integrity` and `test-proof`
+  each show 0.7.0 as Latest.
 
 ### The Python package on PyPI (M35)
 
