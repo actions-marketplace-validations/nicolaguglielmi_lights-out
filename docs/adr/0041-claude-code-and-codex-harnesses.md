@@ -2,6 +2,7 @@
 
 - Status: accepted (amends ADR 0017 §3 [the crew service mounts the ticket's directory, not `./.crew`], §6 [`record` takes any CLI harness; a second harness's recording goes in a subdirectory], §9 [one guard file, byte-identical in every CLI adapter, deny-list grown]; ADR 0040 §4 [gemini-cli's refusal line now names a harness that exists]; plan §16 M19 [the record command names provider and model; the suite's engine-free half is in `./go ci`, the engine half is `./go harness-conformance`, §9 below]) §3's matcher amended 2026-11-04: every harness's pre-tool hook matches `*` — see the amendment at the end.
 - Date: 2026-11-04
+- Amended by: ADR 0092 §2 (a harness may run more than one provider: one `conformance.<provider>.env` per further provider, the suite run once per file)
 - Milestone: M19
 
 ## Context
