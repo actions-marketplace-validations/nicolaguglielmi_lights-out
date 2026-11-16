@@ -1169,6 +1169,18 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 
 *Stato 2026-11-14, seconda correzione (approvata dall'owner, "Sì, tutto"):* la mappa dell'architect è quella del solo workload (`INTAKE_SCOPE` da `WORKLOAD`), le ricerche sono al massimo due, e il registro ADK conta i token di thinking come output (ADR 0083, emendamento: $0,046 → $0,057 sul run misurato). Test prima, NO-GO su 0073afa e GO dopo. La nuova registrazione dell'architect, approvata dall'owner (≤ $0,10), è riuscita al primo tentativo: quattro turni, due ricerche, sei percorsi in `app/` per ticket, tutti e due `GO: spec` come bozze; 18.888 token in ingresso e 9.808 in uscita, $0,051 a listino.
 
+### Sprint 2026-11-16 — Un quarto fornitore e un budget per fornitore (M58–M63)
+
+*Aggiunto 2026-11-16, decisione dell'owner.*
+
+#### M59 — GLM di Z.ai e un budget per provider (ADR 0092)
+
+M24 ha lasciato due problemi sulla stessa cucitura: un solo `TOKEN_BUDGET` per tutti i fornitori ha fermato tre ticket Gemini su dieci, e il registro prezza ogni token in ingresso come non in cache. L'owner vuole anche GLM, di Z.ai, accanto a Gemini, Claude e OpenAI.
+
+- **Cosa consegna:** `MODEL_PROVIDER=zai` (chiave `ZAI_API_KEY`, modello `glm-5.3`) su `claude-code`, tramite l'endpoint compatibile Anthropic di Z.ai, e sui ruoli ADK tramite LiteLLM con l'effort in `extra_body`; `TOKEN_BUDGET_<PROVIDER>` nel `role.env` (dev-worker su Gemini 3.900.000, dalla misura di M24); `tokens.cached` e il prezzo in cache nel registro, con `cost_basis` su ogni voce.
+- **Criteri di accettazione, scritti prima del codice:** `./go ci` GO da un clone completo; `./go demo` verde; `./go harness-conformance CONFORMANCE_HARNESS=claude-code` GO su anthropic e su zai; i test di ADR 0092 scritti dall'ADR.
+- **Resta fuori:** codex su Z.ai (aspetta un endpoint Responses documentato); il controllo dal vivo, un ticket su GLM, da fare solo con l'approvazione dell'owner e la sua chiave. Fino ad allora README e reference dicono che l'endpoint con una chiave Standard e l'effetto dell'effort non sono provati.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

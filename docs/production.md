@@ -31,15 +31,15 @@ Two commands tell you where you stand:
 
 | Key | Default | Layer | Provenance |
 |---|---|---|---|
-| `MODEL_PROVIDER` | `gemini` at L1 to L3, empty at L0 | `profiles/<level>.env`; `.env` and the command line override | `profiles/l1.env`: "MODEL_PROVIDER in gemini\|anthropic\|openai" ([ADR 0040](adr/0040-the-model-is-a-choice.md) §1). `profiles/l0.env`: no model at L0, the roles replay recorded responses. No provenance recorded for the choice of Gemini as the default |
+| `MODEL_PROVIDER` | `gemini` at L1 to L3, empty at L0 | `profiles/<level>.env`; `.env` and the command line override | `profiles/l1.env`: "MODEL_PROVIDER in gemini\|anthropic\|openai\|zai" ([ADR 0040](adr/0040-the-model-is-a-choice.md) §1). `profiles/l0.env`: no model at L0, the roles replay recorded responses. No provenance recorded for the choice of Gemini as the default |
 | `MODEL` | `gemini-3.8-flash` at L1 to L3, empty at L0 | same | `profiles/l1.env`: "The id is the one ADR 0018 pinned." The file does not say whether that is a measurement or a decision |
 | `AGENT_HARNESS` | `replay` at L0, `gemini-cli` at L1 to L3 | same | No provenance recorded |
-| `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | none (`replace-me` in `.env.example`) | `.env`, or your shell's environment | A secret, not a default. In production they come from the environment, not from `.env` |
+| `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY` | none (`replace-me` in `.env.example`) | `.env`, or your shell's environment | A secret, not a default. In production they come from the environment, not from `.env` |
 | `MAP_BRIEF` | `off` | `profiles/<level>.env` | `profiles/l1.env`: "off at every level until M24 measures it" ([ADR 0054](adr/0054-the-project-map.md) §5). A pending measurement, not a measured value |
 | `THINKING` | `high` for dev-worker, architect and test-reviewer; `medium` for product; `low` for ops-triage and release | `roles/<role>/role.env` | Each file: "THINKING from plan §5's table". The table is in `docs/PLAN.md` |
 | `MAX_TURNS` | `60` for dev-worker, architect and test-reviewer | `roles/dev-worker/role.env` (the others stay at its number) | `roles/dev-worker/role.env`: 250 requests per day (Gemini API free tier, external constraint) divided by four attempts per day (decision) |
 | `TIMEOUT_S` | `900` for every role | `roles/<role>/role.env` | `roles/dev-worker/role.env`: "Decision: the one wall-clock figure this repo has with provenance (plan §2)". Checked at M6 against a run of 557 s for 43 calls |
-| `TOKEN_BUDGET` | dev-worker `2600000`, test-reviewer `1500000`, architect `600000`; none for product, ops-triage and release | `roles/<role>/role.env` | Measurement, M9 ([ADR 0021](adr/0021-review-roles-at-m9.md) §6, §7): the largest recorded run of the role plus one more call's headroom, rounded up. The three ADK roles have none yet: "run.json records the first real numbers" |
+| `TOKEN_BUDGET` | dev-worker `2600000` (and `TOKEN_BUDGET_GEMINI=3900000` on Gemini), test-reviewer `1500000`, architect `600000`; none for product, ops-triage and release | `roles/<role>/role.env` | Measurement, M9 ([ADR 0021](adr/0021-review-roles-at-m9.md) §6, §7): the largest recorded run of the role plus one more call's headroom, rounded up. `TOKEN_BUDGET_GEMINI=3900000`: Measurement, M24 ([ADR 0092](adr/0092-glm-by-zai-and-a-budget-per-provider.md) §7). The three ADK roles have none yet: "run.json records the first real numbers" |
 
 An adapter that calls a model refuses an empty `MODEL`, a provider outside the three, or an empty or `replace-me` key for the chosen provider ([ADR 0040](adr/0040-the-model-is-a-choice.md) §1).
 

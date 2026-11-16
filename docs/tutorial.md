@@ -405,7 +405,9 @@ agents' time is not counted. Set `SPEND_BUDGET_TICKET_USD` or
 `SPEND_BUDGET_DAY_USD` in `policy/rework.env` and the tower launches no
 attempt past the limit: the ticket goes to `needs-human` with the
 budget's line. A run that stops on its own `TOKEN_BUDGET` is in the
-ledger too. The burn is counted over at least an hour and projected from
+ledger too. Where the harness reports cached input, it is priced at the
+vendor's cached rate, and each entry's `cost_basis` says `cached` or
+`uncached`. The burn is counted over at least an hour and projected from
 the last run's time, not from the moment you look. The console's Overview
 shows the same lines, read from the logbook, beside who runs each role;
 every card shows its path from the request to 100%, and from L1 the
@@ -936,8 +938,9 @@ output to show.
 | `gemini-cli` (the default) | `gemini` | `GEMINI_API_KEY` | `PROFILE=l1` |
 | `claude-code` | `anthropic` | `ANTHROPIC_API_KEY` | `PROFILE=l1 AGENT_HARNESS=claude-code MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5` |
 | `codex` | `openai` | `OPENAI_API_KEY` | `PROFILE=l1 AGENT_HARNESS=codex MODEL_PROVIDER=openai MODEL=gpt-6.1-sol` |
+| `claude-code` | `zai` | `ZAI_API_KEY` | `PROFILE=l1 AGENT_HARNESS=claude-code MODEL_PROVIDER=zai MODEL=glm-5.3` |
 
-Each harness has one provider. `run.sh` refuses a mismatch and names the
+Each harness has one provider, except `claude-code`, which has two. `run.sh` refuses a mismatch and names the
 harness that fits. The model ids are the ones the README and `.env.example`
 name.
 
@@ -1023,9 +1026,10 @@ With `CODE_HOST=github` on the command line and `GITHUB_REPO` and
 - **Tokens.** The dev-worker may spend up to 2.6M tokens per run
   (`TOKEN_BUDGET`). The recorded run of ticket 0001 spent 2,435,115 tokens
   in 328 s (`fixtures/0001/dev-worker/run.json`).
-- **Claude and OpenAI** cost money per run. No run has been made with
-  either, so lights-out cannot tell you the price yet. The README will
-  state the cost per provider once those recordings exist.
+- **Claude, OpenAI and Z.ai** cost money per run. Z.ai's price is in
+  `profiles/prices.json`: 1.40 input, 0.26 cached input and 4.40 output
+  per million tokens (`glm-5.3`). No live run has been made with GLM,
+  so lights-out cannot tell you the cost of a run yet.
 
 ### What is not proven yet
 
@@ -1038,9 +1042,14 @@ With `CODE_HOST=github` on the command line and `GITHUB_REPO` and
   ability: `GO: harness-conformance — claude-code codex gemini-cli,
   against a scripted model, 273 s` <!-- source: GitHub Actions run 41866972654, job harness-conformance (126703545920) --> in
   run 41866972654.
-- **The budgets are Gemini measurements.** `MAX_TURNS` and `TOKEN_BUDGET`
-  bind every harness until recordings re-measure them. A first Claude or
-  OpenAI run may hit a budget for tokenizer reasons alone.
+- **The budgets are per provider.** `MAX_TURNS` binds every harness.
+  `TOKEN_BUDGET` is one number per role, and a role may set
+  `TOKEN_BUDGET_<PROVIDER>` beside it: the dev-worker's Gemini budget is
+  3,900,000 (M24), every other provider runs under the default. A first
+  GLM or OpenAI run may hit a budget for tokenizer reasons alone.
+- **GLM by Z.ai has not run live.** Whether the Z.ai Anthropic endpoint
+  accepts a Standard key, and whether the effort changes GLM's thinking,
+  are open.
 - **The network stays open** in the worker's container, because each
   harness must reach its provider. The guard denies the network tools, but
   an interpreter could still send out what the container holds, the
