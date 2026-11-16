@@ -80,8 +80,6 @@ The sprint of 2026-11-16, in progress in parallel sessions:
 - **M62 — Flagger and the GitLab CI and CircleCI recipes**, the leftovers
   of M32 (ADR 0095). Still open after it: an outside AgentHarness and the
   full tower on GitLab and on a real Jenkins.
-- **M63 — project hygiene**: a code of conduct, governance and the
-  OpenSSF Scorecard (ADR 0096).
 
 M24's remaining legs: OpenAI has not run, and GLM runs after M59. The
 exit criterion is plan §14's: if at least two tickets in three do not
