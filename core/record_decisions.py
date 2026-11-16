@@ -47,8 +47,9 @@ def screens(tmp):
     with open(LABELLED, encoding="utf-8") as fh:
         for sample in json.load(fh):
             path = os.path.join(tmp, sample["id"] + ".txt")
-            with open(path, "w", encoding="utf-8") as fh2:
-                fh2.write(sample["text"])
+            with open(path, "w", encoding="utf-8", newline="") as fh2:
+                # As an intake file holds it (docs/adr/0090 §1): one final newline.
+                fh2.write(sample["text"].rstrip("\r\n") + "\n")
             out.append((f"screen:{sample['id']}", path))
     out += [(f"screen:{p}", p) for p in TEXTS]
     return [(name, screen.request(open(p, "rb").read().decode("utf-8", errors="replace"))) for name, p in out]

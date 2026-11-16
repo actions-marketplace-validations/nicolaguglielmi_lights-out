@@ -395,7 +395,7 @@ python3 - fixtures/screen/labelled.json "$tmp/lab" <<'PY'
 import json, sys
 for i, s in enumerate(json.load(open(sys.argv[1], encoding="utf-8"))):
     with open("%s/%02d.txt" % (sys.argv[2], i), "w", encoding="utf-8", newline="") as fh:
-        fh.write(s["text"])
+        fh.write(s["text"].rstrip("\r\n") + "\n")  # as an intake file holds it (docs/adr/0090 §1)
     open("%s/%02d.label" % (sys.argv[2], i), "w").write(s["label"])
 PY
 : > "$tmp/table"
