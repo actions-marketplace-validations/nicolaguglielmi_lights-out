@@ -52,7 +52,11 @@ def screens(tmp):
                 fh2.write(sample["text"].rstrip("\r\n") + "\n")
             out.append((f"screen:{sample['id']}", path))
     out += [(f"screen:{p}", p) for p in TEXTS]
-    return [(name, screen.request(open(p, "rb").read().decode("utf-8", errors="replace"))) for name, p in out]
+    reqs = []
+    for name, p in out:
+        with open(p, "rb") as fh:
+            reqs.append((name, screen.request(fh.read().decode("utf-8", errors="replace"))))
+    return reqs
 
 
 def perimeter(tmp):

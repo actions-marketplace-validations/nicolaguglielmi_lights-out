@@ -28,7 +28,7 @@ FIXTURES = "fixtures/decide"
 # taken by the port so every adapter has the same bound (§1).
 MAX_QUESTIONS = 1000
 MIN_OPTIONS, MAX_OPTIONS = 2, 255
-KEY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+KEY = re.compile(r"[A-Za-z0-9_-]{1,64}")
 TYPES = ("yes_no", "choice", "score")
 # The arithmetic tolerance of the contract's sums and formulas (§1).
 EPS = 0.001
@@ -64,7 +64,7 @@ def check_request(req):
     if len(qs) > MAX_QUESTIONS:
         raise Refused(f"the request has {len(qs)} questions, over the port's {MAX_QUESTIONS}")
     for k, q in qs.items():
-        if not KEY.match(k):
+        if not KEY.fullmatch(k):
             raise Refused(f'question key "{k[:70]}" is not [A-Za-z0-9_-]{{1,64}}')
         if not isinstance(q, dict) or q.get("type") not in TYPES:
             raise Refused(f"question {k}: type is not one of {', '.join(TYPES)}")
@@ -168,7 +168,7 @@ def replay(req, env):
 
 def live(req, env):
     name = env.get("DECIDE") or ""
-    if not re.match(r"^[a-z0-9][a-z0-9-]*$", name):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
         raise Refused(f"DECIDE={name!r} names no adapter; set it in the profile (docs/adr/0091 §1)")
     verb = os.path.join("adapters", name, "decide.sh")
     if not os.path.isfile(verb):

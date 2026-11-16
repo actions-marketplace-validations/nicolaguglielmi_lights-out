@@ -80,6 +80,10 @@ class Refused(Exception):
         self.run = run
 
 
+class OverLimit(Refused):
+    """More questions than the Decide port takes (docs/adr/0091 §1, §6): the step searches instead."""
+
+
 def stopped(field, run):
     """The STEP_RUN object of a role's run that failed: its task and its stop."""
     return {field: dict(task(run), stop=run.get("stop"))}
@@ -315,7 +319,7 @@ def perimeter_request(doc, paths):
     if not paths:
         raise Refused("the workload's map holds no file to ask about")
     if len(tickets) * len(paths) > MAX_QUESTIONS:
-        raise Refused(f"{len(tickets)} tickets × {len(paths)} files is {len(tickets) * len(paths)} questions, "
+        raise OverLimit(f"{len(tickets)} tickets × {len(paths)} files is {len(tickets) * len(paths)} questions, "
                       f"over the port's {MAX_QUESTIONS}")
     questions = {}
     for t in tickets:
@@ -377,7 +381,7 @@ def decide_perimeter(doc, map_path, scope, run_dir):
     """The perimeter step's result asked file by file, or SearchInstead, or Refused."""
     try:
         req = perimeter_request(doc, candidates(map_path, scope))
-    except Refused as exc:
+    except OverLimit as exc:
         raise SearchInstead(f"perimeter: {exc}; the architect searches instead") from None
     with open(os.path.join(run_dir, "request.json"), "w", encoding="utf-8") as fh:
         json.dump(req, fh, ensure_ascii=False)

@@ -111,10 +111,7 @@ class CheckRequest(Refusal):
         for bad in ("", "k" * 65, "a b", "a.b", "é", "a/b"):
             self.refused({"input": "t", "questions": {bad: yes_no()}})
 
-    # Known ADR/code disagreement: core/decide.py's KEY is `^...$`, whose `$` also matches before a
-    # trailing newline, so the key "a\n" is accepted; ADR 0091 §1 says [A-Za-z0-9_-]{1,64}. Fix the
-    # code (`\Z`, or re.fullmatch) and delete this decorator; until then the suite shows one expected failure.
-    @unittest.expectedFailure
+    # ADR 0091 §1: [A-Za-z0-9_-]{1,64}, the whole key; a `$` would let "a\n" through.
     def test_a_key_with_a_trailing_newline_is_not_of_the_class(self):
         self.refused({"input": "t", "questions": {"a\n": yes_no()}})
 
