@@ -18,6 +18,9 @@ request="${TICKETS_DIR:-tickets}/$TICKET.md"
 dir=".crew/$TICKET/product"
 rm -rf "$dir"
 mkdir -p "$dir/out"
+# The screen first (docs/adr/0091 §7): a body that reads as instructions to
+# an AI agent stops here, before the role reads it.
+python3 core/screen.py step ticket "$request" "$DOC_FILE" "$dir/screen.json" || exit 1
 python3 core/spec.py answers "$DOC_FILE" > "$dir/answers.json"
 
 # shellcheck disable=SC1091 # the role's budgets and harness

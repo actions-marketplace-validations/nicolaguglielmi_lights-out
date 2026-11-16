@@ -237,7 +237,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase intake assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase intake decide screen assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -1048,6 +1048,17 @@ intake-confirm: ## Confirm, edit or drop each ticket a proposed intake holds; th
 	@born=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r '.tickets | join(" ")'); \
 	printf '[intake-confirm] intake %s kept: %s\n' "$(TICKET)" "$${born:-no ticket}" >&2; \
 	printf 'GO: intake-confirm — %s\n' "$${born:-no ticket kept}"
+
+# A text the screen stopped (docs/adr/0091 §7): a person has read it and
+# clears it for this text; the failed step runs again. CLEAR_BY and
+# CLEAR_VIA reach core/tower.sh from make's command line.
+.PHONY: screen-clear
+screen-clear: ## Clear a text the screen stopped, after reading it, and run its step again: TICKET=<id> [CLEAR_BY=<who>] (docs/adr/0091 §7)
+	@sh core/tower.sh screen-clear "$(TICKET)" || { printf 'NO-GO: screen-clear — nothing cleared; see the [tower] line above\n'; exit 1; }
+	@sh adapters/$(ORCHESTRATOR)/run.sh || { printf 'NO-GO: screen-clear — a step failed; see the [tower] lines above\n'; exit 1; }
+	@state=$$(sh adapters/$(STATE_STORE)/get.sh tickets "$(TICKET)" | jq -r .state); \
+	printf '[screen-clear] %s is at %s\n' "$(TICKET)" "$$state" >&2
+	@printf 'GO: screen-clear\n'
 
 .PHONY: answer
 answer: ## Answer a ticket's or an intake's open question, then the product role again: TICKET=<id> ANSWER=<text> [ANSWER_BY=<who>] (docs/adr/0055 §2, 0090 §2)

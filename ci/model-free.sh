@@ -19,7 +19,7 @@ for d in core gates verify roles; do
   [ -d "$d" ] || nogo "$d/ not found"
 done
 
-pattern='gemini-[0-9]|claude-[a-z]+-[0-9]|gpt-[0-9]|model_id|_api_key'
+pattern='gemini-[0-9]|gemini-decision|claude-[a-z]+-[0-9]|gpt-[0-9]|model_id|_api_key'
 
 hits=$(grep -rniE "$pattern" core gates verify roles \
   --exclude-dir=__pycache__ --exclude-dir=.pytest_cache || true)

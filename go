@@ -28,6 +28,7 @@
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
 #   ./go request        start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> [REQUEST_BY=<who>]
 #   ./go answer         answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text>
+#   ./go screen-clear   clear a text the screen stopped, after reading it, and run its step again: TICKET=<id> (ADR 0091)
 #   ./go demo-rework    prove a NO-GO goes back to the worker with its verdict, then GO and merged
 #   ./go demo-mainline  prove main stays green without a queue: unjudged disjoint merges, an overlap reworked, a breaking merge bisected and reverted
 #   ./go assign         turn a ticket into a PR: TICKET=<id>

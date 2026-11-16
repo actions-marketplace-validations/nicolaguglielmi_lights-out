@@ -16,6 +16,9 @@ set -eu
 dir=".crew/$TICKET/intake/product"
 rm -rf "$dir"
 mkdir -p "$dir/out"
+# The screen first (docs/adr/0091 §7): a text that reads as instructions to
+# an AI agent stops here, before the role reads it.
+python3 core/screen.py step intake "${TICKETS_DIR:-tickets}/$TICKET.intake.md" "$DOC_FILE" "$dir/screen.json" || exit 1
 python3 core/intake.py first "$DOC_FILE" "${TICKETS_DIR:-tickets}" > "$dir/input.md"
 python3 core/intake.py answers "$DOC_FILE" > "$dir/answers.json"
 

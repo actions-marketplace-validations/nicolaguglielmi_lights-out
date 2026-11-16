@@ -64,6 +64,7 @@ TOKEN_BUDGET spent money the limits must count.
 
 import fnmatch
 import glob
+import hashlib
 import json
 import os
 import re
@@ -75,7 +76,8 @@ from datetime import datetime, timezone
 
 COLLECTION = "tickets"
 USAGE = ("usage: tower.sh open <ticket> | request <ticket> | answer <ticket> | step <ticket> <step>"
-         " | resume <ticket> | intake <id> | intake-confirm <id> | task [--patch] <run.json>")
+         " | resume <ticket> | intake <id> | intake-confirm <id> | screen-clear <ticket>"
+         " | task [--patch] <run.json>")
 
 # The transition table. PRECONDITION: step -> the state it starts from.
 # NEXT: state -> the step requested once the document is there; a state
@@ -604,6 +606,37 @@ class Tower:
             self.record_failure(updated, following, new_state, f"could not publish {following}")
             raise Refused(None)
 
+    def screen_clear(self, env):
+        """A person clears a text the screen stopped (docs/adr/0091 §7): the
+        clearance holds for this text's sha256, and the failed step is
+        requested again."""
+        doc = self.get()
+        have = text(doc.get("state")) or "none"
+        history = doc.get("history") or []
+        last = history[-1] if history and isinstance(history[-1], dict) else {}
+        step, why = text(last.get("step")), text(last.get("error"))
+        if not why.startswith("step exited 1: screen:") or PRECONDITION.get(step) != have:
+            raise Refused(f"[tower] {self.ticket}: its last step did not stop at the screen "
+                          f"(state {have}); nothing cleared")
+        name = f"{self.ticket}.intake.md" if doc.get("kind") == "intake" else f"{self.ticket}.md"
+        try:
+            with open(os.path.join(self.tickets_dir, name), "rb") as fh:
+                sha = hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            raise Refused(f"[tower] {self.ticket}: no {self.tickets_dir}/{name}; nothing cleared") from None
+        at = now()
+        by, via = env.get("CLEAR_BY") or "unauthenticated", env.get("CLEAR_VIA") or "cli"
+        doc = dict(doc, screen={"verdict": "cleared", "sha256": sha, "by": by, "via": via, "at": at},
+                   history=history + [{"step": "screen-clear", "state": have, "at": at, "by": by, "via": via,
+                                       **attempt(doc)}])
+        if not self.store_put(doc):
+            raise Refused(f"[tower] {self.ticket}: could not record the clearance; nothing requested")
+        if not self.publish(step):
+            self.tell(f"could not publish {step}")
+            self.record_failure(doc, step, have, f"could not publish {step}")
+            raise Refused(None)
+        self.tell(f"screen cleared by {by} via {via}, {step} requested again")
+
     def resume(self):
         doc = self.get()
         have = text(doc.get("state")) or "none"
@@ -656,7 +689,8 @@ def main(argv, env=None):
             return 2
     cmd = argv[0] if argv else ""
     ticket = argv[1] if len(argv) > 1 else ""
-    if not cmd or not ticket or cmd not in ("open", "request", "answer", "step", "resume", "intake", "intake-confirm"):
+    if not cmd or not ticket or cmd not in ("open", "request", "answer", "step", "resume", "intake", "intake-confirm",
+                                            "screen-clear"):
         say(USAGE)
         return 2
     tower = Tower(ticket, env)
@@ -673,6 +707,8 @@ def main(argv, env=None):
             tower.intake_confirm(env)
         elif cmd == "step":
             tower.step(argv[2] if len(argv) > 2 else "")
+        elif cmd == "screen-clear":
+            tower.screen_clear(env)
         else:
             tower.resume()
     except Refused as refused:
