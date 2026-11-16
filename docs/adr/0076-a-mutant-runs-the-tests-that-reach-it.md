@@ -172,3 +172,31 @@ test, run through the real runner with cosmic-ray:
 
 `./go demo` does not run the python runner; nothing in the demo path
 changes, no account, no key.
+
+## Amendment 2026-11-16: a suite that fails only with the hook is a NO-GO
+
+*Owner's decision, the same day, after M61.* §3 sent one more case to the
+whole suite: a clean run that fails with the hook and passes without it.
+On M61's branch one test checked `PYTHONPATH`, which the hook prepends to.
+The runner printed its one stderr line, then ran each of 5,040 mutants
+against all 1,776 core tests, about 117 s each (measure: M61's handoff and
+`self` runs 43838235097 and 43868953131). Two `self` runs were still in
+their gates step after 5 h 20 min and 2 h, and were cancelled. A line on
+stderr did not stop hours of work that nobody had asked for.
+
+- **A clean run that fails with the hook and passes without it stops the
+  runner**, exit 1, before any mutant. Stderr carries one line: `the suite
+  passes without the coverage hook and fails with it; fix the test that
+  depends on its environment, or set MUTATION_SELECT=off to run the whole
+  suite for every mutant`. The gate turns it into a NO-GO, as it does for
+  a red suite.
+- **A suite that is red without the hook too** keeps its own line, `the
+  unmutated test suite does not pass`.
+- **`MUTATION_SELECT=off` stays the explicit way to the whole suite.** The
+  cost is then a choice.
+- **No per-test coverage** (§3's other cases: no `unittest.TestCase`, `-S`
+  or `-I`, coverage.py missing) still runs the whole suite. Those suites
+  were never selectable, and their cost is what it was before this ADR.
+
+No threshold is added: the rule is a case, not a number.
+
