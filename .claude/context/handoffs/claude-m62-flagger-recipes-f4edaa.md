@@ -4,16 +4,18 @@ Branch `claude/m62-flagger-recipes-f4edaa`, not merged. Commits as Nicola, no tr
 
 ## Acceptance
 
-| What | How proven | Where |
+Head 343fe38. Every workflow green on it: ci 43846825646, self 43846825672, podman 43846825660, package 43846825650, stranger 43846825524.
+
+| What | How proven | Result |
 |---|---|---|
-| `./go ci` GO from a full clone | `.crew/m62-clone`, 53 checks, 1067 s (VM shared with other sessions' runs) | d1c5ec3; the files changed after it re-checked cold: shell, lint, app-free, outside, docs-drift GO |
-| `DELIVERY=flagger`: the six-case Delivery suite, unchanged | `./go flagger-conformance` on GitHub Actions, k3s + Flagger v1.45.0 | ci run 43836791053, job `flagger` (fd60eba): `GO: delivery-conformance`, recorded `delivery-flagger.env` |
-| Flagger rolls a bad canary back by itself | `./go flagger-proof` case a | run 43836791053: GO in 37 s, events show `failed checks threshold reached 2`, rollback flag never opened |
-| Flagger's promotion waits for its gate | `./go flagger-proof` case b | FINAL_RUN |
-| GitLab CI recipe | `./go demo-gitlab-ci`: real gitlab-runner v19.5.3 (docker executor, socket binding) on GitLab CE 19.5.5 (the adapter's image), merge request pipeline | run 43836791053, job `gitlab-ci`: `GO: demo-gitlab-ci — … posted [GO: gates — risk low, auto-merge, in workbench] as lights-out/gitlab-ci, 245s` |
-| CircleCI recipe | `./go demo-circleci`: `circleci config validate` (CLI 1.15.0 image, by digest, no token needed: "Config file … is valid"), then the recipe's step on a local Gitea PR | runs 43833404799 and 43836791053, job `circleci`: GO, 57 s |
-| The demo | `engine-compat` job (`./go demo` cold on a runner) | FINAL_RUN. Not run locally: the rootful plane slot was held by another session's demo all session |
-| Every workflow green on the head | ci, self, package, podman, stranger | FINAL_RUN |
+| `./go ci` GO from a full clone | `.crew/m62-clone` | d1c5ec3: 53 checks GO, 1067 s (VM shared with other sessions). 343fe38: 53 checks GO, 524 s. Actions `ci` job GO on 343fe38 |
+| `DELIVERY=flagger`, the six-case Delivery suite unchanged | `./go flagger-conformance` on Actions, k3s v1.37.2 + Flagger v1.45.0 + loadtester 0.39.0 | run 43846825646, job `flagger` 133230349964: `GO: delivery-conformance` (case 1 rejected at 5% and rolled back, case 2 held at 25 and promoted to 100 on GO, cases 3-5) |
+| A canary rolled back on bad metrics | `./go flagger-proof` case a: kill switch on, shift to 5%, load, nobody but Flagger rolls back | same job: rolled back on Flagger's own failed checks in 38 s, status `{stable 0.1.0-m2, canary null, weight 0}` |
+| A promotion that waits for the gate | `./go flagger-proof` case b: 5, 25, 100, gate left open | same job: `WaitingPromotion` held 30 s (three ticks) at 100%, completed once the promotion URL became `/gate/approve`; `GO: flagger — … 238s` |
+| GitLab CI recipe | `./go demo-gitlab-ci`: a real gitlab-runner v19.5.3 (docker executor, socket binding) on GitLab CE 19.5.5 (the gitlab adapter's image), merge request pipeline | job `gitlab-ci` 133230350387: `GO: demo-gitlab-ci — GitLab CI (gitlab-runner, merge request !1's pipeline) posted [GO: gates — risk low, auto-merge, in workbench] as lights-out/gitlab-ci, 277s` |
+| CircleCI recipe | `./go demo-circleci`: `circleci config validate` (CLI 1.15.0 image by digest), then the recipe's step on a local Gitea PR. Not a CircleCI run | job `circleci` 133230350272: `GO: demo-circleci — config NOT validated (CircleCI's API asked for a token; CIRCLE_TOKEN unset); the recipe's step posted … as lights-out/circleci on PR #1, 59s`. The config was validated anonymously ("Config file … is valid") in runs 43833404799 and 43836791053; the API started asking for a token at run 43840181787 |
+| The demo | `engine-compat` (`./go demo` cold on a runner) | job 133230350078: `GO: demo, milestone M9, 787s to rollback (budget 900s)`. Not run locally: another session's demo held the rootful plane slot all session |
+| Refactors | `argo` job (cluster.sh's `CLUSTER_ADAPTER`), `jenkins` job (shared `surfaces/gitea-pr.sh`) | both GO on 343fe38 |
 
 ## What changed
 
@@ -31,6 +33,8 @@ Branch `claude/m62-flagger-recipes-f4edaa`, not merged. Commits as Nicola, no tr
 4. **gitlab-ci-local is not enough** for the recipe (services do not share the job's build volume); a real runner was used. `docker:dind` runners: not proven.
 5. **CircleCI cannot be run locally** for a machine job; the proof is validate + the step, declared "not a CircleCI run" everywhere.
 6. GitLab 19 job traces prefix each line with a timestamp and a stream mark.
+7. **Flagger zeroes `status.canaryWeight` on entering `WaitingPromotion`** (`setStatusPhase`) while the routes stay at 100%: `status.sh` reports the last step there.
+8. **CircleCI's API answered anonymous validation twice, then asked for a token**: a `CIRCLE_TOKEN` secret would make the validation part of the proof deterministic; the owner decides whether to make a CircleCI account for it (no-account rule).
 
 ## Still open (out of scope, from M32)
 
