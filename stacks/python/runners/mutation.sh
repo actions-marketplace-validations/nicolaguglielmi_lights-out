@@ -77,10 +77,13 @@ fi
 
 # The clean run, timed: a red suite is not a mutation score, and the
 # timeout comes from this measurement. With selection on it records which
-# test executes which line (docs/adr/0076); a suite that fails only with
-# the hook runs again without it, and every mutant runs it whole.
+# test executes which line (docs/adr/0076). A suite that fails only with
+# the hook stops the runner before any mutant (ADR 0076, amendment
+# 2026-11-16): running it whole for every mutant is MUTATION_SELECT=off's
+# choice, never a silent fallback.
 start=$(date +%s)
 measured=false
+hook_failed=false
 if [ "$selection" = on ]; then
   mkdir "$work/cov"
   site=$("$bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
@@ -88,13 +91,15 @@ if [ "$selection" = on ]; then
       LIGHTS_OUT_COV_SITE="$site" sh -c "$test_cmd" >&2; then
     measured=true
   else
-    printf 'mutation.sh: the suite fails with the coverage hook; every mutant runs the whole suite\n' >&2
-    selection=off
-    start=$(date +%s)
+    hook_failed=true
   fi
 fi
 if [ "$measured" = false ] && ! sh -c "$test_cmd" >&2; then
   printf 'mutation.sh: the unmutated test suite does not pass (%s); not a mutation score\n' "$test_cmd" >&2
+  exit 1
+fi
+if [ "$hook_failed" = true ]; then
+  printf 'mutation.sh: the suite passes without the coverage hook and fails with it; fix the test that depends on its environment, or set MUTATION_SELECT=off to run the whole suite for every mutant\n' >&2
   exit 1
 fi
 elapsed=$(( $(date +%s) - start ))
