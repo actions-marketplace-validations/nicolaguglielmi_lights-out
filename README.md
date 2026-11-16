@@ -28,23 +28,96 @@ What is proven and what is not yet is said plainly below, in [What is real and w
 
 The console (`./go console`): the kanban, a ticket's timeline from the request to the spec gate, the overview, and the agent network (`./go network` prints the same in the terminal; the image opens a replay). The overview also shows the four delivery measures and the spend per ticket, role and day, in the words `./go dora` and `./go spend` print. Every card, card's back and timeline says whose turn it is, a role's or yours, and when it is yours, the one thing to do: answer a question, go-for-launch, or decide after the last attempt; the overview lists those first, and the kanban's "Your turn only" keeps only those. A card carries its priority and feature as labels and badges for who has the ball, how long it has sat in its state and its rework attempts; it turns over, above the board, to its timeline in a few lines. It moves only when the tower moves its ticket. A network screen draws one ticket's agents as the harness governs them: the tower, the six roles, the workers with their harness and model, each gate lighting GO or NO-GO, the rework loop and the human gate, beside every attempt's gate lines and patch and the files by perimeter; `./go network` prints the same facts in text. It also has a specs screen, an editor for a new request that the spec gate checks as you type, a search over the project's ADRs from the project map, and a light and a dark theme. Rendered in CI over the logbook the console's tests build ([`fixtures/logbook/golden-1.6.json`](fixtures/logbook/golden-1.6.json)), which holds tickets in more states than one demo leaves; its model is a stub. After `./go demo`, the console shows ticket 0001 from the request to the rollback.
 
-## Five ways in
+## Quick start
 
-Each step asks for one thing more than the one before, and gives back something you can see.
+**You need** podman (or Docker on Linux) and git. Nothing else: no account, no key, no cloud.
 
-| Step | You need | You get |
+**Or nothing installed:** [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/nicolaguglielmi/lights-out?quickstart=1) runs the same `./go demo` in your browser, with docker inside the codespace ([ADR 0097](docs/adr/0097-from-zero-to-hero-and-a-start-with-nothing-installed.md)). It needs a GitHub account and uses your account's Codespaces quota: it asks for a 4-core machine, which spends 4 of the 120 core hours a Free account gets each month for every hour it runs. Run `./go demo` in its terminal, then `./go console` and open the forwarded port 8098: the demo's `file://` link does not open from a codespace. The `stranger` workflow runs the demo in this dev container on every push; no codespace of the project's own has run it. The way that needs no account at all stays the three commands below.
+
+| Your machine | Install once |
+|---|---|
+| macOS | `brew install podman`, then `podman machine init --cpus 4 --memory 6144` |
+| Linux | `sudo apt-get install -y podman` (or `dnf`), then `systemctl --user enable --now podman.socket` |
+| Docker on Linux | start Docker, and put `CONTAINER_ENGINE=docker` before every `./go` |
+
+**Run**
+
+```sh
+git clone https://github.com/nicolaguglielmi/lights-out.git
+cd lights-out
+./go demo
+```
+
+`./go demo` checks your machine first: it starts a stopped podman machine, and moves a port another program holds to a free one and tells you which ([ADR 0093](docs/adr/0093-the-first-run-flawless.md)). Then one line per step:
+
+```
+lights-out demo: a ticket goes from a request to a canary that rolls itself back, at L0, with no key. About 6 min 10 s on this machine.
+[1/7] the engine, memory, disk and ports (about 1 s) ...
+      8080 is held by python3 (pid 2693): the app moves to 8081 (APP_PORT in .crew/ports.env)
+      3000 is held by python3 (pid 2692): the code host moves to 3001 (CODE_HOST_PORT in .crew/ports.env)
+      done, 1 s
+[2/7] the toolchain image, built once per revision (about 30 s) ... 49 s
+[3/7] the plane: code host, delivery, metrics, flags, registry and the app (about 71 s) ... 1 min 33 s
+[4/7] a canary with a failing feature takes 5% of the traffic (about 63 s) ...
+      A canary at 5% was judged and rolled back by itself, nobody paged: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010
+      done, 64 s
+[5/7] ticket 0001: request, spec, pull request, eight gates, merge, canary (about 3 min 24 s) ...
+      Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%, rolled back by itself, audited
+      done, 3 min 53 s
+[6/7] the repository's own checks, run beside the plane (about 0 s) ... 37 s
+[7/7] this run's console, frozen into one page (about 1 s) ...
+      See why, step by step: file:///home/runner/work/lights-out/lights-out/lights-out/.crew/demo/console.html#ticket/0001
+      Next: ./go console serves the live console on localhost:8098; ./go try <path> runs the gates on a repository of yours
+      The plane is still up: the app at http://localhost:8081, Gitea at http://localhost:3001, Prometheus at http://localhost:9090; ./go down stops it
+      done, 1 s
+GO: demo, milestone M9, 480s to rollback (budget 900s, plan §2)
+```
+
+At the end it opens the run's own console on ticket 0001: the request, the spec gate, the pull request and its eight gates, the merge, the canary at 5%, and the rollback with its reason. [The same page for the latest run on main](https://nicolaguglielmi.github.io/lights-out/console/snapshot.html#ticket/0001) needs nothing installed. `./go console` serves the live one.
+
+That run took 480 s on a clean GitHub runner, cold, with the toolchain image built in the run and ports 3000 and 8080 held by other servers ([stranger run 43841491822](https://github.com/nicolaguglielmi/lights-out/actions/runs/43841491822)); before ADR 0093 the same run took 700–805 s. The next run on the same machine estimates from this one. Everything the tools print is in `.crew/demo/run.log`; `LIGHTS_OUT_VERBOSE=1 ./go demo` shows it as it goes.
+
+**Then, on your own repository:** `./go try ~/code/your-repo` drafts its contract, runs the eight gates on its last commit, and prints the three commands that keep the draft ([gates on your repository](#gates-on-your-repository)).
+
+**Shorter looks**
+
+```sh
+./go demo-triage     # an alert becomes ranked hypotheses, 3 seconds, nothing to start
+./go demo-mainline   # main stays green without a queue: a moved perimeter goes to rework, a red main is bisected and the culprit reverted
+./go incident        # build an incident document from the last release record: NAME= FROM= TO= [LOGS=<file>] [TICKET=<id>]
+./go postmortem INCIDENT=<file>   # an incident document becomes a post mortem and tickets
+./go demo-postmortem # replay the post mortem of the demo-rollback incident (needs a recording, see below)
+./go record-postmortem PROFILE=l1 # record that answer once, with your Gemini key
+./go up              # start the local plane (about 15 s once downloaded)
+./go demo-rollback   # just the self-rollback, about a minute
+./go demo-dast       # the passive DAST scan at staging both ways: a leaky canary rolled back; pulls a 1.2 GB scanner, off in ./go demo
+./go board           # the pipeline explained, and live while the plane runs: localhost:8099
+./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
+./go console         # the client's view: kanban (whose turn on every card), specs, a new-request editor, ADR search, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
+./go request TICKET=<id>   # start a ticket before the code: the product role asks or confirms, then the spec gate
+./go answer TICKET=<id> ANSWER="<text>"   # answer its open question, then the product role again
+./go down            # stop everything
+```
+
+**Ops without the plane**
+
+An incident document holds the alerts, the release record, a log excerpt and the time window. `./go postmortem` turns it into a post mortem in `.crew/postmortem/<name>/`. Each timeline entry is anchored to an id the document holds (the release, a stage, a log line, an alert, and the PR or ticket when the tower released it), and core prints that evidence beside it. Every action item is filed as a ticket in `tickets/`. The ticket has no perimeter: a human adds one before `./go assign`. An anchored timeline is not a true one: the check stops invented releases and log lines, not a wrong story about real ones.
+
+## From zero to hero
+
+Seven levels, each asking a little more than the one before, each ending on the one line that proves you got there. [The tutorial](docs/tutorial.md#from-zero-to-hero) opens with them, every command and output from a real run.
+
+| Level | What you do | Time |
 |---|---|---|
-| [0. Look](#0-look) | a browser | the site, a video tour, the board |
-| [1. Gates on your repository](#1-gates-on-your-repository) | a pull request on GitHub, or podman or docker and git | the eight gates on every pull request from the GitHub Action, or on your last commit from the gates image (508 MB unpacked), without cloning lights-out |
-| [2. The whole loop](#2-the-whole-loop-on-your-laptop) | the clone | `./go demo`: a ticket to a canary that rolls itself back, no key |
-| [3. Agents on your repository](#3-agents-on-your-repository) | a model key | `./go init`, then tickets worked by real agents at L1 |
-| [4. Toward production](#4-toward-production) | your code host, delivery and metrics | what exists today for L2 and L3, and what does not yet |
+| [0. See it](docs/tutorial.md#level-0-see-it) | [The frozen console](https://nicolaguglielmi.github.io/lights-out/console/snapshot.html#ticket/0001) of a real run: a canary rolled back by itself. Or [the site](https://nicolaguglielmi.github.io/lights-out/), [a video tour](https://nicolaguglielmi.github.io/lights-out/media/overview.mp4) and [the board](board/index.html) | 1 min |
+| [1. Run the demo](docs/tutorial.md#level-1-run-the-demo) | `./go demo`, [above](#quick-start): the same, on your machine or in a codespace | about 10 min |
+| [2. The gates on your repository](docs/tutorial.md#level-2-the-gates-on-your-repository) | `./go try`, or the Action on a pull request ([below](#gates-on-your-repository)) | about 15 min |
+| [3. Your thresholds, a ticket, the intake](docs/tutorial.md#level-3-your-thresholds-a-ticket-the-intake) | `policy.env`, a ticket's perimeter, `./go intake` | about 30 min |
+| [4. Your service in the plane](docs/tutorial.md#level-4-your-service-in-the-plane) | a canary of your code, rolled back by itself | 1–2 h |
+| [5. Live agents at L1](docs/tutorial.md#level-5-live-agents-at-l1) | agents on your tickets, with a budget and the provider you choose ([below](#agents-on-your-repository)) | about 30 min |
+| [6. Your CI/CD](docs/tutorial.md#level-6-your-cicd) | Flagger, GitLab CI, Jenkins ([below](#toward-production)) | it depends |
 
-### 0. Look
-
-[The site](https://nicolaguglielmi.github.io/lights-out/) explains it in five steps, with [a video tour](https://nicolaguglielmi.github.io/lights-out/media/overview.mp4), a clip per scenario and the console's screens. [The board](board/index.html) plays every scenario station by station: what each step does, which file does it and the line it prints.
-
-### 1. Gates on your repository
+## Gates on your repository
 
 Most people arrive from [the Action on the Marketplace](https://github.com/marketplace/actions/lights-out-gates). It posts the gates on every pull request as one check run, with one line per gate in its summary:
 
@@ -98,80 +171,7 @@ Tags are mutable. To pin the image, set `LIGHTS_OUT_IMAGE` to its digest (in the
 
 Without an engine, `lights-out-gates --light` runs the gates that need only git and Python in under a second, from a standard-library Python package on PyPI, `uvx lights-out-gates --light`, and its line names the four that need the image ([ADR 0061](docs/adr/0061-gates-without-a-container.md), [the light hook recipes](docs/use-on-your-repo.md#hook-recipes-for-coding-agents)). In Claude Code, the plugin brings the same gates as `/lights-out:gates`, a pre-commit hook and a read-only MCP server over the project map: `claude plugin marketplace add nicolaguglielmi/lights-out`, then `claude plugin install lights-out@lights-out` ([ADR 0069](docs/adr/0069-the-agents-own-toolbelt.md), [the plugin](docs/use-on-your-repo.md#the-claude-code-plugin)). Codex and Gemini CLI get the same two commands and the hook: [the Codex plugin](docs/use-on-your-repo.md#the-codex-plugin), [the Gemini CLI extension](docs/use-on-your-repo.md#the-gemini-cli-extension).
 
-### 2. The whole loop on your laptop
-
-**You need** podman (or Docker on Linux) and git. Nothing else: no account, no key, no cloud.
-
-| Your machine | Install once |
-|---|---|
-| macOS | `brew install podman`, then `podman machine init --cpus 4 --memory 6144` |
-| Linux | `sudo apt-get install -y podman` (or `dnf`), then `systemctl --user enable --now podman.socket` |
-| Docker on Linux | start Docker, and put `CONTAINER_ENGINE=docker` before every `./go` |
-
-**Run**
-
-```sh
-git clone https://github.com/nicolaguglielmi/lights-out.git
-cd lights-out
-./go demo
-```
-
-`./go demo` checks your machine first: it starts a stopped podman machine, and moves a port another program holds to a free one and tells you which ([ADR 0093](docs/adr/0093-the-first-run-flawless.md)). Then one line per step:
-
-```
-lights-out demo: a ticket goes from a request to a canary that rolls itself back, at L0, with no key. About 6 min 10 s on this machine.
-[1/7] the engine, memory, disk and ports (about 1 s) ...
-      8080 is held by python3 (pid 2693): the app moves to 8081 (APP_PORT in .crew/ports.env)
-      3000 is held by python3 (pid 2692): the code host moves to 3001 (CODE_HOST_PORT in .crew/ports.env)
-      done, 1 s
-[2/7] the toolchain image, built once per revision (about 30 s) ... 49 s
-[3/7] the plane: code host, delivery, metrics, flags, registry and the app (about 71 s) ... 1 min 33 s
-[4/7] a canary with a failing feature takes 5% of the traffic (about 63 s) ...
-      A canary at 5% was judged and rolled back by itself, nobody paged: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010
-      done, 64 s
-[5/7] ticket 0001: request, spec, pull request, eight gates, merge, canary (about 3 min 24 s) ...
-      Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%, rolled back by itself, audited
-      done, 3 min 53 s
-[6/7] the repository's own checks, run beside the plane (about 0 s) ... 37 s
-[7/7] this run's console, frozen into one page (about 1 s) ...
-      See why, step by step: file:///home/runner/work/lights-out/lights-out/lights-out/.crew/demo/console.html#ticket/0001
-      Next: ./go console serves the live console on localhost:8098; ./go try <path> runs the gates on a repository of yours
-      The plane is still up: the app at http://localhost:8081, Gitea at http://localhost:3001, Prometheus at http://localhost:9090; ./go down stops it
-      done, 1 s
-GO: demo, milestone M9, 480s to rollback (budget 900s, plan §2)
-```
-
-At the end it opens the run's own console on ticket 0001: the request, the spec gate, the pull request and its eight gates, the merge, the canary at 5%, and the rollback with its reason. [The same page for the latest run on main](https://nicolaguglielmi.github.io/lights-out/console/snapshot.html#ticket/0001) needs nothing installed. `./go console` serves the live one.
-
-That run took 480 s on a clean GitHub runner, cold, with the toolchain image built in the run and ports 3000 and 8080 held by other servers ([stranger run 43841491822](https://github.com/nicolaguglielmi/lights-out/actions/runs/43841491822)); before ADR 0093 the same run took 700–805 s. The next run on the same machine estimates from this one. Everything the tools print is in `.crew/demo/run.log`; `LIGHTS_OUT_VERBOSE=1 ./go demo` shows it as it goes.
-
-**Then, on your own repository:** `./go try ~/code/your-repo` drafts its contract, runs the eight gates on its last commit, and prints the three commands that keep the draft ([section 3](#3-agents-on-your-repository)).
-
-**Shorter looks**
-
-```sh
-./go demo-triage     # an alert becomes ranked hypotheses, 3 seconds, nothing to start
-./go demo-mainline   # main stays green without a queue: a moved perimeter goes to rework, a red main is bisected and the culprit reverted
-./go incident        # build an incident document from the last release record: NAME= FROM= TO= [LOGS=<file>] [TICKET=<id>]
-./go postmortem INCIDENT=<file>   # an incident document becomes a post mortem and tickets
-./go demo-postmortem # replay the post mortem of the demo-rollback incident (needs a recording, see below)
-./go record-postmortem PROFILE=l1 # record that answer once, with your Gemini key
-./go up              # start the local plane (about 15 s once downloaded)
-./go demo-rollback   # just the self-rollback, about a minute
-./go demo-dast       # the passive DAST scan at staging both ways: a leaky canary rolled back; pulls a 1.2 GB scanner, off in ./go demo
-./go board           # the pipeline explained, and live while the plane runs: localhost:8099
-./go map             # the project map: tickets, files, tests, ADRs and pages of one commit, in .crew/map.sqlite
-./go console         # the client's view: kanban (whose turn on every card), specs, a new-request editor, ADR search, each ticket's timeline from request to release, post mortems, thresholds, go-for-launch: localhost:8098
-./go request TICKET=<id>   # start a ticket before the code: the product role asks or confirms, then the spec gate
-./go answer TICKET=<id> ANSWER="<text>"   # answer its open question, then the product role again
-./go down            # stop everything
-```
-
-**Ops without the plane**
-
-An incident document holds the alerts, the release record, a log excerpt and the time window. `./go postmortem` turns it into a post mortem in `.crew/postmortem/<name>/`. Each timeline entry is anchored to an id the document holds (the release, a stage, a log line, an alert, and the PR or ticket when the tower released it), and core prints that evidence beside it. Every action item is filed as a ticket in `tickets/`. The ticket has no perimeter: a human adds one before `./go assign`. An anchored timeline is not a true one: the check stops invented releases and log lines, not a wrong story about real ones.
-
-### 3. Agents on your repository
+## Agents on your repository
 
 From a clone of lights-out:
 
@@ -194,7 +194,7 @@ Two more optional files shape the agents (ADR 0073): `test-reviewer.md` and `arc
 
 [The guide](docs/use-on-your-repo.md) says what `.lights-out/` holds, what each key says, what the plane needs, how to write tickets, the hook recipes for coding agents and the GitHub Action.
 
-### 4. Toward production
+## Toward production
 
 What exists today, each opt-in, none yet run end to end on a repository of yours:
 
