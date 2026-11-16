@@ -428,7 +428,7 @@ runc() {
     $engine_flags $socket_flags $port_flags \
     "$image" "$@"
 }
-run() { run_exec=exec; runc "$@"; }
+run() { run_exec="exec"; runc "$@"; }
 
 # demo: the checks' directory and the plane already up (docs/adr/0093 §3);
 # not exec'd, so the trap above can remove the checks' container. try: the

@@ -57,8 +57,9 @@ esac
 need_mb=${PREFLIGHT_DISK_NEED_MB:-6000}
 free=""
 if [ "$engine" = podman ]; then
-  set -- $("$engine" info --format '{{.Store.GraphRootAllocated}} {{.Store.GraphRootUsed}}' 2>/dev/null || :)
-  case "${1:-}${2:-}" in ''|*[!0-9]*) ;; *) free=$(( ($1 - $2) / 1000000 )) ;; esac
+  d=$("$engine" info --format '{{.Store.GraphRootAllocated}} {{.Store.GraphRootUsed}}' 2>/dev/null || :)
+  alloc=${d% *}; used=${d#* }
+  case "$alloc$used" in ''|*[!0-9]*) ;; *) free=$(( (alloc - used) / 1000000 )) ;; esac
 else
   root=$("$engine" info --format '{{.DockerRootDir}}' 2>/dev/null || :)
   [ -z "$root" ] || [ ! -r "$root" ] || free=$(df -Pk "$root" 2>/dev/null | awk 'NR == 2 { print int($4 * 1024 / 1000000) }')

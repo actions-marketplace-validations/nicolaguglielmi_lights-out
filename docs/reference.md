@@ -8,7 +8,8 @@ Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M21 (GitHu
 
 | Stage | Milestone | Real |
 |---|---|---|
-| ci | M0 | ✓ |
+| preflight | M60 | ✓ host-side, before the plane: a stopped podman machine started, memory warned, disk and ports judged, a busy port moved and named (ADR 0093 §1) |
+| ci | M0 | ✓ beside the plane since M60, its verdict awaited before `GO: demo` (ADR 0093 §3) |
 | engine-compat | M2 | ✓ host-side, selected engine |
 | up | M2 | ✓ L0 plane, 8 services beside the app |
 | smoke | M2 | ✓ a meetup created through Envoy |
@@ -18,6 +19,7 @@ Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M21 (GitHu
 | PR gates | M4 | ✓ six fixture PRs prove risk, SAST, deps, test, mutation, secrets |
 | ticket → PR | M5 | ✓ crew driver, six roles, one real run recorded, replay at L0 |
 | e2e | M6 | ✓ ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
+| console at the end | M60 | ✓ the run's logbook frozen into `.crew/demo/console.html`, opened on ticket 0001 (ADR 0093 §4, ADR 0089) |
 | ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.14.0; adk eval in ci; replay at L0 |
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
 | review | M9 | ✓ test-reviewer and architect on gemini-cli; risk medium/high PR goes review → ci-passed/ci-failed; ticket 0003 perimeter rule |

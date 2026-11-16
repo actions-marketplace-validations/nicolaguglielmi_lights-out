@@ -29,7 +29,6 @@ name=first-run
 for f in core/preflight.sh core/progress.sh adapters/gitea/ready.sh; do
   [ -f "$f" ] || nogo "$f not found"
 done
-here=$(pwd -P)
 tmp=$(mktemp -d)
 pids=""
 trap 'for p in $pids; do kill "$p" 2>/dev/null || :; done; rm -rf "$tmp"' EXIT
@@ -81,11 +80,11 @@ fresh() {
 }
 preflight() {
   (cd "$c" && env PATH="$tmp/bin:$PATH" FAKE="$c/.fake" CONTAINER_ENGINE=podman PREFLIGHT_OS=Linux \
-    sh core/preflight.sh "$@" >"$c/.out" 2>"$c/.err")
+    sh core/preflight.sh >"$c/.out" 2>"$c/.err")
 }
 want_go() { [ "$(cat "$c/.out")" = "GO: preflight" ] || nogo "§1 $1: want GO: preflight, got [$(cat "$c/.out")]" "$(cat "$c/.err")"; }
 want_nogo() {
-  grep -q '^NO-GO: preflight — ' "$c/.out" && [ "$(wc -l < "$c/.out" | tr -d ' ')" = 1 ] \
+  { grep -q '^NO-GO: preflight — ' "$c/.out" && [ "$(wc -l < "$c/.out" | tr -d ' ')" = 1 ]; } \
     || nogo "§1 $1: want one NO-GO: preflight line, got [$(cat "$c/.out")]" "$(cat "$c/.err")"
 }
 
@@ -107,7 +106,7 @@ grep '8080' "$c/.err" | grep -q '8081' || nogo "§1 busy 8080: no stderr line na
 grep '3000' "$c/.err" | grep -q '3001' || nogo "§1 busy 3000: no stderr line names 3000 and 3001" "$(cat "$c/.err")"
 # A second run keeps them, while they stay free.
 preflight || nogo "§1 second run: exit $?" "$(cat "$c/.out")"
-grep -qx 'APP_PORT=8081' "$c/.crew/ports.env" && grep -qx 'GITEA_PORT=3001' "$c/.crew/ports.env" \
+{ grep -qx 'APP_PORT=8081' "$c/.crew/ports.env" && grep -qx 'GITEA_PORT=3001' "$c/.crew/ports.env"; } \
   || nogo "§1 second run: the moved ports changed" "$(cat "$c/.crew/ports.env")"
 stop_listeners
 
@@ -117,7 +116,7 @@ printf 'APP_PORT=9000\n' > "$c/.env"
 listen 9000
 preflight && nogo "§1 busy APP_PORT from .env: exit 0" "$(cat "$c/.out")"
 want_nogo "busy APP_PORT from .env"
-grep -q '9000' "$c/.out" && grep -q '\.env' "$c/.out" || nogo "§1 busy APP_PORT from .env: the line names neither 9000 nor .env" "$(cat "$c/.out")"
+{ grep -q '9000' "$c/.out" && grep -q '\.env' "$c/.out"; } || nogo "§1 busy APP_PORT from .env: the line names neither 9000 nor .env" "$(cat "$c/.out")"
 [ ! -e "$c/.crew/ports.env" ] || nogo "§1 busy APP_PORT from .env: a port .env sets was moved"
 stop_listeners
 
@@ -165,7 +164,7 @@ preflight || nogo "§1 3 GiB of memory: exit $?, want a warning and GO" "$(cat "
 want_go "3 GiB of memory"
 grep -q 'memory' "$c/.err" || nogo "§1 3 GiB of memory: no warning line" "$(cat "$c/.err")"
 fresh mem-ok
-preflight; grep 'memory' "$c/.err" | grep -qiv 'ok' && nogo "§1 8 GiB of memory: warned" "$(cat "$c/.err")"
+preflight || :; grep 'memory' "$c/.err" | grep -qiv 'ok' && nogo "§1 8 GiB of memory: warned" "$(cat "$c/.err")"
 
 # A stopped machine on macOS: started, once.
 fresh machine
@@ -221,7 +220,7 @@ for noise in 'STEP 1/8' 'Container lights-out' 'GO: secrets' '\[tower\]' 'prefli
   ! grep -q "$noise" "$d/term.err" || nogo "§2 a GO run: tool noise [$noise] reached the terminal" "$(cat "$d/term.err")"
 done
 [ "$(grep -c '^\[[1-7]/7\]' "$d/term.err")" -ge 7 ] || nogo "§2 a GO run: want a [n/7] line for each of the seven steps" "$(cat "$d/term.err")"
-grep -q 'rolled back by itself' "$d/term.err" && grep -q 'console.html#ticket/0001' "$d/term.err" \
+{ grep -q 'rolled back by itself' "$d/term.err" && grep -q 'console.html#ticket/0001' "$d/term.err"; } \
   || nogo "§2 a GO run: the [say] lines did not reach the terminal" "$(cat "$d/term.err")"
 ! grep -q '\[say\]\|\[step\]\|\[exit\]' "$d/term.err" || nogo "§2 a GO run: a raw marker reached the terminal" "$(cat "$d/term.err")"
 for l in 'STEP 1/8: FROM python' 'GO: secrets' '[tower] 0001: release → rolled-back'; do
@@ -243,7 +242,7 @@ rc=0
   | sh core/progress.sh "$e" >"$e/term.out" 2>"$e/term.err" || rc=$?
 [ "$rc" = 1 ] || nogo "§2 a failed run: the filter exited $rc, want the run's 1"
 grep -q '^NO-GO: engine-compat' "$e/term.out" || nogo "§2 a failed run: the NO-GO line is not on stdout" "$(cat "$e/term.out")"
-grep -q 'noise line 59' "$e/term.err" && ! grep -q 'noise line 5$' "$e/term.err" \
+{ grep -q 'noise line 59' "$e/term.err" && ! grep -q 'noise line 5$' "$e/term.err"; } \
   || nogo "§2 a failed run: want the log's last lines, not all of them" "$(cat "$e/term.err")"
 grep -q "$e/run.log" "$e/term.err" || nogo "§2 a failed run: the log's path is not printed" "$(cat "$e/term.err")"
 [ ! -e "$e/steps.tsv" ] || nogo "§2 a failed run: steps.tsv written"
