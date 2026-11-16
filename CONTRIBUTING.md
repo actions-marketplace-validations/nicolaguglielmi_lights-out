@@ -47,7 +47,10 @@ rest of the repository (its §5).
   `core/gates/<x>.py` with `unittest` tests in `core/tests/`. A shell file
   in `core/` or `gates/` has at most 30 code lines; `ci/shell-boundary.sh`
   holds it ([ADR 0052](docs/adr/0052-where-shell-is-allowed.md),
-  [ADR 0084](docs/adr/0084-gates-under-the-shell-boundary.md)).
+  [ADR 0084](docs/adr/0084-gates-under-the-shell-boundary.md)). A case of
+  the harness suite is a row of `CASES` in `core/gates/harness.py`, a new
+  provider a row of `PAIRING`; a new way for its proof to catch a harness
+  is a row of `DEFECTS` in `core/gates/harness_proof.py`.
 - **No hidden mocks.** If something is simulated at a level, the README
   says so and the code fails with a clear message. Nothing pretends to work.
 - **Tests come from the spec**, never from the implementation.

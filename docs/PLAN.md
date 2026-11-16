@@ -1169,6 +1169,24 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 
 *Stato 2026-11-14, seconda correzione (approvata dall'owner, "Sì, tutto"):* la mappa dell'architect è quella del solo workload (`INTAKE_SCOPE` da `WORKLOAD`), le ricerche sono al massimo due, e il registro ADK conta i token di thinking come output (ADR 0083, emendamento: $0,046 → $0,057 sul run misurato). Test prima, NO-GO su 0073afa e GO dopo. La nuova registrazione dell'architect, approvata dall'owner (≤ $0,10), è riuscita al primo tentativo: quattro turni, due ricerche, sei percorsi in `app/` per ticket, tutti e due `GO: spec` come bozze; 18.888 token in ingresso e 9.808 in uscita, $0,051 a listino.
 
+### Sprint 2026-11-16 (M58–M63)
+
+#### M61 — La seconda fetta in Python (ADR 0084, emendamento del 2026-11-16)
+
+*Aggiunto 2026-11-16, decisione dell'owner.* Il primo feedback esterno nomina "16,8k righe di shell". M51 ha portato in `core/gates/` la logica di dieci gate e lasciato nella lista del debito la coppia `harness-conformance` (693 e 738 righe di codice), `core/toolchain.sh` (126) e la logica di `ci/`. Il confine non si sposta: `core/` e `gates/` restano sotto la regola delle 30 righe, `ci/` resta fuori in questo sprint (quattro milestone parallele lo modificano). Per questo un emendamento di ADR 0084 e non una ADR nuova.
+
+- **La suite degli harness** è `core/gates/harness.py`, dietro `verdict`; il wrapper tiene solo le guardie. I casi sono una tabella (`CASES`), un fornitore è una riga di `PAIRING`, un harness si scopre dalla sua cartella: M59 aggiunge GLM con una riga, non con una modifica in mezzo a 700 righe.
+- **La prova della suite** è `core/gates/harness_proof.py`, i difetti una tabella (`DEFECTS`); il finto harness e il finto compose, prima heredoc dentro `proof.sh`, sono file sotto `gates/harness-conformance/fake/` (fixture, fuori dallo scope del self gate come `stub.py` e `probe.py`).
+- **La toolchain** è `core/gates/toolchain.py`; `core/toolchain.sh` tiene le due funzioni che i chiamanti includono, `toolchain_preflight` e `run_in_toolchain`, ognuna una chiamata a Python con `-P` e il `PYTHONPATH` del checkout giusto.
+- **Fuori scope:** `ci/` dentro il ratchet (una ADR successiva, dopo lo sprint), `adapters/`.
+
+- **Criteri di accettazione:**
+  - L'emendamento di ADR 0084 scritto prima del codice; test `unittest` scritti dall'ADR e dalle intestazioni, prima dei moduli.
+  - Le stesse risposte GO/NO-GO sui guasti piantati prima e dopo: i 57 verdetti della prova della suite riga per riga, e `ci/toolchain.sh` con i suoi guasti piantati (ora nella copia del modulo Python).
+  - `ci/shell-boundary.sh` senza le tre voci di debito pagate; `ci/contract.sh` GO.
+  - `./go ci` GO da un clone pieno sotto `.crew/`, la demo verde, tutti i workflow verdi sul branch (`harness-conformance` su docker e `podman` girano la suite vera).
+  - Le righe di shell prima e dopo, per directory, nel handoff.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
