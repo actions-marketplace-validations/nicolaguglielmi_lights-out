@@ -235,13 +235,20 @@ A4. **The ratchet** loses the three entries this slice pays: each file
    no form test) in a copy of `core/gates/toolchain.py` instead of a copy
    of the shell, by the same means: a definition appended to the copy
    replaces the original.
-A5. **`ci/` stays out of the ratchet in this slice.** It is 17,965
-   lines of `.sh` over 54 files, nearly all over 30 code lines, and four
-   other milestones of this sprint edit it; an exact-count list there
-   would turn each of their edits into a NO-GO until its entry moved. The
-   logic of the heaviest `ci/` scripts this slice reaches moves to Python
-   with unit tests, and `ci/` enters the ratchet, with its debt listed,
-   in a later ADR once the sprint has landed.
+A5. **`ci/` stays out of the ratchet, and out of this slice.** It is 17,976
+   lines of `.sh` over 54 files (13,451 code lines), nearly all over 30;
+   four other milestones of this sprint edit it, and an exact-count list
+   there would turn each of their edits into a NO-GO until its entry moved.
+   Its slice needs a decision this amendment does not make: where a
+   `ci/` check's logic goes. `core/` is the product, mutated and scanned
+   by the self gate; a `ci/` suite is a test of it, and its Python would
+   need a home and a runner of its own (`ci/core-tests.sh` runs
+   `core/tests/` only). Measured on 2026-11-16, by code lines and by
+   branching lines (`if`, `case`, `&&`, `||`, `jq`, `awk`, `sed`): `logbook`
+   2,152 and 620, `tower` 637 and 339, `plugin` 821 and 208, `attach` 357
+   and 187, `postmortem` 733 and 181; `contract` (225) is the one whose
+   logic is a judge rather than glue around `make` and `git`. That ADR comes
+   after this sprint lands, with `ci/`'s debt listed.
 
 ### Alternatives rejected (M61)
 

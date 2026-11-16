@@ -1178,7 +1178,7 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 - **La suite degli harness** è `core/gates/harness.py`, dietro `verdict`; il wrapper tiene solo le guardie. I casi sono una tabella (`CASES`), un fornitore è una riga di `PAIRING`, un harness si scopre dalla sua cartella: M59 aggiunge GLM con una riga, non con una modifica in mezzo a 700 righe.
 - **La prova della suite** è `core/gates/harness_proof.py`, i difetti una tabella (`DEFECTS`); il finto harness e il finto compose, prima heredoc dentro `proof.sh`, sono file sotto `gates/harness-conformance/fake/` (fixture, fuori dallo scope del self gate come `stub.py` e `probe.py`).
 - **La toolchain** è `core/gates/toolchain.py`; `core/toolchain.sh` tiene le due funzioni che i chiamanti includono, `toolchain_preflight` e `run_in_toolchain`, ognuna una chiamata a Python con `-P` e il `PYTHONPATH` del checkout giusto.
-- **Fuori scope:** `ci/` dentro il ratchet (una ADR successiva, dopo lo sprint), `adapters/`.
+- **Fuori scope:** `ci/`, dentro il ratchet e fuori: dove va la logica Python di una verifica di `ci/` (che non è prodotto, e che il self gate non deve mutare) è una decisione strutturale per una ADR successiva, dopo lo sprint; i candidati misurati sono nell'emendamento (A5). `adapters/`.
 
 - **Criteri di accettazione:**
   - L'emendamento di ADR 0084 scritto prima del codice; test `unittest` scritti dall'ADR e dalle intestazioni, prima dei moduli.
