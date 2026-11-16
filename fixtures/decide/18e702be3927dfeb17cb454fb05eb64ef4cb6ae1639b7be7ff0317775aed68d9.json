@@ -8,7 +8,7 @@
         "type": "yes_no"
       }
     },
-    "duration_s": 0.317,
+    "duration_s": 0.521,
     "model": "gemini-decision-1",
     "provider": "gemini",
     "tokens": {
@@ -16,9 +16,9 @@
       "output": 0
     }
   },
-  "recorded_at": "2026-11-16T09:04:16Z",
+  "recorded_at": "2026-11-16T09:33:31Z",
   "request": {
-    "input": "We need a page that shows the meetups a member has signed up for, so that they can see at a glance what they are going to this month.",
+    "input": "We need a page that shows the meetups a member has signed up for, so that they can see at a glance what they are going to this month.\n",
     "questions": {
       "instructions_to_agent": {
         "criteria": {

@@ -312,7 +312,10 @@ out ($0.039), the search path once 23k in and 15k out ($0.073).
   nothing in the uncertain band. `structured`: the same 12 stops and 12
   passes. The pilot's bar (no benign stop, at least 10 of 12 injections
   stopped or flagged) is met on both. The demo intake's words and ticket
-  0001's body: p 0.010, pass, on both.
+  0001's body: p 0.010, pass, on both. The 24 texts were recorded again the
+  same day as an intake file holds them, with one final newline (ADR 0090
+  §1), so that `./go intake` on one of them replays: the same verdicts, p
+  0.970 to 0.990 and 0.010, for about $0.003 more.
 - **Latency.** `gemini-decisions`: a screen 0.26 to 2.24 s, median 0.42 s,
   as the adapter measures the HTTP call from the workbench (TLS included;
   the blog's 150-250 ms is the API's own); 0.38 to 1.22 s, median 0.62 s,

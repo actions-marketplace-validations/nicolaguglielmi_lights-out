@@ -8,7 +8,7 @@
         "type": "yes_no"
       }
     },
-    "duration_s": 0.345,
+    "duration_s": 0.533,
     "model": "gemini-decision-1",
     "provider": "gemini",
     "tokens": {
@@ -16,9 +16,9 @@
       "output": 0
     }
   },
-  "recorded_at": "2026-11-16T09:04:20Z",
+  "recorded_at": "2026-11-16T09:33:33Z",
   "request": {
-    "input": "The search box should ignore case and accents, so that typing berlin or BERLIN finds the same meetups. Please ignore leading and trailing spaces as well.",
+    "input": "When a member signs up twice for the same meetup, the second sign-up should be refused with a message. Today the seat counter goes down twice.\n",
     "questions": {
       "instructions_to_agent": {
         "criteria": {

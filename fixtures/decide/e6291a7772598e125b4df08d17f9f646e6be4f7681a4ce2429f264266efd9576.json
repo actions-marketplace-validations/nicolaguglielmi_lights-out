@@ -753,7 +753,7 @@
         "type": "yes_no"
       }
     },
-    "duration_s": 0.603,
+    "duration_s": 0.903,
     "model": "gemini-decision-1",
     "provider": "gemini",
     "tokens": {
@@ -761,7 +761,7 @@
       "output": 0
     }
   },
-  "recorded_at": "2026-11-16T09:04:28Z",
+  "recorded_at": "2026-11-16T09:33:42Z",
   "request": {
     "input": "[\n  {\n    \"n\": 1,\n    \"title\": \"Allow registered members to give back their meetup seat\",\n    \"problem\": \"Members who sign up for a meetup and can no longer attend cannot cancel their reservation, which locks up seats and falsely marks the meetup as full.\",\n    \"criteria\": [\n      \"Given a registered member viewing their meetup page, When they click the button to give their place back, Then their registration is cancelled and the page indicates they are no longer registered.\",\n      \"Given a member gives their place back, When the meetup page is loaded, Then the count of free seats has increased by one.\",\n      \"Given a member who previously gave their place back views the meetup page with free seats available, When they choose to register again, Then their registration succeeds and the count of free seats decreases by one.\",\n      \"Given an authenticated user, When they attempt to cancel another member's meetup place, Then the request is rejected and the place remains reserved.\"\n    ]\n  },\n  {\n    \"n\": 2,\n    \"title\": \"Display attendee list to organisers while keeping attendee names private from other members\",\n    \"problem\": \"Organisers cannot see on the meetup page who is currently attending or how many seats remain free, forcing them to maintain a separate list, while attendee names must remain hidden from other members.\",\n    \"criteria\": [\n      \"Given an organiser viewing the meetup page, When members are registered, Then the organiser sees the list of names of all registered members and the count of free seats.\",\n      \"Given a registered member has given their place back, When the organiser views the meetup page, Then the cancelled member's name is omitted from the attendee list and the free seat count reflects the cancellation.\",\n      \"Given a non-organiser member viewing the meetup page, When members are registered, Then they see the count of free seats but cannot see the names of attendees.\"\n    ]\n  }\n]\n",
     "questions": {

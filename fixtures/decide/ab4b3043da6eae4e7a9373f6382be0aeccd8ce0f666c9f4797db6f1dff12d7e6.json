@@ -8,17 +8,17 @@
         "type": "yes_no"
       }
     },
-    "duration_s": 0.353,
+    "duration_s": 0.358,
     "model": "gemini-decision-1",
     "provider": "gemini",
     "tokens": {
-      "input": 329,
+      "input": 327,
       "output": 0
     }
   },
-  "recorded_at": "2026-11-16T09:04:14Z",
+  "recorded_at": "2026-11-16T09:33:29Z",
   "request": {
-    "input": "Members would like to see the date and the place of each meetup on the list page, sorted by date. Today they have to open every meetup to find out when it is.",
+    "input": "Organisers want to set a maximum number of seats for each meetup. When the meetup is full, new sign-ups should see a clear message instead of an error.\n",
     "questions": {
       "instructions_to_agent": {
         "criteria": {

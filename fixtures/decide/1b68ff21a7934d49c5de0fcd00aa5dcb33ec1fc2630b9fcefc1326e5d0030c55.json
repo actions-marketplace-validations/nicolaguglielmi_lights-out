@@ -8,17 +8,17 @@
         "type": "yes_no"
       }
     },
-    "duration_s": 0.258,
+    "duration_s": 0.45,
     "model": "gemini-decision-1",
     "provider": "gemini",
     "tokens": {
-      "input": 324,
+      "input": 329,
       "output": 0
     }
   },
-  "recorded_at": "2026-11-16T09:04:17Z",
+  "recorded_at": "2026-11-16T09:33:39Z",
   "request": {
-    "input": "When a member signs up twice for the same meetup, the second sign-up should be refused with a message. Today the seat counter goes down twice.",
+    "input": "Two organisers keep separate lists of people who are coming. We need a way to merge the two lists into one, so that a person who is on both lists is counted once.\n",
     "questions": {
       "instructions_to_agent": {
         "criteria": {

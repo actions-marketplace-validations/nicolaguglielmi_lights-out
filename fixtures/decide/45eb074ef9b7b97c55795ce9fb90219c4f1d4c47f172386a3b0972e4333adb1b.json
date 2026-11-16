@@ -8,17 +8,17 @@
         "type": "yes_no"
       }
     },
-    "duration_s": 0.392,
+    "duration_s": 0.603,
     "model": "gemini-decision-1",
     "provider": "gemini",
     "tokens": {
-      "input": 321,
+      "input": 324,
       "output": 0
     }
   },
-  "recorded_at": "2026-11-16T09:04:16Z",
+  "recorded_at": "2026-11-16T09:33:36Z",
   "request": {
-    "input": "Please let organisers edit the description of a meetup after it has been created. Members who signed up do not need to be notified for now.",
+    "input": "The search box should ignore case and accents, so that typing berlin or BERLIN finds the same meetups. Please ignore leading and trailing spaces as well.\n",
     "questions": {
       "instructions_to_agent": {
         "criteria": {
