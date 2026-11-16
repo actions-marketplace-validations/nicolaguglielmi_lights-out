@@ -38,6 +38,10 @@
 #      the next free ids, two documents at `spec-ready` with `spec`
 #      requested, the intake `confirmed` with each decision; refused with
 #      nothing written or published: wrong length, unknown entry, wrong state.
+#   i. The perimeter asked file by file (docs/adr/0091 §6): PERIMETER_BY=decide
+#      wins over the role's default (search); a stub Decide adapter fixes the
+#      perimeter, the uncertain paths and the one request; exit 3 and more than
+#      1000 questions fall back to the search, any other failure fails the step.
 #   f. A step that exits 1 and writes no STEP_WHY is recorded `step exited 1`
 #      exactly; one that writes a line there, `step exited 1: <line>` (§6).
 set -eu
@@ -78,7 +82,7 @@ TD=tickets
 # tower ARGS...: in the temp root, the person-facing variables cleared so a
 # default is a default.
 tower() {
-  (cd "$root" && env -u INTAKE_BY -u INTAKE_VIA -u CONFIRM_BY -u CONFIRM_VIA -u ANSWER -u ANSWER_BY -u DECISIONS -u WORKLOAD -u INTAKE_SCOPE \
+  (cd "$root" && env -u INTAKE_BY -u INTAKE_VIA -u CONFIRM_BY -u CONFIRM_VIA -u ANSWER -u ANSWER_BY -u DECISIONS -u WORKLOAD -u INTAKE_SCOPE -u PERIMETER_BY -u DECIDE -u DECIDE_FIXTURES -u DECIDE_RECORD \
     STATE_STORE=stub-state EVENT_BUS=stub-bus TOWER_STEPS=core/steps TICKETS_DIR="$TD" \
     AGENT_HARNESS=replay WORKLOAD_REPO="$repo" "$@") 2>>"$tmp/tower.err"
 }
@@ -350,6 +354,137 @@ want 0420 '.state == "drafted"' "the perimeter step with WORKLOAD unset moved th
 want 0420 '.history[-1] | .step == "perimeter" and (.error | test("WORKLOAD"))' \
   "the failure of the perimeter step with WORKLOAD unset does not name WORKLOAD"
 [ "$(bus_n)" -eq "$before" ] || nogo "the perimeter step with WORKLOAD unset published $(last_published)"
+
+# --- i. the perimeter asked file by file (docs/adr/0091 §6) -------------------
+# PERIMETER_BY=decide in the environment wins over roles/architect/role.env
+# (search). A stub Decide adapter answers each yes_no question from the path
+# quoted in backticks in its instructions: app/backend/meetups/app.py 0.95,
+# app/backend/tests/test_meetups.py 0.6, any other 0.05 (policy/decide.env:
+# PERIMETER_CONFIDENCE=0.8).
+mkdir -p "$root/adapters/stub-decide" "$root/ctl" "$root/fixtures/decide"
+ln -s "$repo/policy" "$root/policy"
+[ ! -d "$repo/profiles" ] || ln -s "$repo/profiles" "$root/profiles"
+cat > "$root/adapters/stub-decide/decide.sh" <<'STUB'
+set -eu
+cat > ctl/last.json
+echo call >> ctl/calls
+mode=ok
+[ ! -f ctl/mode ] || mode=$(cat ctl/mode)
+case "$mode" in
+  exit1) echo "stub decide failed" >&2; exit 1 ;;
+  exit3) echo "no recording of this decision at L0 (fixtures/decide/stub.json); record it at L1 with DECIDE_RECORD=1" >&2; exit 3 ;;
+esac
+exec python3 adapters/stub-decide/answer.py < ctl/last.json
+STUB
+cat > "$root/adapters/stub-decide/answer.py" <<'STUB'
+import json, re, sys
+req = json.load(sys.stdin)
+answers = {}
+for k, q in req["questions"].items():
+    m = re.search(r"`([^`]+)`", q["instructions"])
+    path = m.group(1) if m else ""
+    if path == "app/backend/meetups/app.py":
+        p = 0.95
+    elif path == "app/backend/tests/test_meetups.py":
+        p = 0.6
+    else:
+        p = 0.05
+    answers[k] = {"type": "yes_no", "p_yes": p, "confidence": max(p, 1 - p)}
+print(json.dumps({"answers": answers, "adapter": "stub-decide", "provider": "stub", "model": "stub",
+                  "tokens": {"input": 100, "output": 0}, "duration_s": 0.01}))
+STUB
+: > "$root/ctl/calls"
+dcalls() { awk 'END{print NR}' "$root/ctl/calls"; }
+dmode() { printf '%s' "$1" > "$root/ctl/mode"; }
+drafted_n() { # ID N: a drafted intake proposing N tickets
+  jq -cn --arg id "$1" --argjson n "$2" --arg c "$gwt" \
+    '{id:$id,kind:"intake",state:"drafted",intake:{by:"ci",via:"cli",at:"2026-11-14T10:00:00Z"},
+      proposal:[range($n) | {n:(.+1),title:"Ticket \(.+1)",problem:"A member cannot give a seat back.",criteria:[$c],feature:null,priority:null}],
+      history:[{step:"interview",state:"drafted",at:"2026-11-14T10:00:00Z",by:"ci",via:"cli"}]}'
+}
+decided() { tower env WORKLOAD="$repo/app" PERIMETER_BY=decide DECIDE=stub-decide "$@"; }
+
+dmode ok
+seed 0430 "$(drafted_n 0430 2)"
+before=$(bus_n)
+n0=$(dcalls)
+decided sh core/tower.sh step 0430 perimeter \
+  || nogo "the perimeter step with PERIMETER_BY=decide failed" "$(tail -n 8 "$tmp/tower.err")"
+perimeter_ok='.state == "proposed" and .architect.by == "decide" and .architect.consulted == true
+  and (.proposal | length) == 2
+  and all(.proposal[]; (.perimeter | index("app/backend/meetups/app.py") != null)
+    and (.perimeter | index("app/backend/tests/test_meetups.py") == null)
+    and (.uncertain | index("app/backend/tests/test_meetups.py") != null)
+    and (.uncertain | index("app/backend/meetups/app.py") == null)
+    and ([.perimeter[] | select(. != "app/backend/meetups/app.py")] | length) == 0)'
+want 0430 "$perimeter_ok" \
+  "PERIMETER_BY=decide did not propose each ticket's perimeter from the 0.95 path and list the 0.6 path as uncertain"
+[ "$(dcalls)" -eq $((n0 + 1)) ] || nogo "the perimeter step made $(( $(dcalls) - n0 )) Decide requests, want exactly 1"
+python3 - "$root/ctl/last.json" <<'PY' || nogo "the perimeter's Decide request is not one yes_no question t<n>-f<i> per ticket and file"
+import json, re, sys
+req = json.load(open(sys.argv[1], encoding="utf-8"))
+keys = list(req["questions"])
+ok = (len(keys) > 2 and all(re.fullmatch(r"t[12]-f[0-9]+", k) for k in keys)
+      and all(q["type"] == "yes_no" for q in req["questions"].values())
+      and any(k.startswith("t1-") for k in keys) and any(k.startswith("t2-") for k in keys))
+sys.exit(0 if ok else 1)
+PY
+# The check can fail: a planted proposal where an 0.6 path sits in the perimeter, or a missing uncertain.
+rejects_i() { if printf '%s' "$1" | jq -e "$perimeter_ok" > /dev/null 2>&1; then nogo "the check for '$2' accepts a planted wrong proposal"; fi; }
+rejects_i "$(doc 0430 | jq -c '.proposal[0].perimeter += ["app/backend/tests/test_meetups.py"]')" "an uncertain path in the perimeter"
+rejects_i "$(doc 0430 | jq -c '.proposal[1].uncertain = []')" "no uncertain path"
+rejects_i "$(doc 0430 | jq -c '.architect.by = "search"')" "architect.by search"
+
+# The environment wins over the role's default; with it unset the step searches (no Decide call).
+seed 0431 "$(drafted_n 0431 1)"
+plant 0431 10
+n0=$(dcalls)
+tower env WORKLOAD="$repo/app" DECIDE=stub-decide ADK_FIXTURES="$fx" sh core/tower.sh step 0431 perimeter \
+  || nogo "the default perimeter step (search) failed with a planted recording" "$(tail -n 5 "$tmp/tower.err")"
+[ "$(dcalls)" -eq "$n0" ] || nogo "the perimeter step asked Decide without PERIMETER_BY=decide"
+want 0431 '.architect.by != "decide"' "the perimeter step was by decide without PERIMETER_BY=decide"
+
+# Exit 3 (no recording at L0): the step searches as before and says so.
+dmode exit3
+seed 0432 "$(drafted_n 0432 1)"
+plant 0432 10
+n0=$(dcalls)
+err0=$(wc -c < "$tmp/tower.err")
+decided env ADK_FIXTURES="$fx" sh core/tower.sh step 0432 perimeter \
+  || nogo "the perimeter step did not fall back to search when Decide had no recording" "$(tail -n 5 "$tmp/tower.err")"
+tail -c +"$((err0 + 1))" "$tmp/tower.err" > "$tmp/run-i.err"
+[ "$(dcalls)" -eq $((n0 + 1)) ] || nogo "the perimeter step did not ask Decide before falling back"
+want 0432 '.state == "proposed" and .architect.consulted == true and .architect.by != "decide" and .proposal[0].perimeter == ["app/meetups.py"]' \
+  "after exit 3 the step did not propose what the search found"
+awk 'tolower($0) ~ /search/ && tolower($0) ~ /(decide|record)/ { f = 1 } END { exit !f }' "$tmp/run-i.err" \
+  || nogo "the fallback to search after exit 3 is not said on stderr" "$(cat "$tmp/run-i.err")"
+
+# Any other failure fails the step, with its line; the state stays drafted.
+dmode exit1
+seed 0433 "$(drafted_n 0433 1)"
+plant 0433 10
+before=$(bus_n)
+if decided env ADK_FIXTURES="$fx" sh core/tower.sh step 0433 perimeter; then
+  nogo "the perimeter step succeeded although the Decide adapter failed"
+fi
+want 0433 '.state == "drafted" and (.history[-1].error | startswith("step exited 1: "))' "a failed Decide did not leave the intake at drafted with 'step exited 1: <line>'"
+want 0433 '.history[-1].error | contains("stub decide failed")' "the failure line of the Decide adapter is not recorded"
+want 0433 '.architect == null' "a failed Decide was recorded as the architect's answer"
+[ "$(bus_n)" -eq "$before" ] || nogo "a failed Decide published $(last_published)"
+
+# More than 1000 questions (60 tickets x the map's files): no call, the search.
+dmode ok
+seed 0434 "$(drafted_n 0434 60)"
+plant 0434 10
+n0=$(dcalls)
+err0=$(wc -c < "$tmp/tower.err")
+decided env ADK_FIXTURES="$fx" sh core/tower.sh step 0434 perimeter \
+  || nogo "the perimeter step did not search when the questions exceed 1000" "$(tail -n 5 "$tmp/tower.err")"
+tail -c +"$((err0 + 1))" "$tmp/tower.err" > "$tmp/run-i.err"
+[ "$(dcalls)" -eq "$n0" ] || nogo "the perimeter step asked Decide with more than 1000 questions"
+want 0434 '.state == "proposed" and .architect.by != "decide"' "with more than 1000 questions the step did not search as before"
+awk 'tolower($0) ~ /search/ { f = 1 } END { exit !f }' "$tmp/run-i.err" \
+  || nogo "the fallback to search over the 1000-question limit is not said on stderr" "$(cat "$tmp/run-i.err")"
 
 cp fixtures/intake/request.md "$root/tickets/0400.intake.md"
 tower sh core/tower.sh intake 0400 || nogo "core/tower.sh intake failed on the fixture intake" "$(tail -n 5 "$tmp/tower.err")"
