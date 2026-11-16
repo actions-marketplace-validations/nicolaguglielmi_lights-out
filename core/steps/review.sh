@@ -34,17 +34,6 @@ if [ ! -f "roles/$ROLE/prompt.md" ]; then
 fi
 # shellcheck disable=SC1090,SC1091 # role.env's path is built from $ROLE
 . "roles/$ROLE/role.env"
-
-# The provider's budget when the role sets one (docs/adr/0092 §7): a
-# role.env line TOKEN_BUDGET_<PROVIDER>, read from the file, never from the
-# environment; else the TOKEN_BUDGET it just set.
-case "${MODEL_PROVIDER:-}" in
-  ''|*[!a-z0-9]*) ;;
-  *)
-    provider_budget=$(sed -n "s/^TOKEN_BUDGET_$(printf '%s' "$MODEL_PROVIDER" | tr '[:lower:]' '[:upper:]')=\([0-9][0-9]*\)\$/\1/p" "roles/$ROLE/role.env" | tail -n1)
-    [ -z "$provider_budget" ] || TOKEN_BUDGET=$provider_budget
-    ;;
-esac
 harness=${HARNESS:-$AGENT_HARNESS}
 
 branch="ticket/$TICKET"
@@ -108,7 +97,7 @@ attempt=1
 [ -z "${DOC_FILE:-}" ] || attempt=$(jq -r '.attempt // 1' "$DOC_FILE")
 ROLE="$ROLE" TICKET="$TICKET" ATTEMPT="$attempt" WORKSPACE="$review_dir/workspace" BASE="$review_head" \
 OUT="$review_dir/out" TICKET_FILE="$review_dir/input.md" \
-THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
+THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$(python3 core/spend.py token-budget "roles/$ROLE/role.env")" \
   sh "adapters/$harness/run.sh" >&2 \
   || { printf 'step-review: %s run failed for ticket %s\n' "$harness" "$TICKET" >&2; exit 1; }
 

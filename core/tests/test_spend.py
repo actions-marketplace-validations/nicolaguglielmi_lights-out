@@ -691,5 +691,30 @@ class M24Gemini(unittest.TestCase):
         self.assertAlmostEqual(sum(costs), 20.847787, places=5)
 
 
+class TokenBudget(unittest.TestCase):
+    """docs/adr/0092 §7: TOKEN_BUDGET_<PROVIDER> beside the default TOKEN_BUDGET."""
+
+    def test_the_providers_number_else_the_default(self):
+        keys = {"TOKEN_BUDGET": "100", "TOKEN_BUDGET_GEMINI": "200"}
+        self.assertEqual(spend.token_budget(keys, "gemini"), 200)
+        self.assertEqual(spend.token_budget(keys, "anthropic"), 100)
+        self.assertEqual(spend.token_budget(keys, ""), 100)
+        self.assertEqual(spend.token_budget({"TOKEN_BUDGET": "100", "TOKEN_BUDGET_GEMINI": "x"}, "gemini"), 100)
+        self.assertIsNone(spend.token_budget({}, "gemini"))
+
+    def test_the_command_reads_the_role_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "role.env"
+            path.write_text("# a comment\nTOKEN_BUDGET=100\nTOKEN_BUDGET_GEMINI=200\n")
+            for provider, want in (("gemini", "200\n"), ("zai", "100\n")):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(spend.main(["token-budget", str(path)], {"MODEL_PROVIDER": provider}), 0)
+                self.assertEqual(out.getvalue(), want)
+            path.write_text("THINKING=high\n")
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(spend.main(["token-budget", str(path)], {}), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

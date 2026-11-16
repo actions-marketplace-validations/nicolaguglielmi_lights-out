@@ -839,13 +839,7 @@ def whole(value):
 def token_budget(keys):
     """The role's TOKEN_BUDGET for the profile's provider (docs/adr/0092 §7):
     TOKEN_BUDGET_<PROVIDER> when the role sets it, else TOKEN_BUDGET."""
-    keys = keys or {}
-    provider = env("MODEL_PROVIDER")
-    if provider and provider.isalnum():
-        mine = whole(keys.get(f"TOKEN_BUDGET_{provider.upper()}"))
-        if mine is not None:
-            return mine
-    return whole(keys.get("TOKEN_BUDGET"))
+    return ledger.token_budget(keys or {}, env("MODEL_PROVIDER"))
 
 
 def live(doc, tid):
