@@ -654,7 +654,7 @@ class CachedInput(unittest.TestCase):
 
 class M24Gemini(unittest.TestCase):
     """docs/adr/0092 §6: the ten Gemini dev-worker runs of M24's phase D
-    handoff (.claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md,
+    handoff (.claude/context/handoffs/, the M24 phase D Gemini leg,
     the table's input, cached and output per ticket), recorded 2026-11-14,
     priced at the committed table: $3.550083 with the cached rate, by hand,
     against $20.847787 with every input token uncached."""
