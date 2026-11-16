@@ -1052,6 +1052,14 @@ intake-confirm: ## Confirm, edit or drop each ticket a proposed intake holds; th
 # A text the screen stopped (docs/adr/0091 §7): a person has read it and
 # clears it for this text; the failed step runs again. CLEAR_BY and
 # CLEAR_VIA reach core/tower.sh from make's command line.
+# The decisions L0 replays (docs/adr/0091 §5, §8), recorded live at L1 by
+# the owner: the labelled set's screens, the demo intake's and ticket 0001's
+# screens, the demo intake's perimeter asked file by file. MEASURE=<n> asks
+# them again n times (and once on DECIDE_COMPARE) and records nothing.
+.PHONY: record-decisions
+record-decisions: ## Record the screens and the perimeter decisions L0 replays, live at L1: PROFILE=l1 [MEASURE=<n> DECIDE_COMPARE=structured] (docs/adr/0091 §5)
+	@python3 core/record_decisions.py
+
 .PHONY: screen-clear
 screen-clear: ## Clear a text the screen stopped, after reading it, and run its step again: TICKET=<id> [CLEAR_BY=<who>] (docs/adr/0091 §7)
 	@sh core/tower.sh screen-clear "$(TICKET)" || { printf 'NO-GO: screen-clear — nothing cleared; see the [tower] line above\n'; exit 1; }

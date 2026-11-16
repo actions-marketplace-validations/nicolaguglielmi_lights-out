@@ -50,6 +50,7 @@
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
 #   ./go record-evals   record the ADK roles' responses at L1 (PROFILE=l1)
+#   ./go record-decisions  record the screens and the perimeter decisions L0 replays, at L1 (PROFILE=l1, ADR 0091)
 #   ./go record-postmortem  record the ops-triage role's post mortem of fixtures/incidents/ at L1 (PROFILE=l1)
 #   ./go harness-conformance  every CLI harness against a scripted model, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041)
 #   ./go argo-conformance  the Delivery suite on adapters/argo-rollouts, a local k3s beside the plane (ADR 0051)
