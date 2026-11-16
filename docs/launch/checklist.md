@@ -320,8 +320,10 @@ adds features.
   plugin manifests and the landing page at 0.8.0, every usage pinned to
   `@v0.8.0` (the Jenkins, GitLab CI and CircleCI recipes too), the prose
   in `docs/releases/v0.8.0.md`.
-- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
-- [ ] **Tag `v0.8.0`** on main, every job green.
+- [x] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`):
+  run 43909756283, every job green.
+- [x] **Tag `v0.8.0`** on main (807f2a4), every job green: run
+  43910381207, PyPI 0.8.0, the wiki rendered, three drafts.
 - [ ] **The three drafts `v0.8.0` published to the Marketplace** (owner,
   passkey).
 
