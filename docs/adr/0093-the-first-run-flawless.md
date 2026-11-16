@@ -97,16 +97,14 @@ b. **Memory.** The engine's `MemTotal` below 3,800 MiB prints one
 
 c. **Disk.** Free space in the engine's store (podman: `GraphRootAllocated
    − GraphRootUsed`; docker: `df` of `DockerRootDir` when the host can
-   read it) below 6,000 MB is a NO-GO naming the free space, the need and
-   `podman system prune` / `docker system prune`. Provenance: the images
-   one demo uses, measured on this Mac on 2026-11-16 (`podman image ls`),
-   add up to 3.8 GB counted image by image (the workbench 1.3 GB, the
-   test image 421 MB, the app 339 MB, the base images 112–294 MB each),
-   which overcounts shared layers; the registry's and Gitea's data and a
-   build's temporary layers come on top. 6,000 MB is that, with about half
-   again as margin (a decision). The stranger workflow prints `podman
-   system df` after its run, so the next revision of this number can be a
-   measure.
+   read it) below 8,000 MB is a NO-GO naming the free space, the need and
+   `podman system prune` / `docker system prune`. Provenance: `podman
+   system df` after a whole demo on a clean runner (stranger run
+   43837534798, 2026-11-16): images 3.299 GB, containers 3.513 GB, local
+   volumes 0.057 GB, 6.87 GB in all; 8,000 MB is that plus about 15% (a
+   decision). A first draft said 6,000 MB from a sum of image sizes on
+   this Mac; the measure replaced it. The workflow keeps printing `podman
+   system df`, so a growing footprint shows.
    When the engine does not say, the line says "not checked".
 
 d. **Ports.** The plane publishes six host ports. Five can move, each
@@ -256,8 +254,12 @@ each unchanged.
 
 The plan's budget stays: 900 s to the rollback, `DEMO_BUDGET_SECONDS`
 (plan §2, ADR 0013 §7). The `stranger` workflow adds its own, tighter
-one: `./go demo` on its clean runner must end within STRANGER_BUDGET s,
-or the job fails naming the time. Provenance: STRANGER_PROV.
+one: `./go demo` on its clean runner must end within 540 s, or the job
+fails naming the time. Provenance: the slowest run after this change,
+446 s to its last plane stage (run 43835418922, cold, its checks cut
+short by a finding), plus 20% for runner variance (the five runs before
+spread 15% between the fastest and the slowest; a decision). The first
+full green run took 370 s.
 
 The `stranger` job also plants two busy ports before `./go demo`: a
 server on 3000 (as a Node server would be) and one on 8080. The demo
@@ -339,4 +341,34 @@ and ends on a page that shows why. Passes.
 
 ## After
 
-AFTER_SECTION
+Measured on 2026-11-16, after the change.
+
+**The `stranger` workflow**, a clean runner, cold (the toolchain image
+built in the run), with 3000 and 8080 held by planted servers:
+
+| run (job) | `./go demo` | rollback reached at | note |
+|---|---|---|---|
+| 43837534798 (133200533128) | **370 s**, `GO: demo` | 166 s | both ports moved and named; the checks done before the plane's stages |
+| 43835418922 | NO-GO at 446 s | 211 s | `ci-vendor-free` caught the first draft's port names |
+| 43833357693 | NO-GO at 390 s | 169 s | `ci-shell` caught the first draft's shellcheck findings |
+
+Before, the same workflow: 700–805 s, rollback at 491–577 s. The steps of
+the green run, from its `steps.tsv`: preflight 1 s, toolchain 30 s,
+plane 71 s, rollback 63 s, ticket 204 s, waiting for the checks 0 s,
+console under 1 s. Those are the estimates' defaults (§2). The terminal
+showed 17 lines; the log kept 2,527.
+
+**This Mac**, from a fresh clone each time, no `.env`, 8080 still held
+by the owner's container (moved to 8081 by the preflight). The VM was
+shared with other sessions running `make ci` and tests (load average
+8–14 on 4 CPUs, recorded at the start and end of each run), so these
+times are an upper bound, not a measure of the change alone:
+
+| run | `./go demo` | note |
+|---|---|---|
+| before, 1st | NO-GO after 20 s | port 8080; `.env` by hand; `./go down` by hand |
+| before, 2nd | 1,106 s, NO-GO over budget | |
+| after2 (678d085) | NO-GO at 636 s | plane's stages done; `ci-vendor-free` |
+| after3 (cc90936) | AFTER3 | |
+
+`./go ci` from a full clone at cc90936: GO, 693 s, on the same loaded VM.

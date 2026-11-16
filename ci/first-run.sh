@@ -18,7 +18,8 @@
 #   §1e adapters/gitea/ready.sh against a server answering 404: the
 #      timeout line names the port and the status.
 #   §2 core/progress.sh on scripted input: the terminal gets the header,
-#      the step lines, the [say] lines and the verdict; the log gets every
+#      the step lines, the [say] lines, what the preflight changed or
+#      warned about (never its "ok" lines) and the verdict; the log gets every
 #      line; steps.tsv is written on GO only; a failure prints the log's
 #      tail and its path, and the exit code is the run's.
 #   §4 core/freeze.py --hash is proven in core/tests/test_freeze.py.
@@ -192,7 +193,8 @@ d="$tmp/progress"; mkdir -p "$d"
 script() {
   cat <<'RUN'
 [step] preflight
-preflight: ports   ok
+preflight: memory   ok, 8192 MiB
+preflight: ports    8080 is held by node (pid 7): the app moves to 8081 (APP_PORT in .crew/ports.env)
 [step] toolchain
 STEP 1/8: FROM python
 [step] plane
@@ -216,7 +218,8 @@ RUN
   | sh core/progress.sh "$d" >"$d/term.out" 2>"$d/term.err" || nogo "§2 a GO run: the filter exited $?"
 [ "$(cat "$d/term.out")" = "GO: demo, milestone M9, 400s to rollback (budget 900s, plan §2)" ] \
   || nogo "§2 a GO run: stdout is not exactly the demo's verdict" "$(cat "$d/term.out")"
-for noise in 'STEP 1/8' 'Container lights-out' 'GO: secrets' '\[tower\]' 'preflight: ports'; do
+grep -q 'the app moves to 8081' "$d/term.err" || nogo "§2 a GO run: a port the preflight moved is not on the terminal" "$(cat "$d/term.err")"
+for noise in 'STEP 1/8' 'Container lights-out' 'GO: secrets' '\[tower\]' 'memory   ok'; do
   ! grep -q "$noise" "$d/term.err" || nogo "§2 a GO run: tool noise [$noise] reached the terminal" "$(cat "$d/term.err")"
 done
 [ "$(grep -c '^\[[1-7]/7\]' "$d/term.err")" -ge 7 ] || nogo "§2 a GO run: want a [n/7] line for each of the seven steps" "$(cat "$d/term.err")"

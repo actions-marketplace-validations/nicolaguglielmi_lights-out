@@ -7,7 +7,9 @@
 #   - writes every line to <dir>/run.log;
 #   - on `[step] <id>` ends the step before (its seconds) and prints
 #     `[n/7] <what it does> (about <eta>) ...` on stderr;
-#   - on `[say] <text>` prints the text on stderr;
+#   - on `[say] <text>` prints the text on stderr, and the preflight's
+#     lines that change or warn (a moved port, a machine started, too
+#     little memory), never its "ok" ones;
 #   - prints the demo's own verdict, `GO: demo[, …]` or `NO-GO: demo — …`,
 #     on stdout, never a stage's (`GO: demo-rollback`);
 #   - on `[exit] <rc>`, the run's exit code, written last by ./go: on 0,
@@ -83,6 +85,11 @@ while IFS= read -r line; do
       end_step
       verdict=1
       printf '%s\n' "$line" ;;
+    'preflight: '*' ok, '*|'preflight: '*'not checked'*) ;;
+    'preflight: '*)
+      # What the preflight changed or warns about (docs/adr/0093 §1).
+      [ -z "$pending" ] || { printf '\n' >&2; pending=""; }
+      printf '      %s\n' "$(printf '%s' "${line#preflight: }" | sed 's/^[a-z]* *//')" >&2 ;;
     'NO-GO: '*) last_nogo=$line ;;
   esac
 done

@@ -331,7 +331,7 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7,
 		printf '[say] No console snapshot: %s\n' "$${out:-see $(DEMO_DIR)/logbook.err}" >&2; \
 	fi; \
 	printf '[say] Next: ./go console serves the live console on localhost:%s; ./go try <path> runs the gates on a repository of yours\n' "$${CONSOLE_PORT:-8098}" >&2; \
-	printf 'lights-out: the app at http://localhost:%s, Gitea at http://localhost:%s, Prometheus at http://localhost:%s\n' "$(APP_PORT)" "$(CODE_HOST_PORT)" "$(METRICS_PORT)" >&2
+	printf '[say] The plane is still up: the app at http://localhost:%s, Gitea at http://localhost:%s, Prometheus at http://localhost:%s; ./go down stops it\n' "$(APP_PORT)" "$(CODE_HOST_PORT)" "$(METRICS_PORT)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
 	if [ "$$elapsed" -lt 0 ]; then \
 		printf 'GO: demo, milestone M9, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
