@@ -62,6 +62,7 @@ if [ -z "$pfile" ]; then
 fi
 [ -n "${MODEL:-}" ] || { printf 'harness-claude-code: MODEL is empty; set the exact model id in the profile or .env (docs/adr/0040 §1)\n' >&2; exit 1; }
 key_var=$(conf_get "$pfile" KEY_VAR)
+key=""
 eval "key=\${$key_var:-}"
 case "$key" in
   ""|replace-me)
