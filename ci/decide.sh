@@ -32,6 +32,7 @@ done
 repo=$(pwd)
 tmp=$(mktemp -d)
 pids=""
+# shellcheck disable=SC2329 # called by the EXIT trap below
 cleanup() {
   for p in $pids; do kill "$p" 2>/dev/null || :; done
   rm -rf "$tmp"

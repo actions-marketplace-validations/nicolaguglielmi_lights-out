@@ -504,6 +504,7 @@ tower env WORKLOAD="$repo/app" PERIMETER_BY=decide DECIDE=replay DECIDE_FIXTURES
   sh core/tower.sh step 0435 perimeter 2> "$tmp/run-r.err" \
   || nogo "the demo intake's perimeter did not replay at L0" "$(tail -n 5 "$tmp/run-r.err")"
 if doc 0435 | jq -e '.architect.by == "decide"' > /dev/null; then
+  # shellcheck disable=SC2016 # $n is jq's own variable
   want 0435 '.state == "proposed" and .architect.replayed == true and (.architect.tokens.input == 0)
     and ([.proposal[] | .perimeter | index("app/backend/meetups/app.py")] | all(. != null))
     and ([.proposal[] | .uncertain | length > 0] | all)
