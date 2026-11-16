@@ -374,7 +374,7 @@ class Workdir(unittest.TestCase):
 class Replay(Workdir):
     def held(self):
         return dict(answer(q=a_yes_no(0.97)), adapter="gemini-decisions", provider="gemini",
-                    model="gemini-decision-1", duration_s=0.4) | {"tokens": {"input": 640, "output": 0}}
+                    model="stub-decision-1", duration_s=0.4) | {"tokens": {"input": 640, "output": 0}}
 
     def test_replays_the_recording_under_the_request_key(self):
         req = request()
@@ -385,7 +385,7 @@ class Replay(Workdir):
         self.assertEqual((got["provider"], got["model"]), (None, None))
         self.assertEqual(got["tokens"], {"input": 0, "output": 0})
         self.assertEqual(got["recorded"], {"adapter": "gemini-decisions", "provider": "gemini",
-                                           "model": "gemini-decision-1", "tokens": {"input": 640, "output": 0}})
+                                           "model": "stub-decision-1", "tokens": {"input": 640, "output": 0}})
 
     def test_the_default_directory_is_fixtures_decide(self):
         req = request()

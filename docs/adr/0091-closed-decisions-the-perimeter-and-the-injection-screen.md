@@ -253,7 +253,7 @@ Verified on 2026-11-16, before any line of code:
 
 10. **No seventh role, no model id in `core/`, no gate changed.** The
     screen and the perimeter's questions are asked for `product` and
-    `architect`, two of the six. `ci/model-free.sh` gains `gemini-decision`
+    `architect`, two of the six. `ci/model-free.sh` gains `gemini-decision-[0-9]`
     in its pattern, whose shape it did not cover.
 
 ## Alternatives rejected

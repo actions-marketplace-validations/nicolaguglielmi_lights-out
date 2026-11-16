@@ -374,7 +374,7 @@ class Decide(unittest.TestCase):
 
 # --- docs/adr/0091 §6: the perimeter asked file by file ----------------------
 
-TITLES = {1: "Cancel a seat", 2: "Waitlist a member"}
+TITLES = {1: "Cancel a seat", 2: "Queue a member"}
 
 
 def two_tickets():
@@ -390,7 +390,7 @@ def yes_no_answer(p):
 def decided(ps, **extra):
     """A Decide answer to perimeter_request(two_tickets(), ...): {key: p_yes}."""
     return dict({"answers": {k: yes_no_answer(p) for k, p in ps.items()}, "adapter": "gemini-decisions",
-                 "replayed": False, "provider": "gemini", "model": "gemini-decision-1",
+                 "replayed": False, "provider": "gemini", "model": "stub-decision-1",
                  "tokens": {"input": 100, "output": 0}, "duration_s": 0.5}, **extra)
 
 
@@ -411,25 +411,25 @@ class Map(unittest.TestCase):
 
 
 class Candidates(Map):
-    NODES = [("file", "app/b.py"), ("file", "app/a.py"), ("test", "app/tests/test_a.py"), ("page", "app/index.html"),
+    NODES = [("file", "svc/b.py"), ("file", "svc/a.py"), ("test", "svc/tests/test_a.py"), ("page", "svc/index.html"),
              ("adr", "docs/adr/0001-x.md"), ("file", "other/z.py"), ("file", "application/y.py"),
-             ("symbol", "app/a.py::f"), ("route", "app/route"), ("ticket", "tickets/0001.md"), ("file", "README.md")]
+             ("symbol", "svc/a.py::f"), ("route", "svc/route"), ("ticket", "tickets/0001.md"), ("file", "README.md")]
 
     def test_the_files_tests_pages_and_adrs_under_the_scope_sorted(self):
-        got = intake.candidates(self.build(self.NODES), "app")
-        self.assertEqual(got, ["app/a.py", "app/b.py", "app/index.html", "app/tests/test_a.py"])
+        got = intake.candidates(self.build(self.NODES), "svc")
+        self.assertEqual(got, ["svc/a.py", "svc/b.py", "svc/index.html", "svc/tests/test_a.py"])
 
     def test_a_scope_is_a_directory_not_a_prefix_of_a_name(self):
-        self.assertNotIn("application/y.py", intake.candidates(self.build(self.NODES), "app"))
+        self.assertNotIn("application/y.py", intake.candidates(self.build(self.NODES), "svc"))
 
     def test_no_scope_is_every_candidate_kind_and_no_other(self):
         got = intake.candidates(self.build(self.NODES), "")
-        self.assertEqual(got, sorted(["README.md", "app/a.py", "app/b.py", "app/index.html", "app/tests/test_a.py",
+        self.assertEqual(got, sorted(["README.md", "svc/a.py", "svc/b.py", "svc/index.html", "svc/tests/test_a.py",
                                       "application/y.py", "docs/adr/0001-x.md", "other/z.py"]))
 
     def test_slashes_around_the_scope_do_not_matter_and_a_file_is_its_own_scope(self):
         path = self.build(self.NODES)
-        self.assertEqual(intake.candidates(path, "/app/"), intake.candidates(path, "app"))
+        self.assertEqual(intake.candidates(path, "/svc/"), intake.candidates(path, "svc"))
         self.assertEqual(intake.candidates(path, "other/z.py"), ["other/z.py"])
 
     def test_a_scope_with_nothing_in_it_is_empty(self):
@@ -440,7 +440,7 @@ class Candidates(Map):
 
 
 class PerimeterRequest(unittest.TestCase):
-    PATHS = ["app/a.py", "app/b.py", "app/c.py"]
+    PATHS = ["svc/a.py", "svc/b.py", "svc/c.py"]
 
     def test_one_yes_no_question_per_ticket_and_path_keyed_by_ticket_and_index(self):
         req = intake.perimeter_request(two_tickets(), self.PATHS)
@@ -505,7 +505,7 @@ class Threshold(unittest.TestCase):
 
 
 class PerimeterDecided(unittest.TestCase):
-    PATHS = ["app/a.py", "app/b.py", "app/c.py", "app/d.py", "app/e.py"]
+    PATHS = ["svc/a.py", "svc/b.py", "svc/c.py", "svc/d.py", "svc/e.py"]
 
     def setUp(self):
         self.doc = two_tickets()
@@ -527,26 +527,26 @@ class PerimeterDecided(unittest.TestCase):
     def test_in_when_yes_and_confident_uncertain_when_not_confident_neither_otherwise(self):
         got = self.decide(self.quiet(**{"t1-f1": 0.9, "t1-f2": 0.1, "t1-f3": 0.6, "t1-f4": 0.4, "t1-f5": 0.95, "t2-f5": 0.9}))
         one, two = got["proposal"]
-        self.assertEqual(one["perimeter"], ["app/a.py", "app/e.py"])  # 0.9 and 0.95; 0.1 is a confident no
-        self.assertEqual(one["uncertain"], ["app/c.py", "app/d.py"])  # 0.6 and 0.4 are under 0.7
-        self.assertEqual((two["perimeter"], two["uncertain"]), (["app/e.py"], []))
+        self.assertEqual(one["perimeter"], ["svc/a.py", "svc/e.py"])  # 0.9 and 0.95; 0.1 is a confident no
+        self.assertEqual(one["uncertain"], ["svc/c.py", "svc/d.py"])  # 0.6 and 0.4 are under 0.7
+        self.assertEqual((two["perimeter"], two["uncertain"]), (["svc/e.py"], []))
 
     def test_the_boundaries(self):
         one = self.decide(self.quiet(**{"t1-f1": 0.7, "t1-f2": 0.3, "t1-f3": 0.6996, "t1-f4": 0.5, "t1-f5": 0.31}))["proposal"][0]
-        self.assertEqual(one["perimeter"], ["app/a.py"])  # confidence 0.7 is enough
+        self.assertEqual(one["perimeter"], ["svc/a.py"])  # confidence 0.7 is enough
         # a no at confidence exactly 0.7 is a confident no: in neither list
-        self.assertEqual(one["uncertain"], ["app/c.py", "app/d.py", "app/e.py"])
+        self.assertEqual(one["uncertain"], ["svc/c.py", "svc/d.py", "svc/e.py"])
 
     def test_p_of_one_half_is_in_when_the_threshold_allows(self):
         one = self.decide(self.quiet(**{"t1-f1": 0.5, "t1-f2": 0.49}), threshold=0.5)["proposal"][0]
-        self.assertEqual(one["perimeter"], ["app/a.py"])
+        self.assertEqual(one["perimeter"], ["svc/a.py"])
         self.assertEqual(one["uncertain"], [])
 
     def test_the_threshold_moves_the_split(self):
         ps = self.quiet(**{"t1-f1": 0.75})
-        self.assertEqual(self.decide(ps, threshold=0.7)["proposal"][0]["perimeter"], ["app/a.py"])
+        self.assertEqual(self.decide(ps, threshold=0.7)["proposal"][0]["perimeter"], ["svc/a.py"])
         got = self.decide(ps, threshold=0.8)["proposal"][0]
-        self.assertEqual((got["perimeter"], got["uncertain"]), ([], ["app/a.py"]))
+        self.assertEqual((got["perimeter"], got["uncertain"]), ([], ["svc/a.py"]))
 
     def test_the_default_threshold_is_the_policys(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -558,11 +558,11 @@ class PerimeterDecided(unittest.TestCase):
                 got = intake.perimeter_decided(self.doc, self.req, decided(self.quiet(**{"t1-f1": 0.85})), check=self.check)
             finally:
                 os.chdir(cwd)
-        self.assertEqual((got["proposal"][0]["perimeter"], got["proposal"][0]["uncertain"]), ([], ["app/a.py"]))
+        self.assertEqual((got["proposal"][0]["perimeter"], got["proposal"][0]["uncertain"]), ([], ["svc/a.py"]))
 
     def test_uncertain_is_most_probable_first_then_by_path(self):
         got = self.decide(self.quiet(**{"t1-f1": 0.6, "t1-f2": 0.65, "t1-f3": 0.4, "t1-f4": 0.65, "t1-f5": 0.55}))
-        self.assertEqual(got["proposal"][0]["uncertain"], ["app/b.py", "app/d.py", "app/a.py", "app/e.py", "app/c.py"])
+        self.assertEqual(got["proposal"][0]["uncertain"], ["svc/b.py", "svc/d.py", "svc/a.py", "svc/e.py", "svc/c.py"])
 
     def test_the_perimeter_is_in_path_order_whatever_the_order_of_the_answers(self):
         ps = {f"t1-f{i}": 0.95 for i in (5, 3, 1, 4, 2)}
@@ -571,7 +571,7 @@ class PerimeterDecided(unittest.TestCase):
 
     def test_each_ticket_has_its_own_answers(self):
         one, two = self.decide(self.quiet(**{"t1-f1": 0.9, "t2-f2": 0.9}))["proposal"]
-        self.assertEqual((one["perimeter"], two["perimeter"]), (["app/a.py"], ["app/b.py"]))
+        self.assertEqual((one["perimeter"], two["perimeter"]), (["svc/a.py"], ["svc/b.py"]))
         self.assertEqual((one["n"], two["n"], one["title"], two["title"]), (1, 2, TITLES[1], TITLES[2]))
 
     def test_the_result_is_a_proposed_intake_consulted_by_decide(self):
@@ -581,12 +581,12 @@ class PerimeterDecided(unittest.TestCase):
         a = got["architect"]
         self.assertEqual((a["consulted"], a["by"], a["questions"]), (True, "decide", 10))
         self.assertEqual((a["harness"], a["replayed"], a["provider"], a["model"]),
-                         ("gemini-decisions", False, "gemini", "gemini-decision-1"))
+                         ("gemini-decisions", False, "gemini", "stub-decision-1"))
 
     def test_a_replayed_answer_is_a_replayed_run(self):
         ans = decided(self.quiet(), adapter="replay", replayed=True, provider=None, model=None,
                       tokens={"input": 0, "output": 0}, recorded={"adapter": "gemini-decisions", "provider": "gemini",
-                                                                  "model": "gemini-decision-1",
+                                                                  "model": "stub-decision-1",
                                                                   "tokens": {"input": 640, "output": 0}})
         a = intake.perimeter_decided(self.doc, self.req, ans, check=self.check, threshold=0.7)["architect"]
         self.assertEqual((a["harness"], a["replayed"], a["by"], a["consulted"]), ("replay", True, "decide", True))
@@ -595,9 +595,9 @@ class PerimeterDecided(unittest.TestCase):
         got = self.decide(self.quiet(**{"t1-f1": 0.9, "t2-f3": 0.9}))
         self.assertEqual(len(self.seen), 2)
         self.assertEqual([t["check"] for t in got["proposal"]], ["GO: spec — draft 1", "GO: spec — draft 2"])
-        self.assertIn("- `app/a.py`", self.seen[0])
-        self.assertNotIn("app/c.py", self.seen[0])
-        self.assertIn("- `app/c.py`", self.seen[1])
+        self.assertIn("- `svc/a.py`", self.seen[0])
+        self.assertNotIn("svc/c.py", self.seen[0])
+        self.assertIn("- `svc/c.py`", self.seen[1])
         self.assertIn(TITLES[1], self.seen[0])
         self.assertIn(TITLES[2], self.seen[1])
 
@@ -661,7 +661,7 @@ class DecidePerimeter(Map):
         self.run_dir = self.root / "run"
         self.run_dir.mkdir()
         self.doc = two_tickets()
-        self.map = self.build([("file", "app/a.py"), ("file", "app/b.py"), ("file", "app/c.py"), ("file", "other/z.py")])
+        self.map = self.build([("file", "svc/a.py"), ("file", "svc/b.py"), ("file", "svc/c.py"), ("file", "other/z.py")])
         os.chdir(self.root)
         env = mock.patch.dict(os.environ, {"DECIDE": "stub"})
         env.start()
@@ -672,7 +672,7 @@ class DecidePerimeter(Map):
         os.remove(self.map)
         return self.build([("file", f"f{i}.py") for i in range(n)])
 
-    def decide(self, scope="app"):
+    def decide(self, scope="svc"):
         with mock.patch.object(intake, "gate_line", return_value="GO: spec"):
             return intake.decide_perimeter(self.doc, self.map, scope, str(self.run_dir))
 
@@ -684,8 +684,8 @@ class DecidePerimeter(Map):
     def test_asks_every_candidate_for_every_ticket_and_composes_the_result(self):
         got = self.decide()
         one, two = got["proposal"]
-        self.assertEqual((one["perimeter"], one["uncertain"]), (["app/a.py"], ["app/b.py"]))
-        self.assertEqual((two["perimeter"], two["uncertain"]), (["app/b.py"], []))
+        self.assertEqual((one["perimeter"], one["uncertain"]), (["svc/a.py"], ["svc/b.py"]))
+        self.assertEqual((two["perimeter"], two["uncertain"]), (["svc/b.py"], []))
         a = got["architect"]
         self.assertEqual((a["consulted"], a["by"], a["questions"], a["harness"]), (True, "decide", 6, "stub"))
         self.assertEqual(got["state"], "proposed")
@@ -693,7 +693,7 @@ class DecidePerimeter(Map):
     def test_the_threshold_is_read_from_the_policy(self):
         (self.root / "policy" / "decide.env").write_text("PERIMETER_CONFIDENCE=0.97\n")
         one = self.decide()["proposal"][0]
-        self.assertEqual((one["perimeter"], one["uncertain"]), ([], ["app/a.py", "app/b.py"]))
+        self.assertEqual((one["perimeter"], one["uncertain"]), ([], ["svc/a.py", "svc/b.py"]))
 
     def test_more_than_a_thousand_questions_search_instead(self):
         self.map = self.build_more(501)
@@ -711,14 +711,14 @@ class DecidePerimeter(Map):
         self.assertIn("search", str(cm.exception))
 
     def test_a_recording_is_replayed(self):
-        req = intake.perimeter_request(self.doc, ["app/a.py", "app/b.py", "app/c.py"])
+        req = intake.perimeter_request(self.doc, ["svc/a.py", "svc/b.py", "svc/c.py"])
         ans = {"answers": {k: yes_no_answer(0.02) for k in req["questions"]}, "tokens": {"input": 640, "output": 0},
-               "adapter": "gemini-decisions", "provider": "gemini", "model": "gemini-decision-1"}
+               "adapter": "gemini-decisions", "provider": "gemini", "model": "stub-decision-1"}
         ans["answers"]["t1-f3"] = yes_no_answer(0.95)
         decide.record(req, ans, {})
         with mock.patch.dict(os.environ, {"DECIDE": "replay"}):
             got = self.decide()
-        self.assertEqual(got["proposal"][0]["perimeter"], ["app/c.py"])
+        self.assertEqual(got["proposal"][0]["perimeter"], ["svc/c.py"])
         self.assertEqual((got["architect"]["harness"], got["architect"]["replayed"]), ("replay", True))
 
     def test_any_other_failure_is_refused_with_the_decision_line(self):
@@ -735,30 +735,30 @@ class DecidePerimeter(Map):
     def test_main_returns_three_when_the_step_searches_instead(self):
         err = io.StringIO()
         with mock.patch.dict(os.environ, {"DECIDE": "replay"}), contextlib.redirect_stderr(err):
-            code = intake.main(["decide-perimeter", self.doc_file(), self.map, "app", str(self.run_dir)], {})
+            code = intake.main(["decide-perimeter", self.doc_file(), self.map, "svc", str(self.run_dir)], {})
         self.assertEqual(code, 3)
         self.assertIn("search", err.getvalue())
 
     def test_main_prints_the_decided_result_as_json(self):
         out = io.StringIO()
         with mock.patch.object(intake, "gate_line", return_value="GO"), contextlib.redirect_stdout(out):
-            code = intake.main(["decide-perimeter", self.doc_file(), self.map, "app", str(self.run_dir)], {})
+            code = intake.main(["decide-perimeter", self.doc_file(), self.map, "svc", str(self.run_dir)], {})
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out.getvalue())["proposal"][0]["perimeter"], ["app/a.py"])
+        self.assertEqual(json.loads(out.getvalue())["proposal"][0]["perimeter"], ["svc/a.py"])
 
     def test_main_refused_is_one_with_the_line(self):
         err = io.StringIO()
         with mock.patch.dict(os.environ, {"DECIDE": "nothing"}), contextlib.redirect_stderr(err):
-            code = intake.main(["decide-perimeter", self.doc_file(), self.map, "app", str(self.run_dir)], {})
+            code = intake.main(["decide-perimeter", self.doc_file(), self.map, "svc", str(self.run_dir)], {})
         self.assertEqual(code, 1)
         self.assertIn("the architect's decision failed", err.getvalue())
 
     def test_main_prints_the_request(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            self.assertEqual(intake.main(["perimeter-request", self.doc_file(), self.map, "app"], {}), 0)
+            self.assertEqual(intake.main(["perimeter-request", self.doc_file(), self.map, "svc"], {}), 0)
         self.assertEqual(json.loads(out.getvalue()),
-                         intake.perimeter_request(self.doc, ["app/a.py", "app/b.py", "app/c.py"]))
+                         intake.perimeter_request(self.doc, ["svc/a.py", "svc/b.py", "svc/c.py"]))
 
 
 if __name__ == "__main__":

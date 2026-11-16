@@ -81,7 +81,7 @@ class Workdir(unittest.TestCase):
         (d / f"{decide.key_for(req)}.json").write_text(json.dumps({
             "request": req, "recorded_at": "2026-11-16T10:00:00Z",
             "answer": {"answers": {"instructions_to_agent": yes_no(p)}, "adapter": "gemini-decisions",
-                       "provider": "gemini", "model": "gemini-decision-1", "tokens": {"input": 99, "output": 0}}}))
+                       "provider": "gemini", "model": "stub-decision-1", "tokens": {"input": 99, "output": 0}}}))
         return decide.key_for(req)
 
 
@@ -263,7 +263,7 @@ class Ask(Workdir):
         self.assertIsNone(err)
         self.assertEqual((got["verdict"], got["replayed"], got["adapter"], got["harness"]), ("pass", True, "replay", "replay"))
         self.assertEqual((got["provider"], got["model"], got["tokens"]), (None, None, {"input": 0, "output": 0}))
-        self.assertEqual(got["recorded"]["model"], "gemini-decision-1")
+        self.assertEqual(got["recorded"]["model"], "stub-decision-1")
         self.assertEqual(got["recorded"]["adapter"], "gemini-decisions")
         self.assertEqual(got["role"], "screen")
 
