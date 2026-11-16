@@ -41,8 +41,8 @@ eta() {
   v=$(awk -F'\t' -v s="$1" '$1 == s { print $2 }' "$dir/steps.tsv" 2>/dev/null | tail -n 1)
   if [ -z "$v" ]; then
     case "$1" in
-      preflight) v=2 ;; toolchain) v=50 ;; plane) v=85 ;; rollback) v=65 ;;
-      ticket) v=230 ;; checks) v=60 ;; console) v=10 ;; *) v=0 ;;
+      preflight) v=1 ;; toolchain) v=30 ;; plane) v=71 ;; rollback) v=63 ;;
+      ticket) v=204 ;; checks) v=0 ;; console) v=1 ;; *) v=0 ;;
     esac
   fi
   printf '%s' "$v"
@@ -80,7 +80,7 @@ while IFS= read -r line; do
       [ -z "$pending" ] || { printf '\n' >&2; pending=""; }
       printf '      %s\n' "${line#\[say\] }" >&2 ;;
     'GO: demo'|'GO: demo,'*|'GO: demo —'*|'NO-GO: demo —'*)
-      [ -z "$pending" ] || { printf '\n' >&2; pending=""; }
+      end_step
       verdict=1
       printf '%s\n' "$line" ;;
     'NO-GO: '*) last_nogo=$line ;;

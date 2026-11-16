@@ -54,7 +54,7 @@ case "$mem" in
 esac
 
 # §1c. Disk: free space in the engine's store.
-need_mb=${PREFLIGHT_DISK_NEED_MB:-6000}
+need_mb=${PREFLIGHT_DISK_NEED_MB:-8000}
 free=""
 if [ "$engine" = podman ]; then
   d=$("$engine" info --format '{{.Store.GraphRootAllocated}} {{.Store.GraphRootUsed}}' 2>/dev/null || :)
