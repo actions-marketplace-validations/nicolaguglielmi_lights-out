@@ -29,6 +29,7 @@
 #   ./go resume         request again the step a ticket failed, history kept: TICKET=<id>
 #   ./go request        start a ticket at requested: the product role asks or confirms, then the spec gate: TICKET=<id> [REQUEST_BY=<who>]
 #   ./go answer         answer a ticket's open question, then the product role again: TICKET=<id> ANSWER=<text>
+#   ./go screen-clear   clear a text the screen stopped, after reading it, and run its step again: TICKET=<id> (ADR 0091)
 #   ./go demo-rework    prove a NO-GO goes back to the worker with its verdict, then GO and merged
 #   ./go demo-mainline  prove main stays green without a queue: unjudged disjoint merges, an overlap reworked, a breaking merge bisected and reverted
 #   ./go assign         turn a ticket into a PR: TICKET=<id>
@@ -50,6 +51,7 @@
 #   ./go promote        go-for-launch: the brief, the human answer, then 100% or rollback
 #   ./go demo-launch    prove go-for-launch: held canary, brief, GO → 100%, then the un-promote
 #   ./go record-evals   record the ADK roles' responses at L1 (PROFILE=l1)
+#   ./go record-decisions  record the screens and the perimeter decisions L0 replays, at L1 (PROFILE=l1, ADR 0091)
 #   ./go record-postmortem  record the ops-triage role's post mortem of fixtures/incidents/ at L1 (PROFILE=l1)
 #   ./go harness-conformance  every CLI harness against a scripted model, no key: [CONFORMANCE_HARNESS=<name>] (ADR 0041)
 #   ./go argo-conformance  the Delivery suite on adapters/argo-rollouts, a local k3s beside the plane (ADR 0051)

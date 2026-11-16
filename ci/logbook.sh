@@ -112,7 +112,8 @@ name=logbook
 
 repo=$(pwd)
 stub="$repo/fixtures/logbook/stub"
-golden="$repo/fixtures/logbook/golden-1.7.json"
+golden="$repo/fixtures/logbook/golden-1.8.json"
+golden17="$repo/fixtures/logbook/golden-1.7.json"
 golden16="$repo/fixtures/logbook/golden-1.6.json"
 golden15="$repo/fixtures/logbook/golden-1.5.json"
 golden14="$repo/fixtures/logbook/golden-1.4.json"
@@ -127,7 +128,8 @@ for tool in python3 jq curl git sha256sum timeout; do
   command -v "$tool" >/dev/null 2>&1 || nogo "$tool is not installed; this gate runs in the workbench"
 done
 python3 -c 'import jsonschema' 2>/dev/null || nogo "python3 cannot import jsonschema; it is in the workbench lock (docs/adr/0047 §2)"
-[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.7.json not found"
+[ -f "$golden" ] || nogo "fixtures/logbook/golden-1.8.json not found"
+[ -f "$golden17" ] || nogo "fixtures/logbook/golden-1.7.json not found (the old-logbook fixture)"
 [ -f "$golden16" ] || nogo "fixtures/logbook/golden-1.6.json not found (the old-logbook fixture)"
 [ -f "$golden15" ] || nogo "fixtures/logbook/golden-1.5.json not found (the old-logbook fixture)"
 [ -f "$golden14" ] || nogo "fixtures/logbook/golden-1.4.json not found (the old-logbook fixture)"
@@ -1193,7 +1195,7 @@ run_reader LOGBOOK_FILE=out2.json
 cmp -s "$root/out1.json" "$root/out2.json" \
   || nogo "two runs over the same sources wrote different bytes (ADR 0047 §2: no clock)" "$(diff "$root/out1.json" "$root/out2.json" | head -20)"
 cmp -s "$root/out1.json" "$golden" \
-  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.7.json" "$(diff "$golden" "$root/out1.json" | head -40)"
+  || nogo "the logbook over the stub sources is not fixtures/logbook/golden-1.8.json" "$(diff "$golden" "$root/out1.json" | head -40)"
 
 # The ADRs (docs/adr/0059 §3). The golden is only the bytes the reader wrote
 # the day it was blessed; these are the rules, worked out again from the
@@ -1248,8 +1250,8 @@ hand_13() {
   # shellcheck disable=SC2016 # $old is jq's own variable
   # The one top-level key 1.3 adds is ADR 0073's `agents` (§10); ADR 0071 and ADR 0078 add none;
   # 1.5 adds `dora` and `spend` (docs/adr/0082, 0083, amendments of 2026-11-13).
-  h13 "nothing new at the top level but agents, dora, spend, roles, roles_summary and intakes, and the schema is 1.7" \
-    '.schema == "lights-out/logbook/1.7" and (keys == ($old[0] | keys + ["agents", "dora", "spend", "roles", "roles_summary", "intakes"] | sort))' "$1" || return 1
+  h13 "nothing new at the top level but agents, dora, spend, roles, roles_summary and intakes, and the schema is 1.8" \
+    '.schema == "lights-out/logbook/1.8" and (keys == ($old[0] | keys + ["agents", "dora", "spend", "roles", "roles_summary", "intakes"] | sort))' "$1" || return 1
   h13 "0010's two attempts, as the tower recorded them" \
     "$t10 | (.tasks | map(.attempt)) == [1, 2]" "$1" || return 1
   h13 "0010 attempt 1: members impl and tests, in that order, with their harness, model and perimeter" \
@@ -1369,7 +1371,7 @@ h14() {
 t03='(.tickets[] | select(.id == "0003"))'
 t02='(.tickets[] | select(.id == "0002"))'
 hand_14() {
-  h14 "the schema is 1.7 (1.4's fields are kept)" '.schema == "lights-out/logbook/1.7"' "$1" || return 1
+  h14 "the schema is 1.8 (1.4's fields are kept)" '.schema == "lights-out/logbook/1.8"' "$1" || return 1
   h14 "0003 is at attempt 2, PR 3, with two ci runs and one rework in its history" \
     "$t03 | .attempt == 2 and .pr.number == 3 and ([.history[] | select(.step == \"ci\")] | length) == 2
       and ([.history[] | select(.step == \"rework\")] | length) == 1" "$1" || return 1
@@ -1556,7 +1558,7 @@ h15() {
 }
 # shellcheck disable=SC2016 # $t, $s7 and the dollar amounts are jq's and the record's, not the shell's
 hand_15() {
-  h15 "the schema is 1.7 (1.5's fields are kept)" '.schema == "lights-out/logbook/1.7"' "$1" || return 1
+  h15 "the schema is 1.8 (1.5's fields are kept)" '.schema == "lights-out/logbook/1.8"' "$1" || return 1
   h15 "spend per ticket: 0003 \$1.1625 over 2 runs, 420 s of agents, 1,200 s elapsed; 0010 \$0 over 2, 1 unknown, 30 s, 5,400 s; the others 0 runs with their elapsed time" \
     '.spend.tickets as $t | ($t | keys) == ["0001","0002","0003","0004","0005","0007","0008","0009","0010"]
       and ($t["0003"] | .runs == 2 and .unknown == 0 and .agent_s == 420 and .elapsed_s == 1200 and ((.cost_usd - 1.1625) | fabs) < 0.000001)
@@ -2059,6 +2061,49 @@ plant17 "an intake as a card" '.kanban[0].tickets += ["0013"]'
 plant17 "0009 without its intake" '(.tickets[] | select(.id == "0009") | .intake) = null'
 plant17 "an intake as a line of the spend" '.spend.tickets["0011"] = {runs: 0}'
 
+# The 1.8 additions (docs/adr/0091 §9), written down by hand from the stub's
+# tower documents: ticket 0001's body passed the screen, ticket 0010's was
+# flagged, intake 0013's words were flagged; every other ticket and intake 0011
+# were never screened. No proposal was asked file by file: `uncertain` and the
+# architect's `by` are null. The sha256 is of each text file, worked out here.
+h18() {
+  jq -e --arg s1 "$(sha256sum "$stub/tickets/0001.md" | cut -d' ' -f1)" \
+    --arg s10 "$(sha256sum "$stub/tickets/0010.md" | cut -d' ' -f1)" \
+    --arg s13 "$(sha256sum "$stub/tickets/0013.intake.md" | cut -d' ' -f1)" \
+    "$2" "$3" >/dev/null 2>&1 || { printf '%s\n' "$1"; return 1; }
+}
+# shellcheck disable=SC2016 # $s1, $s10 and $s13 are jq's own variables
+hand_18() {
+  h18 "0001 passed, 0010 flagged, every other ticket never screened" \
+    '[.tickets[] | select(.screen != null) | [.id, .screen.verdict]] == [["0001", "pass"], ["0010", "flag"]]' "$1" || return 1
+  h18 "0001 and 0010: the screen's numbers, the replay and the sha256 of each body" \
+    '[.tickets[] | select(.id == "0001" or .id == "0010") | .screen | [.p_yes, .confidence, .adapter, .replayed, .sha256]]
+      == [[0.01, 0.99, "replay", true, $s1], [0.64, 0.64, "replay", true, $s10]]' "$1" || return 1
+  h18 "intake 0013 flagged with the sha256 of its words, intake 0011 never screened" \
+    '(.intakes[1].screen | .verdict == "flag" and .p_yes == 0.62 and .sha256 == $s13) and .intakes[0].screen == null' "$1" || return 1
+  h18 "no proposal asked file by file: uncertain and the architect's by are null" \
+    '([.intakes[] | .proposal[] | .uncertain] | all(. == null)) and .intakes[0].architect.by == null' "$1" || return 1
+}
+bad=$(hand_18 "$root/out1.json") || nogo "the 1.8 screens over the stub sources: $bad" "$(jq -c '[.tickets[] | {id, screen}], [.intakes[] | {id, screen}]' "$root/out1.json" 2>&1)"
+plant18() {
+  jq "$2" "$root/out1.json" > "$tmp/plant.json"
+  if hand_18 "$tmp/plant.json" >/dev/null; then
+    nogo "the hand checks of the 1.8 screens accept a logbook with $1; a gate that cannot fail is not a gate"
+  fi
+}
+plant18 "the flag read as a pass" '(.tickets[] | select(.id == "0010") | .screen.verdict) = "pass"'
+plant18 "a screen on a ticket never screened" '(.tickets[] | select(.id == "0002") | .screen) = {verdict: "pass"}'
+plant18 "the intake's screen dropped" '.intakes[1].screen = null'
+plant18 "another text's sha256" '(.tickets[] | select(.id == "0001") | .screen.sha256) = "0"'
+# A proposal asked file by file: the architect's by and questions, each
+# ticket's uncertain paths, read from the document as they are.
+cp "$root/state/tickets.0011.json" "$tmp/0011.keep"
+jq '.architect += {by: "decide", questions: 150, consulted: true} | .proposal[0].uncertain = ["app/frontend/src/api.ts", "app/backend/meetups/auth.py"] | .proposal[1].uncertain = []' \
+  "$tmp/0011.keep" > "$root/state/tickets.0011.json"
+var_case "a proposal asked file by file" '.intakes[0] | .architect.by == "decide" and .architect.questions == 150
+  and .proposal[0].uncertain == ["app/frontend/src/api.ts", "app/backend/meetups/auth.py"] and .proposal[1].uncertain == []'
+cp "$tmp/0011.keep" "$root/state/tickets.0011.json"
+
 cp "$root/state/tickets.0009.json" "$tmp/0009.keep"
 jq '.history[0] += {by: "ada@example.org", via: "console"}' "$tmp/0009.keep" > "$root/state/tickets.0009.json"
 var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009") | .timeline[] | select(.phase == "request")]
@@ -2066,11 +2111,13 @@ var_case "a request by ada via the console" '[.tickets[] | select(.id == "0009")
 cp "$tmp/0009.keep" "$root/state/tickets.0009.json"
 
 # --- b. the golden against every committed schema of its major ---------------
-for n in 0 1 2 3 4 5 6 7; do
-  [ -f "core/logbook/1.$n.schema.json" ] || nogo "core/logbook/1.$n.schema.json not found: the golden validates against 1.0 to 1.7"
+for n in 0 1 2 3 4 5 6 7 8; do
+  [ -f "core/logbook/1.$n.schema.json" ] || nogo "core/logbook/1.$n.schema.json not found: the golden validates against 1.0 to 1.8"
 done
 chk valid "$golden" >"$tmp/chk.out" || nogo "the golden does not validate" "$(cat "$tmp/chk.out")"
 # The old-logbook fixtures stay valid against their own major's schemas, untouched.
+chk valid "$golden17" >"$tmp/chk.out" || nogo "golden-1.7.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
+[ "$(jq -r .schema "$golden17")" = "lights-out/logbook/1.7" ] || nogo "golden-1.7.json is not a 1.7 logbook: the old fixture was changed"
 chk valid "$golden16" >"$tmp/chk.out" || nogo "golden-1.6.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
 [ "$(jq -r .schema "$golden16")" = "lights-out/logbook/1.6" ] || nogo "golden-1.6.json is not a 1.6 logbook: the old fixture was changed"
 chk valid "$golden15" >"$tmp/chk.out" || nogo "golden-1.5.json (the old-logbook fixture) does not validate" "$(cat "$tmp/chk.out")"
@@ -2291,7 +2338,7 @@ mkdir -p "$tmp/ctmp"
 trip="$tmp/trip"
 mkdir -p "$trip/core" "$trip/fixtures/logbook" "$trip/gates" "$trip/ci"
 cp -R "$repo/console" "$trip/console"
-cp "$golden" "$trip/fixtures/logbook/golden-1.7.json"
+cp "$golden" "$trip/fixtures/logbook/golden-1.8.json"
 for s in logbook promote; do
   # shellcheck disable=SC2016 # the tripwire script expands its own $d
   printf '#!/bin/sh\nd=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)\necho "$0" >> "$d/ran"\nexit 1\n' > "$trip/core/$s.sh"
@@ -2301,7 +2348,7 @@ for f in "$repo"/core/*.py; do ln -s "$f" "$trip/core/$(basename "$f")"; done
 cp "$repo/gates/spec.sh" "$trip/gates/spec.sh"
 cp "$repo/ci/lib.sh" "$trip/ci/lib.sh"
 cp -R "$stub/tickets" "$trip/tickets"
-start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.7.json TMPDIR="$tmp/ctmp"
+start_console "$trip" "$tmp/snap.log" CONSOLE_SNAPSHOT=fixtures/logbook/golden-1.8.json TMPDIR="$tmp/ctmp"
 req "$(base)/"
 [ "$code" = 200 ] || nogo "snapshot mode: GET / answered $code, want 200" "$(cat "$tmp/snap.log")"
 cmp -s "$body" "$repo/console/index.html" || nogo "snapshot mode: GET / is not console/index.html"

@@ -20,5 +20,6 @@
   "merge": {"sha": "m1", "head_sha": "h1"},
   "map": {"sha": "m1", "file": ".crew/map.sqlite", "docs_ticket": "0009"},
   "release": {"version": "0.2.0-a", "image": "img-a", "verdict": "NO-GO: launchpad — 5%: error_rate 1.000 → rolled back",
-              "numbers": ["slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"]}
+              "numbers": ["slo: error_rate canary(0.2.0-a)=1.000 stable(0.1.0)=0.000"]},
+  "screen": {"verdict": "pass", "p_yes": 0.01, "confidence": 0.99, "sha256": "8f85a5be58dda8de40e709693030bdbaade4f250d074a03ab90eed1a25300259", "adapter": "replay", "replayed": true}
 }

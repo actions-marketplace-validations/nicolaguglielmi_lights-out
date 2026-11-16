@@ -30,8 +30,21 @@ python3 core/intake.py proposal "$DOC_FILE" > "$dir/input.json"
 python3 core/map.py build --repo "${WORKLOAD_REPO:-.}" --targets "$dir/targets" --out "$dir/map.sqlite" >&2 \
   || { printf 'could not build the project map of %s\n' "${WORKLOAD_REPO:-.}" > "${STEP_WHY:-/dev/null}"; exit 1; }
 
+# PERIMETER_BY from the environment wins over the role's (docs/adr/0091 §6).
+by=${PERIMETER_BY:-}
 # shellcheck disable=SC1091 # the role's budgets
 . roles/architect/role.env
+PERIMETER_BY=${by:-${PERIMETER_BY:-search}}
+
+# Asked file by file (docs/adr/0091 §6): one Decide request, no turns.
+# Exit 3: over the port's limit or not recorded at L0, the architect
+# searches as before (core/intake.py said so); any other failure fails.
+if [ "$PERIMETER_BY" = decide ]; then
+  drc=0
+  python3 core/intake.py decide-perimeter "$DOC_FILE" "$dir/map.sqlite" "$scope" "$dir" > "$dir/decided.json" || drc=$?
+  [ "$drc" -ne 0 ] || exec cat "$dir/decided.json"
+  [ "$drc" -eq 3 ] || exit 1
+fi
 rc=0
 ROLE=architect INPUT="$dir/input.json" OUT="$dir/out" INTAKE_MAP="$dir/map.sqlite" INTAKE_SCOPE="$scope" \
   THINKING="${THINKING:-high}" TIMEOUT_S="${TIMEOUT_S:-900}" \

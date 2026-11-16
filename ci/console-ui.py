@@ -12,7 +12,7 @@ job of .github/workflows/ci.yml, in the Playwright image site.yml pins.
 Written from docs/adr/0059 and the DOM contract it names (and, for t-z, from
 docs/adr/0071; for `agents`, from docs/adr/0073), not from console/index.html.
 It starts console/serve.py itself, in snapshot mode, over
-fixtures/logbook/golden-1.7.json, and drives it with Playwright:
+fixtures/logbook/golden-1.8.json, and drives it with Playwright:
 
   a. every interaction of the kanban in a scripted sequence (search, each
      filter, grouping, hiding the empty columns, collapsing, a click on a
@@ -221,7 +221,7 @@ import urllib.request
 
 NAME = "console-ui"
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.7.json"
+GOLDEN = ROOT / "fixtures" / "logbook" / "golden-1.8.json"
 GOLDEN_15 = ROOT / "fixtures" / "logbook" / "golden-1.5.json"
 GOLDEN_14 = ROOT / "fixtures" / "logbook" / "golden-1.4.json"
 SCREENS = ["overview", "kanban", "tickets", "ticket/{id}", "specs", "request", "adrs", "incidents", "launch", "thresholds", "network", "network/0010"]
@@ -5308,6 +5308,66 @@ def ah_intakes(browser, bases, golden):
     ctx.close()
 
 
+# --- ai. the screen and the uncertain paths (docs/adr/0091 §9) -------------------------------------
+# Written from ADR 0091 §9: a ticket or an intake whose text the screen
+# flagged or a person cleared carries a mark on its card; the intake's page
+# says the screen's line; a proposal asked file by file names the architect's
+# questions and lists each ticket's uncertain paths for the person.
+
+SCREEN_MARKS_JS = """() => ({
+  cards: [...document.querySelectorAll('.card[data-id]')].filter((c) => c.querySelector('[data-kind=screen]'))
+    .map((c) => [c.dataset.id, c.querySelector('[data-kind=screen]').textContent.trim()]),
+  intakes: [...document.querySelectorAll('section#intakes a.intake-card')].filter((c) => c.querySelector('[data-kind=screen]'))
+    .map((c) => [c.dataset.intake, c.querySelector('[data-kind=screen]').textContent.trim()]),
+})"""
+
+
+def ai_screen(browser, bases, golden):
+    marked = sorted(t["id"] for t in golden.get("tickets") or [] if (t.get("screen") or {}).get("verdict") in ("flag", "cleared"))
+    marked_i = sorted(i["id"] for i in golden.get("intakes") or [] if (i.get("screen") or {}).get("verdict") in ("flag", "cleared"))
+    need(marked and marked_i, "ai: the golden holds no flagged ticket or intake to draw")
+    for scheme in ("light", "dark"):
+        ctx = browser.new_context(color_scheme=scheme, viewport=DESKTOP)
+        tab = Tab(ctx, bases["golden"])
+        tab.load("#kanban")
+        wait_for(tab, ".card[data-id]", f"ai ({scheme})")
+        got = tab.page.evaluate(SCREEN_MARKS_JS)
+        need(sorted(c[0] for c in got["cards"]) == marked, f"ai ({scheme}): the cards marked are {got['cards']}, the logbook's flagged or cleared tickets {marked}")
+        need(sorted(c[0] for c in got["intakes"]) == marked_i, f"ai ({scheme}): the intake cards marked are {got['intakes']}, want {marked_i}")
+        need(all(c[1] in ("screen: flagged", "screen: cleared") for c in got["cards"] + got["intakes"]), f"ai: a mark reads {got}")
+        for tid in marked:
+            bad = contrast_problems(tab.page.evaluate(MEASURE_JS, f'.card[data-id="{tid}"]'), f"ai ({scheme}), card {tid}")
+            need(not bad, bad[0] if bad else "", *bad[:10])
+        for i in golden["intakes"]:
+            tab.load("#intake/" + i["id"])
+            line = tab.page.evaluate("() => { const p = document.querySelector('main [data-kind=screen]'); return p ? p.textContent : null; }")
+            sc = i.get("screen")
+            if sc:
+                need(line and sc["verdict"] in line and (sc.get("p_yes") is None or f"{sc['p_yes']:.2f}" in line),
+                     f"ai: #intake/{i['id']} says {line!r} for its screen {sc}")
+            else:
+                need(line is None, f"ai: #intake/{i['id']} shows a screen line {line!r} it never had")
+        tab.audit(f"ai ({scheme})")
+        ctx.close()
+    # A proposal asked file by file, served to the page as a logbook.
+    book = json.loads(json.dumps(golden))
+    target = book["intakes"][0]
+    target["architect"] = dict(target.get("architect") or {}, consulted=True, by="decide", questions=150, harness="replay", replayed=True)
+    target["proposal"][0]["uncertain"] = ["app/frontend/src/api.ts", "app/backend/meetups/auth.py"]
+    ctx = browser.new_context(viewport=DESKTOP)
+    tab = Tab(ctx, bases["golden"])
+    tab.page.route("**/v1/logbook.json", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(book)))
+    tab.load("#intake/" + target["id"])
+    wait_for(tab, "#proposal div.proposed", "ai: the proposal")
+    text = tab.page.evaluate("() => document.querySelector('#proposal').textContent.replace(/\\s+/g, ' ')")
+    need("150 questions" in text and "one yes/no question per file" in text, f"ai: the architect's line does not say it asked file by file: {text[:300]!r}")
+    unc = tab.page.evaluate("() => [...document.querySelectorAll('#proposal [data-kind=uncertain]')].map((n) => n.textContent)")
+    need(unc == ["app/frontend/src/api.ts, app/backend/meetups/auth.py"], f"ai: the uncertain paths drawn are {unc}")
+    bad = contrast_problems(tab.page.evaluate(MEASURE_JS, "#proposal"), "ai, #proposal")
+    need(not bad, bad[0] if bad else "", *bad[:10])
+    ctx.close()
+
+
 def main():
     real = sys.stdout
     sys.stdout = sys.stderr  # a library that prints must not break the one-line contract
@@ -5315,7 +5375,7 @@ def main():
         need(GOLDEN.is_file(), f"{GOLDEN.relative_to(ROOT)} not found")
         need((ROOT / "console" / "serve.py").is_file(), "console/serve.py not found")
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        need(golden.get("schema") == "lights-out/logbook/1.7", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.7")
+        need(golden.get("schema") == "lights-out/logbook/1.8", f"the golden's schema is {golden.get('schema')!r}, want lights-out/logbook/1.8")
         need(GOLDEN_15.is_file(), f"{GOLDEN_15.relative_to(ROOT)} not found: the 1.5 degradation (ae) reads it")
         need(GOLDEN_14.is_file(), f"{GOLDEN_14.relative_to(ROOT)} not found: the 1.4 degradation (ad) reads it")
         need(any(t.get("adrs") for t in golden["tickets"]), "the golden has no ticket with adrs: it is not a 1.2 or later logbook")
@@ -5371,6 +5431,7 @@ def main():
                             af_roles(browser, bases, golden)
                             ag_burn(browser, bases, golden, pathlib.Path(tmp))
                             ah_intakes(browser, bases, golden)
+                            ai_screen(browser, bases, golden)
                         g_fit(browser, bases, golden)
                         h_now(browser, bases, golden, books)
                         i_overview(browser, bases, golden, books)

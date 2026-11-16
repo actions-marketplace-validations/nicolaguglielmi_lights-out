@@ -28,7 +28,9 @@ LIMIT_KEYS = ("SPEND_BUDGET_TICKET_USD", "SPEND_BUDGET_DAY_USD")
 # The step result keys that carry a role's run (§3), and the role of one
 # whose object does not name it.
 # The architect's run of an intake's perimeter step counts as product's does (docs/adr/0090 §7).
-RUN_FIELDS = (("task", None), ("review", None), ("product", "product"), ("architect", "architect"))
+# The screen before a role reads a text is its own line, role `screen` (docs/adr/0091 §9).
+RUN_FIELDS = (("task", None), ("review", None), ("product", "product"), ("architect", "architect"),
+              ("screen", "screen"))
 _DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DECIMAL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")

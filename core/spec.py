@@ -330,7 +330,10 @@ def main(argv, env=None):
         if cmd == "answers" and len(args) == 1:
             print(json.dumps(answers(load(args[0], {})), ensure_ascii=False))
         elif cmd == "clarify" and len(args) == 4:
-            print(json.dumps(clarify(read(args[0]), load(args[1], {}), args[2], int(args[3]), env),
+            result = clarify(read(args[0]), load(args[1], {}), args[2], int(args[3]), env)
+            # The screen core/screen.py wrote beside the run (docs/adr/0091 §7).
+            screen = load(os.path.join(args[2], "screen.json"), None)
+            print(json.dumps(dict(result, screen=screen) if isinstance(screen, dict) else result,
                              ensure_ascii=False))
         elif cmd == "compose" and len(args) == 2:
             sys.stdout.write(compose(read(args[0]), load(args[1], {})))

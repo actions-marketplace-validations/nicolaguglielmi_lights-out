@@ -593,7 +593,7 @@ class Reader(unittest.TestCase):
 
     def test_the_schema_is_1_7(self):
         # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.7")
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.8")
 
     def test_ci_and_rework_carry_gates_and_not_the_raw_lines(self):
         t = self.ticket(self.base())
@@ -741,7 +741,7 @@ class WhyOfAnEntry(unittest.TestCase):
         return base
 
     def test_the_schema_is_1_7(self):
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.7")
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.8")
 
     def test_a_ci_that_failed_a_gate_after_secrets_said_go(self):
         self.assertEqual(logbook.why(self.entry(), 2, "gates"),
@@ -872,7 +872,7 @@ class WhyInTheLogbook(unittest.TestCase):
 
     def test_the_schema_is_1_7(self):
         # 1.6 adds the flow, the roles, the burn and the run in flight (docs/adr/0085-0087); additions only.
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.7")
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.8")
 
     def test_0003s_current_ci_why(self):
         t = self.ticket(self.base(), "0003")
@@ -1226,8 +1226,8 @@ class FlowInTheLogbook(unittest.TestCase):
                          (verdict, line, started, ended, seconds), n)
 
     def test_the_schema_is_1_7(self):
-        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.7")
-        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.7")
+        self.assertEqual(self.base()["schema"], "lights-out/logbook/1.8")
+        self.assertEqual(logbook.SCHEMA, "lights-out/logbook/1.8")
 
     def test_every_ticket_has_fourteen_nodes_in_order_with_seven_keys(self):
         for t in self.base()["tickets"]:

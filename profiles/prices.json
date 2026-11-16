@@ -52,6 +52,15 @@
       "note": "pay-as-you-go; cached input storage \"limited-time free\", not priced; the page carries no date",
       "source": "https://docs.z.ai/guides/overview/pricing",
       "checked": "2026-11-16"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-decision-1",
+      "input": 0.10,
+      "output": 0,
+      "note": "Paid tier; output is never billed (0 output tokens); a free tier exists in AI Studio",
+      "source": "https://aistudio.google.com/docs/pricing",
+      "checked": "2026-11-16"
     }
   ]
 }

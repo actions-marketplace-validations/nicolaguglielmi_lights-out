@@ -21,6 +21,18 @@ confirmation; core/tower.py and the step scripts are its entry points
         gates/spec.sh (§3)
     python3 core/intake.py compose <ticket.json> <id> <intake id>
         the Markdown a proposed ticket becomes (§5)
+    python3 core/intake.py perimeter-request <doc.json> <map.sqlite> <scope>
+        the Decide request of the perimeter asked file by file: one yes/no
+        question per proposed ticket and per file of the map under <scope>
+        (docs/adr/0091 §6); exit 1 when it would be over the port's limit
+    python3 core/intake.py decide-perimeter <doc.json> <map.sqlite> <scope> <run dir>
+        the perimeter step asked file by file: the request, the Decide port,
+        the result; exit 3 with one stderr line when the architect is to
+        search instead (over the port's limit, or no recording at L0)
+    python3 core/intake.py perimeter-decided <doc.json> <request.json> <answer.json>
+        the perimeter step's result from the answer: `proposed`, the paths at
+        or over PERIMETER_CONFIDENCE in the perimeter, those under it
+        `uncertain` (docs/adr/0091 §6)
 
 A step result is the JSON object core/tower.py merges into the document.
 A refusal is one stderr line and exit 1, which fails the step (ADR 0034);
@@ -30,6 +42,7 @@ its line is also written to $STEP_WHY when the tower gives one (§6).
 import json
 import os
 import re
+import sqlite3
 import subprocess  # nosec B404 - gates/spec.sh, an argv list (docs/adr/0052 §3)
 import sys
 import tempfile
@@ -54,6 +67,10 @@ EDITABLE = ("title", "problem", "criteria", "perimeter", "feature", "priority")
 _ID = re.compile(r"^\d{4}$")
 
 
+class SearchInstead(Exception):
+    """The perimeter cannot be asked file by file here: the step searches (docs/adr/0091 §6)."""
+
+
 class Refused(Exception):
     """A refusal; RUN, when given, is the step result's run field the tower
     ledgers for a stopped run (`{"architect": {...}}`, amendment A3)."""
@@ -61,6 +78,10 @@ class Refused(Exception):
     def __init__(self, message, run=None):
         super().__init__(message)
         self.run = run
+
+
+class OverLimit(Refused):
+    """More questions than the Decide port takes (docs/adr/0091 §1, §6): the step searches instead."""
 
 
 def stopped(field, run):
@@ -191,6 +212,12 @@ def interview(doc, run_dir, rc, env):
     return {"state": "intake-questions", "questions": questions, "product": product}
 
 
+def screened(result, run_dir):
+    """The step result with the screen core/screen.py wrote beside the run (docs/adr/0091 §7)."""
+    screen = load(os.path.join(run_dir, "screen.json"), None)
+    return dict(result, screen=screen) if isinstance(screen, dict) else result
+
+
 # --- §3 the perimeter -------------------------------------------------------
 
 
@@ -258,6 +285,115 @@ def perimeter(doc, run_dir, rc, env, check=gate_line):
     if not out:
         raise Refused("the intake holds no proposed ticket")
     return {"state": "proposed", "architect": architect, "proposal": out}
+
+
+# --- docs/adr/0091 §6: the perimeter asked file by file ---------------------
+
+# The map's node kinds the architect may name, the ones find_files searches.
+KINDS = ("file", "test", "page", "adr")
+# Provenance, external: the Decide port's limit (docs/adr/0091 §1).
+MAX_QUESTIONS = 1000
+POLICY = "policy/decide.env"
+QUESTION = "Must the file `{path}` change for ticket {n} ({title}) to meet its acceptance criteria?"
+YES = "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+NO = "The ticket can meet every criterion without touching this file."
+
+
+def candidates(map_path, scope):
+    """The map's files under SCOPE, sorted: the paths the questions name."""
+    scope = (scope or "").strip("/")
+    db = sqlite3.connect(f"file:{os.path.abspath(map_path)}?mode=ro", uri=True)
+    try:
+        rows = db.execute("SELECT DISTINCT name FROM node WHERE kind IN (?, ?, ?, ?) ORDER BY name", KINDS).fetchall()
+    finally:
+        db.close()
+    return [r[0] for r in rows if not scope or r[0] == scope or r[0].startswith(scope + "/")]
+
+
+def perimeter_request(doc, paths):
+    """One request: the architect's first message as the input, one yes/no
+    question per ticket and per path, keyed t<n>-f<i> (i from 1)."""
+    tickets = [t for t in doc.get("proposal") or [] if isinstance(t, dict)]
+    if not tickets:
+        raise Refused("the intake holds no proposed ticket")
+    if not paths:
+        raise Refused("the workload's map holds no file to ask about")
+    if len(tickets) * len(paths) > MAX_QUESTIONS:
+        raise OverLimit(f"{len(tickets)} tickets × {len(paths)} files is {len(tickets) * len(paths)} questions, "
+                      f"over the port's {MAX_QUESTIONS}")
+    questions = {}
+    for t in tickets:
+        for i, path in enumerate(paths, 1):
+            questions[f"t{t.get('n')}-f{i}"] = {
+                "type": "yes_no", "instructions": QUESTION.format(path=path, n=t.get("n"), title=t.get("title")),
+                "criteria": {"true": YES, "false": NO}}
+    return {"input": proposal_input(doc), "questions": questions}
+
+
+def confidence_threshold(path=POLICY):
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("PERIMETER_CONFIDENCE="):
+                return float(line.split("=", 1)[1])
+    raise Refused(f"{path} has no PERIMETER_CONFIDENCE")
+
+
+def perimeter_decided(doc, req, ans, check=gate_line, threshold=None):
+    """The perimeter step's result from the Decide answer (docs/adr/0091 §6)."""
+    t_min = confidence_threshold() if threshold is None else threshold
+    paths = {}
+    for key, q in (req.get("questions") or {}).items():
+        m = re.match(r"^t(\d+)-f\d+$", key)
+        p = re.search(r"`([^`]+)`", q.get("instructions") or "")
+        if m and p:
+            paths[key] = (int(m.group(1)), p.group(1))
+    inside, unsure = {}, {}
+    for key, a in (ans.get("answers") or {}).items():
+        if key not in paths:
+            continue
+        n, path = paths[key]
+        if a["confidence"] < t_min:
+            unsure.setdefault(n, []).append((a["p_yes"], path))
+        elif a["p_yes"] >= 0.5:
+            inside.setdefault(n, []).append(path)
+    recorded = ans.get("recorded") if isinstance(ans.get("recorded"), dict) else {}
+    run = {"harness": ans.get("adapter"), "replayed": ans.get("replayed") is True, "provider": ans.get("provider"),
+           "model": ans.get("model"), "tokens": ans.get("tokens"), "duration_s": ans.get("duration_s"),
+           "turns": 1 if not ans.get("replayed") else 0}
+    if recorded:
+        run["recorded"] = recorded
+    architect = dict(task(run), consulted=True, by="decide", questions=len(paths))
+    out = []
+    for t in doc.get("proposal") or []:
+        if not isinstance(t, dict):
+            continue
+        n = t.get("n")
+        t = dict(t, perimeter=sorted(inside.get(n, [])),
+                 uncertain=[p for _, p in sorted(unsure.get(n, []), key=lambda x: (-x[0], x[1]))])
+        t["check"] = check(compose(t, "draft", doc.get("id") or ""))
+        out.append(t)
+    if not out:
+        raise Refused("the intake holds no proposed ticket")
+    return {"state": "proposed", "architect": architect, "proposal": out}
+
+
+def decide_perimeter(doc, map_path, scope, run_dir):
+    """The perimeter step's result asked file by file, or SearchInstead, or Refused."""
+    try:
+        req = perimeter_request(doc, candidates(map_path, scope))
+    except OverLimit as exc:
+        raise SearchInstead(f"perimeter: {exc}; the architect searches instead") from None
+    with open(os.path.join(run_dir, "request.json"), "w", encoding="utf-8") as fh:
+        json.dump(req, fh, ensure_ascii=False)
+    r = subprocess.run([sys.executable, "core/decide.py", "ask"], input=json.dumps(req), capture_output=True,  # nosec B603
+                       text=True, check=False)
+    lines = [x for x in r.stderr.splitlines() if x.strip()]
+    line = (lines[-1] if lines else f"core/decide.py exit {r.returncode}").removeprefix("decide: ")
+    if r.returncode == 3:
+        raise SearchInstead(f"perimeter: the decision is not recorded at L0 ({line}); the architect searches instead")
+    if r.returncode != 0:
+        raise Refused(f"the architect's decision failed: {line}")
+    return perimeter_decided(doc, req, json.loads(r.stdout))
 
 
 # --- §5 the confirmation ----------------------------------------------------
@@ -359,11 +495,19 @@ def main(argv, env=None):
         elif cmd == "answers" and len(args) == 1:
             print(json.dumps(answers(load(args[0], {})), ensure_ascii=False))
         elif cmd == "interview" and len(args) == 3:
-            print(json.dumps(interview(load(args[0], {}), args[1], int(args[2]), env), ensure_ascii=False))
+            print(json.dumps(screened(interview(load(args[0], {}), args[1], int(args[2]), env), args[1]),
+                             ensure_ascii=False))
         elif cmd == "proposal" and len(args) == 1:
             sys.stdout.write(proposal_input(load(args[0], {})))
         elif cmd == "perimeter" and len(args) == 3:
             print(json.dumps(perimeter(load(args[0], {}), args[1], int(args[2]), env), ensure_ascii=False))
+        elif cmd == "perimeter-request" and len(args) == 3:
+            print(json.dumps(perimeter_request(load(args[0], {}), candidates(args[1], args[2])), ensure_ascii=False))
+        elif cmd == "decide-perimeter" and len(args) == 4:
+            print(json.dumps(decide_perimeter(load(args[0], {}), args[1], args[2], args[3]), ensure_ascii=False))
+        elif cmd == "perimeter-decided" and len(args) == 3:
+            print(json.dumps(perimeter_decided(load(args[0], {}), load(args[1], {}), load(args[2], {})),
+                             ensure_ascii=False))
         elif cmd == "compose" and len(args) == 3:
             sys.stdout.write(compose(load(args[0], {}), args[1], args[2]))
         else:
@@ -371,7 +515,10 @@ def main(argv, env=None):
                   " | interview <doc> <run dir> <rc> | proposal <doc> | perimeter <doc> <run dir> <rc>"
                   " | compose <ticket.json> <id> <intake id>", file=sys.stderr)
             return 2
-    except (Refused, OSError) as exc:
+    except SearchInstead as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
+    except (Refused, OSError, sqlite3.Error) as exc:
         line = f"intake: {exc}"
         print(line, file=sys.stderr)
         write_step_files(env, str(exc), getattr(exc, "run", None))

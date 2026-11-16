@@ -2,7 +2,7 @@
 
     python3 core/logbook.py --out <file>
 
-Assembles `lights-out/logbook/1.7` (core/logbook/1.7.schema.json) from the
+Assembles `lights-out/logbook/1.8` (core/logbook/1.8.schema.json) from the
 tower's documents (through the STATE_STORE port's get verb), the release
 log and the latest release record, the post mortems, the policy files and
 the plane's status (through the DELIVERY port's status verb) and the
@@ -15,7 +15,8 @@ and the delivery measures in the words `./go spend` and `./go dora` print
 strip, its fourteen nodes from the request to 100% (docs/adr/0085), the role
 matrix (docs/adr/0086), the burn and the day's projection, the dev-worker's
 attempt in flight from the budget hooks' count (docs/adr/0087), and the
-intakes, each with its questions, proposal and confirmation (docs/adr/0090 §7). Every rule
+intakes, each with its questions, proposal and confirmation (docs/adr/0090 §7), and the
+screen before a role read a ticket's or an intake's text (docs/adr/0091 §9). Every rule
 is in docs/plans/console.md, "Decided at build"; this file follows it and
 adds nothing.
 
@@ -59,7 +60,7 @@ except ImportError:  # run as a script: core/ is sys.path[0]
     import spend as ledger
     import network as contract_network
 
-SCHEMA = "lights-out/logbook/1.7"
+SCHEMA = "lights-out/logbook/1.8"
 # The kanban's columns, the tower's states in its table's order (docs/adr/
 # 0055 §7); a state outside the list gets a column after them.
 COLUMNS = ("requested", "questions", "spec-ready", "opened", "pr-opened", "review", "ci-passed", "ci-failed",
@@ -402,6 +403,7 @@ def tickets(rels, docs=None):
             "flow": flow(doc, tid, rels, perimeter(path)),
             "live": live(doc, tid),
             "intake": doc.get("intake") if isinstance(doc.get("intake"), str) else None,
+            "screen": pick(doc.get("screen"), SCREEN_KEYS),
         })
     return out
 
@@ -410,7 +412,9 @@ def tickets(rels, docs=None):
 
 INTAKE_SUFFIX = ".intake.md"
 PROPOSED_KEYS = ("n", "title", "problem", "criteria", "feature", "priority", "perimeter", "check", "decision",
-                 "ticket")
+                 "ticket", "uncertain")
+# The screen before a role read a text (docs/adr/0091 §7, §9), on tickets and intakes.
+SCREEN_KEYS = ("verdict", "p_yes", "confidence", "sha256", "adapter", "replayed", "why", "by", "via", "at")
 
 
 def intakes(docs=None):
@@ -449,7 +453,8 @@ def intakes(docs=None):
             "at": started.get("at"),
             "questions": doc.get("questions") or [],
             "product": pick(doc.get("product"), TASK_KEYS[1:] + ("consulted", "why")),
-            "architect": pick(doc.get("architect"), TASK_KEYS[1:] + ("consulted", "why")),
+            "architect": pick(doc.get("architect"), TASK_KEYS[1:] + ("consulted", "why", "by", "questions")),
+            "screen": pick(doc.get("screen"), SCREEN_KEYS),
             "proposal": [pick(t, PROPOSED_KEYS) for t in doc.get("proposal") or [] if isinstance(t, dict)],
             "confirmation": pick(doc.get("confirmation"), ("by", "via", "at")),
             "tickets": doc.get("tickets") if isinstance(doc.get("tickets"), list) else [],
