@@ -499,10 +499,13 @@ print(json.dumps(json.loads(json.load(open(recs[0], encoding="utf-8"))["input"])
 PY
 seed 0435 "$(jq -c '{id:"0435",kind:"intake",state:"drafted",intake:{by:"ci",via:"cli",at:"2026-11-16T10:00:00Z"},
   proposal:., history:[{step:"interview",state:"drafted",at:"2026-11-16T10:00:00Z",by:"ci",via:"cli"}]}' "$tmp/demo-proposal.json")"
-: > "$tmp/run-r.err"
+# tower() appends the step's stderr to $tmp/tower.err: this case reads what
+# it added there.
+seen=$(awk 'END { print NR }' "$tmp/tower.err")
 tower env WORKLOAD="$repo/app" PERIMETER_BY=decide DECIDE=replay DECIDE_FIXTURES="$repo/fixtures/decide" \
-  sh core/tower.sh step 0435 perimeter 2> "$tmp/run-r.err" \
-  || nogo "the demo intake's perimeter did not replay at L0" "$(tail -n 5 "$tmp/run-r.err")"
+  sh core/tower.sh step 0435 perimeter && rc=0 || rc=$?
+tail -n "+$((seen + 1))" "$tmp/tower.err" > "$tmp/run-r.err"
+[ "$rc" -eq 0 ] || nogo "the demo intake's perimeter did not replay or search at L0" "$(tail -n 5 "$tmp/run-r.err")"
 if doc 0435 | jq -e '.architect.by == "decide"' > /dev/null; then
   # shellcheck disable=SC2016 # $n is jq's own variable
   want 0435 '.state == "proposed" and .architect.replayed == true and (.architect.tokens.input == 0)
@@ -514,6 +517,7 @@ if doc 0435 | jq -e '.architect.by == "decide"' > /dev/null; then
 else
   awk '/not recorded/ { f = 1 } END { exit !f }' "$tmp/run-r.err" \
     || nogo "the demo intake's perimeter neither replayed nor said why it searched" "$(cat "$tmp/run-r.err")"
+  want 0435 '.state == "proposed" and .architect.by == null' "the demo intake's perimeter, not recorded, did not fall back to the search"
   printf 'intake: the demo intake perimeter is not recorded for this app/ (its file list changed): proved the fallback\n' >&2
 fi
 
