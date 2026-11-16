@@ -292,6 +292,13 @@ Checked on 2026-11-16:
 - **Two judges in one direction.** A Flagger canary can be rolled back by
   Flagger while the launchpad is still measuring; the release record then
   says what the launchpad saw. The README says so.
+- **A rolled-back canary's errors last one window.** The metric reads one
+  minute of the canary job, and a new canary of the same workload deployed
+  inside that minute can be rolled back by Flagger on its predecessor's
+  errors (seen on the first `flagger-proof` run, 2026-11-16: delta 0.14 on a
+  healthy canary). The suite's order keeps releases that far apart, as ADR
+  0013 §2 does for `verify/slo.sh`; `flagger-proof` waits 70 s between its
+  two cases.
 - **Not proven:** a team's own cluster and its Flagger; a `docker:dind`
   GitLab runner; CircleCI's own scheduler. **Still open from M32:** an
   outside AgentHarness, the full tower on GitLab, a real Jenkins controller.

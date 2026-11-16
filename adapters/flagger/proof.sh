@@ -88,7 +88,12 @@ say "a: GO, Flagger rolled back on its own analysis in ${a_s}s: $s"
 
 # --- b: the promotion waits for its gate -----------------------------------
 sh "adapters/$FLAGS/set.sh" "$WORKLOAD_KILL_SWITCH" off >/dev/null || nogo "b: could not set $WORKLOAD_KILL_SWITCH off"
-sleep 2
+# The Canary's metric reads one minute of the canary job: a's errors stay in
+# it that long, and Flagger would roll b back on them (seen on the first
+# run, 2026-11-16, delta 0.14). The window plus two scrapes, as docs/adr/
+# 0013 §2 keeps two verified stages apart.
+say "b: waiting 70 s for a's errors to leave the metric's 1-minute window"
+sleep 70
 say "b: deploy $CANARY_VERSION with the kill switch off, shift to 5, 25, 100"
 sh adapters/flagger/deploy.sh "$CANARY_VERSION" "$FLAGGER_IMAGE" || nogo "b: deploy did not take"
 sh "$WORKLOAD_CONTRACT/load.sh" >/dev/null & load_pid=$!
