@@ -40,15 +40,16 @@ events() {
 # promotion_url URL: the Canary's confirm-promotion webhook, by name.
 promotion_url() {
   i=$(canary_json | jq -r '[.spec.analysis.webhooks[].name] | index("lights-out-promotion")')
-  [ "$i" != null ] || nogo "the Canary has no lights-out-promotion webhook"
+  [ "$i" != null ] || { printf 'flagger-proof: the Canary has no lights-out-promotion webhook\n' >&2; return 1; }
   k patch canaries.flagger.app "$FLAGGER_CANARY" --type json \
     -p "[{\"op\":\"replace\",\"path\":\"/spec/analysis/webhooks/$i/url\",\"value\":\"$1\"}]" >/dev/null
 }
 load_pid=""
 stop_load() { [ -z "$load_pid" ] || { kill "$load_pid" 2>/dev/null || :; wait "$load_pid" 2>/dev/null || :; load_pid=""; }; }
+# shellcheck disable=SC2329 # invoked by name via `trap` below, not called directly
 cleanup() {
   stop_load
-  promotion_url "http://flagger-loadtester.$FLAGGER_NAMESPACE/gate/halt" 2>/dev/null || :
+  promotion_url "http://flagger-loadtester.$FLAGGER_NAMESPACE/gate/halt" >/dev/null 2>&1 || :
   tester /gate/close 2>/dev/null || :
   sh "adapters/$FLAGS/set.sh" "$WORKLOAD_KILL_SWITCH" off >/dev/null 2>&1 || :
 }
@@ -114,7 +115,7 @@ s=$(sh adapters/flagger/status.sh) || nogo "b: status.sh failed while held"
 [ "$(printf '%s' "$s" | jq -c '[.canary, .weight]')" = "[\"$CANARY_VERSION\",100]" ] \
   || nogo "b: status while held is $s, want canary $CANARY_VERSION at 100"
 say "b: a person answers: the promotion webhook to /gate/approve"
-promotion_url "http://flagger-loadtester.$FLAGGER_NAMESPACE/gate/approve"
+promotion_url "http://flagger-loadtester.$FLAGGER_NAMESPACE/gate/approve" || nogo "b: could not change the promotion webhook"
 i=0
 while [ "$(phase)" != Succeeded ]; do
   i=$((i + 1))
