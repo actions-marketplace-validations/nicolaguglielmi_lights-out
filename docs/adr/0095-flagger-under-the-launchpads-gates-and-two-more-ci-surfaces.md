@@ -135,7 +135,12 @@ Checked on 2026-11-16:
    - **`status.sh`** prints the three keys of ADR 0026 §2: `stable` from a
      pod of the primary, `canary` from a pod of the canary Deployment while
      the phase is `Progressing`, `WaitingPromotion`, `Promoting` or
-     `Finalising` (else `null`), and `weight` from `status.canaryWeight`.
+     `Finalising` (else `null`), and `weight` from `status.canaryWeight`,
+     except in `WaitingPromotion`: Flagger zeroes that field on the way in
+     (`pkg/canary/status.go`, `setStatusPhase`) while the routes stay at the
+     last step, the only weight it enters that phase from, so there the
+     weight is the last `stepWeights` value (found 2026-11-16, run
+     43840181787).
    - **`ready.sh`** waits for the Canary to be past `Initializing` and for
      `$APP_URL/healthz` to answer 10 times in a row (ADR 0051's rule).
 
@@ -226,6 +231,13 @@ Checked on 2026-11-16:
      line. On GitHub's runner that host is an Ubuntu VM with Docker, the
      shape of CircleCI's machine image. Not proven: CircleCI's scheduler,
      checkout and contexts.
+   - **Validation needs a token, sometimes.** The CLI validated the recipe
+     anonymously in two runs on 2026-11-16 (ci runs 43833404799 and
+     43836791053), then CircleCI's API answered the third with "This
+     CircleCI host requires an API token to validate config" (run
+     43840181787). The demo passes `CIRCLE_TOKEN` when set; without it, that
+     one answer makes the GO line say "config NOT validated", never valid.
+     Any other refusal is a NO-GO.
 
 9. **The commit's own image.** Every surface demo runs the gates image of
    the commit under test: `LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev`

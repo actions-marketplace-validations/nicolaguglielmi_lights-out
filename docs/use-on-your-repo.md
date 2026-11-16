@@ -1212,7 +1212,9 @@ base is `LIGHTS_OUT_BASE`, else the merge base with
 
 `./go demo-circleci` is not a CircleCI run: `circleci local execute` cannot
 run a machine job, and the proof needs no account. It validates the file
-with `circleci config validate` (CLI 1.15.0, in its own image), then runs the
+with `circleci config validate` (CLI 1.15.0, in its own image; CircleCI's
+API sometimes asks for a token, `CIRCLE_TOKEN`, and without one the GO line
+says the config was not validated), then runs the
 recipe's step, cut from the file between its `# lights-out:begin` and
 `# lights-out:end` lines, in a shell with git, curl, jq and the engine's
 socket, against a local Gitea PR. GO when Gitea shows `lights-out/circleci`

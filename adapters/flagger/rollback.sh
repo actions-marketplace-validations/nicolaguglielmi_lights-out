@@ -34,7 +34,7 @@ i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
   c=$(canary_json) || c='{}'
   phase=$(field "$c" '.status.phase // ""')
-  weight=$(field "$c" '.status.canaryWeight // 0')
+  weight=$(weight_of "$c")
   if [ "$phase" = Failed ] && [ "$weight" = 0 ]; then
     tester /rollback/close
     exit 0

@@ -6,8 +6,9 @@
 # stable is what a pod of the primary (<target>-primary) reports at
 # /healthz; canary is what a pod of the target Deployment reports while
 # Flagger has it in flight (Progressing, WaitingPromotion, Promoting,
-# Finalising), else null; weight is the Canary's status.canaryWeight, the
-# weight Flagger last gave the router (docs/adr/0095 §3). Not a gate: exit
+# Finalising), else null; weight is the weight Flagger gave the router
+# (env.sh's weight_of: status.canaryWeight, the last step in
+# WaitingPromotion; docs/adr/0095 §3). Not a gate: exit
 # 1 and one stderr line if a revision that should answer does not.
 set -eu
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
@@ -18,7 +19,7 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 c=$(canary_json) \
   || { printf 'status-flagger: no canary %s/%s\n' "$FLAGGER_NAMESPACE" "$FLAGGER_CANARY" >&2; exit 1; }
 phase=$(field "$c" '.status.phase // ""')
-weight=$(field "$c" '.status.canaryWeight // 0')
+weight=$(weight_of "$c")
 
 stable=$(version_of "$FLAGGER_CANARY-primary") \
   || { printf 'status-flagger: the primary %s-primary did not report a version\n' "$FLAGGER_CANARY" >&2; exit 1; }

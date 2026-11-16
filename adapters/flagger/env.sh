@@ -63,6 +63,16 @@ version_of() {
     | jq -er .version
 }
 
+# weight_of JSON: the weight the router gives the canary. Flagger's
+# status.canaryWeight, except in WaitingPromotion: Flagger enters it only at
+# the last stepWeight and zeroes the status field on the way in
+# (pkg/canary/status.go, setStatusPhase, v1.45.0) while the routes stay where
+# they were, so there it is the last step (found 2026-11-16, flagger-proof b).
+weight_of() {
+  printf '%s' "$1" | jq -r 'if .status.phase == "WaitingPromotion"
+    then (.spec.analysis.stepWeights // [100] | last) else (.status.canaryWeight // 0) end'
+}
+
 # in_flight PHASE: true when Flagger has a canary revision out (docs/adr/
 # 0095 §3): analysing, or held at the promotion gate, or being promoted.
 in_flight() {

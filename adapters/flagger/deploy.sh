@@ -42,7 +42,7 @@ i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
   c=$(canary_json) || c='{}'
   phase=$(field "$c" '.status.phase // ""')
-  weight=$(field "$c" '.status.canaryWeight // 0')
+  weight=$(weight_of "$c")
   if [ "$phase" = Progressing ] && [ "$weight" = 0 ]; then
     got=$(version_of "$FLAGGER_CANARY") || got=""
     [ "$got" = "$version" ] && exit 0

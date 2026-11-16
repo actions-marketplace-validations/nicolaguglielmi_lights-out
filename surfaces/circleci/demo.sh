@@ -61,13 +61,25 @@ fi
 [ -n "$sock" ] || nogo "$engine has no API socket for the step"
 
 # --- 1. the configuration ------------------------------------------------------
+# CircleCI's API answered an anonymous validate twice on 2026-11-16 and then
+# began asking for a token: CIRCLE_TOKEN is used when set; without one, that
+# one answer is reported in the GO line as "not validated", never as valid.
+# Any other refusal is a NO-GO.
 cp "$recipe" "$work/config.yml"
-if ! "$engine" run --rm --security-opt label=disable -v "$work:/cfg:ro" "$cli_image" \
+token_flag=""
+[ -z "${CIRCLE_TOKEN:-}" ] || token_flag="-e CIRCLE_TOKEN"
+# shellcheck disable=SC2086 # token_flag is a flag string, split on purpose
+if "$engine" run --rm --security-opt label=disable -v "$work:/cfg:ro" $token_flag "$cli_image" \
     circleci config validate --skip-update-check /cfg/config.yml > "$work/validate.log" 2>&1; then
+  validated="config validated by circleci 1.15.0"
+elif grep -q 'requires an API token to validate config' "$work/validate.log"; then
+  validated="config NOT validated (CircleCI's API asked for a token; CIRCLE_TOKEN unset)"
+else
   sed 's/^/  [circleci] /' "$work/validate.log" >&2
   nogo "circleci config validate refused $recipe"
 fi
 sed 's/^/  [circleci] /' "$work/validate.log" >&2
+say "$validated"
 
 # --- 2. the step -----------------------------------------------------------------
 if ! "$engine" image inspect "$tools_image" >/dev/null 2>&1; then
@@ -134,4 +146,4 @@ esac
 others=$(printf '%s' "$statuses" | agent jq -r '[.[] | select(.context == "gates" or .context == "review")] | length')
 [ "$others" = 0 ] || nogo "a surface posted under the tower's own contexts: $statuses"
 
-go_with "config validated by circleci 1.15.0; the recipe's step posted [$line] as lights-out/circleci on PR #$number, $(( $(date +%s) - start ))s"
+go_with "$validated; the recipe's step posted [$line] as lights-out/circleci on PR #$number, $(( $(date +%s) - start ))s"

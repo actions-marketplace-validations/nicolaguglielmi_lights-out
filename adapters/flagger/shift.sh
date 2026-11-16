@@ -23,7 +23,7 @@ c=$(canary_json) || fail "not found"
 declared=$(printf '%s' "$c" | jq -r --argjson p "$percent" '[.spec.analysis.stepWeights // [] | .[] | select(. == $p)] | length')
 [ "$declared" -gt 0 ] || fail "declares no stepWeights step of $percent"
 phase=$(field "$c" '.status.phase // ""')
-weight=$(field "$c" '.status.canaryWeight // 0')
+weight=$(weight_of "$c")
 in_flight "$phase" || fail "has no canary in flight ($phase); deploy first"
 [ "$weight" -le "$percent" ] || fail "is already at $weight, past $percent"
 [ "$weight" -ne "$percent" ] || exit 0
@@ -34,7 +34,7 @@ i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
   c=$(canary_json) || c='{}'
   phase=$(field "$c" '.status.phase // ""')
-  weight=$(field "$c" '.status.canaryWeight // 0')
+  weight=$(weight_of "$c")
   case "$phase" in
     Failed) fail "was rolled back by Flagger's analysis on the way to $percent: $(k get events \
       --field-selector "involvedObject.kind=Canary,involvedObject.name=$FLAGGER_CANARY" -o json 2>/dev/null \

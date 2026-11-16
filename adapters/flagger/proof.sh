@@ -32,7 +32,7 @@ name=flagger
 tick=10
 say() { printf '[flagger-proof] %s\n' "$*" >&2; }
 phase() { canary_json | jq -r '.status.phase // ""'; }
-weight() { canary_json | jq -r '.status.canaryWeight // 0'; }
+weight() { weight_of "$(canary_json)"; }
 events() {
   k get events --field-selector "involvedObject.kind=Canary,involvedObject.name=$FLAGGER_CANARY" -o json \
     | jq -r '[.items[] | .message] | join(" | ")'
