@@ -161,7 +161,7 @@ services:
     # Host side: APP_PORT (Makefile, .env), 8080 unless set.
     ports:
       - "${APP_PORT:-8080}:8080"
-      - "9901:9901"
+      - "${DELIVERY_ADMIN_PORT:-9901}:9901"
     depends_on:
       - backend
 
@@ -170,7 +170,7 @@ services:
       context: ./adapters/prometheus
       dockerfile: Containerfile
     ports:
-      - "9090:9090"
+      - "${METRICS_PORT:-9090}:9090"
     depends_on:
       - backend
 
@@ -185,7 +185,7 @@ services:
     security_opt:
       - label=disable
     ports:
-      - "8016:8016"
+      - "${FLAGS_PORT:-8016}:8016"
 
   # The image ships /etc/zot/config.json (port 5000, /var/lib/registry).
   # Published on 5050: 5000 is macOS AirPlay Receiver.
@@ -214,10 +214,10 @@ services:
     image: docker.gitea.com/gitea:1.27.3-rootless@sha256:1c17ecaead42eb3b5391553d8708103a4beb0e86edf5b9ebc1eb269c318845f2
     environment:
       GITEA__security__INSTALL_LOCK: "true"
-      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__ROOT_URL: http://localhost:${CODE_HOST_PORT:-3000}/
       GITEA__actions__ENABLED: "false"
     ports:
-      - "3000:3000"
+      - "${CODE_HOST_PORT:-3000}:3000"
 
   # Both emulators come from the one official image (447 MB amd64, 356 MB
   # arm64 compressed, measured 2026-09-14): one pull, two containers. Opt-in

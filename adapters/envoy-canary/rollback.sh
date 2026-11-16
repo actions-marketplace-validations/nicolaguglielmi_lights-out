@@ -8,7 +8,7 @@
 # next deploy.sh recreates it. Not a gate.
 set -eu
 : "${PLANE_HOST:=host.containers.internal}"
-: "${ENVOY_ADMIN_URL:=http://$PLANE_HOST:9901}"
+: "${ENVOY_ADMIN_URL:=http://$PLANE_HOST:${DELIVERY_ADMIN_PORT:-9901}}"
 
 curl -fsS --connect-timeout 1 --max-time 3 -X POST \
   "$ENVOY_ADMIN_URL/runtime_modify?weights.canary=0&weights.stable=100" >/dev/null

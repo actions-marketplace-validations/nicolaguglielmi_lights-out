@@ -9,7 +9,7 @@
 # stderr line if a revision that should answer does not.
 set -eu
 : "${PLANE_HOST:=host.containers.internal}"
-: "${ENVOY_ADMIN_URL:=http://$PLANE_HOST:9901}"
+: "${ENVOY_ADMIN_URL:=http://$PLANE_HOST:${DELIVERY_ADMIN_PORT:-9901}}"
 
 # read_version SERVICE: the version SERVICE reports at its own
 # localhost:8000/healthz, bypassing Envoy — the mechanism deploy.sh

@@ -8,7 +8,7 @@
 set -eu
 percent=${1:?usage: shift.sh <canary-percent>}
 : "${PLANE_HOST:=host.containers.internal}"
-: "${ENVOY_ADMIN_URL:=http://$PLANE_HOST:9901}"
+: "${ENVOY_ADMIN_URL:=http://$PLANE_HOST:${DELIVERY_ADMIN_PORT:-9901}}"
 
 stable=$((100 - percent))
 

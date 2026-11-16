@@ -184,5 +184,39 @@ class CommittedConsole(unittest.TestCase):
             self.assertEqual(data(self.out, "frozen-logbook"), json.load(f))
 
 
+class StartingHash(unittest.TestCase):
+    """docs/adr/0093 §4: --hash <h> sets the page's hash to h when it was
+    opened with none, inside the frozen block, before the page's scripts;
+    without --hash the page is as ADR 0089 froze it."""
+
+    def test_hash_is_set_only_when_none_and_inside_the_block(self):
+        out = freeze.freeze(PAGE, json.dumps(BOOK), label="l", hash_="ticket/0001")
+        block = out[out.index(freeze.BEGIN):out.index(freeze.END)]
+        self.assertIn('"#ticket/0001"', block)
+        self.assertIn("location.hash", block)
+        self.assertLess(out.index('"#ticket/0001"'), out.index('fetch("/v1/logbook.json")'))
+        self.assertNotIn("ticket/0001", freeze.freeze(PAGE, json.dumps(BOOK), label="l"))
+
+    def test_a_hash_cannot_break_out_of_its_script(self):
+        out = freeze.freeze(PAGE, json.dumps(BOOK), label="l", hash_='x"</script><script>alert(2)//')
+        self.assertNotIn("<script>alert(2)", out)
+
+    def test_cli_takes_hash(self):
+        with tempfile.TemporaryDirectory() as d:
+            book = os.path.join(d, "b.json")
+            page = os.path.join(d, "p.html")
+            out = os.path.join(d, "o.html")
+            with open(book, "w", encoding="utf-8") as f:
+                json.dump(BOOK, f)
+            with open(page, "w", encoding="utf-8") as f:
+                f.write(PAGE)
+            r = subprocess.run([sys.executable, os.path.join(REPO, "core", "freeze.py"), "--logbook", book,  # nosec B603
+                                "--out", out, "--page", page, "--hash", "ticket/0001"],
+                               capture_output=True, text=True, check=False)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(out, encoding="utf-8") as f:
+                self.assertIn('"#ticket/0001"', f.read())
+
+
 if __name__ == "__main__":
     unittest.main()

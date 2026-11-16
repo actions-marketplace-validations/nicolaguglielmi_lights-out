@@ -147,6 +147,20 @@ path, it drafts into the clone that is already attached. `./go gates` judges
 the last commit of that clone, with the draft as its contract. Neither
 command writes to your repository.
 
+For a first look, one command does both (ADR 0093 §5):
+
+```sh
+./go try ~/code/your-repo
+```
+
+It attaches the clone, drafts the contract, runs the eight gates on your
+last commit with that draft, and prints one line, `GO: try` or `NO-GO:
+try` with the gates' reason. Then it copies the draft to
+`.crew/try/<name>/.lights-out/`, detaches the clone, and prints the three
+commands that copy the draft into your repository and commit it. It
+refuses to start while another repository is attached: `./go detach`
+first.
+
 ### What init writes
 
 `.attached/.lights-out/` holds:

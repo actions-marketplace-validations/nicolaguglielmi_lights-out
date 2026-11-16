@@ -47,6 +47,9 @@ jobs:
     env:
       TIMES: ${{ github.workspace }}/../stranger-times.txt
       GH_TOKEN: ${{ github.token }}
+      # docs/adr/0093 §6: the regression budget, from the measured runs in
+      # its "After" section.
+      STRANGER_BUDGET_SECONDS: 600
     steps:
       - name: 1. Install podman (README, Linux)
         run: |
@@ -80,20 +83,43 @@ jobs:
           rc=0; ./go doctor || rc=$?
           echo "./go doctor: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
           exit "$rc"
+      # docs/adr/0093 §6: a stranger often has a dev server on 3000 and
+      # something on 8080. Both held here, on every address, before the
+      # demo; the preflight must move Gitea and the app, and say so.
+      - name: A stranger's machine, 3000 and 8080 already taken
+        run: |
+          for p in 3000 8080; do nohup python3 -m http.server "$p" >/dev/null 2>&1 & done
+          sleep 1
+          ss -ltn | grep -E ':(3000|8080) '
       - name: 2. ./go demo, no CONTAINER_ENGINE
         working-directory: lights-out
         run: |
           [ -z "${CONTAINER_ENGINE:-}" ] || { echo "CONTAINER_ENGINE is set; a stranger has none"; exit 1; }
           s=$(date +%s)
-          # Each line prefixed with the seconds since ./go demo started.
+          # What a person sees (core/progress.sh), each line prefixed with
+          # the seconds since ./go demo started; the whole run is in
+          # .crew/demo/run.log.
           ./go demo 2>&1 | perl -pe 'BEGIN { $| = 1; $t0 = time } $_ = sprintf("%4ds %s", time - $t0, $_)' | tee "$RUNNER_TEMP/demo.log"
           rc=${PIPESTATUS[0]}
-          echo "./go demo: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
-          exit "$rc"
+          t=$(( $(date +%s) - s ))
+          echo "./go demo: ${t}s, exit $rc" >> "$TIMES"
+          [ "$rc" -eq 0 ] || exit "$rc"
+          # The preflight moved both, and named each (docs/adr/0093 §1d).
+          grep -E 'preflight: ports +3000 is held by .*: the code host moves to 3001' .crew/demo/run.log
+          grep -E 'preflight: ports +8080 is held by .*: the app moves to 8081' .crew/demo/run.log
+          grep -qx 'CODE_HOST_PORT=3001' .crew/ports.env && grep -qx 'APP_PORT=8081' .crew/ports.env
+          # The end: the run's own console, on ticket 0001 (§4).
+          grep -F "See why, step by step: file://$PWD/.crew/demo/console.html#ticket/0001" "$RUNNER_TEMP/demo.log"
+          test -s .crew/demo/console.html
+          # The regression budget (§6), tighter than the plan's 900 s.
+          budget=${STRANGER_BUDGET_SECONDS}
+          [ "$t" -le "$budget" ] || { echo "::error::./go demo took ${t}s on a clean runner, over the ${budget}s regression budget (docs/adr/0093 §6)"; exit 1; }
+          echo "./go demo: ${t}s, within the ${budget}s regression budget" >> "$TIMES"
       - if: always()
-        name: The plane, as the demo left it
+        name: The plane, as the demo left it, and the disk it took (docs/adr/0093 §1c)
         run: |
           podman ps -a --format '{{.Names}} {{.Status}}' || true
+          podman system df || true
       # verify's judgement reads target_info joined on (job, instance): a
       # 422 from Prometheus is two target_info series on one side.
       - if: always()
@@ -108,16 +134,23 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stranger-demo-log
-          path: ${{ runner.temp }}/demo.log
+          path: |
+            ${{ runner.temp }}/demo.log
+            lights-out/.crew/demo/run.log
+            lights-out/.crew/demo/steps.tsv
+            lights-out/.crew/demo/console.html
+            lights-out/.crew/ports.env
           if-no-files-found: ignore
       # Last, so the tail of the job log is the digest: every verdict and
       # stage line of ./go demo, with its second, and each step's wall time.
       - if: always()
         name: Digest, and the wall time of each step
         run: |
-          grep -E '^ *[0-9]+s (GO|NO-GO)|^ *[0-9]+s (go|doctor|engine-compat):|^ *[0-9]+s \[(demo|tower|launchpad|ci)\]|^ *[0-9]+s (deploy|slo:| +slo:)|building workbench|rolled back' "$RUNNER_TEMP/demo.log" | cut -c1-240 || true
+          cat "$RUNNER_TEMP/demo.log" || true
+          grep -E '^(GO|NO-GO)|^(go|preflight|engine-compat):|^\[(demo|tower|launchpad|ci)\]|^(deploy|slo:| +slo:)|building workbench|rolled back' lights-out/.crew/demo/run.log | cut -c1-240 || true
+          cat lights-out/.crew/demo/steps.tsv || true
           cat "$TIMES" || true
-          { echo '### stranger: demo (podman)'; echo '```'; cat "$TIMES" || true; grep -E '^ *[0-9]+s (GO|NO-GO): demo' "$RUNNER_TEMP/demo.log" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### stranger: demo (podman)'; echo '```'; cat "$RUNNER_TEMP/demo.log" || true; echo; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # README "On your repository, without cloning lights-out", as far as it
   # works with no published image: ./go package from a clone, the wrapper

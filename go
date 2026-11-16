@@ -9,13 +9,14 @@
 #   ./go ci             repo self-checks, no engine socket inside
 #   ./go up             start the L0 plane in compose and wait for it
 #   ./go smoke          run the workload's happy path through Envoy
-#   ./go demo           the demo, as far as the current milestone takes it
+#   ./go demo           the demo: a step per line, the run's own console at the end (LIGHTS_OUT_VERBOSE=1 prints everything; ADR 0093)
 #   ./go demo-rollback  release a failing canary, prove it rolls back on its own
 #   ./go demo-hold      same release, kill switch on: prove verify GO holds the canary at 25%
 #   ./go demo-dast      prove the passive DAST scan at staging: the stable against itself GO, a leaky canary rolled back
 #   ./go demo-gates     prove every PR gate GO and NO-GO on the committed fixtures
 #   ./go demo-seam      prove attach and the Workload port on workloads/minimal as its own repository
 #   ./go attach <path>  make a repository of yours the workload (its .lights-out/ is the contract, if it has one)
+#   ./go try <path>     your repository in one command: its contract drafted, the eight gates on its last commit, how to keep the draft (ADR 0093)
 #   ./go init [<path>]  draft the attached repository's .lights-out/ in the clone, baseline measured (ADR 0042)
 #   ./go gates          judge a range of the workload: BASE=<ref> HEAD=<ref>, default the last commit; no plane needed
 #   ./go agents         what the contract gives the agents: role files for the reviewers, MCP servers for the dev-worker (ADR 0073)
@@ -87,9 +88,34 @@ cmd="${1:-help}"
 
 # Captured here, before engine-compat, where demo's cold pulls happen, so
 # the elapsed-time verdict on demo (docs/adr/0013 §7) covers them.
-LIGHTS_OUT_T0=$(date +%s)
+LIGHTS_OUT_T0=${LIGHTS_OUT_T0:-$(date +%s)}
+export LIGHTS_OUT_T0
 
 die() { printf 'go: %s\n' "$*" >&2; exit 1; }
+
+# `./go demo` for a person (docs/adr/0093 §2): the run itself is this
+# script again, its output to .crew/demo/run.log through core/progress.sh,
+# which shows a line per step and the verdict; the last line written into
+# the pipe is the run's exit code. LIGHTS_OUT_VERBOSE=1 streams everything.
+# On GO with a terminal, the run's frozen console opens (§4).
+if [ "$cmd" = demo ] && [ -z "${LIGHTS_OUT_DEMO_INNER:-}" ]; then
+  mkdir -p "$here/.crew/demo"
+  rc=0
+  if [ "${LIGHTS_OUT_VERBOSE:-}" = 1 ]; then
+    LIGHTS_OUT_DEMO_INNER=1 "$here/go" demo "$@" || rc=$?
+  else
+    { r=0; LIGHTS_OUT_DEMO_INNER=1 "$here/go" demo "$@" 2>&1 </dev/null || r=$?; printf '[exit] %s\n' "$r"; } \
+      | sh "$here/core/progress.sh" "$here/.crew/demo" || rc=$?
+  fi
+  page="$here/.crew/demo/console.html"
+  if [ "$rc" -eq 0 ] && [ -t 1 ] && [ "${LIGHTS_OUT_OPEN:-1}" != 0 ] && [ -f "$page" ]; then
+    case "$(uname -s)" in
+      Darwin) open "$page" 2>/dev/null || : ;;
+      *) if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then xdg-open "$page" >/dev/null 2>&1 || :; fi ;;
+    esac
+  fi
+  exit "$rc"
+fi
 
 # Attach (docs/adr/0037 §1): on the host, with git only, because the
 # user's repository may be anywhere the workbench cannot see. It is cloned
@@ -116,6 +142,18 @@ case "$cmd" in
       shift
     fi
     [ -d "$attached/.git" ] || die "no repository is attached; ./go init <path>, or ./go attach <path> first" ;;
+  try)
+    # docs/adr/0093 §5: attach a clone, then `make try` drafts, judges,
+    # copies the draft out and detaches. It uses the attach slot, so it
+    # refuses one in use for something else.
+    [ $# -eq 1 ] || die "usage: ./go try <path to a git repository of yours>"
+    src=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || die "$1 is not a git repository"
+    if [ -e "$attached" ]; then
+      die "a repository is attached ($(git -C "$attached" remote get-url origin 2>/dev/null || echo "$attached")); ./go try uses the same place: ./go detach first"
+    fi
+    sh "$here/core/attach.sh" "$src" "$attached" || exit 1
+    shift
+    try_src=$src ;;
   detach)
     rm -rf "$attached"
     printf 'go: detached; the workload is app/ again (run ./go down first if the plane still serves the attached one)\n' >&2
@@ -151,7 +189,11 @@ fi
 
 # 1.2. The engine must answer before anything is built: a stopped podman
 # machine or docker daemon otherwise surfaces minutes later as an unrelated
-# NO-GO.
+# NO-GO. A podman machine that exists but is stopped is started (docs/adr/
+# 0093 §1a); creating one is left to the person, with the commands.
+if ! "$engine" info >/dev/null 2>&1; then
+  CONTAINER_ENGINE="$engine" sh "$here/core/preflight.sh" machine || exit 1
+fi
 if ! "$engine" info >/dev/null 2>&1; then
   case "$engine:$(uname -s)" in
     podman:Darwin|podman:MINGW*|podman:MSYS*)
@@ -166,6 +208,16 @@ if ! "$engine" info >/dev/null 2>&1; then
     *)
       die "$engine does not answer ('$engine info' fails). Start the $engine daemon (Docker Desktop on macOS), then retry." ;;
   esac
+fi
+
+# 1.3. The preflight (docs/adr/0093 §1): memory, disk and the plane's
+# ports, a busy one moved, before anything is built. Once per ./go demo:
+# its recursive ./go up does not run it again.
+if { [ "$cmd" = up ] || [ "$cmd" = demo ]; } && [ -z "${LIGHTS_OUT_PREFLIGHT_DONE:-}" ]; then
+  [ "$cmd" != demo ] || printf '[step] preflight\n' >&2
+  CONTAINER_ENGINE="$engine" sh "$here/core/preflight.sh" || exit 1
+  LIGHTS_OUT_PREFLIGHT_DONE=1
+  export LIGHTS_OUT_PREFLIGHT_DONE
 fi
 
 # 1.5. docs/adr/0025, amended 2026-09-20: verified live, not assumed.
@@ -207,14 +259,6 @@ EOF
   rm -f "$reg_tmp"
 fi
 
-# engine-compat is the one gate that runs on the host, because its subject
-# is the host engine (ADR 0004 point 4, ADR 0012 §5). It calls ./go up and
-# ./go smoke itself. demo runs it first, then continues inside workbench.
-if [ "$cmd" = engine-compat ] || [ "$cmd" = demo ]; then
-  CONTAINER_ENGINE="$engine" sh "$here/ci/engine-compat.sh" || exit 1
-  [ "$cmd" = demo ] || exit 0
-fi
-
 # The lights-out image and its acceptance (docs/adr/0045 §1, §8) run on
 # the host: the image is built by the engine itself, and the wrapper a
 # stranger runs drives the engine from the host, never from a container.
@@ -238,6 +282,7 @@ fi
 # that has to build it is a first run: demo reports its time instead of
 # judging it, unless CI is set (docs/adr/0013, amendment 2026-11-04).
 first_run=0
+[ "$cmd" != demo ] || printf '[step] toolchain\n' >&2
 if ! "$engine" image inspect "$image" >/dev/null 2>&1; then
   printf 'go: building workbench with %s, the first run takes a few minutes\n' "$engine" >&2
   "$engine" build -t "$image" -f "$containerfile" "$here/workbench"
@@ -257,6 +302,36 @@ if [ "$engine" = docker ]; then
   engine_flags="--user $(id -u):$(id -g) -e HOME=/tmp --add-host host.containers.internal:host-gateway"
 fi
 
+# The repository's checks beside the plane (docs/adr/0093 §3): for demo,
+# `make ci` starts now in a container of its own, with no engine socket as
+# under ./go ci, its output and then its exit code in .crew/demo, where
+# `make demo` waits for them. Removed if this run ends before they do.
+ci_dir="$here/.crew/demo"
+ci_name=""
+if [ "$cmd" = demo ]; then
+  mkdir -p "$ci_dir"
+  rm -f "$ci_dir/ci.out" "$ci_dir/ci.err" "$ci_dir/ci.rc"
+  ci_name="lights-out-demo-ci-$$"
+  # shellcheck disable=SC2086 # engine_flags is deliberately word-split
+  ( r=0
+    "$engine" run --rm --init --name "$ci_name" -v "$here:$here$label" -w "$here" \
+      -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" -e LIGHTS_OUT_CI="${CI:-}" \
+      $engine_flags "$image" make ci >"$ci_dir/ci.out" 2>"$ci_dir/ci.err" </dev/null || r=$?
+    printf '%s\n' "$r" > "$ci_dir/ci.rc" ) &
+  trap '[ -s "$ci_dir/ci.rc" ] || "$engine" rm -f "$ci_name" >/dev/null 2>&1 || :' EXIT
+  printf '[demo] ci: the repository'"'"'s checks started beside the plane, in %s (docs/adr/0093 §3)\n' "$ci_name" >&2
+fi
+
+# engine-compat is the one gate that runs on the host, because its subject
+# is the host engine (ADR 0004 point 4, ADR 0012 §5). It calls ./go up and
+# ./go smoke itself. demo runs it first, then continues inside workbench.
+if [ "$cmd" = engine-compat ] || [ "$cmd" = demo ]; then
+  [ "$cmd" != demo ] || printf '[step] plane\n' >&2
+  CONTAINER_ENGINE="$engine" sh "$here/ci/engine-compat.sh" || exit 1
+  [ "$cmd" = demo ] || exit 0
+fi
+
+
 # 4. Targets that drive the engine get its socket. This hands workbench full
 # control of the engine; the README says so. For gates, init and
 # mutation-baseline the socket is optional (docs/adr/0042 §4): a workload
@@ -264,9 +339,9 @@ fi
 # a NO-GO naming it inside, never a silent in-process run.
 socket_flags=""
 socket_optional=""
-case "$cmd" in gates|init|mutation-baseline|demo-init|console|logbook|network|dora) socket_optional=1 ;; esac
+case "$cmd" in gates|init|try|mutation-baseline|demo-init|console|logbook|network|dora) socket_optional=1 ;; esac
 case "$cmd" in
-  up|down|test|demo|release|demo-rollback|demo-hold|demo-dast|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|gitlab-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|demo-init|console|logbook|network|dora|demo-console|request|answer)
+  up|down|test|demo|release|demo-rollback|demo-hold|demo-dast|demo-seam|demo-network|e2e|resume|shell|gates|demo-gates|mutation-baseline|assign|demo-crew|record|demo-launch|review|demo-review|record-review|delivery-conformance|argo-conformance|harness-conformance|codehost-conformance|gitlab-conformance|unsigned-refused|board|demo-rework|demo-mainline|init|try|demo-init|console|logbook|network|dora|demo-console|request|answer)
     sock=""
     if [ "$engine" = podman ]; then
       sock=$(podman info --format '{{.Host.RemoteSocket.Path}}'); sock=${sock#unix://}
@@ -345,14 +420,29 @@ if [ -n "$adapters_path" ]; then
 fi
 
 # shellcheck disable=SC2086 # flag strings are deliberately word-split
-run() {
-  exec "$engine" run --rm --init $tty \
+runc() {
+  ${run_exec:-} "$engine" run --rm --init $tty \
     -v "$here:$here$label" -w "$here" \
     -e PROFILE="${PROFILE:-l0}" -e CONTAINER_ENGINE="$engine" -e WORKBENCH_IMAGE="$image" \
     -e LIGHTS_OUT_T0="$LIGHTS_OUT_T0" -e LIGHTS_OUT_FIRST_RUN="$first_run" -e LIGHTS_OUT_CI="${CI:-}" \
     $engine_flags $socket_flags $port_flags \
     "$image" "$@"
 }
+run() { run_exec="exec"; runc "$@"; }
+
+# demo: the checks' directory and the plane already up (docs/adr/0093 §3);
+# not exec'd, so the trap above can remove the checks' container. try: the
+# repository's path on the host, for the commands that keep the draft (§5).
+if [ "$cmd" = demo ]; then
+  port_flags="$port_flags -e LIGHTS_OUT_CI_DIR=.crew/demo -e LIGHTS_OUT_PLANE_UP=1"
+  rc=0; runc make demo "$@" || rc=$?
+  exit "$rc"
+fi
+if [ "$cmd" = try ]; then
+  TRY_SOURCE=$try_src
+  export TRY_SOURCE
+  port_flags="$port_flags -e TRY_SOURCE"
+fi
 
 if [ "$cmd" = shell ]; then
   run sh

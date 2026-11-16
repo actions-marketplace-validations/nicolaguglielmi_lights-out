@@ -100,15 +100,15 @@ Without an engine, `lights-out-gates --light` runs the gates that need only git 
 
 ### 2. The whole loop on your laptop
 
-**Install a container engine (once)**
+**You need** podman (or Docker on Linux) and git. Nothing else: no account, no key, no cloud.
 
-| Your machine | Run |
+| Your machine | Install once |
 |---|---|
-| macOS | `brew install podman`<br>`podman machine init --cpus 4 --memory 6144`<br>`podman machine start` |
-| Linux | `sudo apt-get install -y podman` (Debian, Ubuntu) or `sudo dnf install -y podman` (Fedora), then<br>`systemctl --user enable --now podman.socket` |
-| Docker on Linux | start Docker and put `CONTAINER_ENGINE=docker` before every `./go` (what CI runs) |
+| macOS | `brew install podman`, then `podman machine init --cpus 4 --memory 6144` |
+| Linux | `sudo apt-get install -y podman` (or `dnf`), then `systemctl --user enable --now podman.socket` |
+| Docker on Linux | start Docker, and put `CONTAINER_ENGINE=docker` before every `./go` |
 
-**Clone and run**
+**Run**
 
 ```sh
 git clone https://github.com/nicolaguglielmi/lights-out.git
@@ -116,16 +116,36 @@ cd lights-out
 ./go demo
 ```
 
-**Watch**
+`./go demo` checks your machine first: it starts a stopped podman machine, and moves a port another program holds to a free one and tells you which ([ADR 0093](docs/adr/0093-the-first-run-flawless.md)). Then one line per step:
 
-- Ticket 0001 starts as a request. The spec gate checks its criteria.
-- An agent turns it into a pull request inside the ticket's perimeter.
-- Eight gates judge it: risk, secrets, weakened tests, dependencies, static analysis, tests, mutation, test-proof.
-- It merges, main is judged again, and a signed release takes 5% of the traffic.
-- Verify sees the errors and rolls the canary back on its own. No human involved.
-- The run ends with `GO: demo`, then prints where to open the app, Gitea and Prometheus. `./go console` shows the ticket's whole timeline.
+```
+lights-out demo: a ticket goes from a request to a canary that rolls itself back, at L0, with no key. About 6 min 10 s on this machine.
+[1/7] the engine, memory, disk and ports (about 1 s) ...
+      8080 is held by python3 (pid 2693): the app moves to 8081 (APP_PORT in .crew/ports.env)
+      3000 is held by python3 (pid 2692): the code host moves to 3001 (CODE_HOST_PORT in .crew/ports.env)
+      done, 1 s
+[2/7] the toolchain image, built once per revision (about 30 s) ... 49 s
+[3/7] the plane: code host, delivery, metrics, flags, registry and the app (about 71 s) ... 1 min 33 s
+[4/7] a canary with a failing feature takes 5% of the traffic (about 63 s) ...
+      A canary at 5% was judged and rolled back by itself, nobody paged: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010
+      done, 64 s
+[5/7] ticket 0001: request, spec, pull request, eight gates, merge, canary (about 3 min 24 s) ...
+      Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%, rolled back by itself, audited
+      done, 3 min 53 s
+[6/7] the repository's own checks, run beside the plane (about 0 s) ... 37 s
+[7/7] this run's console, frozen into one page (about 1 s) ...
+      See why, step by step: file:///home/runner/work/lights-out/lights-out/lights-out/.crew/demo/console.html#ticket/0001
+      Next: ./go console serves the live console on localhost:8098; ./go try <path> runs the gates on a repository of yours
+      The plane is still up: the app at http://localhost:8081, Gitea at http://localhost:3001, Prometheus at http://localhost:9090; ./go down stops it
+      done, 1 s
+GO: demo, milestone M9, 480s to rollback (budget 900s, plan §2)
+```
 
-The first run downloads about 1.2 GB and builds the toolchain image (3–6 minutes), so expect 10–15 minutes. After that a run takes about 7 (measured: 434 s on a MacBook with podman). A 4 GiB podman machine runs one demo at a time.
+At the end it opens the run's own console on ticket 0001: the request, the spec gate, the pull request and its eight gates, the merge, the canary at 5%, and the rollback with its reason. [The same page for the latest run on main](https://nicolaguglielmi.github.io/lights-out/console/snapshot.html#ticket/0001) needs nothing installed. `./go console` serves the live one.
+
+That run took 480 s on a clean GitHub runner, cold, with the toolchain image built in the run and ports 3000 and 8080 held by other servers ([stranger run 43841491822](https://github.com/nicolaguglielmi/lights-out/actions/runs/43841491822)); before ADR 0093 the same run took 700–805 s. The next run on the same machine estimates from this one. Everything the tools print is in `.crew/demo/run.log`; `LIGHTS_OUT_VERBOSE=1 ./go demo` shows it as it goes.
+
+**Then, on your own repository:** `./go try ~/code/your-repo` drafts its contract, runs the eight gates on its last commit, and prints the three commands that keep the draft ([section 3](#3-agents-on-your-repository)).
 
 **Shorter looks**
 
@@ -203,17 +223,19 @@ At L0 it is NO-GO by construction. [Toward production](docs/production.md) has e
 
 ## If something goes wrong
 
-Run `./go doctor` first. It prints one line per item: the engine and whether it answers, the podman API socket, git, whether the workbench image is built, whether the plane's ports (3000, 5050, 8016, 9090, 9901 and `APP_PORT`; 8085 and 8086 too with the emulators) are free or held by the lights-out plane, and whether the key your profile needs is set in `.env` (the name, never the value). It ends with `GO: doctor` or `NO-GO: doctor — <items>`. `./go` also checks your engine before it builds anything and prints the command that fixes what is missing. The other cases:
+Run `./go doctor` first. It prints one line per item: the engine and whether it answers, the podman API socket, git, whether the workbench image is built, whether the plane's ports (3000, 5050, 8016, 9090, 9901 and `APP_PORT`, or where `.crew/ports.env` moved them; 8085 and 8086 too with the emulators) are free or held by the lights-out plane, and whether the key your profile needs is set in `.env` (the name, never the value). It ends with `GO: doctor` or `NO-GO: doctor — <items>`. `./go` also checks your engine before it builds anything and prints the command that fixes what is missing. The other cases:
 
 | You see | Do this |
 |---|---|
-| A port is already in use | Put `APP_PORT=9000` in a file named `.env` for the app port. Ports 3000, 5050, 8016, 9090 and 9901 must be free (8085 and 8086 too with the emulators, ADR 0060). |
+| `preflight: ports  3000 is held by …: the code host moves to 3001` | Nothing to do: `./go demo` and `./go up` moved it, and wrote it to `.crew/ports.env`. A port you set in `.env` (`APP_PORT`, `CODE_HOST_PORT`, `METRICS_PORT`, `DELIVERY_ADMIN_PORT`, `FLAGS_PORT`) is never moved. |
+| `NO-GO: preflight — port 5050 … cannot move` | The registry's port is part of every image's name. Stop what holds it (the line names it), then run again. |
+| `NO-GO: preflight — a lights-out plane started from <dir> is running` | Run `./go down` in that directory first: one plane at a time. |
 | `Cannot allocate memory`, or everything crawls | `podman machine stop`, `podman machine set --memory 6144`, `podman machine start` |
 | `GO: demo … a first run: over the 900s budget, reported, not judged` | Everything worked; the first download and the toolchain build were slow. Your first run reports its time instead of failing on it. Later runs and CI are judged against the 900 s ([ADR 0013](docs/adr/0013-launchpad-canary-verify-rollback-at-l0.md), amendment 2026-11-04). |
 | `NO-GO: demo — rollback reached, but … > 900s budget` | Everything worked, but a run after the first one took longer than 900 s. The engine is usually short of memory or CPU (see the row above), or other containers are running. `./go down`, then `./go demo` again. |
 | `NO-GO: launchpad — …: cannot judge: …` | Prometheus could not answer a query, so the canary was rolled back without a verdict on it ([ADR 0066](docs/adr/0066-a-canary-that-cannot-be-judged.md)). `./go down`, then `./go demo` again; if it repeats, open an issue with the line. |
 | Every `./go up` recreates every container (podman 4.9.3, the Ubuntu 24.04 package) | A bug of that podman's Docker-compatible API, not of your plane; the demo works with it ([ADR 0066](docs/adr/0066-a-canary-that-cannot-be-judged.md)). |
-| Anything else | `./go down`, then `./go demo` again. Still stuck? Open an issue with the last 30 lines. |
+| Anything else | `./go down`, then `./go demo` again. Still stuck? Open an issue with `.crew/demo/run.log`. |
 
 ## What is real and what is recorded
 

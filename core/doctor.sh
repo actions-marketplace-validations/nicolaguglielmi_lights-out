@@ -94,7 +94,14 @@ fi
 
 # The plane's host ports (README, "If something goes wrong").
 envval() { sed -n "s/^$1=//p" .env 2>/dev/null | tail -1; }
-app_port=$(envval APP_PORT); app_port=${app_port:-8080}
+# A port .env sets, else one ./go's preflight moved (docs/adr/0093 §1d),
+# else the default.
+port() {
+  v=$(envval "$1"); [ -n "$v" ] || v=$(sed -n "s/^$1=//p" .crew/ports.env 2>/dev/null | tail -1)
+  printf '%s' "${v:-$2}"
+}
+app_port=$(port APP_PORT 8080)
+plane_list="$(port CODE_HOST_PORT 3000) 5050 $(port FLAGS_PORT 8016)"
 probe=""
 if command -v nc >/dev/null 2>&1; then probe=nc
 elif command -v lsof >/dev/null 2>&1; then probe=lsof
@@ -115,7 +122,7 @@ else
     *-emulator*) emu_ports="8085 8086" ;;
   esac
   # shellcheck disable=SC2086 # emu_ports is two ports or nothing
-  for p in 3000 5050 8016 $emu_ports 9090 9901 "$app_port"; do
+  for p in $plane_list $emu_ports $(port METRICS_PORT 9090) $(port DELIVERY_ADMIN_PORT 9901) "$app_port"; do
     case "$probe" in
       nc) nc -z 127.0.0.1 "$p" >/dev/null 2>&1 || continue ;;
       lsof) lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 || continue ;;
@@ -125,9 +132,10 @@ else
     taken="$taken $p"
   done
   if [ -n "$taken" ]; then
-    fail ports "in use by something other than the lights-out plane:$taken (APP_PORT in .env moves the app's)"
+    fail ports "in use by something other than the lights-out plane:$taken (./go demo and ./go up move a busy one, 5050 aside, to a free port by themselves)"
   else
-    item ports "ok, 3000 5050 8016${emu_ports:+ $emu_ports} 9090 9901 $app_port free or held by the lights-out plane ($probe)"
+    moved=""; [ ! -s .crew/ports.env ] || moved=", moved off a busy default in .crew/ports.env: $(grep -v '^#' .crew/ports.env | tr '\n' ' ')"
+    item ports "ok, $plane_list${emu_ports:+ $emu_ports} $(port METRICS_PORT 9090) $(port DELIVERY_ADMIN_PORT 9901) $app_port free or held by the lights-out plane ($probe)$moved"
   fi
 fi
 

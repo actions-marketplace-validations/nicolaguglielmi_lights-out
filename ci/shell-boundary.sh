@@ -17,7 +17,7 @@ name=shell-boundary
 . ci/lib.sh
 
 limit=30
-host='core/doctor.sh core/attach.sh'
+host='core/doctor.sh core/attach.sh core/preflight.sh core/progress.sh'
 debt='
 core/crew.sh 87
 core/egress.sh 42
