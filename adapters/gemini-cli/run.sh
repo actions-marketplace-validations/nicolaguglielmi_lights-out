@@ -41,7 +41,7 @@ set -eu
 # harness (docs/adr/0041 §2).
 case "${MODEL_PROVIDER:-}" in
   gemini) ;;
-  anthropic|openai)
+  anthropic|openai|zai)
     fits=claude-code; [ "$MODEL_PROVIDER" = openai ] && fits=codex
     printf 'harness-gemini-cli: MODEL_PROVIDER=%s runs on AGENT_HARNESS=%s (docs/adr/0041 §2); this harness runs gemini only\n' "$MODEL_PROVIDER" "$fits" >&2
     exit 1
@@ -199,6 +199,9 @@ turns=$(jq -rs '[.[] | select(.type == "message" and .role == "user")] | length'
 tok_in=$(printf '%s' "$stats" | jq -r '.input_tokens // null')
 tok_out=$(printf '%s' "$stats" | jq -r '.output_tokens // null')
 tok_total=$(printf '%s' "$stats" | jq -r '.total_tokens // null')
+# The part of input_tokens served from the cache, `cached` in the same stats
+# (docs/adr/0092 §6; ticket 0001's recording: 2,091,027 of 2,329,279).
+tok_cached=$(printf '%s' "$stats" | jq -r '.cached // null')
 model_served=$(printf '%s' "$stats" | jq -r '(.models // {}) | to_entries | max_by(.value.total_tokens // 0) | .key // "unknown"')
 
 # run.json is written here, before the response check below, so a run
@@ -226,11 +229,11 @@ write_run_json() {
   jq -n \
     --arg harness gemini-cli --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
     --argjson turns "$turns" --arg insha "$input_sha256" \
-    --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
+    --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" --argjson tokCached "$tok_cached" \
     --argjson duration "$duration" --argjson exitCode "$container_rc" --arg endpoint "$endpoint" \
     --argjson mcp "$mcp" \
     '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
-      tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
+      tokens: ({input: $tokIn, output: $tokOut, total: $tokTotal} + (if $tokCached == null then {} else {cached: $tokCached} end)),
       duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
       + (if $endpoint == "" then {} else {endpoint: $endpoint} end) + {mcp: $mcp}' > "$OUT/run.json"
 }

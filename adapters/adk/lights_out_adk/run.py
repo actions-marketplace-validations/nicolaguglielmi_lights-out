@@ -37,11 +37,17 @@ def _tokens(usage) -> dict:
     output (docs/adr/0083, amendment 2026-11-14)."""
     if usage is None:
         return {"input": 0, "output": 0, "total": 0}
-    return {
+    out = {
         "input": usage.prompt_token_count or 0,
         "output": (usage.candidates_token_count or 0) + (getattr(usage, "thoughts_token_count", None) or 0),
         "total": usage.total_token_count or 0,
     }
+    # The part of the prompt the vendor served from its cache, when it says
+    # (docs/adr/0092 §6); absent, never 0, when it does not.
+    cached = getattr(usage, "cached_content_token_count", None)
+    if cached is not None:
+        out["cached"] = cached
+    return out
 
 
 def in_chain(error: BaseException, kind: type) -> BaseException | None:
@@ -87,7 +93,7 @@ async def run(role: str, input_text: str, answers: list[str] = (), progress: dic
             if event.usage_metadata is not None:
                 progress["turns"] += 1
                 for k, v in _tokens(event.usage_metadata).items():
-                    tokens[k] += v
+                    tokens[k] = tokens.get(k, 0) + v
             if event.is_final_response() and event.content and event.content.parts:
                 text = "".join(p.text or "" for p in event.content.parts if p.text)
                 if text:

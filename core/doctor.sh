@@ -143,13 +143,18 @@ else
   if [ "$harness" = replay ]; then
     item key "ok, none needed at $profile: the agents replay recordings"
   else
-    # The variable's name is the adapter's (adapters/<harness>/conformance.env,
-    # KEY_VAR where PROVIDER matches): core/ names no key (ci/model-free.sh).
-    keyvar() { for f in adapters/*/conformance.env; do
-        [ "$(sed -n 's/^PROVIDER=//p' "$f")" = "$1" ] && sed -n 's/^KEY_VAR=//p' "$f" && return 0
+    # The variable's name is the adapter's (adapters/<harness>/conformance.env
+    # or conformance.<provider>.env, KEY_VAR where PROVIDER matches, docs/adr/
+    # 0092 §2): core/ names no key (ci/model-free.sh).
+    keyvar() { for f in adapters/*/conformance.env adapters/*/conformance.*.env; do
+        [ -f "$f" ] && [ "$(sed -n 's/^PROVIDER=//p' "$f")" = "$1" ] && sed -n 's/^KEY_VAR=//p' "$f" && return 0
       done; return 0; }
     need=$(keyvar "$provider")
-    [ ! -f "adapters/$harness/conformance.env" ] || need="$need $(sed -n 's/^KEY_VAR=//p' "adapters/$harness/conformance.env")"
+    hfile=adapters/$harness/conformance.env
+    for f in "adapters/$harness"/conformance.*.env; do
+      [ -f "$f" ] && [ "$(sed -n 's/^PROVIDER=//p' "$f")" = "$provider" ] && hfile=$f
+    done
+    [ ! -f "$hfile" ] || need="$need $(sed -n 's/^KEY_VAR=//p' "$hfile")"
     # shellcheck disable=SC2086 # a list of names, split on purpose
     need=$(printf '%s\n' $need | sort -u | tr '\n' ' ')
     need=${need% }

@@ -31,7 +31,7 @@ set -eu
 version=0.7.0
 gates_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out-gates:$version}
 full_image=${LIGHTS_OUT_IMAGE:-ghcr.io/nicolaguglielmi/lights-out:$version}
-keys="GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY"
+keys="GEMINI_API_KEY ANTHROPIC_API_KEY OPENAI_API_KEY ZAI_API_KEY"
 
 die() { printf 'lights-out: %s\n' "$*" >&2; exit 1; }
 
@@ -86,6 +86,7 @@ done
 case "$model_provider" in
   anthropic) key=ANTHROPIC_API_KEY ;;
   openai) key=OPENAI_API_KEY ;;
+  zai) key=ZAI_API_KEY ;;
   *) key=GEMINI_API_KEY ;;
 esac
 

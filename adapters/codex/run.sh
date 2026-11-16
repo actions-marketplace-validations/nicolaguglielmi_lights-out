@@ -33,8 +33,8 @@ set -eu
 # (docs/adr/0040 §1, §4).
 case "${MODEL_PROVIDER:-}" in
   openai) ;;
-  gemini|anthropic)
-    fits=gemini-cli; [ "$MODEL_PROVIDER" = anthropic ] && fits=claude-code
+  gemini|anthropic|zai)
+    fits=claude-code; [ "$MODEL_PROVIDER" = gemini ] && fits=gemini-cli
     printf 'harness-codex: MODEL_PROVIDER=%s runs on AGENT_HARNESS=%s (docs/adr/0041 §2); this harness runs openai only\n' "$MODEL_PROVIDER" "$fits" >&2
     exit 1
     ;;

@@ -38,7 +38,7 @@ set -eu
 # since docs/adr/0050 §1, and this one is chosen only by AGENT_HARNESS.
 case "${MODEL_PROVIDER:-}" in
   gemini) ;;
-  anthropic|openai)
+  anthropic|openai|zai)
     fits=claude-code; [ "$MODEL_PROVIDER" = openai ] && fits=codex
     printf 'harness-antigravity-cli: MODEL_PROVIDER=%s runs on AGENT_HARNESS=%s (docs/adr/0041 §2); this harness runs gemini only\n' "$MODEL_PROVIDER" "$fits" >&2
     exit 1
