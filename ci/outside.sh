@@ -12,10 +12,10 @@
 #       a port with no suite (TRACKER) is refused; AGENT_HARNESS, wired to
 #       no trial, is refused naming its suite; a suite beside another goal
 #       on one command line tries nothing; no trial record outlives a suite.
-#   (b) other CIs are surfaces, never judges (§6): the Jenkins recipe runs
-#       the lights-out wrapper, posts its line under its own status context,
-#       and that context is none the tower posts or awaits; success only on
-#       a GO line.
+#   (b) other CIs are surfaces, never judges (§6): the Jenkins, GitLab CI
+#       and CircleCI recipes (docs/adr/0095 §10) each run the lights-out
+#       wrapper, post its line under their own status context, and that
+#       context is none the tower posts or awaits; success only on a GO line.
 # Everything runs in a scratch root that links this checkout's files, with
 # a real adapters/ of its own, so no link lands in this checkout.
 # shellcheck disable=SC2016 # the patterns grep for the Jenkinsfile's own $-expressions
@@ -127,9 +127,7 @@ m statestore-conformance STATE_STORE=outside/json-broken help
 refused "a suite with another goal" "STATE_STORE=outside/json-broken is refused"
 [ ! -e "$tmp/trial-STATE_STORE" ] || nogo "a: a suite that ended left its trial record behind"
 
-# --- b: a surface is never a judge (§6) -------------------------------------------
-jf=surfaces/jenkins/Jenkinsfile
-[ -f "$jf" ] || nogo "b: $jf not found"
+# --- b: a surface is never a judge (ADR 0058 §6, ADR 0095 §10) -------------------
 # The contexts the tower posts: the third argument of every status.sh call in core/.
 tower=$(awk '!/^[[:space:]]*#/ && /adapters\/\$CODE_HOST\/status\.sh"/ {
     for (i = 1; i <= NF; i++) if ($i == "\"$status\"") { print $(i + 1); break }
@@ -141,13 +139,28 @@ tower=$(awk '!/^[[:space:]]*#/ && /adapters\/\$CODE_HOST\/status\.sh"/ {
 readers=$(grep -rlE 'await\.sh|/statuses' core --include='*.sh' --include='*.py' \
   --exclude-dir=gates --exclude-dir=tests --exclude-dir=__pycache__ 2>/dev/null || :)
 [ -z "$readers" ] || nogo "b: core/ reads commit statuses, where a surface's verdict could become the tower's: $readers"
-ctx=$(sed -n 's/.*"context":"\([^"]*\)".*/\1/p' "$jf" | sort -u)
-[ "$ctx" = lights-out/jenkins ] || nogo "b: $jf posts under [$ctx], want lights-out/jenkins only"
-for t in $tower; do
-  [ "$t" != "$ctx" ] || nogo "b: $jf posts under $t, a context the tower posts"
-done
-grep -qE '^line=\$\(lights-out gates "\$@"\)' "$jf" || nogo "b: $jf does not take its line from the lights-out wrapper's gates"
-grep -qE '^case "\$line" in GO:\*\) state=success ;; \*\) state=failure ;; esac$' "$jf" \
-  || nogo "b: $jf does not post success on a GO line only"
+# Every recipe: <file> <its context> <the state it posts on anything but GO>.
+# GitLab's API says `failed`; GitHub-shaped statuses (GitHub, Gitea) say
+# `failure`. The context is either a literal "context":"..." in the body or
+# one `context=<value>` line the body is built from.
+contexts=""
+while read -r jf want bad; do
+  [ -f "$jf" ] || nogo "b: $jf not found"
+  ctx=$({ sed -n 's/.*"context":"\([^"]*\)".*/\1/p' "$jf"
+          sed -n 's/^[[:space:]]*context=\([^[:space:]]*\)[[:space:]]*$/\1/p' "$jf"; } | sort -u)
+  [ "$ctx" = "$want" ] || nogo "b: $jf posts under [$(printf '%s' "$ctx" | tr '\n' ' ')], want $want only"
+  for t in $tower; do
+    [ "$t" != "$ctx" ] || nogo "b: $jf posts under $t, a context the tower posts"
+  done
+  grep -qE '^[[:space:]]*line=\$\(lights-out gates "\$@"\)' "$jf" \
+    || nogo "b: $jf does not take its line from the lights-out wrapper's gates"
+  grep -qE "^[[:space:]]*case \"\\\$line\" in GO:\\*\) state=success ;; \\*\) state=$bad ;; esac\$" "$jf" \
+    || nogo "b: $jf does not post success on a GO line only"
+  contexts="$contexts $ctx"
+done <<'EOF'
+surfaces/jenkins/Jenkinsfile lights-out/jenkins failure
+surfaces/gitlab-ci/.gitlab-ci.yml lights-out/gitlab-ci failed
+surfaces/circleci/config.yml lights-out/circleci failure
+EOF
 
-go_with "an outside StateStore refused, proven, admitted, refused again on one byte; Jenkins posts under lights-out/jenkins, the tower under $(printf '%s' "$tower" | tr '\n' ' ' | sed 's/ $//')"
+go_with "an outside StateStore refused, proven, admitted, refused again on one byte; the surfaces post under${contexts}, the tower under $(printf '%s' "$tower" | tr '\n' ' ' | sed 's/ $//')"

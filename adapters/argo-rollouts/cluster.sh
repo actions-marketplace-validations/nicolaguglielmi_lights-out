@@ -5,11 +5,17 @@
 # (docs/adr/0051 §4). Not a Delivery verb and not a gate: a team that
 # already runs Argo Rollouts never calls it.
 #
-#   cluster.sh up <manifests-dir> <image>   k3s on the running plane, Argo
-#       Rollouts installed, the workload's manifests applied with <image>
-#       (a verified repo@digest) as the stable revision, its plane
-#       dependencies bridged in, then ready.sh
+#   cluster.sh up <manifests-dir> <image>   k3s on the running plane, the
+#       controller installed ($CLUSTER_ADAPTER/install.sh), the workload's
+#       manifests applied with <image> (a verified repo@digest) as the
+#       stable revision, its plane dependencies bridged in, then
+#       $CLUSTER_ADAPTER/ready.sh
 #   cluster.sh down                          the node and its volumes gone
+#
+# CLUSTER_ADAPTER is the Delivery adapter whose controller the node runs,
+# this directory by default (Argo Rollouts); adapters/flagger brings
+# Flagger instead (docs/adr/0095 §5). The node, Traefik, the registry
+# mirror and the bridges are the same for both.
 #
 # A Service without a selector in the manifests is a plane service the
 # workload depends on: it gets an EndpointSlice with the IP of the compose
@@ -30,11 +36,7 @@ export KUBECONFIG="$out/kubeconfig"
 COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:adapters/argo-rollouts/compose.yaml"
 export COMPOSE_FILE
 
-# The latest stable Argo Rollouts on 2026-11-06; install.yaml is not in
-# the release's checksums file, so its sha256 is the one measured that
-# day, and the manifest pins the controller image to the same tag.
-ARGO_ROLLOUTS_VERSION=v1.10.2
-ARGO_INSTALL_SHA256=b8280994791eaee7eb91c8b84450efcc6e0292fca5aafc18c1b0ebc5d18dbefe
+: "${CLUSTER_ADAPTER:=$here}"
 
 die() { printf 'cluster-argo-rollouts: %s\n' "$*" >&2; exit 1; }
 
@@ -76,19 +78,14 @@ up() {
   wait_for "$READY_TIMEOUT" "Traefik's install job" kubectl -n kube-system wait --for=condition=complete job/helm-install-traefik --timeout=1s
   kubectl -n kube-system rollout status deployment/traefik --timeout="${READY_TIMEOUT}s" >&2
 
-  printf 'cluster-argo-rollouts: installing Argo Rollouts %s\n' "$ARGO_ROLLOUTS_VERSION" >&2
-  tmp=$(mktemp)
-  trap 'rm -f "$tmp"' EXIT
-  curl -fsSL "https://github.com/argoproj/argo-rollouts/releases/download/$ARGO_ROLLOUTS_VERSION/install.yaml" -o "$tmp"
-  got=$(sha256sum "$tmp" | cut -d' ' -f1)
-  [ "$got" = "$ARGO_INSTALL_SHA256" ] || die "install.yaml $ARGO_ROLLOUTS_VERSION has sha256 $got, want $ARGO_INSTALL_SHA256"
-  kubectl create namespace argo-rollouts --dry-run=client -o yaml | kubectl apply -f - >&2
-  kubectl apply --server-side -n argo-rollouts -f "$tmp" >&2
-  kubectl -n argo-rollouts rollout status deployment/argo-rollouts --timeout="${READY_TIMEOUT}s" >&2
+  sh "$CLUSTER_ADAPTER/install.sh" || die "$CLUSTER_ADAPTER/install.sh failed"
 
   kubectl create namespace "$ARGO_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >&2
+  # @ERROR_RATE_MAX_DELTA@ is the policy's number, for a controller that
+  # analyses metrics itself (docs/adr/0095 §4).
+  delta=$(sed -n 's/^ERROR_RATE_MAX_DELTA=//p' policy/merge.env)
   for f in "$manifests"/*.yaml; do
-    sed "s|@STABLE_IMAGE@|$ARGO_REGISTRY_HOST/$image|" "$f"
+    sed -e "s|@STABLE_IMAGE@|$ARGO_REGISTRY_HOST/$image|" -e "s|@ERROR_RATE_MAX_DELTA@|$delta|" "$f"
     printf '\n---\n'
   done | k apply -f - >&2
 
@@ -105,7 +102,7 @@ up() {
           | k apply -f - >&2
       done
 
-  sh "$here/ready.sh"
+  sh "$CLUSTER_ADAPTER/ready.sh"
 }
 
 down() {

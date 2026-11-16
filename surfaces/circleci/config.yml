@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# lights-out gates on CircleCI (docs/adr/0095 §8): a surface, never a judge.
+# The job runs the lights-out wrapper on the pushed change, prints the one
+# GO/NO-GO line, and posts it as a commit status under its own context,
+# lights-out/circleci: never `gates` or `review`, the contexts the tower posts
+# and awaits, so the tower never reads this verdict (docs/adr/0033).
+#
+# Copy this file to your repository's .circleci/config.yml. The machine
+# executor, because the wrapper binds the checkout into a gates container:
+# a remote Docker (setup_remote_docker) cannot see it.
+# Set in a context or the project's environment variables:
+#   LIGHTS_OUT_STATUSES      a GitHub-shaped statuses endpoint, without the sha:
+#                            https://api.github.com/repos/<owner>/<repo>/statuses
+#   LIGHTS_OUT_STATUS_TOKEN  a token that may write commit statuses
+#   LIGHTS_OUT_BASE          optional: the base commit; else the merge base
+#                            with origin/$LIGHTS_OUT_BASE_BRANCH (default main),
+#                            because CircleCI exposes no pull request base
+#   LIGHTS_OUT_IMAGE         optional: the gates image (default: the wrapper's
+#                            own published version)
+# No endpoint, no post: the job's own result still carries the verdict.
+#
+# Proven by `./go demo-circleci`, which is not a CircleCI run: `circleci
+# config validate` on this file, and the `lights-out gates` step below run on
+# an Ubuntu host with Docker against a local Gitea PR. `circleci local
+# execute` cannot run a machine job. Not proven: CircleCI's own scheduler,
+# checkout and contexts.
+version: 2.1
+
+jobs:
+  lights-out:
+    machine:
+      image: ubuntu-2404:current
+    steps:
+      - checkout
+      - run:
+          name: lights-out gates
+          command: |
+            # lights-out:begin
+            set -u
+            if ! command -v lights-out >/dev/null 2>&1; then
+              mkdir -p "$HOME/bin"
+              curl -fsSLo "$HOME/bin/lights-out" https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.7.0/lights-out
+              chmod +x "$HOME/bin/lights-out"
+              export PATH="$HOME/bin:$PATH"
+            fi
+            head=${CIRCLE_SHA1:-$(git rev-parse HEAD)}
+            base=${LIGHTS_OUT_BASE:-}
+            if [ -z "$base" ]; then
+              git fetch -q origin "${LIGHTS_OUT_BASE_BRANCH:-main}" 2>/dev/null || :
+              base=$(git merge-base "origin/${LIGHTS_OUT_BASE_BRANCH:-main}" "$head" 2>/dev/null) || base=""
+            fi
+            set -- "HEAD=$head"
+            [ -z "$base" ] || set -- "BASE=$base" "$@"
+            line=$(lights-out gates "$@") || :
+            [ -n "$line" ] || line="NO-GO: gates — lights-out gave no verdict; see the log above"
+            case "$line" in GO:*) state=success ;; *) state=failure ;; esac
+            printf 'lights-out line: %s\n' "$line"
+            context=lights-out/circleci
+            if [ -n "${LIGHTS_OUT_STATUSES:-}" ]; then
+              # 140 characters, GitHub's limit (docs/adr/0043 §3); jq cuts by
+              # character, never inside one.
+              body=$(jq -cn --arg s "$state" --arg c "$context" --arg d "$line" --arg u "${CIRCLE_BUILD_URL:-}" \
+                '{state: $s, context: $c, description: $d[0:140]} + (if $u == "" then {} else {target_url: $u} end)')
+              printf 'Authorization: token %s\n' "${LIGHTS_OUT_STATUS_TOKEN:-}" \
+                | curl -fsS -o /dev/null -H @- -H 'Content-Type: application/json' -d "$body" "$LIGHTS_OUT_STATUSES/$head" \
+                || printf 'lights-out: the status was not posted on %s\n' "$head" >&2
+            fi
+            [ "$state" = success ]
+            # lights-out:end
+
+workflows:
+  lights-out:
+    jobs:
+      - lights-out
