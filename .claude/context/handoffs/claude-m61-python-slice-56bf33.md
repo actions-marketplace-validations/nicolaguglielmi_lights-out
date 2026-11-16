@@ -93,6 +93,23 @@ Python added: `core/gates/harness.py`, `harness_proof.py`, `toolchain.py`,
   workbench's `sh`) and not by macOS's bash-as-sh; the shell check had the
   same blind spot.
 
+- **`self` stuck for hours on 93b9005 and 07a29b5** (runs 43838235097 and
+  43868953131, both cancelled): `test_gates_toolchain`'s PYTHONPATH test failed
+  under `.lights-out/runners/hook` (the coverage hook prepends itself to a
+  subprocess's PYTHONPATH), so mutation.sh's clean run failed, selection
+  (ADR 0076) turned itself off, and every mutant ran all 1,776 core tests
+  (117 s, timeout 1,170 s). Fixed in 949d667: the module drops the checkout's
+  entry wherever it sits, the test asserts the spec; the whole suite passes
+  under the hook. Timed locally in the workbench, 4 shards, on 5f42b22..949d667:
+  the mutation gate GO in 1,901 s, 5,040 mutants, 1,806 killed, score 0.358
+  against 0.2934 (baseline 0.3934 minus the 0.10 margin, unchanged); 3,104
+  mutants reached by no unit test, the suite's and the proof's orchestration,
+  which only the proof and the real suite run.
+- **Follow-up, not fixed here:** when the suite fails under the coverage
+  hook, mutation.sh silently degrades to a whole-suite run per mutant (hours)
+  instead of failing fast; a NO-GO, or a time cap with a clear line, would
+  have saved about 8 hours of runners on 2026-11-16.
+
 ## `ci/` scripts this branch changes (conflicts at landing)
 
 `ci/contract.sh` (body replaced), `ci/core-tests.sh` (one line),
