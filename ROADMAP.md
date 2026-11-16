@@ -30,62 +30,63 @@ wins when the two disagree. Decisions behind each step are in
 | M29 | The dev phase visible: the console recovered (M11's five screens, ADR 0047), then `requested` → `questions` → `spec-ready` → `opened` in the tower, `./go request` and `./go answer`, the `spec` gate, one timeline per ticket from the request to the release, an overview and a kanban whose columns are the tower's states (ADR 0055, *proposed*) |
 | M30 | Main stays green without a queue: no second judgment when nothing moved under a PR's perimeter, main judged again after merging in groups of at most four, a red group bisected and the culprit reverted through the code host, `assign`, `rework` and `release` stopped while main is red; `./go demo-mainline` (ADR 0056, *proposed*) |
 | M31 | The stepped way in: a gates image (508 MB) beside the full one (1.25 GB, was 1.77), `action.yml` at the root with a `gates` input and a summary per gate in the check run, `test-proof` and `test-integrity` as standalone Actions, `./go doctor --level`, the `production-readiness` gate, the README along five steps with the reuse said as reuse (ADR 0057, *proposed*). Published as `v0.3.0` on 2026-11-09, both images signed; on the probe, first pull included, the three checks in 27 s, 14 s and 25 s. On the GitHub Marketplace since 2026-11-09, the three Actions |
+| M31, second slice | The first run drafts the contract: on a repository with no `.lights-out/` the check stays NO-GO and carries the contract drafted from the base and the two commands that commit it; a change that removes the contract is refused. Released in 0.3.1 (2026-11-10) ([ADR 0064](docs/adr/0064-the-first-run-drafts-the-contract.md)) |
 | M33 | The console as a workbench: the kanban gains a drawer, search, keys, a view in the link, collapsible columns and a highlight on a moved card, and still moves none; a light and dark theme; a specs screen and a request editor the spec gate checks as you type, saved through `./go request`; ADR search from the project map, schema 2, through logbook 1.2 (ADR 0059, *proposed*) |
 | M34 | The lean plane: a `sqlite` StateStore and a `spool` EventBus, files under `.crew/`, the defaults at L0 and L1; the emulators opt-in (compose profile `emulators`); the Gitea runner, its `image` job and the Gitea compatibility check gone, the release step builds every workload's merge; five plane services instead of eight; the tower's documents outlive `./go down`. Measured on Actions, 719 to 873 s, so the demo budget stays 900 s (ADR 0060, *proposed*). `./go ci` then runs each check once, `contract` judging the record of the run instead of a second run: 632 s and 678 s measured (ADR 0062, *proposed*) |
 | M35 | Gates without a container: `lights-out-gates --light`, a standard-library Python package (the root `pyproject.toml`, `lights_out` is `core/`), runs the gates that need only git and Python, two by default, four with `TICKET=`, six with `TEST_ON_HOST=1`, in 0.14 s on this repository, and never prints `GO: gates`; the `--light` hook recipes verified once per CLI (ADR 0061, *proposed*). On PyPI as `lights-out-gates` 0.3.0 since 2026-11-09 (PyPI refused the name `lights-out`) |
 | M17, first slice | The console says whose turn it is: the kanban's columns under four bands (Spec, Build, Test and review, Release) fit one screen and stack on a phone; every card, drawer and timeline carries a now line, the tower's own table embedded and checked, "Your turn" with the one action for an open question, `needs-human` and a held canary; the timeline opens with a strip of the bands and groups its rows under them; the overview opens with what waits for you; the editor keeps the gate's line in view and cannot file a request twice (ADR 0063, *proposed*) |
 | M17, second slice | The kanban that is looked at: Trello's look without the drag; a card face with priority and feature labels, an icon for who has the ball (the tower's table gains `actor`, checked), the time in its state and the rework attempts as pips; the drawer becomes the card's back, a modal over the board with the one action, the open question and a compact timeline; a moved card flies and is announced; "Your turn only" in the link; a band bar on the phone; WCAG AA contrast and visible focus proven in both themes (ADR 0068, *proposed*) |
+| M17, third slice | The governed network on screen and in text: the console's `#network` screen draws the tower, the six roles, the dev-worker's workers with harness and model, the gates lighting up as verdicts arrive, the rework, the canary and the human gate, beside each attempt's patch and the files by perimeter; `./go network` prints the same facts in the same words; logbook 1.3, a patch shown only when its attempt's `secrets` gate said GO ([ADR 0071](docs/adr/0071-the-governed-network-on-screen-and-in-text.md), *proposed*) |
+| M25 | Delivery on Kubernetes: `DELIVERY=argo-rollouts` gives the launchpad's canary, verify and rollback on a cluster with no Envoy, proven by `./go argo-conformance` on a k3s node beside the plane ([ADR 0051](docs/adr/0051-delivery-on-kubernetes-with-argo-rollouts.md), *proposed*) |
+| M26 | The shell boundary: logic goes to Python under `core/`, shell stays where the contract or the host needs it, and `ci/shell-boundary.sh` holds a file of `core/` to 30 lines of code, with a debt list that can only fall; the first slice took `core/` from 2,101 to 1,764 shell lines ([ADR 0052](docs/adr/0052-where-shell-is-allowed.md), *proposed*) |
+| M39 | The agent's toolbelt: the Claude Code plugin, the Codex plugin and the Gemini CLI extension with `/gates`, `/spec` and a pre-commit hook, and `lights-out-gates mcp`, a read-only MCP server over the project map; each proven once in its pinned CLI, nothing listed in a marketplace ([ADR 0069](docs/adr/0069-the-agents-own-toolbelt.md), *proposed*) |
+| M42 | A repository customizes its agents: `roles/<role>.md` instructions for the two reviewers and one `mcp.json` for the dev-worker, both read from the base and translated per harness; `./go agents` and the console's Agents panel ([ADR 0073](docs/adr/0073-a-repository-customizes-its-agents.md), *proposed*) |
+| M43 | Security scanning: `sast` judged on the diff, an SPDX SBOM attested per released image, passive DAST at staging, off by default (`./go demo-dast`) ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), *proposed*) |
+| Release machinery | A push is judged from its last green ancestor ([ADR 0074](docs/adr/0074-judge-what-was-never-judged.md)); the tag releases itself ([ADR 0075](docs/adr/0075-the-tag-releases-itself.md)); a mutant runs only the tests that reach it ([ADR 0076](docs/adr/0076-a-mutant-runs-the-tests-that-reach-it.md)); the wiki is rendered at the tag ([ADR 0077](docs/adr/0077-the-wiki-is-rendered-at-the-tag.md)); all *proposed* |
+| M24, phases A–D | The public legacy experiment, on jd/tenacity (sqlparse was dropped: it ended its maintenance): ten tickets, five tests-only and five changing production code. Anthropic (2026-11-11): 10 of 10 merged, two through mutation's rework. Gemini (2026-11-14): 7 of 10 merged, each at its first attempt with every gate GO, three stopped at the dev-worker's `TOKEN_BUDGET` with no PR. The criterion of plan §14 holds on both. Numbers and sources in [docs/scoreboard/m24-tenacity.json](docs/scoreboard/m24-tenacity.json). Found on the way: `mutation` passed by absence when cosmic-ray could not start the test command, fixed ([ADR 0042](docs/adr/0042-gates-anywhere-init-and-the-toolchain-contract.md) amendment) |
+| M45 | The human gate on the card: the held release's card is the one that drags, onto "Promote to 100%" or "Rollback", through the launch screen's confirmation panel ([ADR 0079](docs/adr/0079-the-human-gate-on-the-card.md), *proposed*) |
+| M46 | The live canary: each stage records when it started, when it was judged and its numbers; the console shows the stage in course and a rollback's reason ([ADR 0080](docs/adr/0080-the-live-canary.md), *proposed*) |
+| M47 | The why of a NO-GO, one click away: each rejected attempt carries its gate, line and details, and one panel shows the attempts left and the next move ([ADR 0078](docs/adr/0078-the-why-of-a-no-go-one-click-away.md), *proposed*) |
+| M48 | Delivery measures: `./go dora` gives DORA's four keys from the logbook, and prints "not measured" with the reason for a key the record cannot give ([ADR 0082](docs/adr/0082-delivery-measures-from-the-logbook.md), *proposed*) |
+| M49 | The evidence pack: `./go evidence VERSION=<v>` writes one signed file per release, each value with its source and every gap named ([ADR 0081](docs/adr/0081-the-evidence-pack-per-release.md), *proposed*) |
+| M50 | Cost and time per ticket: `./go spend` prices each run from a dated table, and `SPEND_BUDGET_TICKET_USD` and `SPEND_BUDGET_DAY_USD` stop the next attempt and send the ticket to a person, off by default ([ADR 0083](docs/adr/0083-cost-and-time-per-ticket-with-a-budget.md), *proposed*) |
+| M51 | Gates under the shell boundary: the logic of ten gates moved to `core/gates/` with 103 unit tests, shell in `gates/` from 4,074 to 2,489 lines; the harness-conformance pair stays on the debt list ([ADR 0084](docs/adr/0084-gates-under-the-shell-boundary.md), *proposed*) |
+| M32 | Outside adapters and other CIs as surfaces: `ADAPTERS_PATH` and `outside/<name>`, admitted by the exact hash of their tree and a conformance GO; GitLab as a CodeHost (`./go gitlab-conformance`), Jenkins as a surface that shows the gates' line and never judges (`./go demo-jenkins`) ([ADR 0058](docs/adr/0058-outside-adapters-and-other-cis-as-surfaces.md), built 2026-11-13) |
+| M52–M54 | The flow strip on every card (the request, the perimeter, the eight gates, the PR, the canary, the human gate, 100%), the role matrix, and the spend per hour with the day's projection and the run in flight against `TOKEN_BUDGET`; logbook 1.6 ([ADR 0085](docs/adr/0085-the-flow-strip.md), [0086](docs/adr/0086-the-role-matrix.md), [0087](docs/adr/0087-burn-projection-and-the-run-in-flight.md), *proposed*) |
+| M55 | The provider scoreboard: `./go scoreboard` puts the providers side by side from sourced results, seeded with M24's ten tickets and OpenAI shown as not run; ten tickets on one repository, not a benchmark ([ADR 0088](docs/adr/0088-the-provider-scoreboard.md), *proposed*) |
+| M56 | A read-only console snapshot: `./go evidence` freezes the console of a real run into one signed, self-contained page, which the site links ([ADR 0089](docs/adr/0089-a-read-only-console-snapshot.md), *proposed*) |
+| M57 | The intake interview: `./go intake` takes a request in free text, `product` asks at most five questions and proposes tickets with criteria, feature and priority, `architect` proposes each perimeter, a person confirms each one and the spec gate judges the confirmed; every ADK role has a turn cap, `ADK_MAX_TURNS`; logbook 1.7 ([ADR 0090](docs/adr/0090-the-intake-interview.md), *proposed*) |
+| 0.4.0 | Tagged 2026-11-12: the agent network ([ADR 0071](docs/adr/0071-the-governed-network-on-screen-and-in-text.md)), per-role instructions and MCP servers ([ADR 0073](docs/adr/0073-a-repository-customizes-its-agents.md)), the toolbelt ([ADR 0069](docs/adr/0069-the-agents-own-toolbelt.md)), the Trello-style kanban ([ADR 0068](docs/adr/0068-the-kanban-that-is-looked-at.md)), `self` judged from its last green ancestor ([ADR 0074](docs/adr/0074-judge-what-was-never-judged.md)) |
+| 0.5.0 | Tagged 2026-11-12, the first release cut by its own tag ([ADR 0075](docs/adr/0075-the-tag-releases-itself.md)): security scanning ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md)); [release notes](docs/releases/v0.5.0.md) |
+| 0.6.0 | Tagged 2026-11-13: the why of a NO-GO, the human gate on the card, the live canary, the evidence pack, `./go dora` and `./go spend` ([ADR 0078](docs/adr/0078-the-why-of-a-no-go-one-click-away.md) to [0083](docs/adr/0083-cost-and-time-per-ticket-with-a-budget.md)); [release notes](docs/releases/v0.6.0.md) |
+| 0.7.0 | Tagged 2026-11-14, on the Marketplace 2026-11-15: the intake interview ([ADR 0090](docs/adr/0090-the-intake-interview.md)), the flow strip, the role matrix and the burn, the provider scoreboard and the frozen console ([ADR 0085](docs/adr/0085-the-flow-strip.md) to [0089](docs/adr/0089-a-read-only-console-snapshot.md)), outside adapters with GitLab and Jenkins ([ADR 0058](docs/adr/0058-outside-adapters-and-other-cis-as-surfaces.md)), the gates' logic in Python ([ADR 0084](docs/adr/0084-gates-under-the-shell-boundary.md)); [release notes](docs/releases/v0.7.0.md) |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
 
 The third arc (plan §16) is built, except for the runs that are the
 owner's: the OpenAI recording, a committed Claude recording and the L1
-end-to-end on GitHub. The two things that had to close before M24 are on
-`main`: egress for the harnesses (ADR 0046), and the tower restoring
-`.lights-out/runners/` from the base (ADR 0033's 2026-11-04 amendment,
-proven by `ci/attach.sh` case f).
+end-to-end on GitHub.
 
-- **Release 0.3.0 is out** (2026-11-09): the tag, both images signed, the
-  package on PyPI as `lights-out-gates`, and the three Actions on the GitHub
-  Marketplace. **0.3.1** (2026-11-10) ships the first run that drafts the
-  contract (ADR 0064); on the Marketplace too since 2026-11-10. **0.4.0**
-  (tagged 2026-11-12) ships the agent network (ADR 0071), per-role
-  instructions and MCP servers (ADR 0073), the toolbelt (ADR 0069), the
-  Trello-style kanban (ADR 0068), and `self` judged from its last green
-  ancestor with the mutants in shards (ADR 0074). The Marketplace and PyPI
-  steps are the owner's. **0.5.0** ships security scanning (ADR 0072):
-  SAST on the diff, a signed SBOM, passive DAST at staging; it is the
-  first release cut by its own tag (ADR 0075). **0.6.0** ships the
-  sprint of 2026-11-12: the why of a NO-GO (ADR 0078), the human gate on
-  the card (ADR 0079), the live canary (ADR 0080), the evidence pack per
-  release (ADR 0081), `./go dora` (ADR 0082) and `./go spend` with a
-  budget (ADR 0083). **0.7.0** ships the intake interview (ADR 0090), the
-  flow strip, the role matrix and the burn on the console (ADRs
-  0085-0087), the provider scoreboard and the frozen console (ADRs
-  0088, 0089), adapters outside the repository with GitLab and Jenkins
-  (ADR 0058), and the gates' logic in Python (ADR 0084).
-- **M24 — the public legacy experiment.** Plan §14's experiment on a
-  well-known open-source legacy repository, with every ticket run on the
-  three providers and all three verdicts published, GO and NO-GO alike.
-  The exit criterion is §14's: if at least two tickets in three do not
-  reach a mergeable PR without a human touching the code, the thesis is
-  weaker than expected.
-  On jd/tenacity (sqlparse was dropped: it ended its maintenance), ten
-  tickets, five tests-only and five changing production code. Anthropic
-  (2026-11-11): 10 of 10 merged, two through mutation's rework. Gemini
-  (2026-11-14): 7 of 10 merged, each at its first attempt with every gate
-  GO; three stopped at the dev-worker's token budget with no PR. The
-  criterion holds on both. OpenAI is still to run.
-- **M32 — outside adapters, other CIs, one more delivery** (ADR 0058). An
-  adapter can live outside this repository once it passes its conformance
-  suite; other CIs show the gates' verdict and never judge; Jenkins and
-  GitLab proven locally; one more delivery adapter when someone needs it.
-  Built 2026-11-13: `ADAPTERS_PATH` and `outside/<name>`, proven for a
-  StateStore; `adapters/gitlab/`, proven by `./go gitlab-conformance`; the
-  Jenkins recipe, proven with Jenkinsfile Runner by `./go demo-jenkins`.
-  Left: Flagger, an outside AgentHarness, recipes for GitLab CI and
-  CircleCI, and the full tower on GitLab and on a real Jenkins.
+The sprint of 2026-11-16, in progress in parallel sessions:
+
+- **M58 — a closed-decision port**, piloted with the Gemini Decisions API
+  for the intake's perimeter and an injection screen (ADR 0091).
+- **M59 — GLM by Z.ai as a fourth provider**, with a token budget per
+  provider (ADR 0092).
+- **M60 — a flawless first run** (ADR 0093).
+- **M61 — the second Python slice**: the harness conformance pair, the
+  toolchain and `ci/`, under the shell boundary.
+- **M62 — Flagger and the GitLab CI and CircleCI recipes**, the leftovers
+  of M32 (ADR 0095). Still open after it: an outside AgentHarness and the
+  full tower on GitLab and on a real Jenkins.
+- **M63 — project hygiene**: a code of conduct, governance and the
+  OpenSSF Scorecard (ADR 0096).
+
+M24's remaining legs: OpenAI has not run, and GLM runs after M59. The
+exit criterion is plan §14's: if at least two tickets in three do not
+reach a mergeable PR without a human touching the code, the thesis is
+weaker than expected.
 
 The adoption roadmap behind M31, M34 and M35, with what to drop, what to
 change and the sequence after them (attestation, the jury, `./go
@@ -94,13 +95,11 @@ demo-loop`, the toolbelt, then the launch), is
 
 ## Later
 
-- **M16 — the agent network**, reviewed and decided: who splits a
-  ticket between workers, from the six roles there are.
-- **M17 — the dashboard.** The board grows into the view of every
-  ticket, attempt, worker and threshold you changed. The console (M29)
-  already shows the tickets, their timelines and the thresholds; its
-  first slice (ADR 0063) says on each ticket whose turn it is.
-- **Security scanning** ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md), proposed and first deferred, then the owner asked to build it on 2026-11-11 as M43): all three slices are built: SAST judged on the diff as dependencies already are, a signed SBOM with every release, attested before the signature and carried by the release record and `./go audit`, and a passive DAST scan at staging (`./go demo-dast`), off by default until the owner turns it on. The console's timeline does not show the SBOM or the dast line yet.
+- **M17 — the dashboard.** The console grows into the view of every
+  ticket, attempt, worker and threshold you changed. It already shows the
+  tickets, their timelines and the thresholds (M29, M33), whose turn it
+  is (ADR 0063), the governed network (ADR 0071), the flow strip, the
+  role matrix and the burn (ADRs 0085–0087).
 
 ## When someone needs it
 
