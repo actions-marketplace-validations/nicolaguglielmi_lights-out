@@ -1,0 +1,1970 @@
+{
+  "answer": {
+    "adapter": "gemini-decisions",
+    "answers": {
+      "t1-f1": {
+        "confidence": 0.9731188330217427,
+        "p_yes": 0.026881166978257258,
+        "type": "yes_no"
+      },
+      "t1-f10": {
+        "confidence": 0.8009305411361151,
+        "p_yes": 0.1990694588638849,
+        "type": "yes_no"
+      },
+      "t1-f11": {
+        "confidence": 0.7135712430183827,
+        "p_yes": 0.28642875698161724,
+        "type": "yes_no"
+      },
+      "t1-f12": {
+        "confidence": 0.8844504299069224,
+        "p_yes": 0.11554957009307762,
+        "type": "yes_no"
+      },
+      "t1-f13": {
+        "confidence": 0.8800241512365838,
+        "p_yes": 0.11997584876341619,
+        "type": "yes_no"
+      },
+      "t1-f14": {
+        "confidence": 0.9298927637939758,
+        "p_yes": 0.07010723620602426,
+        "type": "yes_no"
+      },
+      "t1-f15": {
+        "confidence": 0.8531537452662576,
+        "p_yes": 0.14684625473374238,
+        "type": "yes_no"
+      },
+      "t1-f16": {
+        "confidence": 0.8479967325060365,
+        "p_yes": 0.15200326749396356,
+        "type": "yes_no"
+      },
+      "t1-f17": {
+        "confidence": 0.9354841893388243,
+        "p_yes": 0.06451581066117573,
+        "type": "yes_no"
+      },
+      "t1-f18": {
+        "confidence": 0.8939583262041604,
+        "p_yes": 0.10604167379583967,
+        "type": "yes_no"
+      },
+      "t1-f19": {
+        "confidence": 0.9545166135871237,
+        "p_yes": 0.0454833864128763,
+        "type": "yes_no"
+      },
+      "t1-f2": {
+        "confidence": 0.9773310228004184,
+        "p_yes": 0.022668977199581556,
+        "type": "yes_no"
+      },
+      "t1-f20": {
+        "confidence": 0.7207491336901715,
+        "p_yes": 0.2792508663098286,
+        "type": "yes_no"
+      },
+      "t1-f21": {
+        "confidence": 0.8786359689639784,
+        "p_yes": 0.12136403103602153,
+        "type": "yes_no"
+      },
+      "t1-f22": {
+        "confidence": 0.9892054109553035,
+        "p_yes": 0.010794589044696575,
+        "type": "yes_no"
+      },
+      "t1-f23": {
+        "confidence": 0.988567892302914,
+        "p_yes": 0.011432107697086018,
+        "type": "yes_no"
+      },
+      "t1-f24": {
+        "confidence": 0.7228108095361133,
+        "p_yes": 0.7228108095361133,
+        "type": "yes_no"
+      },
+      "t1-f25": {
+        "confidence": 0.8463027314662026,
+        "p_yes": 0.15369726853379742,
+        "type": "yes_no"
+      },
+      "t1-f26": {
+        "confidence": 0.8707513614549479,
+        "p_yes": 0.12924863854505209,
+        "type": "yes_no"
+      },
+      "t1-f27": {
+        "confidence": 0.9219536136615447,
+        "p_yes": 0.07804638633845531,
+        "type": "yes_no"
+      },
+      "t1-f28": {
+        "confidence": 0.9668233626582974,
+        "p_yes": 0.03317663734170264,
+        "type": "yes_no"
+      },
+      "t1-f29": {
+        "confidence": 0.99,
+        "p_yes": 0.01,
+        "type": "yes_no"
+      },
+      "t1-f3": {
+        "confidence": 0.550811836684215,
+        "p_yes": 0.4491881633157851,
+        "type": "yes_no"
+      },
+      "t1-f30": {
+        "confidence": 0.926111058318267,
+        "p_yes": 0.07388894168173296,
+        "type": "yes_no"
+      },
+      "t1-f31": {
+        "confidence": 0.9492385044211608,
+        "p_yes": 0.05076149557883926,
+        "type": "yes_no"
+      },
+      "t1-f32": {
+        "confidence": 0.7477230940431506,
+        "p_yes": 0.2522769059568494,
+        "type": "yes_no"
+      },
+      "t1-f33": {
+        "confidence": 0.9834640466635618,
+        "p_yes": 0.016535953336438147,
+        "type": "yes_no"
+      },
+      "t1-f34": {
+        "confidence": 0.9895096803190001,
+        "p_yes": 0.010490319680999874,
+        "type": "yes_no"
+      },
+      "t1-f35": {
+        "confidence": 0.9838133664613568,
+        "p_yes": 0.016186633538643292,
+        "type": "yes_no"
+      },
+      "t1-f36": {
+        "confidence": 0.8455387232601814,
+        "p_yes": 0.15446127673981858,
+        "type": "yes_no"
+      },
+      "t1-f37": {
+        "confidence": 0.7175391779193085,
+        "p_yes": 0.2824608220806914,
+        "type": "yes_no"
+      },
+      "t1-f38": {
+        "confidence": 0.7252439535666517,
+        "p_yes": 0.2747560464333482,
+        "type": "yes_no"
+      },
+      "t1-f39": {
+        "confidence": 0.743607259395044,
+        "p_yes": 0.2563927406049559,
+        "type": "yes_no"
+      },
+      "t1-f4": {
+        "confidence": 0.9056981034183337,
+        "p_yes": 0.9056981034183337,
+        "type": "yes_no"
+      },
+      "t1-f40": {
+        "confidence": 0.7061756531784147,
+        "p_yes": 0.29382434682158537,
+        "type": "yes_no"
+      },
+      "t1-f41": {
+        "confidence": 0.7952405219241011,
+        "p_yes": 0.2047594780758989,
+        "type": "yes_no"
+      },
+      "t1-f42": {
+        "confidence": 0.8136374038608899,
+        "p_yes": 0.18636259613911008,
+        "type": "yes_no"
+      },
+      "t1-f43": {
+        "confidence": 0.9723848773914823,
+        "p_yes": 0.0276151226085177,
+        "type": "yes_no"
+      },
+      "t1-f44": {
+        "confidence": 0.7457330041976797,
+        "p_yes": 0.2542669958023203,
+        "type": "yes_no"
+      },
+      "t1-f45": {
+        "confidence": 0.8756557544212511,
+        "p_yes": 0.12434424557874889,
+        "type": "yes_no"
+      },
+      "t1-f46": {
+        "confidence": 0.8621838072364606,
+        "p_yes": 0.1378161927635394,
+        "type": "yes_no"
+      },
+      "t1-f47": {
+        "confidence": 0.870138498222397,
+        "p_yes": 0.12986150177760303,
+        "type": "yes_no"
+      },
+      "t1-f48": {
+        "confidence": 0.9049846778680415,
+        "p_yes": 0.09501532213195855,
+        "type": "yes_no"
+      },
+      "t1-f49": {
+        "confidence": 0.8454320055268341,
+        "p_yes": 0.15456799447316596,
+        "type": "yes_no"
+      },
+      "t1-f5": {
+        "confidence": 0.6731989697961219,
+        "p_yes": 0.6731989697961219,
+        "type": "yes_no"
+      },
+      "t1-f50": {
+        "confidence": 0.9594605734550272,
+        "p_yes": 0.04053942654497281,
+        "type": "yes_no"
+      },
+      "t1-f51": {
+        "confidence": 0.8578901647332419,
+        "p_yes": 0.14210983526675816,
+        "type": "yes_no"
+      },
+      "t1-f52": {
+        "confidence": 0.8544419537685422,
+        "p_yes": 0.14555804623145788,
+        "type": "yes_no"
+      },
+      "t1-f53": {
+        "confidence": 0.8763437581114328,
+        "p_yes": 0.12365624188856719,
+        "type": "yes_no"
+      },
+      "t1-f54": {
+        "confidence": 0.9127956707995311,
+        "p_yes": 0.08720432920046889,
+        "type": "yes_no"
+      },
+      "t1-f55": {
+        "confidence": 0.964873883988679,
+        "p_yes": 0.03512611601132102,
+        "type": "yes_no"
+      },
+      "t1-f56": {
+        "confidence": 0.7551528709974549,
+        "p_yes": 0.24484712900254513,
+        "type": "yes_no"
+      },
+      "t1-f57": {
+        "confidence": 0.5640779431573757,
+        "p_yes": 0.43592205684262425,
+        "type": "yes_no"
+      },
+      "t1-f58": {
+        "confidence": 0.7665088529125512,
+        "p_yes": 0.2334911470874488,
+        "type": "yes_no"
+      },
+      "t1-f59": {
+        "confidence": 0.9619677701659727,
+        "p_yes": 0.03803222983402733,
+        "type": "yes_no"
+      },
+      "t1-f6": {
+        "confidence": 0.8117446156159203,
+        "p_yes": 0.8117446156159203,
+        "type": "yes_no"
+      },
+      "t1-f60": {
+        "confidence": 0.9258323581805625,
+        "p_yes": 0.07416764181943752,
+        "type": "yes_no"
+      },
+      "t1-f61": {
+        "confidence": 0.8870824857139643,
+        "p_yes": 0.11291751428603573,
+        "type": "yes_no"
+      },
+      "t1-f62": {
+        "confidence": 0.8175243786725409,
+        "p_yes": 0.8175243786725409,
+        "type": "yes_no"
+      },
+      "t1-f63": {
+        "confidence": 0.9122209002618489,
+        "p_yes": 0.08777909973815111,
+        "type": "yes_no"
+      },
+      "t1-f64": {
+        "confidence": 0.9168802136919101,
+        "p_yes": 0.08311978630808996,
+        "type": "yes_no"
+      },
+      "t1-f65": {
+        "confidence": 0.7238936757984644,
+        "p_yes": 0.7238936757984644,
+        "type": "yes_no"
+      },
+      "t1-f66": {
+        "confidence": 0.6996442315170361,
+        "p_yes": 0.6996442315170361,
+        "type": "yes_no"
+      },
+      "t1-f67": {
+        "confidence": 0.591982749836183,
+        "p_yes": 0.591982749836183,
+        "type": "yes_no"
+      },
+      "t1-f68": {
+        "confidence": 0.9642513345339048,
+        "p_yes": 0.03574866546609521,
+        "type": "yes_no"
+      },
+      "t1-f69": {
+        "confidence": 0.9708502321203187,
+        "p_yes": 0.0291497678796813,
+        "type": "yes_no"
+      },
+      "t1-f7": {
+        "confidence": 0.754279592528115,
+        "p_yes": 0.24572040747188492,
+        "type": "yes_no"
+      },
+      "t1-f70": {
+        "confidence": 0.9701150255009028,
+        "p_yes": 0.029884974499097175,
+        "type": "yes_no"
+      },
+      "t1-f71": {
+        "confidence": 0.9288787458440824,
+        "p_yes": 0.07112125415591765,
+        "type": "yes_no"
+      },
+      "t1-f72": {
+        "confidence": 0.9200317588290263,
+        "p_yes": 0.07996824117097372,
+        "type": "yes_no"
+      },
+      "t1-f73": {
+        "confidence": 0.9086766154493254,
+        "p_yes": 0.0913233845506746,
+        "type": "yes_no"
+      },
+      "t1-f74": {
+        "confidence": 0.9261574884828725,
+        "p_yes": 0.07384251151712755,
+        "type": "yes_no"
+      },
+      "t1-f75": {
+        "confidence": 0.961628617798586,
+        "p_yes": 0.03837138220141401,
+        "type": "yes_no"
+      },
+      "t1-f8": {
+        "confidence": 0.9877332364343159,
+        "p_yes": 0.012266763565684156,
+        "type": "yes_no"
+      },
+      "t1-f9": {
+        "confidence": 0.8384882460915604,
+        "p_yes": 0.1615117539084396,
+        "type": "yes_no"
+      },
+      "t2-f1": {
+        "confidence": 0.9655555128994402,
+        "p_yes": 0.03444448710055979,
+        "type": "yes_no"
+      },
+      "t2-f10": {
+        "confidence": 0.8172652589247646,
+        "p_yes": 0.18273474107523538,
+        "type": "yes_no"
+      },
+      "t2-f11": {
+        "confidence": 0.8402264939180433,
+        "p_yes": 0.1597735060819567,
+        "type": "yes_no"
+      },
+      "t2-f12": {
+        "confidence": 0.9555578203531324,
+        "p_yes": 0.044442179646867544,
+        "type": "yes_no"
+      },
+      "t2-f13": {
+        "confidence": 0.9161355315555498,
+        "p_yes": 0.08386446844445015,
+        "type": "yes_no"
+      },
+      "t2-f14": {
+        "confidence": 0.9583343958912289,
+        "p_yes": 0.04166560410877111,
+        "type": "yes_no"
+      },
+      "t2-f15": {
+        "confidence": 0.8103866513439274,
+        "p_yes": 0.18961334865607257,
+        "type": "yes_no"
+      },
+      "t2-f16": {
+        "confidence": 0.9359691885659153,
+        "p_yes": 0.06403081143408475,
+        "type": "yes_no"
+      },
+      "t2-f17": {
+        "confidence": 0.925294826775523,
+        "p_yes": 0.07470517322447698,
+        "type": "yes_no"
+      },
+      "t2-f18": {
+        "confidence": 0.9131477962665895,
+        "p_yes": 0.08685220373341052,
+        "type": "yes_no"
+      },
+      "t2-f19": {
+        "confidence": 0.9711273023174669,
+        "p_yes": 0.028872697682533074,
+        "type": "yes_no"
+      },
+      "t2-f2": {
+        "confidence": 0.9830935898218214,
+        "p_yes": 0.016906410178178656,
+        "type": "yes_no"
+      },
+      "t2-f20": {
+        "confidence": 0.7298480735517845,
+        "p_yes": 0.27015192644821556,
+        "type": "yes_no"
+      },
+      "t2-f21": {
+        "confidence": 0.8312289455518058,
+        "p_yes": 0.1687710544481942,
+        "type": "yes_no"
+      },
+      "t2-f22": {
+        "confidence": 0.9813077980941903,
+        "p_yes": 0.018692201905809634,
+        "type": "yes_no"
+      },
+      "t2-f23": {
+        "confidence": 0.9686230836334889,
+        "p_yes": 0.03137691636651103,
+        "type": "yes_no"
+      },
+      "t2-f24": {
+        "confidence": 0.8090583454119262,
+        "p_yes": 0.8090583454119262,
+        "type": "yes_no"
+      },
+      "t2-f25": {
+        "confidence": 0.8775200598350694,
+        "p_yes": 0.12247994016493058,
+        "type": "yes_no"
+      },
+      "t2-f26": {
+        "confidence": 0.9379710027239333,
+        "p_yes": 0.06202899727606667,
+        "type": "yes_no"
+      },
+      "t2-f27": {
+        "confidence": 0.9313467651473583,
+        "p_yes": 0.06865323485264178,
+        "type": "yes_no"
+      },
+      "t2-f28": {
+        "confidence": 0.9748779351194634,
+        "p_yes": 0.025122064880536588,
+        "type": "yes_no"
+      },
+      "t2-f29": {
+        "confidence": 0.99,
+        "p_yes": 0.01,
+        "type": "yes_no"
+      },
+      "t2-f3": {
+        "confidence": 0.6152967568759602,
+        "p_yes": 0.38470324312403986,
+        "type": "yes_no"
+      },
+      "t2-f30": {
+        "confidence": 0.9273467680330042,
+        "p_yes": 0.0726532319669958,
+        "type": "yes_no"
+      },
+      "t2-f31": {
+        "confidence": 0.9659335689883151,
+        "p_yes": 0.03406643101168495,
+        "type": "yes_no"
+      },
+      "t2-f32": {
+        "confidence": 0.6765040235418738,
+        "p_yes": 0.3234959764581263,
+        "type": "yes_no"
+      },
+      "t2-f33": {
+        "confidence": 0.9792213382326984,
+        "p_yes": 0.020778661767301594,
+        "type": "yes_no"
+      },
+      "t2-f34": {
+        "confidence": 0.9836261455957164,
+        "p_yes": 0.016373854404283617,
+        "type": "yes_no"
+      },
+      "t2-f35": {
+        "confidence": 0.9811200541234568,
+        "p_yes": 0.018879945876543153,
+        "type": "yes_no"
+      },
+      "t2-f36": {
+        "confidence": 0.6757333218337667,
+        "p_yes": 0.32426667816623334,
+        "type": "yes_no"
+      },
+      "t2-f37": {
+        "confidence": 0.8765736206378199,
+        "p_yes": 0.12342637936218015,
+        "type": "yes_no"
+      },
+      "t2-f38": {
+        "confidence": 0.7789756375585997,
+        "p_yes": 0.22102436244140033,
+        "type": "yes_no"
+      },
+      "t2-f39": {
+        "confidence": 0.6904189478432001,
+        "p_yes": 0.30958105215679993,
+        "type": "yes_no"
+      },
+      "t2-f4": {
+        "confidence": 0.8791454041301748,
+        "p_yes": 0.8791454041301748,
+        "type": "yes_no"
+      },
+      "t2-f40": {
+        "confidence": 0.7886551710858921,
+        "p_yes": 0.21134482891410786,
+        "type": "yes_no"
+      },
+      "t2-f41": {
+        "confidence": 0.8740784573119769,
+        "p_yes": 0.12592154268802308,
+        "type": "yes_no"
+      },
+      "t2-f42": {
+        "confidence": 0.7848889104676748,
+        "p_yes": 0.2151110895323252,
+        "type": "yes_no"
+      },
+      "t2-f43": {
+        "confidence": 0.954823576995974,
+        "p_yes": 0.04517642300402599,
+        "type": "yes_no"
+      },
+      "t2-f44": {
+        "confidence": 0.7626523933842451,
+        "p_yes": 0.23734760661575496,
+        "type": "yes_no"
+      },
+      "t2-f45": {
+        "confidence": 0.8855671601700335,
+        "p_yes": 0.11443283982996653,
+        "type": "yes_no"
+      },
+      "t2-f46": {
+        "confidence": 0.8328816828257759,
+        "p_yes": 0.16711831717422412,
+        "type": "yes_no"
+      },
+      "t2-f47": {
+        "confidence": 0.932932957778507,
+        "p_yes": 0.067067042221493,
+        "type": "yes_no"
+      },
+      "t2-f48": {
+        "confidence": 0.916728496891134,
+        "p_yes": 0.083271503108866,
+        "type": "yes_no"
+      },
+      "t2-f49": {
+        "confidence": 0.7800133997512217,
+        "p_yes": 0.21998660024877822,
+        "type": "yes_no"
+      },
+      "t2-f5": {
+        "confidence": 0.6734443114065519,
+        "p_yes": 0.6734443114065519,
+        "type": "yes_no"
+      },
+      "t2-f50": {
+        "confidence": 0.9337564590758592,
+        "p_yes": 0.06624354092414077,
+        "type": "yes_no"
+      },
+      "t2-f51": {
+        "confidence": 0.9026880167446434,
+        "p_yes": 0.09731198325535662,
+        "type": "yes_no"
+      },
+      "t2-f52": {
+        "confidence": 0.8740506070307439,
+        "p_yes": 0.12594939296925617,
+        "type": "yes_no"
+      },
+      "t2-f53": {
+        "confidence": 0.9546194616683591,
+        "p_yes": 0.045380538331640866,
+        "type": "yes_no"
+      },
+      "t2-f54": {
+        "confidence": 0.8701050219487038,
+        "p_yes": 0.12989497805129624,
+        "type": "yes_no"
+      },
+      "t2-f55": {
+        "confidence": 0.9292771982319861,
+        "p_yes": 0.07072280176801392,
+        "type": "yes_no"
+      },
+      "t2-f56": {
+        "confidence": 0.7395391607695811,
+        "p_yes": 0.26046083923041885,
+        "type": "yes_no"
+      },
+      "t2-f57": {
+        "confidence": 0.7153780951447177,
+        "p_yes": 0.28462190485528227,
+        "type": "yes_no"
+      },
+      "t2-f58": {
+        "confidence": 0.7040326282129139,
+        "p_yes": 0.29596737178708604,
+        "type": "yes_no"
+      },
+      "t2-f59": {
+        "confidence": 0.9748034433471375,
+        "p_yes": 0.025196556652862457,
+        "type": "yes_no"
+      },
+      "t2-f6": {
+        "confidence": 0.6992738120466566,
+        "p_yes": 0.6992738120466566,
+        "type": "yes_no"
+      },
+      "t2-f60": {
+        "confidence": 0.9877303313604016,
+        "p_yes": 0.012269668639598419,
+        "type": "yes_no"
+      },
+      "t2-f61": {
+        "confidence": 0.80883546442386,
+        "p_yes": 0.19116453557613997,
+        "type": "yes_no"
+      },
+      "t2-f62": {
+        "confidence": 0.8404269086422531,
+        "p_yes": 0.8404269086422531,
+        "type": "yes_no"
+      },
+      "t2-f63": {
+        "confidence": 0.9266909965572108,
+        "p_yes": 0.07330900344278923,
+        "type": "yes_no"
+      },
+      "t2-f64": {
+        "confidence": 0.9329105457608696,
+        "p_yes": 0.06708945423913035,
+        "type": "yes_no"
+      },
+      "t2-f65": {
+        "confidence": 0.8008455801430655,
+        "p_yes": 0.8008455801430655,
+        "type": "yes_no"
+      },
+      "t2-f66": {
+        "confidence": 0.5559288262833328,
+        "p_yes": 0.5559288262833328,
+        "type": "yes_no"
+      },
+      "t2-f67": {
+        "confidence": 0.6924112111793624,
+        "p_yes": 0.6924112111793624,
+        "type": "yes_no"
+      },
+      "t2-f68": {
+        "confidence": 0.9533840709714936,
+        "p_yes": 0.046615929028506406,
+        "type": "yes_no"
+      },
+      "t2-f69": {
+        "confidence": 0.9844708043361547,
+        "p_yes": 0.015529195663845276,
+        "type": "yes_no"
+      },
+      "t2-f7": {
+        "confidence": 0.7782772576347147,
+        "p_yes": 0.22172274236528533,
+        "type": "yes_no"
+      },
+      "t2-f70": {
+        "confidence": 0.9354855698810816,
+        "p_yes": 0.06451443011891843,
+        "type": "yes_no"
+      },
+      "t2-f71": {
+        "confidence": 0.8099538419228726,
+        "p_yes": 0.1900461580771274,
+        "type": "yes_no"
+      },
+      "t2-f72": {
+        "confidence": 0.8497396019762076,
+        "p_yes": 0.1502603980237924,
+        "type": "yes_no"
+      },
+      "t2-f73": {
+        "confidence": 0.9319174157376002,
+        "p_yes": 0.06808258426239973,
+        "type": "yes_no"
+      },
+      "t2-f74": {
+        "confidence": 0.8485968164198117,
+        "p_yes": 0.15140318358018837,
+        "type": "yes_no"
+      },
+      "t2-f75": {
+        "confidence": 0.9726478607783496,
+        "p_yes": 0.027352139221650404,
+        "type": "yes_no"
+      },
+      "t2-f8": {
+        "confidence": 0.973381807638886,
+        "p_yes": 0.026618192361114013,
+        "type": "yes_no"
+      },
+      "t2-f9": {
+        "confidence": 0.90794690320378,
+        "p_yes": 0.09205309679622,
+        "type": "yes_no"
+      }
+    },
+    "duration_s": 0.603,
+    "model": "gemini-decision-1",
+    "provider": "gemini",
+    "tokens": {
+      "input": 21235,
+      "output": 0
+    }
+  },
+  "recorded_at": "2026-11-16T09:04:28Z",
+  "request": {
+    "input": "[\n  {\n    \"n\": 1,\n    \"title\": \"Allow registered members to give back their meetup seat\",\n    \"problem\": \"Members who sign up for a meetup and can no longer attend cannot cancel their reservation, which locks up seats and falsely marks the meetup as full.\",\n    \"criteria\": [\n      \"Given a registered member viewing their meetup page, When they click the button to give their place back, Then their registration is cancelled and the page indicates they are no longer registered.\",\n      \"Given a member gives their place back, When the meetup page is loaded, Then the count of free seats has increased by one.\",\n      \"Given a member who previously gave their place back views the meetup page with free seats available, When they choose to register again, Then their registration succeeds and the count of free seats decreases by one.\",\n      \"Given an authenticated user, When they attempt to cancel another member's meetup place, Then the request is rejected and the place remains reserved.\"\n    ]\n  },\n  {\n    \"n\": 2,\n    \"title\": \"Display attendee list to organisers while keeping attendee names private from other members\",\n    \"problem\": \"Organisers cannot see on the meetup page who is currently attending or how many seats remain free, forcing them to maintain a separate list, while attendee names must remain hidden from other members.\",\n    \"criteria\": [\n      \"Given an organiser viewing the meetup page, When members are registered, Then the organiser sees the list of names of all registered members and the count of free seats.\",\n      \"Given a registered member has given their place back, When the organiser views the meetup page, Then the cancelled member's name is omitted from the attendee list and the free seat count reflects the cancellation.\",\n      \"Given a non-organiser member viewing the meetup page, When members are registered, Then they see the count of free seats but cannot see the names of attendees.\"\n    ]\n  }\n]\n",
+    "questions": {
+      "t1-f1": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/README.md` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f10": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/migrate.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f11": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/migrations/0001_init.sql` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f12": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/migrations/0002_expand_starts_at.sql` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f13": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/migrations/0003_contract_starts_at.sql` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f14": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/pyproject.toml` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f15": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/conftest.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f16": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/mutation/cosmic-ray.toml` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f17": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/mutation/run.sh` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f18": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/mutation/score.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f19": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/sast/run.sh` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f2": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/Containerfile` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f20": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_auth.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f21": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_flags.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f22": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_geocoder_client.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f23": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_geocoder_contract.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f24": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_meetups.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f25": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_metrics.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f26": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_migrate.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f27": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/uv.lock` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f28": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/compose.yaml` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f29": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/contracts/geocoder/examples.json` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f3": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/__init__.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f30": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/crew-egress.txt` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f31": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/crew-prepare.sh` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f32": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/__init__.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f33": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/geocoder/Containerfile` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f34": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/geocoder/__init__.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f35": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/geocoder/server.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f36": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/dast/leaky-header/0001-M42-fixture-dast-leaky-header-every-response-names-t.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f37": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/assertion-removed/0001-M27-fixture-assertion-removed-one-coordinate-check-d.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f38": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/assertion-removed/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f39": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/failing-test/0001-M4-fixture-failing-test-one-deliberately-failing-ass.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f4": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/app.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f40": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/failing-test/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f41": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/fake-test/0001-M4-fixture-fake-test-same-fix-test-that-never-exerci.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f42": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/fake-test/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f43": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/honest-fix/0001-M4-fixture-honest-fix-404-geocoder-result-is-null-co.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f44": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/honest-fix/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f45": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/migration/0001-M4-fixture-migration-an-additive-schema-change-no-Py.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f46": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/migration/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f47": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-added-on-red-base/0001-M42-fixture-sast-added-on-red-base-a-second-finding-.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f48": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-added-on-red-base/base/0001-M42-fixture-base-a-module-with-one-bandit-finding-B3.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f49": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-added-on-red-base/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f5": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/auth.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f50": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-finding/0001-M4-fixture-sast-finding-one-bandit-finding-never-inv.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f51": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-finding/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f52": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-inherited/0001-M42-fixture-sast-inherited-a-change-above-an-inherit.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f53": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-inherited/base/0001-M42-fixture-base-a-module-with-one-bandit-finding-B3.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f54": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-inherited/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f55": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-edited/0001-M27-fixture-test-edited-the-Duomo-s-coordinates-corr.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f56": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-edited/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f57": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-passes-on-base/0001-M27-fixture-test-passes-on-base-ticket-0001-answered.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f58": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-passes-on-base/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f59": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/vulnerable-dep/0001-M4-fixture-vulnerable-dep-a-known-vulnerable-package.patch` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f6": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/db.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f60": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/vulnerable-dep/expect` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f61": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/flags/flags.json` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f62": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/index.html` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f63": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/package-lock.json` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f64": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/package.json` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f65": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/src/App.tsx` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f66": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/src/api.ts` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f67": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/src/main.tsx` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f68": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/tsconfig.json` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f69": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/vite.config.ts` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f7": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/flags.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f70": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/k8s/backend.yaml` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f71": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/load.sh` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f72": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/policy.env` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f73": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/smoke.sh` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f74": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/worker.md` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f75": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/workload.env` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f8": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/geocoder_client.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t1-f9": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/metrics.py` change for ticket 1 (Allow registered members to give back their meetup seat) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f1": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/README.md` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f10": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/migrate.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f11": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/migrations/0001_init.sql` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f12": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/migrations/0002_expand_starts_at.sql` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f13": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/migrations/0003_contract_starts_at.sql` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f14": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/pyproject.toml` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f15": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/conftest.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f16": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/mutation/cosmic-ray.toml` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f17": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/mutation/run.sh` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f18": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/mutation/score.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f19": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/sast/run.sh` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f2": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/Containerfile` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f20": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_auth.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f21": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_flags.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f22": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_geocoder_client.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f23": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_geocoder_contract.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f24": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_meetups.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f25": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_metrics.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f26": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/tests/test_migrate.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f27": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/uv.lock` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f28": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/compose.yaml` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f29": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/contracts/geocoder/examples.json` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f3": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/__init__.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f30": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/crew-egress.txt` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f31": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/crew-prepare.sh` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f32": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/__init__.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f33": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/geocoder/Containerfile` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f34": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/geocoder/__init__.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f35": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fakes/geocoder/server.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f36": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/dast/leaky-header/0001-M42-fixture-dast-leaky-header-every-response-names-t.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f37": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/assertion-removed/0001-M27-fixture-assertion-removed-one-coordinate-check-d.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f38": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/assertion-removed/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f39": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/failing-test/0001-M4-fixture-failing-test-one-deliberately-failing-ass.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f4": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/app.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f40": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/failing-test/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f41": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/fake-test/0001-M4-fixture-fake-test-same-fix-test-that-never-exerci.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f42": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/fake-test/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f43": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/honest-fix/0001-M4-fixture-honest-fix-404-geocoder-result-is-null-co.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f44": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/honest-fix/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f45": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/migration/0001-M4-fixture-migration-an-additive-schema-change-no-Py.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f46": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/migration/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f47": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-added-on-red-base/0001-M42-fixture-sast-added-on-red-base-a-second-finding-.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f48": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-added-on-red-base/base/0001-M42-fixture-base-a-module-with-one-bandit-finding-B3.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f49": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-added-on-red-base/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f5": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/auth.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f50": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-finding/0001-M4-fixture-sast-finding-one-bandit-finding-never-inv.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f51": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-finding/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f52": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-inherited/0001-M42-fixture-sast-inherited-a-change-above-an-inherit.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f53": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-inherited/base/0001-M42-fixture-base-a-module-with-one-bandit-finding-B3.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f54": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/sast-inherited/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f55": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-edited/0001-M27-fixture-test-edited-the-Duomo-s-coordinates-corr.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f56": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-edited/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f57": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-passes-on-base/0001-M27-fixture-test-passes-on-base-ticket-0001-answered.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f58": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/test-passes-on-base/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f59": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/vulnerable-dep/0001-M4-fixture-vulnerable-dep-a-known-vulnerable-package.patch` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f6": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/db.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f60": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/fixtures/gates/vulnerable-dep/expect` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f61": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/flags/flags.json` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f62": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/index.html` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f63": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/package-lock.json` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f64": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/package.json` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f65": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/src/App.tsx` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f66": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/src/api.ts` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f67": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/src/main.tsx` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f68": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/tsconfig.json` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f69": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/frontend/vite.config.ts` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f7": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/flags.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f70": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/k8s/backend.yaml` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f71": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/load.sh` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f72": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/policy.env` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f73": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/smoke.sh` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f74": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/worker.md` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f75": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/workload.env` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f8": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/geocoder_client.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      },
+      "t2-f9": {
+        "criteria": {
+          "false": "The ticket can meet every criterion without touching this file.",
+          "true": "The ticket's code, tests or the one document a user reads to learn the behaviour must change in this file."
+        },
+        "instructions": "Must the file `app/backend/meetups/metrics.py` change for ticket 2 (Display attendee list to organisers while keeping attendee names private from other members) to meet its acceptance criteria?",
+        "type": "yes_no"
+      }
+    }
+  }
+}

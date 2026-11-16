@@ -360,7 +360,7 @@ want 0420 '.history[-1] | .step == "perimeter" and (.error | test("WORKLOAD"))' 
 # (search). A stub Decide adapter answers each yes_no question from the path
 # quoted in backticks in its instructions: app/backend/meetups/app.py 0.95,
 # app/backend/tests/test_meetups.py 0.6, any other 0.05 (policy/decide.env:
-# PERIMETER_CONFIDENCE=0.8).
+# PERIMETER_CONFIDENCE=0.7: 0.6 is uncertain, 0.95 and 0.05 are not).
 mkdir -p "$root/adapters/stub-decide" "$root/ctl" "$root/fixtures/decide"
 ln -s "$repo/policy" "$root/policy"
 [ ! -d "$repo/profiles" ] || ln -s "$repo/profiles" "$root/profiles"
@@ -487,6 +487,35 @@ awk 'tolower($0) ~ /search/ { f = 1 } END { exit !f }' "$tmp/run-i.err" \
   || nogo "the fallback to search over the 1000-question limit is not said on stderr" "$(cat "$tmp/run-i.err")"
 
 cp fixtures/intake/request.md "$root/tickets/0400.intake.md"
+# At L0 the demo intake's perimeter replays its recording (docs/adr/0091 §5):
+# the proposal the architect's recording holds, the questions over this
+# checkout's app/, DECIDE=replay on the repository's fixtures/decide. The
+# recording holds every candidate path: a file added to or removed from app/
+# changes its key, and this case then says so and proves the fallback.
+python3 - "$repo/fixtures/adk/architect" > "$tmp/demo-proposal.json" <<'PY'
+import glob, json, sys
+recs = sorted(glob.glob(sys.argv[1] + "/*.json"))
+print(json.dumps(json.loads(json.load(open(recs[0], encoding="utf-8"))["input"])))
+PY
+seed 0435 "$(jq -c '{id:"0435",kind:"intake",state:"drafted",intake:{by:"ci",via:"cli",at:"2026-11-16T10:00:00Z"},
+  proposal:., history:[{step:"interview",state:"drafted",at:"2026-11-16T10:00:00Z",by:"ci",via:"cli"}]}' "$tmp/demo-proposal.json")"
+: > "$tmp/run-r.err"
+tower env WORKLOAD="$repo/app" PERIMETER_BY=decide DECIDE=replay DECIDE_FIXTURES="$repo/fixtures/decide" \
+  sh core/tower.sh step 0435 perimeter 2> "$tmp/run-r.err" \
+  || nogo "the demo intake's perimeter did not replay at L0" "$(tail -n 5 "$tmp/run-r.err")"
+if doc 0435 | jq -e '.architect.by == "decide"' > /dev/null; then
+  want 0435 '.state == "proposed" and .architect.replayed == true and (.architect.tokens.input == 0)
+    and ([.proposal[] | .perimeter | index("app/backend/meetups/app.py")] | all(. != null))
+    and ([.proposal[] | .uncertain | length > 0] | all)
+    and ([.proposal[] | (.perimeter | length) as $n | $n > 0 and $n < 10] | all)' \
+    "the replayed perimeter is not app.py in each ticket's perimeter with an uncertain list, replayed and costing nothing"
+  printf 'intake: the demo intake perimeter replayed fixtures/decide (docs/adr/0091 §6)\n' >&2
+else
+  awk '/not recorded/ { f = 1 } END { exit !f }' "$tmp/run-r.err" \
+    || nogo "the demo intake's perimeter neither replayed nor said why it searched" "$(cat "$tmp/run-r.err")"
+  printf 'intake: the demo intake perimeter is not recorded for this app/ (its file list changed): proved the fallback\n' >&2
+fi
+
 tower sh core/tower.sh intake 0400 || nogo "core/tower.sh intake failed on the fixture intake" "$(tail -n 5 "$tmp/tower.err")"
 
 if [ ! -f "$recording" ]; then

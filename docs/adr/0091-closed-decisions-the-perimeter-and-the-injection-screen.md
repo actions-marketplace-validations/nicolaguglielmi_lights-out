@@ -157,10 +157,10 @@ Verified on 2026-11-16, before any line of code:
      at least `PERIMETER_CONFIDENCE`; a path whose confidence is under it
      is **uncertain**: listed on the proposed ticket as `uncertain`, most
      probable first, for the person, never in the perimeter.
-     `PERIMETER_CONFIDENCE=0.8` (`policy/decide.env`), provenance,
-     decision: this ADR's, the
-     band 0.2 < p < 0.8 left to a person; checked against the demo
-     intake's measure (Consequences).
+     `PERIMETER_CONFIDENCE=0.7` (`policy/decide.env`), provenance: the demo
+     intake's measure and the owner's decision, 2026-11-16 (Measured,
+     below). This ADR proposed 0.8 before the measure; at 0.8 the person
+     got 18 and 19 uncertain paths per ticket.
    - More than 1,000 questions (tickets × files): the step searches as
      before, and says so on stderr (the limit is §1's). Exit 3 at L0 (no
      recording): the step searches as before, and says so. Any other
@@ -169,8 +169,8 @@ Verified on 2026-11-16, before any line of code:
      "decide", harness: <adapter>, questions, ...}`, ledgered as ADR 0090
      §7 ledgers it. The spec gate checks every draft and the person
      confirms each ticket, as before.
-   - The default stays `search` in this ADR: switching it is the owner's
-     call on the comparison below.
+   - The default stays `search`: the owner's decision on the comparison
+     below, 2026-11-16, until a second intake is measured.
 
 7. **Pilot B: a screen before a role reads the client's words or a ticket
    body.**
@@ -184,8 +184,9 @@ Verified on 2026-11-16, before any line of code:
      `roles/product/screen.md`, asked on `product`'s behalf, and
      `ci/prompts.sh` reads it as it reads every prompt.
    - With p = `p_yes` and c its confidence, and `SCREEN_CONFIDENCE=0.8`
-     (`policy/decide.env`; provenance, decision: this ADR's, the same band
-     as §6, checked against the labelled set's measure in Consequences):
+     (`policy/decide.env`; provenance, decision: this ADR's, the band
+     0.2 < p < 0.8 left to a person; on the labelled set no answer fell in
+     it, Measured below):
      **stop** when c >= 0.8 and p >= 0.5; **flag** when c < 0.8; **pass**
      otherwise.
    - **Stop:** the step fails before the role runs and its line (ADR 0090
@@ -290,11 +291,52 @@ Verified on 2026-11-16, before any line of code:
 - The perimeter recording's key holds every candidate path: a file added
   to or removed from the workload changes it, and at L0 the step then
   searches as before until it is recorded again.
-- Whether identical requests return identical numbers is measured in the
-  M58 recording, not assumed (the M58 handoff).
-- The comparison on the demo intake (paths, cost, latency) and the
-  labelled set's numbers are recorded in the M58 handoff and below once
-  measured.
+- A `structured` answer is the model's own number about itself: on the
+  demo intake it said 0.8 to 0.95 for five paths and nothing between, so
+  `PERIMETER_CONFIDENCE` leaves it nothing uncertain. The threshold was
+  measured on `gemini-decisions` only.
+
+## Measured, 2026-11-16
+
+`./go record-decisions PROFILE=l1`, then `MEASURE=3 DECIDE_COMPARE=structured
+MEASURE_SEARCH=1`, approved by the owner (≤ $0.40), from a clone at af6600e.
+109 calls, none failed. Spend at list price about $0.13: `gemini-decision-1`
+125k input tokens ($0.013), `structured` on gemini-3.8-flash 29k in and 5k
+out ($0.039), the search path once 23k in and 15k out ($0.073).
+
+- **Identical requests, identical numbers.** Every one of the 27 requests
+  asked four times (the recording and three repeats) gave the same
+  probabilities to the last digit, the 150-question perimeter included.
+- **The labelled set (§8).** `gemini-decisions`: the 12 injections at
+  p 0.970 to 0.990, all stop; the 12 benign texts at p 0.010, all pass;
+  nothing in the uncertain band. `structured`: the same 12 stops and 12
+  passes. The pilot's bar (no benign stop, at least 10 of 12 injections
+  stopped or flagged) is met on both. The demo intake's words and ticket
+  0001's body: p 0.010, pass, on both.
+- **Latency.** `gemini-decisions`: a screen 0.26 to 2.24 s, median 0.42 s,
+  as the adapter measures the HTTP call from the workbench (TLS included;
+  the blog's 150-250 ms is the API's own); 0.38 to 1.22 s, median 0.62 s,
+  through the port's two processes. The 150-question perimeter: 0.60 s,
+  0.9 to 1.2 s through the port.
+  `structured`: a screen median 10.9 s, the perimeter 24.8 s.
+- **The perimeter of the demo intake** (2 tickets × 75 files of `app/`):
+
+  | path | turns | tokens in / out | cost | time | ticket 1 | ticket 2 |
+  |---|---|---|---|---|---|---|
+  | search (live) | 4 | 23,451 / 14,654 | $0.073 | 115 s | 6 paths | the same 6 |
+  | `gemini-decisions`, 0.7 | 1 request | 21,235 / 0 | $0.002 | 1.0 s | 5 in, 5 uncertain | 4 in, 8 uncertain |
+  | `gemini-decisions`, 0.8 | 1 request | the same | $0.002 | 1.0 s | 3 in, 19 uncertain | 4 in, 18 uncertain |
+  | `structured` | 1 request | 16,278 / 3,130 | $0.024 | 24.8 s | 5 in | the same 5 |
+
+  The search path's six: `app/README.md`, `app/backend/meetups/app.py`,
+  `db.py`, `app/backend/tests/test_meetups.py`, `app/frontend/src/App.tsx`,
+  `api.ts`, for both tickets, as its recording. At 0.7 `gemini-decisions`
+  puts in four of them for ticket 1 (`api.ts` uncertain at p 0.6996) and
+  three for ticket 2 (`db.py` and `api.ts` uncertain), adds
+  `app/frontend/index.html` to both and never names the README (p under
+  0.3). `structured` names five of the six, no README. The search path
+  makes one guess per ticket; asking every file makes the person's list
+  longer and the cost and wait two orders of magnitude smaller.
 
 ## Golden-rule check
 
