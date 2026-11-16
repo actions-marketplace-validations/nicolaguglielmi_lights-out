@@ -202,5 +202,64 @@ class Selection(unittest.TestCase):
         self.assertEqual(result.stdout, "")
 
 
+
+# A test that depends on its environment: the coverage hook prepends its own
+# directory to PYTHONPATH, so this passes without the hook and fails with it
+# (docs/adr/0076, amendment 2026-11-16).
+HOOK_SENSITIVE = """\
+import os
+import unittest
+
+from pkg import calc
+
+
+class T(unittest.TestCase):
+    def test_add(self):
+        self.assertEqual(calc.add(2, 3), 5)
+
+    def test_pythonpath_has_no_hook(self):
+        entries = os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        self.assertFalse([e for e in entries if e.endswith("hook")], entries)
+"""
+
+
+class HookOnlyFailure(unittest.TestCase):
+    """A suite that fails only with the hook stops the runner before any
+    mutant; MUTATION_SELECT=off still runs it whole."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix="mutation-hook-")
+        root = Path(cls.tmp.name) / "repo"
+        (root / "pkg").mkdir(parents=True)
+        (root / "pkg" / "__init__.py").write_text("")
+        (root / "pkg" / "calc.py").write_text(CALC)
+        (root / "tests").mkdir()
+        (root / "tests" / "__init__.py").write_text("")
+        (root / "tests" / "test_calc.py").write_text(HOOK_SENSITIVE)
+        cls.selected = run(root)
+        cls.whole = run(root, select="off")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_it_stops_with_one_line_and_no_score(self):
+        self.assertNotEqual(self.selected.returncode, 0, self.selected.stderr[-2000:])
+        self.assertEqual(self.selected.stdout.strip(), "")
+        self.assertIn("passes without the coverage hook and fails with it",
+                      self.selected.stderr)
+        self.assertIn("MUTATION_SELECT=off", self.selected.stderr)
+
+    def test_no_mutant_ran(self):
+        self.assertIsNone(COUNTS.search(self.selected.stderr))
+        self.assertNotIn("SURVIVOR ", self.selected.stderr)
+
+    def test_select_off_still_runs_the_whole_suite(self):
+        self.assertEqual(self.whole.returncode, 0, self.whole.stderr[-2000:])
+        self.assertIn("every mutant runs the whole suite", self.whole.stderr)
+        json.loads(score(self.whole))
+
+
 if __name__ == "__main__":
     unittest.main()
