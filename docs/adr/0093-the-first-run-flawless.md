@@ -254,12 +254,13 @@ each unchanged.
 
 The plan's budget stays: 900 s to the rollback, `DEMO_BUDGET_SECONDS`
 (plan §2, ADR 0013 §7). The `stranger` workflow adds its own, tighter
-one: `./go demo` on its clean runner must end within 540 s, or the job
-fails naming the time. Provenance: the slowest run after this change,
-446 s to its last plane stage (run 43835418922, cold, its checks cut
-short by a finding), plus 20% for runner variance (the five runs before
-spread 15% between the fastest and the slowest; a decision). The first
-full green run took 370 s.
+one: `./go demo` on its clean runner must end within 600 s, or the job
+fails naming the time. Provenance: the slowest green run after this
+change, 480 s (run 43841491822), plus 20% for runner variance, rounded
+up (a decision; the two green runs after spread 30%, 370 s to 480 s, and
+the five before 15%). A first draft said 540 s from the slowest run then
+known, 446 s; the second green run was within 12% of it, too tight for
+runner variance. The runs before this change, 700–805 s, fail it.
 
 The `stranger` job also plants two busy ports before `./go demo`: a
 server on 3000 (as a Node server would be) and one on 8080. The demo
@@ -349,6 +350,7 @@ built in the run), with 3000 and 8080 held by planted servers:
 | run (job) | `./go demo` | rollback reached at | note |
 |---|---|---|---|
 | 43837534798 (133200533128) | **370 s**, `GO: demo` | 166 s | both ports moved and named; the checks done before the plane's stages |
+| 43841491822 (133215492108) | **480 s**, `GO: demo` | 209 s | the same; the toolchain build 49 s, the plane 93 s, ticket 233 s, 37 s waiting for the checks |
 | 43835418922 | NO-GO at 446 s | 211 s | `ci-vendor-free` caught the first draft's port names |
 | 43833357693 | NO-GO at 390 s | 169 s | `ci-shell` caught the first draft's shellcheck findings |
 
@@ -356,7 +358,8 @@ Before, the same workflow: 700–805 s, rollback at 491–577 s. The steps of
 the green run, from its `steps.tsv`: preflight 1 s, toolchain 30 s,
 plane 71 s, rollback 63 s, ticket 204 s, waiting for the checks 0 s,
 console under 1 s. Those are the estimates' defaults (§2). The terminal
-showed 17 lines; the log kept 2,527.
+showed 17 lines; the log kept 2,527. The second green run's terminal is
+the one the README quotes.
 
 **This Mac**, from a fresh clone each time, no `.env`, 8080 still held
 by the owner's container (moved to 8081 by the preflight). The VM was
@@ -369,6 +372,15 @@ times are an upper bound, not a measure of the change alone:
 | before, 1st | NO-GO after 20 s | port 8080; `.env` by hand; `./go down` by hand |
 | before, 2nd | 1,106 s, NO-GO over budget | |
 | after2 (678d085) | NO-GO at 636 s | plane's stages done; `ci-vendor-free` |
-| after3 (cc90936) | AFTER3 | |
+| after3 (cc90936) | 1,335 s, NO-GO over budget | every stage GO; rollback at 197 s, ticket 0001 done at 819 s, then 514 s waiting for the checks; load 6.4 at the start, 10 during |
+| after4 (df603a1) | AFTER4 | |
 
 `./go ci` from a full clone at cc90936: GO, 693 s, on the same loaded VM.
+
+What after3 shows: the checks beside the plane help only where there is
+CPU to spare. On the clean runner they finished before the plane's
+stages; on this 4-CPU VM with two other sessions' `make ci` beside it,
+the same checks took 1,330 s, twice their 693 s alone, and became the
+critical path. The plan's 900 s holds on a machine the demo has to
+itself, which is what the README asks for ("A 4 GiB podman machine runs
+one demo at a time"), and the preflight does not measure the load.

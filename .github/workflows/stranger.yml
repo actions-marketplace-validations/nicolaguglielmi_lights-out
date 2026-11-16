@@ -49,7 +49,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       # docs/adr/0093 §6: the regression budget, from the measured runs in
       # its "After" section.
-      STRANGER_BUDGET_SECONDS: 540
+      STRANGER_BUDGET_SECONDS: 600
     steps:
       - name: 1. Install podman (README, Linux)
         run: |

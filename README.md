@@ -119,12 +119,31 @@ cd lights-out
 `./go demo` checks your machine first: it starts a stopped podman machine, and moves a port another program holds to a free one and tells you which ([ADR 0093](docs/adr/0093-the-first-run-flawless.md)). Then one line per step:
 
 ```
-QUICKSTART_OUTPUT
+lights-out demo: a ticket goes from a request to a canary that rolls itself back, at L0, with no key. About 6 min 10 s on this machine.
+[1/7] the engine, memory, disk and ports (about 1 s) ...
+      8080 is held by python3 (pid 2693): the app moves to 8081 (APP_PORT in .crew/ports.env)
+      3000 is held by python3 (pid 2692): the code host moves to 3001 (CODE_HOST_PORT in .crew/ports.env)
+      done, 1 s
+[2/7] the toolchain image, built once per revision (about 30 s) ... 49 s
+[3/7] the plane: code host, delivery, metrics, flags, registry and the app (about 71 s) ... 1 min 33 s
+[4/7] a canary with a failing feature takes 5% of the traffic (about 63 s) ...
+      A canary at 5% was judged and rolled back by itself, nobody paged: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010
+      done, 64 s
+[5/7] ticket 0001: request, spec, pull request, eight gates, merge, canary (about 3 min 24 s) ...
+      Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%, rolled back by itself, audited
+      done, 3 min 53 s
+[6/7] the repository's own checks, run beside the plane (about 0 s) ... 37 s
+[7/7] this run's console, frozen into one page (about 1 s) ...
+      See why, step by step: file:///home/runner/work/lights-out/lights-out/lights-out/.crew/demo/console.html#ticket/0001
+      Next: ./go console serves the live console on localhost:8098; ./go try <path> runs the gates on a repository of yours
+      The plane is still up: the app at http://localhost:8081, Gitea at http://localhost:3001, Prometheus at http://localhost:9090; ./go down stops it
+      done, 1 s
+GO: demo, milestone M9, 480s to rollback (budget 900s, plan §2)
 ```
 
 At the end it opens the run's own console on ticket 0001: the request, the spec gate, the pull request and its eight gates, the merge, the canary at 5%, and the rollback with its reason. [The same page for the latest run on main](https://nicolaguglielmi.github.io/lights-out/console/snapshot.html#ticket/0001) needs nothing installed. `./go console` serves the live one.
 
-QUICKSTART_TIMES Everything the tools print is in `.crew/demo/run.log`; `LIGHTS_OUT_VERBOSE=1 ./go demo` shows it as it goes.
+That run took 480 s on a clean GitHub runner, cold, with the toolchain image built in the run and ports 3000 and 8080 held by other servers ([stranger run 43841491822](https://github.com/nicolaguglielmi/lights-out/actions/runs/43841491822)); before ADR 0093 the same run took 700–805 s. The next run on the same machine estimates from this one. Everything the tools print is in `.crew/demo/run.log`; `LIGHTS_OUT_VERBOSE=1 ./go demo` shows it as it goes.
 
 **Then, on your own repository:** `./go try ~/code/your-repo` drafts its contract, runs the eight gates on its last commit, and prints the three commands that keep the draft ([section 3](#3-agents-on-your-repository)).
 

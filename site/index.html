@@ -576,7 +576,7 @@ Then the response is not 500 …
       <h2 id="proof-h">Numbers, with where they come from.</h2>
     </div>
     <div class="proof">
-      <div class="stat reveal"><div class="v">434<small> s</small></div><p><code>./go demo</code> from a clone to the canary's automatic rollback, after the first run, measured on a MacBook with podman. The first run downloads about 1.2 GB: expect 10–15 minutes.</p><a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">README · the whole loop</a></div>
+      <div class="stat reveal"><div class="v">370–480<small> s</small></div><p><code>./go demo</code> from a fresh clone to <code>GO: demo</code> on a clean GitHub runner, cold: the toolchain built in the run, two busy ports moved by the preflight. Before ADR 0093: 700–805 s.</p><a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">README · the whole loop</a></div>
       <div class="stat reveal"><div class="v">27<small> s</small></div><p>The gates Action's check on a pull request of a repository that is not lights-out, on a runner that had never pulled the signed gates image. <code>test-proof</code> alone: 14 s.</p><a href="https://github.com/nicolaguglielmi/lights-out-probe/pull/1">lights-out-probe · the pull request</a></div>
       <div class="stat red reveal"><div class="v">0.625<small> &lt; 0.666</small></div><p>Claude Code's first live run, ticket 0001: 5 of 8 mutants killed on the changed lines. The mutation gate said NO-GO. Nothing merged.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">docs/reference.md · live, on Claude</a></div>
       <div class="stat reveal"><div class="v">10 · 7<small> of 10</small></div><p>The same ten tickets on tenacity, a library not written for lights-out: merged with no human on the code by Claude Code on Anthropic and by Gemini CLI on Gemini. Gemini's other three stopped at the token budget, with no PR. OpenAI not run. Ten tickets, one repository, one run each: not a benchmark.</p><a href="scoreboard/">The scoreboard · every row sourced</a></div>
@@ -615,9 +615,28 @@ Then the response is not 500 …
 <pre><span class="p">$ </span>git clone https://github.com/nicolaguglielmi/lights-out.git
 <span class="p">$ </span>cd lights-out
 <span class="p">$ </span>./go demo
-SITE_OUTPUT</pre></div>
+lights-out demo: a ticket goes from a request to a canary that rolls itself back, at L0, with no key. About 6 min 10 s on this machine.
+[1/7] the engine, memory, disk and ports (about 1 s) ...
+<span class="m">      8080 is held by python3 (pid 2693): the app moves to 8081 (APP_PORT in .crew/ports.env)</span>
+<span class="m">      3000 is held by python3 (pid 2692): the code host moves to 3001 (CODE_HOST_PORT in .crew/ports.env)</span>
+<span class="m">      done, 1 s</span>
+[2/7] the toolchain image, built once per revision (about 30 s) ... 49 s
+[3/7] the plane: code host, delivery, metrics, flags, registry and the app (about 71 s) ... 1 min 33 s
+[4/7] a canary with a failing feature takes 5% of the traffic (about 63 s) ...
+<span class="m">      A canary at 5% was judged and rolled back by itself, nobody paged: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010</span>
+<span class="m">      done, 64 s</span>
+[5/7] ticket 0001: request, spec, pull request, eight gates, merge, canary (about 3 min 24 s) ...
+<span class="m">      Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%, rolled back by itself, audited</span>
+<span class="m">      done, 3 min 53 s</span>
+[6/7] the repository&#x27;s own checks, run beside the plane (about 0 s) ... 37 s
+[7/7] this run&#x27;s console, frozen into one page (about 1 s) ...
+<span class="m">      See why, step by step: file:///home/runner/work/lights-out/lights-out/lights-out/.crew/demo/console.html#ticket/0001</span>
+<span class="m">      Next: ./go console serves the live console on localhost:8098; ./go try &lt;path&gt; runs the gates on a repository of yours</span>
+<span class="m">      The plane is still up: the app at http://localhost:8081, Gitea at http://localhost:3001, Prometheus at http://localhost:9090; ./go down stops it</span>
+<span class="m">      done, 1 s</span>
+<span class="g">GO: demo, milestone M9, 480s to rollback (budget 900s, plan §2)</span></pre></div>
         <p>At the end it opens that run's console on ticket 0001, from the request to the rollback and its reason, like <a href="console/snapshot.html#ticket/0001">the frozen console of the latest run on main</a>.</p>
-        <p class="fine">SITE_TIMES <a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">Installing podman →</a></p>
+        <p class="fine">480 s on a clean runner, cold, with 3000 and 8080 taken (before: 700–805 s). Its images take about 3.3 GB on disk.<a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">Installing podman →</a></p>
       </div>
       <div class="panel reveal">
         <h3>Gates on your repository</h3>
