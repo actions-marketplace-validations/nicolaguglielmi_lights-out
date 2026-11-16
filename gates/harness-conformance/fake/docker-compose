@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""The proof's stand-in for docker-compose (docs/adr/0084, amendment A2): it
+answers the calls the suite and core/egress.sh make from the proof's tree (the
+current directory). config: the project, or PROOF_COMPOSE_JSON; build: nothing;
+up -d conformance-model: stub.py on a local port; up -d egress: the real
+core/egress.py through proof-egress.py (egress_wrap.py), detached as an engine
+would run it (stdout and stdin closed, stderr in a file: a child holding
+run.sh's pipe would hang the suite); ps -q egress; rm -sf (both); logs (both);
+exec -T conformance-model python3 -c CODE ARG...: CODE run with the names the
+stub's own network would give, egress 127.0.0.2 (the address the stub then
+sees the proxy connect from), the stub itself an address a harness cannot
+reach. Anything else, `run` above all (fake-cli never uses it, so a run.sh that
+calls it is a run.sh that started a container), is written to PROOF_INVOKED
+and exits 97."""
+import os
+import subprocess
+import sys
+
+argv = sys.argv[1:]
+args = " %s " % " ".join(argv)
+cwd = os.getcwd()
+state = os.path.join(cwd, ".proof")
+model = os.path.join(cwd, ".crew/conformance")
+here = os.path.dirname(os.path.abspath(__file__))
+NAMES = """import socket, sys
+names = {"egress": "127.0.0.2", "conformance-model": "10.9.0.3", "conformance-sink": "10.9.0.3"}
+real = socket.gethostbyname
+socket.gethostbyname = lambda n: names[n] if n in names else real(n)
+code = sys.argv[1]
+sys.argv = ["-c"] + sys.argv[2:]
+exec(code)"""
+
+
+def read(path):
+    try:
+        return open(path).read()
+    except OSError:
+        return ""
+
+
+def alive():
+    pid = read(state + "/egress.pid").strip()
+    if not pid:
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def kill(pidfile):
+    try:
+        os.kill(int(read(pidfile).strip()), 15)
+    except (OSError, ValueError):
+        pass
+
+
+def prefixed(path, prefix):
+    sys.stdout.write("".join(prefix + line + "\n" for line in read(path).splitlines()))
+
+
+if " exec " in args:
+    rest = argv[argv.index("python3") + 1:]
+    if not rest or rest[0] != "-c":
+        sys.exit(97)
+    os.execvp("python3", ["python3", "-c", NAMES, rest[1]] + rest[2:])
+elif " config " in args:
+    print(os.environ.get("PROOF_COMPOSE_JSON") or
+          '{"services":{"conformance-model":{"networks":{"default":{"aliases":["conformance-sink"]}}},"egress":{},"fake-cli":{}}}')
+elif " up " in args and " conformance-model " in args:
+    with open(model + "/stub.err", "w") as err:
+        p = subprocess.Popen(["python3", "-I", "gates/harness-conformance/stub.py", os.environ["CONFORMANCE_PORT"]],
+                             stderr=err, env=dict(os.environ, STUB_WORK=model + "/model"))
+    open(model + "/stub.pid", "w").write("%d\n" % p.pid)
+elif " up " in args and " egress " in args:
+    os.makedirs(state, exist_ok=True)
+    os.makedirs(cwd + "/.crew/egress", exist_ok=True)
+    if alive():
+        sys.exit(0)
+    port = subprocess.run([sys.executable, os.path.join(here, "freeport.py")], capture_output=True, text=True,
+                          check=True).stdout.strip()
+    open(state + "/egress.port", "w").write(port + "\n")
+    with open(state + "/egress.err", "a") as err:
+        p = subprocess.Popen(["python3", "proof-egress.py", port], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=err, env=dict(os.environ, EGRESS_DIR=cwd + "/.crew/egress"))
+    open(state + "/egress.pid", "w").write("%d\n" % p.pid)
+elif " ps " in args:
+    # An engine's container id is 64 hex characters; the proxy writes its first 12.
+    if alive():
+        print("proofegress1" + "0" * 52)
+elif " rm " in args and " egress " in args:
+    os.makedirs(state, exist_ok=True)
+    with open(state + "/egress.removed", "a") as fh:
+        fh.write("removed\n")
+    if alive():
+        kill(state + "/egress.pid")
+    if os.path.exists(state + "/egress.pid"):
+        os.remove(state + "/egress.pid")
+elif " rm " in args:
+    kill(model + "/stub.pid")
+elif " logs " in args and " egress " in args:
+    prefixed(state + "/egress.err", "egress-1  | ")
+elif " logs " in args and " conformance-model " in args:
+    prefixed(model + "/stub.err", "conformance-model-1  | ")
+elif " build " in args or " logs " in args:
+    pass
+else:
+    with open(os.environ["PROOF_INVOKED"], "a") as fh:
+        fh.write("docker-compose %s\n" % " ".join(argv))
+    sys.exit(97)
