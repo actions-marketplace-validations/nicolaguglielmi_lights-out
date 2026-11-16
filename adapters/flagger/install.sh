@@ -45,11 +45,40 @@ fetch base/flagger/deployment.yaml c8c4c8a85010fbb09c5d39a4a13a16a67fd2c05406fd8
 fetch tester/deployment.yaml 373424c4b628dcdd26ac1ddf1a07b2711dc3b4222642d44ba0abe95a5dbc915b "$tmp/tester/deployment.yaml"
 fetch tester/service.yaml 278919c9ad49fb11bb94fcfbb05f32b09f08f1f49a407006faac274606c946d0 "$tmp/tester/service.yaml"
 
+# The base's ClusterRole at v1.45.0 grants nothing on traefik.io, which
+# the Helm chart's does (charts/flagger/templates/rbac.yaml, the rule
+# copied here): without it the Traefik router cannot read its
+# TraefikService and the Canary never leaves Initializing (found on the
+# first run, 2026-11-16).
+cat > "$tmp/traefik-rbac.yaml" <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flagger-traefik
+rules:
+  - apiGroups: [traefik.io]
+    resources: [traefikservices]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flagger-traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flagger-traefik
+subjects:
+  - kind: ServiceAccount
+    name: flagger
+    namespace: flagger-system
+EOF
 # The base sets the image tag to 1.45.0 and the namespace; the flags are
 # this adapter's: Traefik, and Prometheus by the name cluster.sh bridges.
 cat > "$tmp/kustomization.yaml" <<EOF
 resources:
   - base
+  - traefik-rbac.yaml
 patches:
   - target:
       kind: Deployment

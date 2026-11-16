@@ -208,7 +208,9 @@ job=$(gl "$project/pipelines/$pid/jobs" | t jq -r '[.[] | select(.name == "light
 [ -n "$job" ] || nogo "pipeline $pid has no lights-out job"
 gl "$project/jobs/$job/trace" > "$work/job.log" || nogo "could not read job $job's log"
 sed 's/^/  [gitlab-ci] /' "$work/job.log" | tail -n 40 >&2
-line=$(sed -n 's/^lights-out line: //p' "$work/job.log" | tr -d '\r' | tail -n 1)
+# GitLab 19 prefixes every trace line with a timestamp and a stream mark
+# ("2026-11-16T09:03:57.859373Z 01O "): the line is what follows the label.
+line=$(tr -d '\r' < "$work/job.log" | sed -n 's/^.*lights-out line: //p' | tail -n 1)
 [ -n "$line" ] || nogo "the job printed no lights-out line (pipeline $status)"
 case "$line" in
   "GO: gates — "*) ;;

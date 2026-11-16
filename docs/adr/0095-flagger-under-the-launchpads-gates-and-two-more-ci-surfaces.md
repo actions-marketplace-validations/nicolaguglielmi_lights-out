@@ -160,7 +160,11 @@ Checked on 2026-11-16:
    v1.45.0 (CRDs, RBAC, account, the controller with `-mesh-provider=traefik`
    and `-metrics-server=http://prometheus.lights-out:9090`) and the
    loadtester, each file checked against the sha256 measured on 2026-11-16
-   (the release's checksums cover only the binaries). The workload's
+   (the release's checksums cover only the binaries). The base's ClusterRole
+  grants nothing on `traefik.io`, which the tag's Helm chart grants
+  (`charts/flagger/templates/rbac.yaml`): without it the Canary never left
+  `Initializing` on the first run (2026-11-16), so `install.sh` adds the
+  chart's rule as a ClusterRole of its own. The workload's
    manifests for Flagger live in `k8s/flagger/` (this instance:
    `app/k8s/flagger/`); argo's stay at the top of `k8s/`, which `cluster.sh`
    reads without recursing.
