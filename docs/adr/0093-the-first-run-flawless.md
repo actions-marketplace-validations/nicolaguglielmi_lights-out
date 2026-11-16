@@ -351,6 +351,7 @@ built in the run), with 3000 and 8080 held by planted servers:
 |---|---|---|---|
 | 43837534798 (133200533128) | **370 s**, `GO: demo` | 166 s | both ports moved and named; the checks done before the plane's stages |
 | 43841491822 (133215492108) | **480 s**, `GO: demo` | 209 s | the same; the toolchain build 49 s, the plane 93 s, ticket 233 s, 37 s waiting for the checks |
+| 43844732461 | **394 s**, `GO: demo` | | the same, on bf08e7c, under the 600 s budget |
 | 43835418922 | NO-GO at 446 s | 211 s | `ci-vendor-free` caught the first draft's port names |
 | 43833357693 | NO-GO at 390 s | 169 s | `ci-shell` caught the first draft's shellcheck findings |
 
@@ -373,7 +374,7 @@ times are an upper bound, not a measure of the change alone:
 | before, 2nd | 1,106 s, NO-GO over budget | |
 | after2 (678d085) | NO-GO at 636 s | plane's stages done; `ci-vendor-free` |
 | after3 (cc90936) | 1,335 s, NO-GO over budget | every stage GO; rollback at 197 s, ticket 0001 done at 819 s, then 514 s waiting for the checks; load 6.4 at the start, 10 during |
-| after4 (df603a1) | AFTER4 | |
+| after4 (df603a1) | **759 s, `GO: demo`** | rollback at 176 s, ticket 0001 done at 511 s, then 247 s waiting for the checks; load 2.6 at the start, 6.7 at the end |
 
 `./go ci` from a full clone at cc90936: GO, 693 s, on the same loaded VM.
 

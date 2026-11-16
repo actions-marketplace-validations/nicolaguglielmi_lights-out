@@ -5,20 +5,20 @@ Branch `claude/m60-onboarding-39ac32`, cut from `origin/main` at b4b1590. Pushed
 ## The acceptance, and what proves it
 
 - `./go ci` from a full clone under `.crew/m60/ci1` at cc90936: `GO: ci` (53 checks with `first-run`), 693 s on a VM shared with other sessions.
-- `./go demo` on a clean runner, the `stranger` workflow: FINAL_STRANGER.
-- Every workflow on the last commit: FINAL_RUNS.
+- `./go demo` on a clean runner, the `stranger` workflow, cold, 3000 and 8080 planted: `GO: demo` in 370 s (run 43837534798), 480 s (43841491822) and 394 s (43844732461, on bf08e7c), against 700–805 s before; the job fails over 600 s. On this Mac from a fresh clone with no `.env`: `GO: demo` in 759 s (after4), against 1,106 s and NO-GO before.
+- Every workflow on bf08e7c, the last commit with code: ci 43844732398 (engine-compat's verbose docker demo included), stranger 43844732461, self 43844732421, podman 43844732547, package 43844732410, site 43844732484, all success. The commits after it touch only the ADR, PLAN and this file.
 
 ## Before and after
 
 | | before | after |
 |---|---|---|
-| `stranger`, clean runner, cold | 700–805 s (five runs, 43627237505 … 43657565581); rollback at 491–577 s | **370 s** (run 43837534798), rollback at 166 s, with 3000 and 8080 held by planted servers; FINAL_STRANGER_SHORT |
-| this Mac, fresh clone | NO-GO after 20 s (8080 busy), `.env` and `./go down` by hand, then 1,106 s, `NO-GO: demo` over the 900 s budget | no `.env`: 8080 moved to 8081 by itself; MAC_AFTER |
-| lines on the terminal | ~3,260 (clean runner), 2,048 (Mac) | 17, the rest in `.crew/demo/run.log` |
+| `stranger`, clean runner, cold | 700–805 s (five runs, 43627237505 … 43657565581); rollback at 491–577 s | **370 s, 480 s, 394 s** (runs 43837534798, 43841491822, 43844732461), rollback at 166–209 s, with 3000 and 8080 held by planted servers and moved |
+| this Mac, fresh clone | NO-GO after 20 s (8080 busy), `.env` and `./go down` by hand, then 1,106 s, `NO-GO: demo` over the 900 s budget | no `.env`: 8080 moved to 8081 by itself; **759 s, `GO: demo`** (after4, df603a1, load 2.6–6.7 from other sessions) |
+| lines on the terminal | ~3,260 (clean runner), 2,048 (Mac) | 17–21, the rest in `.crew/demo/run.log` |
 | at the end | the app's, Gitea's and Prometheus's URLs | the run's console frozen and opened on ticket 0001, the rollback's reason, what to try next, the plane's URLs and `./go down` |
 | your repository | `./go init <path>`, `./go gates`, copy and commit by hand | `./go try <path>`: 27 s on a small JavaScript repository, `GO: try`, the keep-commands printed and proven |
 
-The Mac's VM was shared with other sessions running `make ci` and tests (load 6–14 on 4 CPUs, recorded per run in `.crew/m60/times.txt`); its "after" times are an upper bound. The clean runner is the measure.
+The Mac's VM was shared with other sessions running `make ci` and tests (load 6–14 on 4 CPUs, recorded per run in `.crew/m60/times.txt`). There the checks beside the plane compete for CPU that is not free: after3 (cc90936) passed every stage, rollback at 197 s, but waited for the checks until 1,333 s, `NO-GO: demo` over 900 s. The clean runner is the measure; on a loaded 4-CPU machine the 900 s is not held (ADR 0093, After).
 
 ## The friction log
 
@@ -38,7 +38,7 @@ Docs: README section 2 (the quick start) and "If something goes wrong", the tuto
 
 ## Screenshots
 
-In the shared notes folder, `m60-shots/`: `end-console-ticket-0001-dark.jpg` (the page the demo opens at the end: ticket 0001's flow strip, each gate with its seconds, the canary ✕, the rollback's reason) and `terminal-stranger-370s.png` (the whole terminal of the clean-runner run).
+In the shared notes folder, `m60-shots/`: `end-console-ticket-0001-dark.jpg` (the page the demo opens at the end: ticket 0001's flow strip, each gate with its seconds, the canary ✕, the rollback's reason) and `terminal-stranger-370s.jpg` (the whole terminal of the clean-runner run).
 
 ## Contradicting the plan, or worth knowing
 
