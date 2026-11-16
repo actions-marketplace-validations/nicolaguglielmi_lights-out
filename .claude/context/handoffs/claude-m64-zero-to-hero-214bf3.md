@@ -8,10 +8,10 @@ Actions.
 
 | Criterion | Result |
 |---|---|
-| `./go ci` from a full clone under `.crew/` | CI_RESULT |
-| `./go demo` green | DEMO_RESULT |
-| the dev container job, timed | CODESPACE_RESULT |
-| every workflow green on the branch's head | WORKFLOWS_RESULT |
+| `./go ci` from a full clone under `.crew/` | `GO: ci` at aa45508, 57 GO lines and no NO-GO, `GO: zero-to-hero` among them, 532 s on this Mac (load ~11), clone `.crew/m64` |
+| `./go demo` green | stranger run 43969827161, job demo 133660201322 (podman): `GO: demo, milestone M9, 511s to rollback`; ci run 43969827123, job engine-compat 133660321700 (docker): `682s to rollback` |
+| the dev container job, timed | `GO: demo, milestone M9, 668s to rollback` at aa45508 (stranger run 43969827161, job codespace 133660201332, 22:30:08–22:42:17Z); first run 669 s at f205507 (run 43968199663, job 133653156720), container built in 57 s |
+| every workflow green | aa45508 (the last code commit): ci 43969827123, stranger 43969827161, self 43969827384, podman 43969827166, package 43969827388, site 43969827312, all success; the commits after it are docs only |
 
 ## What changed, in five lines
 
@@ -34,7 +34,7 @@ Actions.
 | Level | Time in the guide | Measured | Source |
 |---|---|---|---|
 | 0 | 1 min | the page and one click; the snapshot is 1.4 MB | the site's console/snapshot.html, frozen from ci run 43501367427 |
-| 1 | about 10 min | 427 s (podman, clean runner); CODESPACE_SECONDS in the dev container | stranger run 43925636189 job 133504261420; CODESPACE_SOURCE |
+| 1 | about 10 min | 427 s and 511 s (podman, clean runner); 668–669 s in the dev container, plus 57 s to build it | stranger runs 43925636189 (job 133504261420), 43969827161 (jobs 133660201322, 133660201332), 43968199663 (job 133653156720) |
 | 2 | about 15 min | `./go try` 40 s first, 14 s warm, on this Mac (load ~11); the Action 37 s on the probe | local, commit f205507; lights-out-probe run 42591256328 |
 | 3 | about 30 min | `./go intake` 7 s, two `./go answer` 4 s and 8 s | local, commit f205507 |
 | 4 | 1–2 h | `./go demo-seam`'s six steps 212 s | ci run 43925636171 job seam 133504261637 |
@@ -54,7 +54,7 @@ Actions.
 Screenshots in the notes folder (`m64-shots/`): `site-first-screen-1440-dark.jpg`, `site-first-screen-1440-light.jpg`,
 `site-first-screen-390-dark.jpg`. The site keeps one dark palette under both colour schemes, so the two desktop shots are
 the same page; measured rendered in Chromium, every hero text node at least 5.27:1 in both (18 nodes, WCAG AA 4.5:1),
-no horizontal scroll at 390 px. SITE_REVIEW
+no horizontal scroll at 390 px. The site workflow's own stills of aa45508 (site run 43969827312, artifact `site-review`) are copied there as `ci-desktop-1-hero.png`, `ci-phone-1-hero.png`, `ci-desktop-7-try.png`, and the console the first button opens, `ci-snapshot-ticket-0001-dark.png` and `-light.png`: that page follows the visitor's scheme.
 
 ## Found, against the plan or the docs
 
