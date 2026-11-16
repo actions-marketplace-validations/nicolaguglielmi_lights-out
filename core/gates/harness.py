@@ -83,7 +83,7 @@ numbers of this gate's own, decisions too: it waits up to 10 s for the
 engine's log to hold the decisions the proxy has already taken (a log read
 lags the event by well under a second; 10 is room, a missing line after it
 is a real absence); resolving a name from the stub's side is retried ten
-times a second apart (found on rootless podman in GitHub Actions, podman run
+times a second apart (found on rootless podman in the hosted CI, podman run
 41868543196: aardvark-dns answered "Temporary failure in name resolution"
 for `egress` right after a harness container left the network, where the
 same lookup had worked one case earlier); and 3128, the proxy's port, is

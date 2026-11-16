@@ -63,7 +63,7 @@ fake-cli proves the suite, never an adapter. What it cannot prove without an
 engine: the internal network itself, DNS, the container's real peer address
 (127.0.0.2 stands in for egress's), a real CLI honouring HTTP_PROXY and
 NO_PROXY, and the container side of run.sh. Those are case 9 on docker in
-GitHub Actions and, once, on rootless podman.
+the hosted CI and, once, on rootless podman.
 """
 
 import json

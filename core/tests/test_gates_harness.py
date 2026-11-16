@@ -103,7 +103,7 @@ class Discovery(Tmp):
         self.assertIn("conformance.env is missing", no.exception.reason)
 
     def test_is_var_name(self):
-        for ok in ("A", "GEMINI_API_KEY", "K9"):
+        for ok in ("A", "PROVIDER_KEY", "K9"):
             self.assertTrue(harness.is_var_name(ok), ok)
         for bad in ("", "a", "9A", "_A", "A B", "A-B"):
             self.assertFalse(harness.is_var_name(bad), bad)
