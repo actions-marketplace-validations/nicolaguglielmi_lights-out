@@ -39,7 +39,7 @@ the 751 s of job 132639432115 went, from its timestamped log:
 | 0–50 | the workbench image built (first run) |
 | 50–131 | `./go up` on the host (engine-compat): 9 images pulled or built, 7 adapters ready |
 | 131–134 | `./go smoke` |
-| 134–452 | **`make ci`, the repository's 46 self-checks: 318 s** |
+| 134–452 | **`make ci`, the repository's 52 self-checks: 318 s** |
 | 452–468 | `make up` again, inside the demo: nothing to start, the stable image re-published |
 | 468–531 | `demo-rollback`: a canary at 5%, judged NO-GO on error rate, rolled back |
 | 531–749 | `e2e`: ticket 0001 requested, spec, PR, the eight gates (120 s, mutation included), merge, a canary at 5% (75 s), rolled back |
@@ -60,7 +60,7 @@ a warm first run, never a cold one). `git clone` from GitHub: 3 s.
 | `./go demo`, no `.env` | 20 s | `Error response from daemon: cannot bind tcp port :8080: address already in use`, then the hint `APP_PORT=<port> in .env`; `NO-GO: engine-compat`. The plane is left half up. |
 | `./go down` | 14 s | a manual step the error did not mention |
 | write `APP_PORT=9000` in `.env` | — | a manual step |
-| `./go demo` | MAC_BEFORE s | MAC_BEFORE_DETAIL |
+| `./go demo` | 1,106 s | `NO-GO: demo — rollback reached, but 1103s > 900s budget`. Up and smoke on the host 46 s; `make ci` 504 s (47–551); `make up` again 65 s; `demo-rollback` 68 s; `e2e` 419 s, of which the PR's gates 211 s and its release 107 s. 2,048 lines printed. |
 
 **C. Seen elsewhere, from the brief of this milestone:** a host port
 3000 held by a local Node server made `./go up` fail with `gitea not
@@ -83,7 +83,7 @@ one stdout line: `GO: preflight` or `NO-GO: preflight — <what to do, in
 one line>`.
 
 a. **The machine.** On macOS and Windows, when podman has a machine and
-   it is stopped, `./go` starts it (`podman machine start <name>`) and
+   it is stopped, `./go` (any command that needs the engine) starts it (`podman machine start <name>`) and
    says so in one line, instead of dying with the command to type. With
    no machine at all it still prints the two commands that create one:
    the size of a VM on someone's laptop is theirs to choose.
@@ -97,8 +97,16 @@ b. **Memory.** The engine's `MemTotal` below 3,800 MiB prints one
 
 c. **Disk.** Free space in the engine's store (podman: `GraphRootAllocated
    − GraphRootUsed`; docker: `df` of `DockerRootDir` when the host can
-   read it) below DISK_NEED is a NO-GO naming the free space, the need and
-   `podman system prune` / `docker system prune`. Provenance: DISK_PROV.
+   read it) below 6,000 MB is a NO-GO naming the free space, the need and
+   `podman system prune` / `docker system prune`. Provenance: the images
+   one demo uses, measured on this Mac on 2026-11-16 (`podman image ls`),
+   add up to 3.8 GB counted image by image (the workbench 1.3 GB, the
+   test image 421 MB, the app 339 MB, the base images 112–294 MB each),
+   which overcounts shared layers; the registry's and Gitea's data and a
+   build's temporary layers come on top. 6,000 MB is that, with about half
+   again as margin (a decision). The stranger workflow prints `podman
+   system df` after its run, so the next revision of this number can be a
+   measure.
    When the engine does not say, the line says "not checked".
 
 d. **Ports.** The plane publishes six host ports. Five can move, each
@@ -122,7 +130,7 @@ d. **Ports.** The plane publishes six host ports. Five can move, each
    `.crew/ports.env` holds only moved ports, one `NAME=port` per line. A
    port it holds is kept on the next run while it is free or held by this
    plane, so the URLs a person has open stay valid. The Makefile includes
-   it after `.env` and exports the five variables, so compose, the
+   it before `.env`, so a value there wins, and exports the five variables, so compose, the
    adapters and the printed URLs read the same ports. `./go doctor` reads
    it too, and says a moved port is moved, not busy.
 

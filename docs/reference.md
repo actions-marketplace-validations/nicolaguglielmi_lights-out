@@ -92,7 +92,9 @@ Declared at L0 (ADR 0036, proposed): `CREW_HARNESS=network` makes the assign ste
 
 On macOS, podman runs inside `podman machine`, a VM. The docker CLI is compatible but not the documented path; use `CONTAINER_ENGINE=docker` if needed.
 
-If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free port) in `.env`: the app then answers at `http://localhost:9000`, and every command follows it.
+`./go demo` and `./go up` start with a preflight on the host (ADR 0093 §1): a stopped podman machine is started, less than 3,800 MiB for the engine prints a warning, too little disk in the engine's store is a NO-GO with the prune command, and the plane's ports are checked. A busy port moves to the first free one after it, is written to `.crew/ports.env` and named in one line: the app (`APP_PORT`, 8080), Gitea (`GITEA_PORT`, 3000), Prometheus (`PROMETHEUS_PORT`, 9090), Envoy's admin (`ENVOY_ADMIN_PORT`, 9901) and flagd (`FLAGD_PORT`, 8016). The registry's 5050 cannot move, because it is part of every image's name; a busy 5050 is a NO-GO that names its holder. A value in `.env` wins over `.crew/ports.env` and is never moved: busy, it is a NO-GO. A lights-out plane started from another directory is a NO-GO that names it. `./go doctor` reads the same ports.
+
+`./go demo` shows one line per step, `[n/7]`, with an estimate from this machine's last run (`.crew/demo/steps.tsv`), and keeps everything the tools print in `.crew/demo/run.log`; on a failure it prints the log's last 40 lines and its path. `LIGHTS_OUT_VERBOSE=1` prints everything as it comes. The repository's own checks (`make ci`) run beside the plane in a second container and their verdict is awaited before `GO: demo` (ADR 0093 §3). At the end the run's console is frozen into `.crew/demo/console.html`, opened on ticket 0001, and opened in the browser when stdout is a terminal (`LIGHTS_OUT_OPEN=0` to stop that).
 
 ```sh
 ./go up              # start the L0 plane and wait for it
@@ -105,6 +107,7 @@ If port 8080 is already taken on your machine, put `APP_PORT=9000` (or any free 
 ./go demo-seam       # attach workloads/minimal as a repository of its own and run the plane on it
 ./go attach <path>   # make a repository of yours the workload (its .lights-out/ is the contract)
 ./go detach          # back to the bundled app
+./go try <path>      # your repository in one command: init, then the eight gates on its last commit by the draft; the draft is copied to .crew/try/<name>/ and nothing stays attached (ADR 0093 §5)
 ./go init [<path>]   # draft the gates half of .lights-out/ in .attached/ (attaches <path> first); the baseline is measured (ADR 0042 §6)
 ./go gates           # judge a range: BASE=<ref> HEAD=<ref>, default the last commit; no plane, no engine socket on the workbench toolchain (ADR 0042 §4-§5)
 ./go demo-init       # prove attach, init and gates on workloads/minimal and workloads/minimal-js without the plane, timed against 300 s (ADR 0042 §10)

@@ -36,9 +36,10 @@ cd lights-out
 
 `./go doctor` prints one line per item (engine, podman socket, git,
 workbench image, the plane's ports, the key your profile needs) and ends
-with `GO: doctor` or `NO-GO: doctor — <items>`. The ports 3000, 5050,
-8016, 9090, 9901 and 8080 (or `APP_PORT`) must be free, 8085 and 8086
-too when a profile names the emulators (ADR 0060).
+with `GO: doctor` or `NO-GO: doctor — <items>`. You do not have to fix a
+busy port yourself: `./go demo` starts with a preflight that moves the
+app's, Gitea's, Prometheus's, Envoy's admin and flagd's port to a free one
+and says so (ADR 0093 §1). Only 5050, the registry's, cannot move.
 
 On docker, put `CONTAINER_ENGINE=docker` before every `./go`. That is what
 the CI runs below did.
@@ -54,15 +55,21 @@ verdict.
 ./go demo
 ```
 
-The first run downloads about 1.2 GB and builds the toolchain image, so
-expect 10 to 15 minutes. Later runs take about 7 (README). The demo runs,
-in order: `ci`, `up`, `smoke`, `verify`, `demo-rollback` and `e2e`. The
-last two are the story.
+The terminal shows one line per step, with an estimate, and keeps the
+rest in `.crew/demo/run.log` (ADR 0093 §2); `LIGHTS_OUT_VERBOSE=1 ./go
+demo` prints every line the excerpts below come from. The demo runs, in
+order: the preflight, the toolchain image, `up` and `smoke`,
+`verify`, `demo-rollback` and `e2e`, while the repository's own checks
+(`ci`) run beside the plane in a second container; their verdict is
+awaited before `GO: demo`. `demo-rollback` and `e2e` are the story. The
+end freezes this run's console into `.crew/demo/console.html`, opened on
+ticket 0001, and prints the link.
 
 ### The repository checks itself
 
-`./go ci` runs the repository's own checks. Each prints one line. The
-last ones in the run:
+`./go ci` runs the repository's own checks. Each prints one line. In
+`./go demo` they run beside the plane and their lines come after the
+plane's. The last ones in the run:
 
 <!-- source: GitHub Actions run 41866972654 (commit ee2f679), job engine-compat (126703546061), step "./go demo" -->
 ```

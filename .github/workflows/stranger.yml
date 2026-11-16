@@ -116,9 +116,10 @@ jobs:
           [ "$t" -le "$budget" ] || { echo "::error::./go demo took ${t}s on a clean runner, over the ${budget}s regression budget (docs/adr/0093 §6)"; exit 1; }
           echo "./go demo: ${t}s, within the ${budget}s regression budget" >> "$TIMES"
       - if: always()
-        name: The plane, as the demo left it
+        name: The plane, as the demo left it, and the disk it took (docs/adr/0093 §1c)
         run: |
           podman ps -a --format '{{.Names}} {{.Status}}' || true
+          podman system df || true
       # verify's judgement reads target_info joined on (job, instance): a
       # 422 from Prometheus is two target_info series on one side.
       - if: always()

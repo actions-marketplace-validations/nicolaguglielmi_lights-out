@@ -201,6 +201,8 @@ Container lights-out-gitea-1 Started
 GO: engine-compat
 [step] rollback
 NO-GO: launchpad — 5%: error_rate canary=1.000 → rolled back
+GO: demo-rollback
+NO-GO: demo-gates — a stage's own line, not the demo's
 [say] A canary at 5% failed its check and rolled back by itself
 [step] ticket
 [tower] 0001: release → rolled-back

@@ -8,7 +8,8 @@
 #   - on `[step] <id>` ends the step before (its seconds) and prints
 #     `[n/7] <what it does> (about <eta>) ...` on stderr;
 #   - on `[say] <text>` prints the text on stderr;
-#   - prints `GO: demo …` and `NO-GO: demo — …` on stdout, as they come;
+#   - prints the demo's own verdict, `GO: demo[, …]` or `NO-GO: demo — …`,
+#     on stdout, never a stage's (`GO: demo-rollback`);
 #   - on `[exit] <rc>`, the run's exit code, written last by ./go: on 0,
 #     rewrites <dir>/steps.tsv with each step's seconds, the next run's
 #     estimates; otherwise prints the run's last NO-GO line on stdout if no
@@ -78,7 +79,7 @@ while IFS= read -r line; do
     '[say] '*)
       [ -z "$pending" ] || { printf '\n' >&2; pending=""; }
       printf '      %s\n' "${line#\[say\] }" >&2 ;;
-    'GO: demo'*|'NO-GO: demo'*)
+    'GO: demo'|'GO: demo,'*|'GO: demo —'*|'NO-GO: demo —'*)
       [ -z "$pending" ] || { printf '\n' >&2; pending=""; }
       verdict=1
       printf '%s\n' "$line" ;;
