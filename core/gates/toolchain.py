@@ -202,6 +202,7 @@ def run(cmd, env, stdout=None):
         os.makedirs(os.path.join(cache, d), exist_ok=True)
     where = os.path.join(env["WORKLOAD"], env.get("WORKLOAD_TEST_ROOT", ""))
     if not os.path.isdir(where):
+        say("%s is not a directory: the workload's test root (WORKLOAD_TEST_ROOT)" % where)
         return 125
     run_env = dict(env, MUTATION_LINES=env.get("MUTATION_LINES", ""), UV_PYTHON_DOWNLOADS="never", UV_LINK_MODE="copy",
                    UV_CACHE_DIR=cache + "/uv", UV_PROJECT_ENVIRONMENT=venv_dir(cache, env["WORKLOAD"]),

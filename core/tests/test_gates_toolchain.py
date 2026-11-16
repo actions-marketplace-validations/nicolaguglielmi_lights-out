@@ -238,9 +238,16 @@ class ImageFiles(unittest.TestCase):
 
 
 class CommandLine(Tmp):
+    def env(self, **kw):
+        """This process's environment without the toolchain's own keys (./go ci sets some), plus the test's."""
+        base = {k: v for k, v in os.environ.items()
+                if k not in ("WORKLOAD_TEST_ROOT", "TOOLCHAIN_ISOLATE", "TOOLCHAIN_IMAGE", "MUTATION_LINES", "DOCKER_HOST",
+                             "GATES_OUT", "PYTHONPATH")}
+        return dict(base, **super().env(**kw))
+
     def test_preflight_prints_where_or_the_reason(self):
         here = os.getcwd()
-        env = dict(os.environ, **self.env(TOOLCHAIN_IMAGE="workbench"))
+        env = self.env(TOOLCHAIN_IMAGE="workbench")
         got = subprocess.run([sys.executable, "-m", "core.gates.toolchain", "preflight"], cwd=here, env=env,
                              capture_output=True, text=True)
         self.assertEqual((got.returncode, got.stdout), (0, "workbench\n"))
@@ -253,7 +260,7 @@ class CommandLine(Tmp):
         self.assertTrue(got.stdout.startswith("in node:24: the engine socket is not available"), got.stdout)
 
     def test_run_returns_the_commands_exit_and_a_bad_form_says_toolchain(self):
-        env = dict(os.environ, **self.env(TOOLCHAIN_IMAGE="workbench"))
+        env = self.env(TOOLCHAIN_IMAGE="workbench")
         got = subprocess.run([sys.executable, "-m", "core.gates.toolchain", "run", "echo out; echo err >&2; exit 4"],
                              cwd=os.getcwd(), env=env, capture_output=True, text=True)
         self.assertEqual((got.returncode, got.stdout, got.stderr), (4, "out\n", "err\n"))
@@ -265,7 +272,7 @@ class CommandLine(Tmp):
 
     def test_cmd_gets_the_callers_pythonpath_back(self):
         root = os.getcwd()
-        env = dict(os.environ, **self.env(TOOLCHAIN_IMAGE="workbench"))
+        env = self.env(TOOLCHAIN_IMAGE="workbench")
         for given, want in ((root + ":/elsewhere", "[/elsewhere]"), (root, "[unset]"), ("/mine", "[/mine]")):
             env["PYTHONPATH"] = given
             got = subprocess.run([sys.executable, "-m", "core.gates.toolchain", "run", 'echo "[${PYTHONPATH-unset}]"'],
