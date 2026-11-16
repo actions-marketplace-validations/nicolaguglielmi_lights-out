@@ -324,8 +324,9 @@ adds features.
   run 43909756283, every job green.
 - [x] **Tag `v0.8.0`** on main (807f2a4), every job green: run
   43910381207, PyPI 0.8.0, the wiki rendered, three drafts.
-- [ ] **The three drafts `v0.8.0` published to the Marketplace** (owner,
-  passkey).
+- [x] **The three drafts `v0.8.0` published to the Marketplace** (owner,
+  passkey, 2026-11-16): `lights-out`, `test-integrity` and `test-proof`
+  each show 0.8.0 as Latest.
 
 ### The Python package on PyPI (M35)
 
