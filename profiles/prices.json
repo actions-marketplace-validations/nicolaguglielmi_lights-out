@@ -1,43 +1,57 @@
 {
-  "about": "List prices per model, USD per million tokens, input and output; from/until are UTC days, both included. One entry per provider, model and period; a model not listed has no price, and its runs are 'cost unknown' (docs/adr/0083 §1). Each price is the vendor's own page, read on the day in `checked`.",
+  "about": "List prices per model, USD per million tokens: input, output and, where the vendor has one, cached_input (input served from the vendor's cache, docs/adr/0092 §5); from/until are UTC days, both included. One entry per provider, model and period; a model not listed has no price, and its runs are 'cost unknown' (docs/adr/0083 §1). Each price is the vendor's own page, read on the day in `checked`.",
   "prices": [
     {
       "provider": "gemini",
       "model": "gemini-3.8-flash",
       "input": 0.75,
+      "cached_input": 0.075,
       "output": 3.75,
       "until": "2026-12-31",
-      "note": "Standard, paid tier; output includes thinking tokens",
+      "note": "Standard, paid tier; output includes thinking tokens; cached_input is \"context caching\" (storage per hour not priced)",
       "source": "https://aistudio.google.com/docs/pricing",
-      "checked": "2026-11-12"
+      "checked": "2026-11-16"
     },
     {
       "provider": "gemini",
       "model": "gemini-3.8-flash",
-      "input": 1.50,
-      "output": 7.50,
+      "input": 1.5,
+      "cached_input": 0.15,
+      "output": 7.5,
       "from": "2027-01-01",
-      "note": "Standard, paid tier, the price the page announces from 2027-01-01",
+      "note": "Standard, paid tier, the price the page announces from 2027-01-01; cached_input is \"context caching\" (storage per hour not priced)",
       "source": "https://aistudio.google.com/docs/pricing",
-      "checked": "2026-11-12"
+      "checked": "2026-11-16"
     },
     {
       "provider": "anthropic",
       "model": "claude-sonnet-5-5",
-      "input": 2.00,
-      "output": 10.00,
-      "note": "base input and output; no long-context tier for this model",
+      "input": 2.0,
+      "cached_input": 0.1,
+      "output": 10.0,
+      "note": "base input and output; cached_input is \"cache hits and refreshes\", 0.05x input; cache writes priced as input (docs/adr/0092); no long-context tier for this model",
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-      "checked": "2026-11-12"
+      "checked": "2026-11-16"
     },
     {
       "provider": "openai",
       "model": "gpt-6.1-sol",
-      "input": 2.00,
-      "output": 10.00,
-      "note": "Standard, prompts up to 272K tokens; over that 4.00 and 15.00, not applied (docs/adr/0083)",
+      "input": 2.0,
+      "cached_input": 0.1,
+      "output": 10.0,
+      "note": "Standard, prompts up to 272K tokens; over that 4.00, cached 0.20 and 15.00, not applied (docs/adr/0083)",
       "source": "https://developers.openai.com/api/docs/pricing",
-      "checked": "2026-11-12"
+      "checked": "2026-11-16"
+    },
+    {
+      "provider": "zai",
+      "model": "glm-5.3",
+      "input": 1.4,
+      "cached_input": 0.26,
+      "output": 4.4,
+      "note": "pay-as-you-go; cached input storage \"limited-time free\", not priced; the page carries no date",
+      "source": "https://docs.z.ai/guides/overview/pricing",
+      "checked": "2026-11-16"
     }
   ]
 }

@@ -1518,6 +1518,33 @@ class LiveAndBurnInTheLogbook(unittest.TestCase):
         live = self.ticket(self.read(unbudgeted), "0003")["live"]
         self.assertEqual((live["budget"], live["warn"], live["line"]), (None, False, "dev-worker, attempt 3: 2,210,000 tokens, no budget"))
 
+    def test_the_providers_budget_and_its_warning(self):
+        # docs/adr/0092 §7: TOKEN_BUDGET_<PROVIDER> beside the default, for the
+        # profile's provider (the stub's is prov); 80% of it warns.
+        def per_provider(n):
+            def mutate(root):
+                path = root / "roles" / "dev-worker" / "role.env"
+                path.write_text(path.read_text(encoding="utf-8") + f"TOKEN_BUDGET_PROV={n}\n")
+                (root / ".crew" / "0003" / "out" / "tokens").write_text("2210000\n")
+            return mutate
+        live = self.ticket(self.read(per_provider(2762500)), "0003")["live"]
+        self.assertEqual((live["budget"], live["warn"]), (2762500, True))
+        self.assertEqual(live["line"], "dev-worker, attempt 3: 2,210,000 of 2,762,500 tokens (80%) — near TOKEN_BUDGET, the run stops at 2,762,500")
+        live = self.ticket(self.read(per_provider(2762501)), "0003")["live"]
+        self.assertEqual((live["budget"], live["warn"]), (2762501, False))
+        # Another provider, or none, gets the default.
+        for provider in ("other", ""):
+            live = self.ticket(self.read(per_provider(2762501), extra={"MODEL_PROVIDER": provider}), "0003")["live"]
+            self.assertEqual((live["budget"], live["warn"]), (2600000, True), provider)
+
+    def test_the_role_matrix_shows_the_providers_budget(self):
+        def per_provider(root):
+            path = root / "roles" / "dev-worker" / "role.env"
+            path.write_text(path.read_text(encoding="utf-8") + "TOKEN_BUDGET_PROV=3900000\n")
+        b = self.read(per_provider)
+        row = next(r for r in b["roles"] if r["role"] == "dev-worker")
+        self.assertEqual(row["budget"], 3900000)
+
     def test_the_burn_of_the_stubs_last_day(self):
         b = self.base()["spend"]["burn"]
         self.assertEqual((b["day"], b["first"], b["end"], b["runs"], b["unknown"]),

@@ -813,7 +813,8 @@ def timeline(doc, tid, rels, globs):
 # --- the roles and the run in flight (docs/adr/0086, docs/adr/0087 §4) -------
 
 # Provenance, decision: docs/adr/0087 §4, proposed there for the owner to
-# confirm: the warning comes at 80% of TOKEN_BUDGET. On M24's Gemini runs each
+# confirm: the warning comes at 80% of TOKEN_BUDGET, the provider's when the
+# role sets one (docs/adr/0092 §7). On M24's Gemini runs each
 # model call resent about 45,000 tokens (measurement, the phase D handoff):
 # the last 20% of 2,600,000 is about eleven calls before the stop.
 WARN_NUM, WARN_DEN = 4, 5
@@ -835,6 +836,18 @@ def whole(value):
     return int(value) if isinstance(value, str) and value.isdigit() else None
 
 
+def token_budget(keys):
+    """The role's TOKEN_BUDGET for the profile's provider (docs/adr/0092 §7):
+    TOKEN_BUDGET_<PROVIDER> when the role sets it, else TOKEN_BUDGET."""
+    keys = keys or {}
+    provider = env("MODEL_PROVIDER")
+    if provider and provider.isalnum():
+        mine = whole(keys.get(f"TOKEN_BUDGET_{provider.upper()}"))
+        if mine is not None:
+            return mine
+    return whole(keys.get("TOKEN_BUDGET"))
+
+
 def live(doc, tid):
     """The dev-worker's attempt in flight (docs/adr/0087 §4): the budget hooks'
     count while crew.sh has emptied the run's directory and the harness has
@@ -854,7 +867,7 @@ def live(doc, tid):
     if tokens is None:
         return None
     keys, _ = role_keys("dev-worker")
-    budget = whole((keys or {}).get("TOKEN_BUDGET"))
+    budget = token_budget(keys)
     attempt = 1 if state == "opened" else (doc.get("attempt") or 1) + 1
     warn = budget is not None and tokens * WARN_DEN >= budget * WARN_NUM
     if budget is None:
@@ -893,7 +906,7 @@ def roles(docs, held):
         configured = None if keys is None else {
             "provider": env("MODEL_PROVIDER") or None, "model": env("MODEL") or None,
             "harness": keys.get("HARNESS") or env("AGENT_HARNESS") or None, "thinking": keys.get("THINKING") or None}
-        budget = whole((keys or {}).get("TOKEN_BUDGET"))
+        budget = token_budget(keys)
         mine = [x for x in runs if x[2].get("role") == role]
         at, tid, e = max(mine, key=lambda x: (x[0], x[1])) if mine else (None, None, None)
         last = None if e is None else {"ticket": tid, "step": e.get("step"), "attempt": e.get("attempt"), "at": e.get("at"),

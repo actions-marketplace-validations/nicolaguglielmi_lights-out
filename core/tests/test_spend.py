@@ -568,5 +568,128 @@ class ThinkingTokens(unittest.TestCase):
         self.assertEqual(round(got[0]["cost_usd"], 3), 0.057)
 
 
+CACHED_PRICES = {"prices": PRICES["prices"] + [
+    {"provider": "prov", "model": "model-c", "input": 1.00, "cached_input": 0.10, "output": 5.00,
+     "source": "https://example.invalid/c", "checked": "2026-11-16"},
+]}
+
+
+def cached_run(model, tin, cached, tout):
+    r = run(model, tin, tout)
+    r["tokens"]["cached"] = cached
+    return r
+
+
+class CachedInput(unittest.TestCase):
+    """docs/adr/0092 §5-§6: cached input at the cached price, and the basis."""
+
+    def setUp(self):
+        self.prices = spend.parse_prices(CACHED_PRICES)
+
+    def both(self, r, day="2026-11-16"):
+        return spend.cost(r, self.prices, day), spend.cost_basis(r, self.prices, day)
+
+    def test_cached_input_at_the_cached_price(self):
+        # 500,000 x 1.00 + 1,500,000 x 0.10 + 100,000 x 5.00, per million.
+        self.assertEqual(self.both(cached_run("model-c", 2_000_000, 1_500_000, 100_000)), ((1.15, None), "cached"))
+
+    def test_no_cached_count_is_the_uncached_formula(self):
+        self.assertEqual(self.both(run("model-c", 2_000_000, 100_000)), ((2.5, None), "uncached"))
+
+    def test_a_cached_count_that_cannot_be_is_ignored(self):
+        for bad in (2_000_001, -1, 1.5, "10", True, None):
+            with self.subTest(cached=bad):
+                self.assertEqual(self.both(cached_run("model-c", 2_000_000, bad, 100_000)),
+                                 ((2.5, None), "uncached"))
+
+    def test_a_price_without_cached_input_is_uncached(self):
+        self.assertEqual(self.both(cached_run("model-a", 2_000_000, 1_500_000, 100_000)), ((2.5, None), "uncached"))
+
+    def test_an_unknown_cost_has_no_basis(self):
+        (usd, why), basis = self.both(cached_run("model-z", 10, 5, 1))
+        self.assertIsNone(usd)
+        self.assertIsNone(basis)
+
+    def test_a_replayed_run_has_no_basis_to_choose(self):
+        r = cached_run("model-c", 10, 5, 1)
+        r["replayed"] = True
+        self.assertEqual(self.both(r), ((0, None), "uncached"))
+
+    def test_a_network_is_cached_only_when_every_member_is(self):
+        net = {"harness": "network", "model": "model-c", "replayed": False,
+               "members": [cached_run("model-c", 2_000_000, 1_500_000, 100_000), run("model-c", 1_000_000, 0)]}
+        self.assertEqual(self.both(net), ((2.15, None), "uncached"))
+        net["members"][1] = cached_run("model-c", 1_000_000, 0, 0)
+        self.assertEqual(self.both(net), ((2.15, None), "cached"))
+
+    def test_every_ledger_entry_carries_its_basis(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "prices.json"
+            path.write_text(json.dumps(CACHED_PRICES))
+            got = spend.entries("assign", {
+                "task": dict(cached_run("model-c", 2_000_000, 1_500_000, 100_000), role="dev-worker"),
+                "review": dict(run("model-c", 2_000_000, 100_000), role="test-reviewer"),
+                "product": dict(run("model-z", 1, 1), consulted=True),
+            }, 1, "2026-11-16T10:00:00Z", path=path)
+        self.assertEqual([(e["cost_usd"], e["cost_basis"]) for e in got],
+                         [(1.15, "cached"), (2.5, "uncached"), (None, None)])
+        self.assertEqual(got[0]["tokens"]["cached"], 1_500_000)
+
+    def test_the_committed_cached_prices_are_numbers_under_the_input_price(self):
+        with open(REPO / "profiles" / "prices.json", encoding="utf-8") as fh:
+            entries = json.load(fh)["prices"]
+        with_cached = [e for e in entries if "cached_input" in e]
+        self.assertTrue(with_cached)
+        for e in with_cached:
+            self.assertIsInstance(e["cached_input"], (int, float))
+            self.assertGreaterEqual(e["cached_input"], 0)
+            self.assertLessEqual(e["cached_input"], e["input"])
+        self.assertIn("zai", {e["provider"] for e in entries})
+
+    def test_a_malformed_cached_price_is_refused(self):
+        bad = {"prices": [dict(CACHED_PRICES["prices"][-1], cached_input=-0.1)]}
+        with self.assertRaises(ValueError):
+            spend.parse_prices(bad)
+
+
+class M24Gemini(unittest.TestCase):
+    """docs/adr/0092 §6: the ten Gemini dev-worker runs of M24's phase D
+    handoff (.claude/context/handoffs/claude-m24-phase-d-gemini-1628f2.md,
+    the table's input, cached and output per ticket), recorded 2026-11-14,
+    priced at the committed table: $3.550083 with the cached rate, by hand,
+    against $20.847787 with every input token uncached."""
+
+    RUNS = (  # input, cached, output: tenacity-03, 05, 01, 04, 02, 06, 08, 07, 09, 10
+        (2_202_279, 2_025_588, 4_670), (1_470_019, 1_350_297, 3_552), (1_691_482, 1_549_709, 3_509),
+        (5_156_856, 4_835_677, 10_046), (863_857, 771_342, 2_496), (1_746_028, 1_618_443, 3_493),
+        (1_816_805, 1_680_639, 3_391), (2_134_722, 1_996_817, 3_668), (5_222_782, 4_905_883, 13_934),
+        (5_217_140, 4_891_834, 6_257),
+    )
+
+    def setUp(self):
+        # The model is the profile's (l1), never named in core/ (ci/model-free.sh).
+        l1 = (REPO / "profiles" / "l1.env").read_text(encoding="utf-8")
+        self.model = next(line.split("=", 1)[1].strip() for line in l1.splitlines() if line.startswith("MODEL="))
+        self.prices, _ = spend.load_prices(REPO / "profiles" / "prices.json")
+
+    def runs(self, cached=True):
+        for tin, tc, tout in self.RUNS:
+            tokens = {"input": tin, "output": tout, "total": tin + tout}
+            if cached:
+                tokens["cached"] = tc
+            yield {"harness": "gemini-cli", "provider": "gemini", "model": self.model, "replayed": False,
+                   "tokens": tokens}
+
+    def test_the_ledger_is_close_to_the_cached_figure(self):
+        costs = [spend.cost(r, self.prices, "2026-11-14") for r in self.runs()]
+        self.assertTrue(all(why is None for _, why in costs))
+        self.assertAlmostEqual(sum(usd for usd, _ in costs), 3.550083, places=5)
+        self.assertEqual({spend.cost_basis(r, self.prices, "2026-11-14") for r in self.runs()}, {"cached"})
+
+    def test_without_the_cached_count_it_is_the_uncached_bound(self):
+        costs = [spend.cost(r, self.prices, "2026-11-14")[0] for r in self.runs(cached=False)]
+        self.assertAlmostEqual(sum(costs), 20.847787, places=5)
+
+
 if __name__ == "__main__":
     unittest.main()

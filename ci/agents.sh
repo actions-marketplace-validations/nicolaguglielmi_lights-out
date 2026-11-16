@@ -360,6 +360,7 @@ rec="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)/records/$TICKET"
 mkdir -p "$rec"
 : > "$rec/ran"
 printf '%s\n' "${CREW_MCP-<unset>}" > "$rec/crew-mcp"
+printf '%s\n' "${TOKEN_BUDGET:-}" > "$rec/budget"
 if [ -n "${CREW_MCP:-}" ] && [ -f "$CREW_MCP/decl.json" ]; then
   cp "$CREW_MCP/decl.json" "$rec/decl.json"
 fi
@@ -531,6 +532,23 @@ elif ! grep -qF -- "$(printf '%s' "$notes_sha" | cut -c1-12)" "$work/crew-mcp-re
 elif grep -q '^open-pr' "$root/records/codehost.log" 2>/dev/null; then
   fail "crew mcp-replay" "a PR was opened"
 fi
+
+# docs/adr/0092 §7: crew.sh hands run.sh the role's TOKEN_BUDGET_<PROVIDER>
+# for the profile's provider, read from roles/dev-worker/role.env, else its
+# TOKEN_BUDGET. Every provider line the file sets is checked, and one it
+# does not set gets the default.
+new_base
+default_budget=$(sed -n 's/^TOKEN_BUDGET=\([0-9][0-9]*\)$/\1/p' roles/dev-worker/role.env | tail -n1)
+pairs=$(sed -n 's/^TOKEN_BUDGET_\([A-Z0-9]*\)=\([0-9][0-9]*\)$/\1:\2/p' roles/dev-worker/role.env)
+[ -n "$pairs" ] || fail "crew budget" "roles/dev-worker/role.env sets no TOKEN_BUDGET_<PROVIDER>: docs/adr/0092 §7 sets one"
+n=0
+for pair in $pairs zzprov:$default_budget; do
+  n=$((n + 1))
+  provider=$(printf '%s' "${pair%%:*}" | tr '[:upper:]' '[:lower:]')
+  run_crew "budget-$n" MODEL_PROVIDER="$provider"
+  got=$(cat "$root/records/budget-$n/budget" 2>/dev/null || true)
+  [ "$got" = "${pair#*:}" ] || { fail "crew budget" "MODEL_PROVIDER=$provider gave run.sh TOKEN_BUDGET '$got', want ${pair#*:}"; break; }
+done
 
 [ -z "$first" ] || nogo "$first"
 go

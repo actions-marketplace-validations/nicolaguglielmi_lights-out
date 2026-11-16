@@ -49,6 +49,9 @@ def parse_prices(table):
         for key in ("input", "output"):
             if not isinstance(e.get(key), (int, float)) or isinstance(e.get(key), bool) or e[key] < 0:
                 raise ValueError(f"price {n} ({e['model']}) has no {key} price of 0 or more")
+        if "cached_input" in e and (not isinstance(e["cached_input"], (int, float))
+                                    or isinstance(e["cached_input"], bool) or e["cached_input"] < 0):
+            raise ValueError(f"price {n} ({e['model']}) has a cached_input that is not a price of 0 or more")
         for key in ("from", "until"):
             if e.get(key) is not None and not (isinstance(e[key], str) and _DAY.match(e[key])):
                 raise ValueError(f"price {n} ({e['model']}) has a {key} that is not YYYY-MM-DD")
@@ -99,7 +102,36 @@ def cost(run, prices, day):
     p = price(prices, provider, model, day)
     if p is None:
         return None, f"no price for {provider}/{model} on {day} in {PRICES}"
-    return round(tin * p["input"] / 1e6 + tout * p["output"] / 1e6, 6), None
+    cached = _cached(tokens, p)
+    if cached is None:
+        return round(tin * p["input"] / 1e6 + tout * p["output"] / 1e6, 6), None
+    return round((tin - cached) * p["input"] / 1e6 + cached * p["cached_input"] / 1e6
+                 + tout * p["output"] / 1e6, 6), None
+
+
+def _cached(tokens, p):
+    """The cached input tokens to price at p's cached rate (docs/adr/0092 §6):
+    a whole number from 0 to input, and a price that has one; else None."""
+    tin, cached = tokens.get("input"), tokens.get("cached")
+    if "cached_input" not in p or isinstance(cached, bool) or not isinstance(cached, int):
+        return None
+    return cached if 0 <= cached <= tin else None
+
+
+def cost_basis(run, prices, day):
+    """`cached` when the run's cost priced its cached input at the cached
+    rate, `uncached` when it did not, None when the cost is unknown
+    (docs/adr/0092 §6). A network is `cached` only when every member is."""
+    usd, _ = cost(run, prices, day)
+    if usd is None:
+        return None
+    if run.get("replayed") is True:
+        return "uncached"
+    if isinstance(run.get("members"), list):
+        got = {cost_basis(m, prices, day) for m in run["members"]}
+        return "cached" if got == {"cached"} else "uncached"
+    p = price(prices, run.get("provider"), run.get("model"), day)
+    return "cached" if _cached(run["tokens"], p) is not None else "uncached"
 
 
 # --- the ledger -----------------------------------------------------------
@@ -117,12 +149,13 @@ def entries(step, result, attempt, at, path=PRICES):
         if prices is None and unread is None:
             prices, unread = load_prices(path)
         usd, why = cost(run, prices, at[:10])
+        basis = cost_basis(run, prices, at[:10]) if usd is not None else None
         if usd is None and unread and why == "no price table":
             why = unread
         out.append({"step": step, "attempt": attempt, "role": run.get("role") or role or key,
                     "harness": run.get("harness"), "provider": run.get("provider"), "model": run.get("model"),
                     "replayed": run.get("replayed") is True, "tokens": run.get("tokens"),
-                    "duration_s": run.get("duration_s"), "cost_usd": usd, "cost_unknown": why, "at": at})
+                    "duration_s": run.get("duration_s"), "cost_usd": usd, "cost_unknown": why, "cost_basis": basis, "at": at})
     return out
 
 

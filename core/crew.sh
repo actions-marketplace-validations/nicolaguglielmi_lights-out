@@ -41,6 +41,17 @@ if [ ! -f "roles/$ROLE/prompt.md" ]; then
 fi
 # shellcheck disable=SC1090,SC1091 # role.env's path is built from $ROLE
 . "roles/$ROLE/role.env"
+
+# The provider's budget when the role sets one (docs/adr/0092 §7): a
+# role.env line TOKEN_BUDGET_<PROVIDER>, read from the file, never from the
+# environment; else the TOKEN_BUDGET it just set.
+case "${MODEL_PROVIDER:-}" in
+  ''|*[!a-z0-9]*) ;;
+  *)
+    provider_budget=$(sed -n "s/^TOKEN_BUDGET_$(printf '%s' "$MODEL_PROVIDER" | tr '[:lower:]' '[:upper:]')=\([0-9][0-9]*\)\$/\1/p" "roles/$ROLE/role.env" | tail -n1)
+    [ -z "$provider_budget" ] || TOKEN_BUDGET=$provider_budget
+    ;;
+esac
 # A role may name its own harness (docs/adr/0020 §1); the profile's is the default.
 # CREW_HARNESS, read here only, picks one for this run (docs/adr/0036 §5).
 harness=${CREW_HARNESS:-${HARNESS:-$AGENT_HARNESS}}

@@ -73,12 +73,14 @@ chmod +x "$root/adapters/stub-tracker/get.sh"
 # --- stub AgentHarness: writes $OUT/final.md and $OUT/run.json from env
 # the test sets before calling review.sh (STUB_FINAL, STUB_NO_FINAL), or
 # from the first `STUB-SAY: <line>` of its input. It keeps a copy of its
-# input (stub-input.md) and a mark that it ran (stub-ran) in $OUT. ---
+# input (stub-input.md), a mark that it ran (stub-ran) and the TOKEN_BUDGET
+# it was given (stub-budget) in $OUT. ---
 cat > "$root/adapters/stub-harness/run.sh" <<'EOF'
 #!/bin/sh
 set -eu
 mkdir -p "$OUT"
 : > "$OUT/stub-ran"
+printf '%s\n' "${TOKEN_BUDGET:-}" > "$OUT/stub-budget"
 cp "$TICKET_FILE" "$OUT/stub-input.md"
 say=$(awk '/^STUB-SAY: /{sub(/^STUB-SAY: /, ""); print; exit}' "$TICKET_FILE")
 if [ -n "$say" ]; then
@@ -453,7 +455,27 @@ if [ -z "$mismatch$new" ]; then
     || new="m(stderr does not name worker.md: $(cat "$work/m.err"))"
 fi
 
+# (n) docs/adr/0092 §7: the role's TOKEN_BUDGET_<PROVIDER> for the
+# profile's provider, else its TOKEN_BUDGET. The roles become a copy whose
+# test-reviewer sets a budget for a made-up provider.
+budget_bad=""
+if [ -z "$mismatch$new" ]; then
+  rm "$root/roles"
+  cp -R "$repo/roles" "$root/roles"
+  printf 'TOKEN_BUDGET_XPROV=4242\n' >> "$root/roles/test-reviewer/role.env"
+  default_budget=$(sed -n 's/^TOKEN_BUDGET=\([0-9][0-9]*\)$/\1/p' "$root/roles/test-reviewer/role.env" | tail -n1)
+  for pair in xprov:4242 yprov:$default_budget :$default_budget; do
+    run_review n 0 "$head_sha" MODEL_PROVIDER="${pair%%:*}" \
+      AGENT_HARNESS=stub-harness STUB_FINAL='APPROVED
+Looks correct and in scope.'
+    got=$(cat "$(case_out test)/stub-budget" 2>/dev/null || true)
+    [ "$got" = "${pair#*:}" ] || budget_bad="n(MODEL_PROVIDER=${pair%%:*}: TOKEN_BUDGET $got, want ${pair#*:})"
+    [ -z "$budget_bad" ] || break
+  done
+fi
+
 [ -z "$mismatch" ] || nogo "stub case $mismatch disagrees with docs/adr/0073"
+[ -z "$budget_bad" ] || nogo "stub case $budget_bad disagrees with docs/adr/0092 §7"
 [ -z "$new" ] || nogo "stub case $new disagrees with docs/adr/0073"
 
 go
