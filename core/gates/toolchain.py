@@ -212,13 +212,16 @@ def run(cmd, env, stdout=None):
 
 def main(argv):
     env = dict(os.environ)
-    # core/toolchain.sh put this checkout first on PYTHONPATH to import this
-    # module; CMD gets the caller's PYTHONPATH back, never lights-out's core/.
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # core/toolchain.sh put this checkout on PYTHONPATH to import this module;
+    # CMD gets the caller's PYTHONPATH back, never lights-out's core/. The one
+    # entry it added is dropped wherever it sits: something that wraps every
+    # Python process (a coverage hook, docs/adr/0076) may have put itself first.
+    root = os.path.realpath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     parts = env.get("PYTHONPATH", "").split(":")
-    if parts and parts[0] and os.path.realpath(parts[0]) == os.path.realpath(root):
-        parts = parts[1:]
-        if parts:
+    at = next((i for i, p in enumerate(parts) if p and os.path.realpath(p) == root), None)
+    if at is not None:
+        del parts[at]
+        if any(parts):
             env["PYTHONPATH"] = ":".join(parts)
         else:
             del env["PYTHONPATH"]

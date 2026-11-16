@@ -271,14 +271,20 @@ class CommandLine(Tmp):
         self.assertEqual(got.stderr, "toolchain: TOOLCHAIN_IMAGE=compose: names no service\n")
 
     def test_cmd_gets_the_callers_pythonpath_back(self):
+        """core/toolchain.sh adds this checkout to PYTHONPATH; CMD gets the
+        caller's entries back, in order, and never the checkout's, wherever it
+        sits (what wraps every Python process, a coverage hook, may add more)."""
         root = os.getcwd()
         env = self.env(TOOLCHAIN_IMAGE="workbench")
-        for given, want in ((root + ":/elsewhere", "[/elsewhere]"), (root, "[unset]"), ("/mine", "[/mine]")):
+        for given, want in ((root + ":/elsewhere", ["/elsewhere"]), (root, []), ("/mine", ["/mine"]),
+                            ("/first:" + root + ":/last", ["/first", "/last"])):
             env["PYTHONPATH"] = given
-            got = subprocess.run([sys.executable, "-m", "core.gates.toolchain", "run", 'echo "[${PYTHONPATH-unset}]"'],
+            got = subprocess.run([sys.executable, "-m", "core.gates.toolchain", "run", 'echo "${PYTHONPATH-}"'],
                                  cwd=root, env=env, capture_output=True, text=True)
-            self.assertEqual(got.stdout, want + "\n", given)
-
+            entries = [e for e in got.stdout.strip().split(":") if e]
+            self.assertNotIn(os.path.realpath(root), [os.path.realpath(e) for e in entries], given)
+            if want:
+                self.assertEqual(entries[-len(want):], want, given)
 
 if __name__ == "__main__":
     unittest.main()
