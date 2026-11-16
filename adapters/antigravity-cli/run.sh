@@ -139,9 +139,13 @@ steps=$(jq -cs '[.[] | select(.event == "step_update") | .step_update]
          usage: (map(.usage // empty) | last)})' "$OUT/transcript.jsonl" 2>/dev/null || echo '[]')
 response=$(printf '%s' "$steps" | jq -r '[.[] | select(.type == "agent_response" and (.text | test("\\S")))] | last | .text // ""')
 turns=$(printf '%s' "$steps" | jq '[.[] | select(.type == "agent_response")] | length')
-tok_in=$(printf '%s' "$steps" | jq '[.[] | .usage.input_tokens // empty] | add // null')
+# agy's usage leaves cache reads out of input_tokens and total_tokens and
+# reports them as cache_read_tokens (agy 1.5.1, checked 2026-11-16, docs/adr/
+# 0092 §6): input and total add them back, and cached is their sum.
+tok_in=$(printf '%s' "$steps" | jq '[.[] | .usage // empty | (.input_tokens // 0) + (.cache_read_tokens // 0)] | add // null')
 tok_out=$(printf '%s' "$steps" | jq '[.[] | .usage.output_tokens // empty] | add // null')
-tok_total=$(printf '%s' "$steps" | jq '[.[] | .usage.total_tokens // empty] | add // null')
+tok_total=$(printf '%s' "$steps" | jq '[.[] | .usage // empty | (.total_tokens // 0) + (.cache_read_tokens // 0)] | add // null')
+tok_cached=$(printf '%s' "$steps" | jq '[.[] | .usage.cache_read_tokens // empty] | add // null')
 tool_calls=$(printf '%s' "$steps" | jq '[.[] | select(.type == "tool")] | length')
 
 # run.json before the response check, so a run without a final message
@@ -149,10 +153,10 @@ tool_calls=$(printf '%s' "$steps" | jq '[.[] | select(.type == "tool")] | length
 jq -n \
   --arg harness antigravity-cli --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
   --argjson turns "$turns" --arg insha "$input_sha256" \
-  --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
+  --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" --argjson tokCached "$tok_cached" \
   --argjson duration "$duration" --argjson exitCode "$container_rc" --arg endpoint "$endpoint" \
   '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
-    tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
+    tokens: ({input: $tokIn, output: $tokOut, total: $tokTotal} + (if $tokCached == null then {} else {cached: $tokCached} end)),
     duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
     + (if $endpoint == "" then {} else {endpoint: $endpoint} end)' > "$OUT/run.json"
 if [ "$stopped" = TOKEN_BUDGET ]; then

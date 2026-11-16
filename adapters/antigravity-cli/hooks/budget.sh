@@ -20,7 +20,11 @@ set -eu
 input=$(cat)
 n=$(printf '%s' "$input" | jq -r '.invocationNum // 0' 2>/dev/null) || n=0
 case "$n" in ''|*[!0-9]*) n=0 ;; esac
-spent=$(jq -R 'fromjson? | .step_update.usage.total_tokens? // empty' "$CREW_OUT/transcript.jsonl" 2>/dev/null \
+# agy's usage leaves cache reads out of input_tokens and total_tokens and
+# reports them as cache_read_tokens (agy 1.5.1, checked 2026-11-16 against a
+# local endpoint, docs/adr/0092 §6): added back, so the unit stays input,
+# cache reads included, plus output.
+spent=$(jq -R 'fromjson? | .step_update.usage? // empty | (.total_tokens // 0) + (.cache_read_tokens // 0)' "$CREW_OUT/transcript.jsonl" 2>/dev/null \
   | awk '{s += $1} END {print s + 0}') || spent=0
 
 stop=""

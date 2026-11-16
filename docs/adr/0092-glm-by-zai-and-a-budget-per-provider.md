@@ -130,9 +130,13 @@ not as described.
    `run.json`'s `tokens` gains `cached`, the part of `input` the vendor
    served from its cache, where the harness reports it: `gemini-cli`
    (`stats.cached`), `claude-code` (`usage.cache_read_input_tokens`; cache
-   writes stay in `input` at the input price) and the ADK roles (the sum
-   of `cached_content_token_count`). `codex` and `antigravity-cli` do not
-   report it yet: no key, not a 0. The cost of a run is then
+   writes stay in `input` at the input price), `antigravity-cli` (the sum
+   of `cache_read_tokens`) and the ADK roles (the sum of
+   `cached_content_token_count`). `codex` does not report it yet: no key,
+   not a 0. Found by the suite's cached part (Tests): agy 1.5.1 leaves
+   cache reads out of `input_tokens` and `total_tokens`, so its runs and
+   its budget hook undercounted every cached Gemini token; both now add
+   `cache_read_tokens` back. The cost of a run is then
    `(input − cached) × input + cached × cached_input + output × output`,
    basis `cached`, when `tokens.cached` is a whole number from 0 to
    `input` and the price has `cached_input`; otherwise ADR 0083's formula,
