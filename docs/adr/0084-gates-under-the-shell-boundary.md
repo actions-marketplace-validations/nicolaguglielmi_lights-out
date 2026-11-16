@@ -1,6 +1,6 @@
 # ADR 0084 — `gates/` under the shell boundary: the wrapper stays shell, the logic moves to `core/gates/`, the ratchet holds both
 
-- Status: proposed (M51)
+- Status: proposed (M51); amended 2026-11-16 (M61, the second slice)
 - Date: 2026-11-13
 
 ## Context
@@ -159,3 +159,113 @@ scans `core/` only, so it saw none of it.
 `./go demo` runs the gates (`demo-gates` and the tower's CI step) through
 the same `gates/*.sh` paths; `python3` is in the workbench and gates
 images the demo already builds. No key, no account, no new image layer.
+
+## Amendment 2026-11-16 (M61): the second slice
+
+The boundary does not move: `core/` and `gates/` are under the rule,
+`ci/` is not (§A5). What moves is the debt §6 left: the harness pair and
+`core/toolchain.sh`. Measured on 2026-11-16 over tracked files, before
+this slice: `gates/` 2,515 lines of `.sh`, of which 1,431 code lines in
+the harness pair (`harness-conformance.sh` 693, `proof.sh` 738);
+`core/` 2,254, of which 126 code lines in `toolchain.sh`.
+
+A1. **The harness suite is `core/gates/harness.py`**, run by
+   `gates/harness-conformance.sh` through `verdict` after the guards that
+   stay shell (§3): `CONFORMANCE` first, then `WORKBENCH_IMAGE`,
+   `COMPOSE_FILE`, `WORKLOAD`, `WORKLOAD_CONTRACT`, the tools on `PATH`
+   and case 10's fixture. Same cases, order, messages, files under
+   `.crew/conformance/`, stderr lines and GO line as the shell
+   (`gates/harness-conformance.sh`'s header is the spec and moves to the
+   module's docstring). Compose, `run.sh` and git are process calls
+   through `proc`; the stub and the probe stay where they are, they run
+   in containers.
+   - **The cases are data.** `CASES` is the ordered table of the cases a
+     harness runs: each row its id, the workspace it prepares, the steps
+     the stub plays, the budgets, and the checks that judge it. A case is
+     one row and a check function; a harness is discovered, as before
+     (an `adapters/<name>/` with `run.sh`, `Containerfile` and a pin,
+     ADR 0050 §2), its contract read from its `conformance.env` and
+     `thinking.env`, never listed. A provider is one row of `PAIRING`:
+     the provider case 0 offers a harness of it, and the harness the
+     refusal names when no discovered harness serves that provider
+     (ADR 0041 §2). Why a table and not code per case: two sessions
+     change this suite in the same sprint (M59 adds a provider), and a
+     row is a conflict a reviewer can read.
+   - The judging is pure functions over a case's files
+     (`requests.jsonl`, `OUT/`, `stderr.log`, the proxy's decisions), each
+     returning the NO-GO reason or nothing, so `core/tests/
+     test_gates_harness.py` proves each one on planted files, with no
+     engine.
+A2. **The proof is `core/gates/harness_proof.py`**, run by
+   `gates/harness-conformance/proof.sh` through `verdict` after its two
+   guards (the tools, and `127.0.0.2` bindable). What the shell held in
+   heredocs is now files under `gates/harness-conformance/fake/`, the
+   proof's fixtures, copied into its temp tree and run nowhere else, as
+   `stub.py` and `probe.py` are the suite's: fake-cli (`run.sh`, a
+   one-line `exec` into `run.py`, the adapter contract of ADR 0041 as
+   the shell had it; `fake_cli.py`; `guard.sh`; `mcp.sh`), the stand-in
+   `docker-compose` (a Python script), the notes server, the `agents.py`
+   shim, `egress_wrap.py` and the stand-in network
+   (`netshim/sitecustomize.py`). The defects are a table, `DEFECTS`:
+   what the fake does wrong, the tree it runs in, the compose project it
+   is shown, and the verdict the suite must give. A new way to be wrong is
+   one row and, when the fake must learn it, one branch in the fixture.
+   The fixtures are outside `core/` and out of the self gate's mutation
+   and SAST scope, as the stub and the probe are: they are the test, not
+   the rule.
+A3. **The toolchain is `core/gates/toolchain.py`.** `core/toolchain.sh`
+   keeps the two functions its callers source (`toolchain_preflight`,
+   which sets `$toolchain_where` or calls `nogo`, and
+   `run_in_toolchain CMD`), each a call to `python3 -P -m
+   core.gates.toolchain preflight|run` with `PYTHONPATH` set to the
+   checkout the file was sourced from (`$toolchain_root`, the caller's
+   directory unless the caller set it: `core/toolchain-run.sh` runs
+   from a base worktree, `ci/toolchain.sh` from a temp directory). `-P`
+   keeps the caller's directory off `sys.path`, so a base worktree's own
+   `core/` is never imported. `core/toolchain-run.sh` calls the module
+   directly. The forms, the socket test, `toolchain.where`, the cache
+   paths, the throwaway image's Containerfile and compose file, and the
+   exit codes (CMD's, or 125 with one `toolchain:` line on stderr) are
+   unchanged (ADR 0042 §2-§4). A package module, not `core/
+   toolchain.py`: it needs an engine, so it stays out of the
+   `lights-out-gates` wheel (§2).
+A4. **The ratchet** loses the three entries this slice pays: each file
+   is at most 30 code lines, so its entry is removed, not lowered
+   (ADR 0052 §4). `ci/toolchain.sh` plants its two flaws (no socket test,
+   no form test) in a copy of `core/gates/toolchain.py` instead of a copy
+   of the shell, by the same means: a definition appended to the copy
+   replaces the original.
+A5. **`ci/` stays out of the ratchet in this slice.** It is 17,965
+   lines of `.sh` over 54 files, nearly all over 30 code lines, and four
+   other milestones of this sprint edit it; an exact-count list there
+   would turn each of their edits into a NO-GO until its entry moved. The
+   logic of the heaviest `ci/` scripts this slice reaches moves to Python
+   with unit tests, and `ci/` enters the ratchet, with its debt listed,
+   in a later ADR once the sprint has landed.
+
+### Alternatives rejected (M61)
+
+- **One Python function per case, no table.** It is what the shell was:
+  a provider or a case is then an edit in the middle of a 700-line
+  function, the conflict M59 and this slice would both have had.
+- **The proof's fake-cli kept as shell heredocs, the driver in Python.**
+  `proof.sh` would stay over 30 code lines for text that is a fixture,
+  and the fake's `run.sh` would still be a 110-line shell program nobody
+  can run alone.
+- **The proof in `core/tests/`.** It starts the stub and fake-cli about
+  sixty times, two and a half minutes; `MUTATION_CMD` runs `core/tests/`
+  for every mutant that reaches it.
+- **`core/toolchain.sh` deleted, the callers calling Python.** Five
+  callers source it (three gates, `core/init.sh`,
+  `core/mutation-baseline.sh`); their wrappers would each grow the
+  preflight's three lines. Two thin functions keep them as they are.
+
+### Consequences (M61)
+
+- The before and after line counts per directory, and the proof's
+  verdicts before and after on the same planted defects, are in the M61
+  handoff.
+- A change to a harness case is a change to `core/gates/harness.py`
+  and its unit tests; a new defect for the proof is a row in
+  `core/gates/harness_proof.py` and, when the fake must learn it, a
+  branch in `gates/harness-conformance/fake/`.
