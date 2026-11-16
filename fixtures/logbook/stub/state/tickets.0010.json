@@ -330,5 +330,6 @@
   "spend": [
     {"step": "assign", "attempt": 1, "role": "dev-worker", "harness": "replay", "provider": "gemini", "model": "gemini-3.8-flash", "replayed": true, "tokens": {"input": 40000, "output": 2110, "total": 42110}, "duration_s": 48, "cost_usd": 0, "cost_unknown": null, "at": "2026-11-02T06:10:00Z"},
     {"step": "review", "attempt": 1, "role": "test-reviewer", "harness": "stub-harness", "provider": "prov", "model": "model-x", "replayed": false, "tokens": {"input": 30000, "output": 900, "total": 30900}, "duration_s": 30, "cost_usd": null, "cost_unknown": "no price for prov/model-x on 2026-11-02", "at": "2026-11-02T06:40:00Z"}
-  ]
+  ],
+  "screen": {"verdict": "flag", "p_yes": 0.64, "confidence": 0.64, "sha256": "ed462e21a59eab8edb5243ea51a545de74f3c30ac2818c0c86479456f3bfbfef", "adapter": "replay", "replayed": true}
 }

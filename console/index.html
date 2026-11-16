@@ -763,8 +763,22 @@ function whoBadge(t) {
 // A feature's colour: the sum of its name's UTF-16 code units, modulo six
 // (docs/adr/0068 §2): the same on every board, no table to edit.
 function hueOf(name) { let n = 0; for (let i = 0; i < name.length; i++) n += name.charCodeAt(i); return n % 6; }
+// The screen before a role read the text (docs/adr/0091 §7): its one line,
+// and the card's mark when it was flagged or a person cleared it.
+function screenLine(sc) {
+  if (!sc || !sc.verdict) return null;
+  if (sc.verdict === "cleared") return "cleared by " + shown(sc.by) + " via " + shown(sc.via) + ", " + shown(sc.at);
+  if (sc.verdict === "not-screened") return "not screened: " + shown(sc.why);
+  const p = typeof sc.p_yes === "number" ? sc.p_yes.toFixed(2) : "?";
+  return sc.verdict + " · p=" + p + " that it holds instructions to an AI agent · " + shown(sc.adapter) + (sc.replayed ? ", replayed" : "");
+}
+function screenMark(sc) {
+  if (!sc || (sc.verdict !== "flag" && sc.verdict !== "cleared")) return null;
+  return h("span", {cls: "chip pending", "data-kind": "screen", title: "Screen: " + screenLine(sc)}, sc.verdict === "flag" ? "screen: flagged" : "screen: cleared");
+}
 function labels(t) {
   return h("div", {cls: "labels"},
+    screenMark(t.screen),
     t.priority ? h("span", {cls: "label p-" + t.priority, "data-kind": "priority", title: "Priority " + t.priority}, t.priority) : null,
     t.feature ? h("span", {cls: "label", "data-kind": "feature", "data-hue": String(hueOf(String(t.feature))), title: "Feature " + t.feature}, t.feature) : null);
 }
@@ -1175,6 +1189,7 @@ function drawer(t) {
       t.outcome.verdict !== "pending" ? ["Line", h("span", {cls: "mono"}, shown(t.outcome.line))] : null,
       ["Perimeter", unread(t.perimeter) ? err(t.perimeter) : h("span", {cls: "mono"}, (t.perimeter || []).join("  ·  ") || "—")],
       ["Waits", t.wait ? waitLine(t.wait) : "no"],
+      t.screen ? ["Screen", screenLine(t.screen)] : null,
       ...agentRows(t)]),
     h("h3", {}, "Timeline"),
     rows.length ? h("ol", {cls: "compact"}, rows.map((r) => h("li", {"data-phase": r.phase},
@@ -1231,7 +1246,7 @@ function intakesPanel() {
   return h("section", {id: "intakes", "aria-label": "Intakes"}, h("h2", {}, "Intakes"),
     h("div", {cls: "intakes"}, all.map((i) => h("a", {cls: "intake-card", href: "#intake/" + encodeURIComponent(i.id), "data-intake": i.id,
       "aria-label": "Intake " + i.id + ", " + i.state + ": " + intakeWords(i, 80)},
-      h("div", {cls: "badges"}, h("b", {}, "Intake " + i.id), intakeChip(i)),
+      h("div", {cls: "badges"}, h("b", {}, "Intake " + i.id), intakeChip(i), screenMark(i.screen)),
       h("p", {cls: "words"}, "“" + intakeWords(i, 140) + "”"),
       h("div", {cls: "muted"}, intakeCounts(i)),
       (i.tickets || []).length ? h("div", {cls: "fan"}, "→ ", i.tickets.map((id) => h("span", {cls: "mono"}, id))) : null))));
@@ -1282,6 +1297,7 @@ function proposedTicket(i, t, n, form) {
     h("ul", {}, (t.criteria || []).map((c) => h("li", {}, c))),
     dl([["Feature", shown(t.feature)], ["Priority", shown(t.priority)],
       ["Perimeter", (t.perimeter || []).length ? h("span", {cls: "mono"}, t.perimeter.join(", ")) : h("span", {cls: "muted"}, "none proposed: write it before confirming")],
+      (t.uncertain || []).length ? ["Uncertain, yours to decide", h("span", {cls: "mono", "data-kind": "uncertain"}, t.uncertain.join(", "))] : null,
       ["Spec gate on the draft", line ? h("span", {}, chip(line.startsWith("GO") ? "GO" : "NO-GO"), " ", h("span", {cls: "mono"}, line)) : "—"],
       ["Ticket", t.ticket ? h("a", {href: "#ticket/" + encodeURIComponent(t.ticket)}, t.ticket) : "—"]]),
     pick, edit);
@@ -1292,13 +1308,16 @@ function screenIntake(id) {
   if (!i) return out.concat(h("h1", {}, "Intake " + id), h("div", {cls: "panel"}, h("p", {cls: "muted"}, "The logbook holds no intake " + id + ".")));
   const roleLine = (r, who) => !r ? null : r.consulted === false
     ? h("p", {cls: "muted"}, "The " + who + " role was not consulted: " + shown(r.why))
-    : h("p", {cls: "muted"}, "The " + who + " role: " + shown(r.harness) + (r.replayed ? ", replayed" : "") + ", " + shown(r.turns) + " turns.");
+    : r.by === "decide"
+      ? h("p", {cls: "muted"}, "The " + who + " role asked one yes/no question per file and ticket (ADR 0091): " + shown(r.questions) + " questions, " + shown(r.harness) + (r.replayed ? ", replayed" : "") + ".")
+      : h("p", {cls: "muted"}, "The " + who + " role: " + shown(r.harness) + (r.replayed ? ", replayed" : "") + ", " + shown(r.turns) + " turns.");
   const form = i.state === "proposed" && con.mode !== "snapshot" ? intakeForm(i) : null;
   out.push(h("h1", {}, "Intake " + i.id, " ", intakeChip(i)),
     h("p", {cls: "lede"}, "A client's request in their own words, the interview of the product role, the tickets it proposed with the perimeter the architect role proposed, and the person's decision on each (ADR 0090)."),
     i.stranded ? h("div", {cls: "banner err"}, "Stopped at " + i.stranded.step + ": " + i.stranded.error) : null,
     h("div", {cls: "panel"}, h("h2", {}, "The request"), h("pre", {cls: "words"}, i.text),
-      h("p", {cls: "muted"}, "By " + shown(i.by) + " via " + shown(i.via) + ", " + shown(i.at) + ".")),
+      h("p", {cls: "muted"}, "By " + shown(i.by) + " via " + shown(i.via) + ", " + shown(i.at) + "."),
+      i.screen ? h("p", {cls: "muted", "data-kind": "screen"}, "Screen (ADR 0091): " + screenLine(i.screen) + ".") : null),
     h("div", {cls: "panel"}, h("h2", {}, "The interview"), roleLine(i.product, "product"),
       (i.questions || []).length ? h("ol", {}, i.questions.map((q) => h("li", {}, h("b", {}, q.question),
         q.answer ? h("p", {}, "“" + q.answer + "” — " + shown(q.answered_by) + " via " + shown(q.answered_via)) : h("p", {cls: "muted"}, "Not answered yet."))))
