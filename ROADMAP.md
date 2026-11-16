@@ -56,10 +56,16 @@ wins when the two disagree. Decisions behind each step are in
 | M55 | The provider scoreboard: `./go scoreboard` puts the providers side by side from sourced results, seeded with M24's ten tickets and OpenAI shown as not run; ten tickets on one repository, not a benchmark ([ADR 0088](docs/adr/0088-the-provider-scoreboard.md), *proposed*) |
 | M56 | A read-only console snapshot: `./go evidence` freezes the console of a real run into one signed, self-contained page, which the site links ([ADR 0089](docs/adr/0089-a-read-only-console-snapshot.md), *proposed*) |
 | M57 | The intake interview: `./go intake` takes a request in free text, `product` asks at most five questions and proposes tickets with criteria, feature and priority, `architect` proposes each perimeter, a person confirms each one and the spec gate judges the confirmed; every ADK role has a turn cap, `ADK_MAX_TURNS`; logbook 1.7 ([ADR 0090](docs/adr/0090-the-intake-interview.md), *proposed*) |
+| M58 | Closed decisions: a `Decide` port with the Gemini Decisions API or the profile's model, screening every request for instructions aimed at an agent before any agent reads it, and asking file by file which ones a ticket touches ([ADR 0091](docs/adr/0091-closed-decisions-the-perimeter-and-the-injection-screen.md)) |
+| M59 | GLM by Z.ai as a fourth provider (`MODEL_PROVIDER=zai`), a token budget per provider, and cached input priced at the vendor's rate ([ADR 0092](docs/adr/0092-glm-by-zai-and-a-budget-per-provider.md)) |
+| M60 | The first run, flawless: a preflight that moves busy ports, seven steps with estimates, the run's console opened on the rollback, `./go try`; the clean runner's demo 370–480 s from 700–805 s ([ADR 0093](docs/adr/0093-the-first-run-flawless.md)) |
+| M61 | The second Python slice: the harness conformance suites and the toolchain check in Python, off the shell debt list; `ci/`'s debt measured ([ADR 0094](docs/adr/0094-ci-under-the-shell-boundary-later.md)) |
+| M62 | `DELIVERY=flagger` with Flagger's own rollback and 100% held for a person, GitLab CI on a real runner, the CircleCI recipe validated ([ADR 0095](docs/adr/0095-flagger-under-the-launchpads-gates-and-two-more-ci-surfaces.md)) |
 | 0.4.0 | Tagged 2026-11-12: the agent network ([ADR 0071](docs/adr/0071-the-governed-network-on-screen-and-in-text.md)), per-role instructions and MCP servers ([ADR 0073](docs/adr/0073-a-repository-customizes-its-agents.md)), the toolbelt ([ADR 0069](docs/adr/0069-the-agents-own-toolbelt.md)), the Trello-style kanban ([ADR 0068](docs/adr/0068-the-kanban-that-is-looked-at.md)), `self` judged from its last green ancestor ([ADR 0074](docs/adr/0074-judge-what-was-never-judged.md)) |
 | 0.5.0 | Tagged 2026-11-12, the first release cut by its own tag ([ADR 0075](docs/adr/0075-the-tag-releases-itself.md)): security scanning ([ADR 0072](docs/adr/0072-security-scanning-sast-sca-dast-sbom.md)); [release notes](docs/releases/v0.5.0.md) |
 | 0.6.0 | Tagged 2026-11-13: the why of a NO-GO, the human gate on the card, the live canary, the evidence pack, `./go dora` and `./go spend` ([ADR 0078](docs/adr/0078-the-why-of-a-no-go-one-click-away.md) to [0083](docs/adr/0083-cost-and-time-per-ticket-with-a-budget.md)); [release notes](docs/releases/v0.6.0.md) |
 | 0.7.0 | Tagged 2026-11-14, on the Marketplace 2026-11-15: the intake interview ([ADR 0090](docs/adr/0090-the-intake-interview.md)), the flow strip, the role matrix and the burn, the provider scoreboard and the frozen console ([ADR 0085](docs/adr/0085-the-flow-strip.md) to [0089](docs/adr/0089-a-read-only-console-snapshot.md)), outside adapters with GitLab and Jenkins ([ADR 0058](docs/adr/0058-outside-adapters-and-other-cis-as-surfaces.md)), the gates' logic in Python ([ADR 0084](docs/adr/0084-gates-under-the-shell-boundary.md)); [release notes](docs/releases/v0.7.0.md) |
+| 0.8.0 | Tagged 2026-11-16: the first run without friction (M60), GLM and a budget per provider (M59), closed decisions (M58), Flagger and the CI recipes (M62), the second Python slice (M61) |
 | Agent network, built | The dev-worker step split between workers behind one harness port, governed like any PR (ADR 0036, still *proposed*; hand-written at L0) |
 
 ## Next
@@ -68,18 +74,9 @@ The third arc (plan §16) is built, except for the runs that are the
 owner's: the OpenAI recording, a committed Claude recording and the L1
 end-to-end on GitHub.
 
-The sprint of 2026-11-16, in progress in parallel sessions:
-
-- **M58 — a closed-decision port**, piloted with the Gemini Decisions API
-  for the intake's perimeter and an injection screen (ADR 0091).
-- **M59 — GLM by Z.ai as a fourth provider**, with a token budget per
-  provider (ADR 0092).
-- **M60 — a flawless first run** (ADR 0093).
-- **M61 — the second Python slice**: the harness conformance pair, the
-  toolchain and `ci/`, under the shell boundary.
-- **M62 — Flagger and the GitLab CI and CircleCI recipes**, the leftovers
-  of M32 (ADR 0095). Still open after it: an outside AgentHarness and the
-  full tower on GitLab and on a real Jenkins.
+Left from the sprint of 2026-11-16: an outside AgentHarness, the full
+tower on GitLab and on a real Jenkins (after M62), and `ci/` under the
+shell-boundary ratchet (ADR 0094).
 
 M24's remaining legs: OpenAI has not run, and GLM runs after M59. The
 exit criterion is plan §14's: if at least two tickets in three do not

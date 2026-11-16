@@ -48,6 +48,18 @@ Security scanning (ADR 0072) landed as M43, not M42: main had given M42 to ADR 0
 
 The sprint of 2026-11-12 landed in three merges: streams B and C (a741bf0), stream A (8d36f9f) and the console's DORA and spend panels on logbook 1.5 (563ecbf), each with every workflow green on its landing branch. 0.5.0's three drafts were published to the Marketplace by the owner the same morning. The release commit bumps the same files as 0.5.0's; the tag waits for the owner's go.
 
+## Release 0.8.0, 2026-11-16
+
+The sprint of 2026-11-16 landed in this order, each with every workflow green:
+- the ROADMAP refresh (9e91570);
+- M60 (a040a5f);
+- M59 (50273b4);
+- M62 (7d4d3d7);
+- M58 (30737ad plus the landing fix 5f42b22: an intake test that read the wrong stderr once M62's new app/ file changed the perimeter recording's key);
+- M61 (9f0a6dd), main fast-forwarded to its head, whose merge already had main as first parent.
+
+M61's `self` ran for hours twice: one of its tests failed under the mutation runner's coverage hook, which silently turned test selection off. It is fixed, and the silent fallback is a follow-up. M63 (CNCF hygiene) is paused by the owner and its branch is unmerged. The owner asked for the release and a LinkedIn post.
+
 ## Release 0.7.0, 2026-11-14
 
 Landed since 0.6.0, each with every workflow green on its landing branch:

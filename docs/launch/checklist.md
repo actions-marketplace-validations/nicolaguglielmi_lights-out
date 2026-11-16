@@ -308,6 +308,23 @@ every ADK role (ADR 0090, M57). Named 0.7.0: it adds features.
   passkey, 2026-11-15): `lights-out`, `test-integrity` and `test-proof`
   each show 0.7.0 as Latest.
 
+### Release 0.8.0 (2026-11-16)
+
+The sprint of 2026-11-16: the first run without friction (ADR 0093, M60),
+GLM by Z.ai and a budget per provider (ADR 0092, M59), closed decisions
+(ADR 0091, M58), Flagger and the GitLab CI and CircleCI recipes (ADR
+0095, M62), and the second Python slice (ADR 0094, M61). Named 0.8.0: it
+adds features.
+
+- [x] **The release commit**: the wrapper, `pyproject.toml`, the three
+  plugin manifests and the landing page at 0.8.0, every usage pinned to
+  `@v0.8.0` (the Jenkins, GitLab CI and CircleCI recipes too), the prose
+  in `docs/releases/v0.8.0.md`.
+- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
+- [ ] **Tag `v0.8.0`** on main, every job green.
+- [ ] **The three drafts `v0.8.0` published to the Marketplace** (owner,
+  passkey).
+
 ### The Python package on PyPI (M35)
 
 The light tier, `lights-out-gates --light`, is a Python package built from
