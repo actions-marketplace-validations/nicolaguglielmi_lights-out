@@ -97,6 +97,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `Registry` | `zot`, `artifact-registry` | `publish.sh <tag>` costruisce, firma e pusha stampando il riferimento immutabile; `verify.sh <tag>` verifica la firma e stampa il digest verificato (ADR 0025 §1) |
 | `Charts` | `grafana`, `cloud-monitoring` | i grafici che la console mostra; la console non li ridisegna (ADR 0023) |
 | `Workload` | `app`, `workloads/minimal` | ciò su cui la piattaforma opera, scelto da `WORKLOAD=<dir>` (default `app`), non dal profilo; `workload.env`, `compose.yaml`, `/healthz` e `/metrics` su `:8000`, `flags/flags.json`, `smoke.sh`, `load.sh`, runner in-image test/mutation/SAST, `fixtures/gates/`; non nominato in `core/`, `gates/`, `verify/`, `adapters/` (`ci/app-free.sh`); verificato da `ci/workloads.sh` e `./go demo-seam` (ADR 0030) |
+| `Decide` | `replay`, `gemini-decisions`, `structured` | domande chiuse su un testo (sì/no, scelta, punteggio), ognuna con una confidenza; `replay` a L0 da `fixtures/decide/`, `gemini-decisions` è la Decisions API di Gemini, `structured` fa la stessa scelta chiusa col modello del profilo e un output JSON-schema, per ogni fornitore; scelto da `DECIDE=` nel profilo; suite di conformità `ci/decide.sh`; mai dentro un gate (ADR 0091) |
 
 *Stato 2026-11-02:* esistono `replay`, `gemini-cli`, `adk`, `gitea`, `file`, `pubsub-emulator`, `firestore-emulator`, `inproc`, `envoy-canary`, `promql`, `prometheus`, `flagd`, `zot` e i workload `app` e `workloads/minimal`. Gli altri nomi della tabella non sono ancora scritti e sono da implementare, ciascuno nella milestone che lo porta:
 
@@ -1168,6 +1169,21 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 *Stato 2026-11-14 (branch `claude/m57-turn-cap`):* test scritti prima dal gate-writer, NO-GO su fa857be e GO dopo; `ADK_MAX_TURNS` nei quattro ruoli ADK, il run fermato nel registro (`STEP_RUN`), `find_files` con una lista; `./go ci` verde da un clone pieno (92a3464, 398 s). La nuova registrazione dell'architect, approvata dall'owner (≤ $0,77), si è fermata al tetto di 10 turni con dieci ricerche e nessuna proposta: $0,057 a listino, $0,032 al prezzo della cache, nel registro; non ripetuta. Restano due decisioni per l'owner, nell'handoff: un budget di ricerche nello strumento o la mappa del solo workload, e il registro ADK che non conta i token di thinking.
 
 *Stato 2026-11-14, seconda correzione (approvata dall'owner, "Sì, tutto"):* la mappa dell'architect è quella del solo workload (`INTAKE_SCOPE` da `WORKLOAD`), le ricerche sono al massimo due, e il registro ADK conta i token di thinking come output (ADR 0083, emendamento: $0,046 → $0,057 sul run misurato). Test prima, NO-GO su 0073afa e GO dopo. La nuova registrazione dell'architect, approvata dall'owner (≤ $0,10), è riuscita al primo tentativo: quattro turni, due ricerche, sei percorsi in `app/` per ticket, tutti e due `GO: spec` come bozze; 18.888 token in ingresso e 9.808 in uscita, $0,051 a listino.
+
+### Sprint 2026-11-16 (M58–M63)
+
+### M58 — Decisioni chiuse: perimetro e filtro anti-injection (ADR 0091)
+
+*Aggiunto 2026-11-16, valutazione del coordinatore approvata dall'owner.* Google ha pubblicato la Decisions API di Gemini (`gemini-decision-1`): domande chiuse (sì/no, scelta, punteggio di una rubrica) su un input condiviso, una confidenza per risposta, fino a 1.000 domande per richiesta, nessun token in uscita pagato. Si usa solo per scelte chiuse, mai dentro un gate e mai per un ruolo che deve scrivere testo; dietro una porta con un ripiego che fa la stessa scelta chiusa col modello del profilo, così ogni fornitore funziona. Due piloti: il perimetro dell'intake e un filtro prima che un agente legga un testo.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - La porta `Decide` (`core/decide.py ask`) controlla richiesta e risposta contro il contratto dell'ADR; `adapters/gemini-decisions` e `adapters/structured` passano la stessa suite di conformità, `ci/decide.sh`, contro uno stub locale del loro fornitore, senza chiave.
+  - A L0 (`DECIDE=replay`) una decisione si ripete da `fixtures/decide/<sha256>.json`, registrata dal vivo con `DECIDE_RECORD=1`; senza registrazione esce 3 con una riga che dice come registrarla.
+  - Pilota A: con `PERIMETER_BY=decide` il passo `perimeter` fa una richiesta sola, una domanda sì/no per ticket e per file del workload; un file sotto `PERIMETER_CONFIDENCE` va alla persona come incerto, mai nel perimetro; oltre 1.000 domande, o senza registrazione a L0, cerca come prima e lo dice. Provato da `ci/intake.sh`.
+  - Pilota B: `interview`, `intake-answer`, `clarify` e `answer` chiedono prima se il testo contiene istruzioni rivolte a un agente; sopra la soglia il passo si ferma con una riga chiara e `./go screen-clear` la sblocca per quel testo; nella banda incerta il ruolo gira e la carta mostra il segnale. Non è un gate. Provato da `ci/screen.sh`, che ripete anche l'insieme etichettato di 24 testi.
+  - Logbook 1.8 (solo aggiunte): `tickets[].screen`, `intakes[].screen`, `intakes[].proposal[].uncertain`, `intakes[].architect.by`; la console mostra segnale e incerti.
+  - La registrazione delle decisioni della demo la fa l'owner, con la stima nell'handoff; il confronto fra ricerca e domande sull'intake di esempio (percorsi, costo, latenza) sta nell'handoff.
+  - `./go demo` verde, `./go ci` verde da un clone pieno; reference, tutorial e la tabella di §4 lo dicono.
 
 ### Dopo
 
