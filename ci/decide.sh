@@ -407,7 +407,7 @@ need(sorted(schema.get("properties", {})) == ["k1", "k2", "k3"], "schema propert
 need(body.get("model", "").endswith("stub"), "model %r" % body.get("model"))
 PY
 # The clamp and the normalisation by the sum.
-printf '%s' '{"q": {"type": "yes_no", "instructions": "Is it so?"}}' > "$tmp/yn1.json"
+printf '%s' '{"input": "Members give their seat back.", "questions": {"q": {"type": "yes_no", "instructions": "Is it so?"}}}' > "$tmp/yn1.json"
 for pair in "1.0:0.99" "0:0.01" "0.5:0.5"; do
   given=${pair%:*}
   want=${pair#*:}

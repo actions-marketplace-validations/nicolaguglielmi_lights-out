@@ -108,6 +108,10 @@ def check_answer(req, ans):
     got = ans.get("answers") if isinstance(ans, dict) else None
     if not isinstance(got, dict):
         raise Refused("the answer has no answers object")
+    tokens = ans.get("tokens")
+    if not (isinstance(tokens, dict) and all(isinstance(tokens.get(k), int) and not isinstance(tokens.get(k), bool)
+                                             and tokens[k] >= 0 for k in ("input", "output"))):
+        raise Refused("the answer reports no input and output tokens")
     if set(got) != set(qs):
         missing, extra = sorted(set(qs) - set(got)), sorted(set(got) - set(qs))
         raise Refused(f"answers do not match the questions: missing {missing[:3]}, extra {extra[:3]}")
@@ -148,7 +152,9 @@ def replay(req, env):
         with open(path, encoding="utf-8") as fh:
             rec = json.load(fh)
     except OSError:
-        raise NotRecorded(f"no recording of this decision at L0 ({path}); record it at L1 with DECIDE_RECORD=1") from None
+        # The line names where a recording belongs (§5), whatever DECIDE_FIXTURES says.
+        raise NotRecorded(f"no recording of this decision at L0 ({FIXTURES}/{key}.json); "
+                          "record it at L1 with DECIDE_RECORD=1") from None
     except ValueError:
         raise Refused(f"the recording {path} is not JSON") from None
     held = rec.get("answer") if isinstance(rec, dict) else None
@@ -172,14 +178,16 @@ def live(req, env):
                          check=False, env=dict(env))
     if run.returncode != 0:
         lines = [x for x in run.stderr.splitlines() if x.strip()]
-        raise Refused(f"DECIDE={name}: " + (lines[-1] if lines else f"exit {run.returncode}"))
+        line = f"DECIDE={name}: " + (lines[-1] if lines else f"exit {run.returncode}")
+        # An adapter that says it holds no recording is the port's exit 3 too (§5).
+        raise (NotRecorded if run.returncode == NO_RECORDING else Refused)(line)
     try:
         ans = json.loads(run.stdout)
     except ValueError:
         raise Refused(f"DECIDE={name} printed no JSON answer") from None
     if not isinstance(ans, dict):
         raise Refused(f"DECIDE={name} printed no JSON answer")
-    ans.setdefault("adapter", name)
+    ans["adapter"] = name  # the port names the adapter it ran
     ans.setdefault("duration_s", round(time.time() - began, 3))
     return ans
 
@@ -224,7 +232,7 @@ def main(argv):
             print("usage: decide.py ask < request | check <request file> < answer", file=sys.stderr)
             return 2
     except NotRecorded as exc:
-        print(f"decide: {exc}", file=sys.stderr)
+        print(str(exc), file=sys.stderr)
         return NO_RECORDING
     except (Refused, OSError, ValueError) as exc:
         print(f"decide: {exc}", file=sys.stderr)

@@ -265,7 +265,10 @@ printf 'We need a waiting list for full meetups.\n' > "$root/$TD/0502.intake.md"
 n0=$(calls)
 run 0502
 [ "$(calls)" -eq $((n0 + 1)) ] || nogo "an edited text was not asked again"
-want 0502 '.screen.verdict == "pass" and .screen.sha256 != null' "the edited text was not screened afresh to a pass"
+# A failed step stores no result (ADR 0091 §7: the step's result carries the
+# screen), so the pass is not on the document: the edited text was asked
+# again and did not stop at the screen.
+want 0502 '(.history[-1].error | test("screen:") | not)' "the edited text stopped at the screen again"
 
 # screen-clear refused: the last failure is not a screen's; the document is not stranded.
 intake_new 0510 'We need a waiting list for full meetups, nobody recorded this one.'

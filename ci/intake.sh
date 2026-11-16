@@ -82,8 +82,8 @@ TD=tickets
 # tower ARGS...: in the temp root, the person-facing variables cleared so a
 # default is a default.
 tower() {
-  (cd "$root" && env -u INTAKE_BY -u INTAKE_VIA -u CONFIRM_BY -u CONFIRM_VIA -u ANSWER -u ANSWER_BY -u DECISIONS -u WORKLOAD -u INTAKE_SCOPE -u PERIMETER_BY -u DECIDE -u DECIDE_FIXTURES -u DECIDE_RECORD \
-    STATE_STORE=stub-state EVENT_BUS=stub-bus TOWER_STEPS=core/steps TICKETS_DIR="$TD" \
+  (cd "$root" && env -u INTAKE_BY -u INTAKE_VIA -u CONFIRM_BY -u CONFIRM_VIA -u ANSWER -u ANSWER_BY -u DECISIONS -u WORKLOAD -u INTAKE_SCOPE -u PERIMETER_BY -u DECIDE_RECORD \
+    DECIDE=replay DECIDE_FIXTURES="$tmp/no-decisions" STATE_STORE=stub-state EVENT_BUS=stub-bus TOWER_STEPS=core/steps TICKETS_DIR="$TD" \
     AGENT_HARNESS=replay WORKLOAD_REPO="$repo" "$@") 2>>"$tmp/tower.err"
 }
 doc() { cat "$root/state/tickets.$1.json"; }

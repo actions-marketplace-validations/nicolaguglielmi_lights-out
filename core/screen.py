@@ -90,7 +90,7 @@ def ask(path, env):
     ans = json.loads(r.stdout)
     a = ans["answers"][KEY]
     run = {k: ans.get(k) for k in ("provider", "model", "tokens", "duration_s")}
-    run.update(harness=ans.get("adapter"), replayed=ans.get("replayed") is True, role="screen")
+    run.update(adapter=ans.get("adapter"), harness=ans.get("adapter"), replayed=ans.get("replayed") is True, role="screen")
     if isinstance(ans.get("recorded"), dict):
         run["recorded"] = ans["recorded"]
     return dict(run, verdict=verdict(a["p_yes"], a["confidence"], threshold()), p_yes=a["p_yes"],
