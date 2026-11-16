@@ -40,7 +40,7 @@ The `Delivery` adapter for a Kubernetes cluster that runs [Argo Rollouts](https:
 
 `./go argo-conformance` runs `gates/delivery-conformance.sh` unchanged against this adapter, on a k3s cluster beside the L0 plane. The plane must be up first (`./go up`).
 
-- `cluster.sh up` starts one k3s node, v1.37.2, as the compose service `k8s` from `compose.yaml` here, on the plane's network. It installs Argo Rollouts v1.10.2, after checking the sha256 of `install.yaml`.
+- `cluster.sh up` starts one k3s node, v1.37.2, as the compose service `k8s` from `compose.yaml` here, on the plane's network. `install.sh` installs Argo Rollouts v1.10.2, after checking the sha256 of `install.yaml`. With `CLUSTER_ADAPTER=adapters/flagger` the same node runs Flagger instead ([ADR 0095](../../docs/adr/0095-flagger-under-the-launchpads-gates-and-two-more-ci-surfaces.md)).
 - It applies the workload's `k8s/` manifests, with the digest the Registry port verified as the stable image.
 - Traffic: k3s bundles Traefik v3, which is the router there.
   - The app is reached on `ARGO_APP_PORT` (8180), and the API server on `ARGO_API_PORT` (6443).

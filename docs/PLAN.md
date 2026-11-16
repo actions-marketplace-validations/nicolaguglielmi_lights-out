@@ -91,7 +91,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `EventBus` | `spool`, `pubsub-emulator`, `pubsub` | `spool` (default a L0 e L1, ADR 0060): una coda in un file SQLite sotto `.crew/`; gli emulatori opt-in; `pubsub` stesso codice dell'emulatore, cambia l'endpoint |
 | `StateStore` | `sqlite`, `firestore-emulator`, `firestore` | stato del workflow, idempotenza; `sqlite` (default a L0 e L1, ADR 0060): un file sotto `.crew/` che sopravvive a `./go down` |
 | `Orchestrator` | `inproc`, `cloud-workflows` | macchina a stati del ciclo di vita del ticket |
-| `Delivery` | `envoy-canary`, `cloud-deploy`, `argo-rollouts` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
+| `Delivery` | `envoy-canary`, `cloud-deploy`, `argo-rollouts`, `flagger` | quattro verbi: `deploy.sh <version> <image>`, `shift.sh <pct>`, `rollback.sh`, `status.sh`; **plugin**: si carica da `DELIVERY=` nel profilo, aggiungerne uno = una cartella + una riga, zero modifiche a `core/` (ADR 0024); ogni adapter passa la suite di conformità `gates/delivery-conformance.sh` (ADR 0026) |
 | `Metrics` | `promql`, `prometheus`, `managed-prometheus` | stessa query PromQL; `promql` interroga `METRICS_URL`; `prometheus` ne è il caso del piano a `http://$PLANE_HOST:9090`, non `prometheus:9090`, che il workbench non risolve |
 | `Flags` | `flagd`, `unleash` | OpenFeature, l'SDK non cambia; due verbi per il nucleo e i target: `evaluate.sh <flag> [version]`, `set.sh <flag> <variant>` (ADR 0026 §3) |
 | `Registry` | `zot`, `artifact-registry` | `publish.sh <tag>` costruisce, firma e pusha stampando il riferimento immutabile; `verify.sh <tag>` verifica la firma e stampa il digest verificato (ADR 0025 §1) |
@@ -106,6 +106,7 @@ Il nucleo non conosce nessun fornitore. Ogni integrazione sta dietro un'interfac
 | `pubsub`, `firestore`, `github-issues`, `cloud-workflows` | EventBus, StateStore, Tracker, Orchestrator | M10 (la tower gira su GCP) |
 | `github` | CodeHost | M21 (GitHub come code host, ADR 0043) |
 | `gitlab` | CodeHost | M32 (GitLab CE, ADR 0058) |
+| `flagger` | Delivery | M62 (Flagger sotto i gate della launchpad, ADR 0095) |
 | `grafana`, `cloud-monitoring` | Charts | M11 (console) |
 | `antigravity-sdk`, `linear`, `unleash` | AgentHarness, Tracker, Flags | da assegnare: ognuno con un ADR e la sua suite di conformità |
 | `argo-rollouts` | Delivery | M25 (Kubernetes con Argo Rollouts, ADR 0051) |
@@ -1168,6 +1169,20 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 *Stato 2026-11-14 (branch `claude/m57-turn-cap`):* test scritti prima dal gate-writer, NO-GO su fa857be e GO dopo; `ADK_MAX_TURNS` nei quattro ruoli ADK, il run fermato nel registro (`STEP_RUN`), `find_files` con una lista; `./go ci` verde da un clone pieno (92a3464, 398 s). La nuova registrazione dell'architect, approvata dall'owner (≤ $0,77), si è fermata al tetto di 10 turni con dieci ricerche e nessuna proposta: $0,057 a listino, $0,032 al prezzo della cache, nel registro; non ripetuta. Restano due decisioni per l'owner, nell'handoff: un budget di ricerche nello strumento o la mappa del solo workload, e il registro ADK che non conta i token di thinking.
 
 *Stato 2026-11-14, seconda correzione (approvata dall'owner, "Sì, tutto"):* la mappa dell'architect è quella del solo workload (`INTAKE_SCOPE` da `WORKLOAD`), le ricerche sono al massimo due, e il registro ADK conta i token di thinking come output (ADR 0083, emendamento: $0,046 → $0,057 sul run misurato). Test prima, NO-GO su 0073afa e GO dopo. La nuova registrazione dell'architect, approvata dall'owner (≤ $0,10), è riuscita al primo tentativo: quattro turni, due ricerche, sei percorsi in `app/` per ticket, tutti e due `GO: spec` come bozze; 18.888 token in ingresso e 9.808 in uscita, $0,051 a listino.
+
+### Sprint 2026-11-16 (M58–M63)
+
+#### M62 — Flagger e le ricette CI (ADR 0095)
+
+*Aggiunto 2026-11-16, direzione dell'owner: "la vostra CI/CD al posto della nostra".* Compose ed Envoy sono il default, non un requisito; il primo feedback ha nominato proprio quel vincolo. Gli avanzi di M32: Flagger, le ricette per GitLab CI e CircleCI.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - `DELIVERY=flagger`: stessa porta Delivery e stessa suite di conformità di `argo-rollouts`, sullo stesso k3s. Flagger tiene la sua analisi sulle nostre metriche Prometheus e il suo rollback automatico; la launchpad apre ogni passo con il webhook `confirm-traffic-increase` (il gate del loadtester), il 100% aspetta il go-for-launch, e la promozione di Flagger (canary copiato nel primario) resta ferma a `/gate/halt` finché una persona non risponde. `./go flagger-conformance` GO; `./go flagger-proof` GO su due casi: un canary che Flagger riporta indietro da solo su metriche cattive, e una promozione che aspetta il gate. Versione di Flagger fissata, con la pagina della documentazione e la data.
+  - `surfaces/gitlab-ci/.gitlab-ci.yml` e `surfaces/circleci/config.yml` eseguono il wrapper su una merge request o una PR e pubblicano la riga dei gate come stato sotto un contesto loro (`lights-out/gitlab-ci`, `lights-out/circleci`), mai `gates`. `ci/outside.sh` lo controlla a freddo per le tre ricette. Ognuna provata nel modo reale più economico, detto esattamente nell'ADR; l'immagine dei gate è quella del commit sotto prova, mai una versione pubblicata.
+  - `./go ci` verde da un clone pieno, la demo verde, tutti i workflow verdi sul branch.
+- **Fuori scope, ancora aperti:** un AgentHarness esterno; la torre intera su GitLab e su un Jenkins vero.
+
+*Stato 2026-11-16 (branch `claude/m62-flagger-recipes-f4edaa`):* ADR 0095 prima del codice, poi il controllo delle ricette in `ci/outside.sh` (NO-GO su due guasti piantati), poi il codice. Verificato prima di scrivere, dal sorgente di Flagger v1.45.0: la promozione di Flagger lascia il canary a peso 0 e il primario sulla versione nuova, mentre il 100% della porta è il canary che prende tutto il traffico (ADR 0026, la suite chiede peso 100 dopo il GO). Quindi `confirm-promotion` non può essere il passo 25→100 senza cambiare la suite: il gate umano prima del 100% è il gate dei passi, che solo `./go promote` apre a 100, e `confirm-promotion` tiene ferma la promozione di Flagger per una persona. Un canary fallito con lo stesso template non riparte in Flagger: `deploy.sh` mette un timbro per deploy. `gitlab-ci-local` non basta (i servizi non vedono il volume del job), quindi un gitlab-runner vero sul GitLab dell'adapter; `circleci local execute` non esegue un job `machine`, quindi `config validate` più il passo della ricetta su una PR di Gitea, dichiarato come non una run di CircleCI. Run e misure nell'handoff.
 
 ### Dopo
 
