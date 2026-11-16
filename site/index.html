@@ -90,6 +90,9 @@ nav .gh{font-size:14px;padding:9px 12px}
 .hero .cta{display:flex;flex-wrap:wrap;gap:12px;margin:34px 0 20px}
 .hero .note{font:13px/1.5 var(--mono);color:var(--mute)}
 .hero .note b{color:var(--ink2);font-weight:400}
+.hero .note button{font:inherit;color:var(--ink2);background:none;border:0;padding:0;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.hero .note button:hover{color:var(--ink)}
+#try-repo{scroll-margin-top:80px}
 
 /* the monitor: hero video */
 .monitor{margin-top:clamp(48px,7vw,84px);border:1px solid var(--line2);border-radius:14px;background:#070b10;box-shadow:0 30px 120px -20px rgba(63,185,80,.18),0 0 0 1px rgba(255,255,255,.02) inset;overflow:hidden}
@@ -347,10 +350,11 @@ html:not(.js) .scene:first-child{opacity:1;visibility:visible;transform:none}
     <h1>Your AI agents ship code. <em>Who checks it?</em></h1>
     <p class="lead">Tests pass and CI is green, yet nobody verified that those tests prove anything. lights-out judges every pull request an agent opens with numbers, not opinions: the new tests must fail without the change, the mutants on the changed lines must die, nothing may leave the ticket's files. What passes takes 5% of the traffic, rolls itself back on errors, and waits for one human GO before 100%. With Claude Code, Codex or Gemini CLI at the keyboard.</p>
     <div class="cta">
-      <button class="btn primary" type="button" data-play="overview" data-name="The tour" data-blurb="from ticket to rollback, on the board"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>Watch the tour<span data-len="overview"></span></button>
-      <a class="btn" href="#try">Try it: <code>./go demo</code></a>
+      <a class="btn primary" href="console/snapshot.html#ticket/0001"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 3C4.4 3 1.6 5.4.5 8c1.1 2.6 3.9 5 7.5 5s6.4-2.4 7.5-5C14.4 5.4 11.6 3 8 3zm0 8.2A3.2 3.2 0 1 1 8 4.8a3.2 3.2 0 0 1 0 6.4zM8 6.4a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2z"/></svg>See it in 10 seconds</a>
+      <a class="btn" href="#try">Run it: <code>./go demo</code></a>
+      <a class="btn" href="#try-repo">Try it on your repo</a>
     </div>
-    <p class="note">Runs complete on your laptop: <b>no account, no API key, no cloud.</b></p>
+    <p class="note">Runs complete on your laptop: <b>no account, no API key, no cloud.</b> Or <button type="button" data-play="overview" data-name="The tour" data-blurb="from ticket to rollback, on the board">watch the tour<span data-len="overview"></span></button>.</p>
 
     <div class="monitor">
       <div class="top"><i></i><i></i><i></i><span>the board · scripted walk over the real code paths · example versions and numbers</span><a href="board/">open the board ↗</a></div>
@@ -576,7 +580,7 @@ Then the response is not 500 …
       <h2 id="proof-h">Numbers, with where they come from.</h2>
     </div>
     <div class="proof">
-      <div class="stat reveal"><div class="v">370–480<small> s</small></div><p><code>./go demo</code> from a fresh clone to <code>GO: demo</code> on a clean GitHub runner, cold: the toolchain built in the run, two busy ports moved by the preflight. Before ADR 0093: 700–805 s.</p><a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">README · the whole loop</a></div>
+      <div class="stat reveal"><div class="v">370–480<small> s</small></div><p><code>./go demo</code> from a fresh clone to <code>GO: demo</code> on a clean GitHub runner, cold: the toolchain built in the run, two busy ports moved by the preflight. Before ADR 0093: 700–805 s.</p><a href="https://github.com/nicolaguglielmi/lights-out#quick-start">README · the whole loop</a></div>
       <div class="stat reveal"><div class="v">27<small> s</small></div><p>The gates Action's check on a pull request of a repository that is not lights-out, on a runner that had never pulled the signed gates image. <code>test-proof</code> alone: 14 s.</p><a href="https://github.com/nicolaguglielmi/lights-out-probe/pull/1">lights-out-probe · the pull request</a></div>
       <div class="stat red reveal"><div class="v">0.625<small> &lt; 0.666</small></div><p>Claude Code's first live run, ticket 0001: 5 of 8 mutants killed on the changed lines. The mutation gate said NO-GO. Nothing merged.</p><a href="https://github.com/nicolaguglielmi/lights-out/blob/main/docs/reference.md#what-is-real-and-what-is-recorded">docs/reference.md · live, on Claude</a></div>
       <div class="stat reveal"><div class="v">10 · 7<small> of 10</small></div><p>The same ten tickets on tenacity, a library not written for lights-out: merged with no human on the code by Claude Code on Anthropic and by Gemini CLI on Gemini. Gemini's other three stopped at the token budget, with no PR. OpenAI not run. Ten tickets, one repository, one run each: not a benchmark.</p><a href="scoreboard/">The scoreboard · every row sourced</a></div>
@@ -605,7 +609,7 @@ Then the response is not 500 …
     <div class="sec-head reveal">
       <div class="eyebrow">Try it</div>
       <h2 id="try-h">Watch a canary roll itself back.</h2>
-      <p class="lead">You need podman (or Docker on Linux) and git. Nothing else on your machine.</p>
+      <p class="lead">You need podman (or Docker on Linux) and git. Nothing else on your machine, or nothing installed at all, in a codespace.</p>
     </div>
     <div class="try">
       <div class="panel reveal">
@@ -636,9 +640,10 @@ lights-out demo: a ticket goes from a request to a canary that rolls itself back
 <span class="m">      done, 1 s</span>
 <span class="g">GO: demo, milestone M9, 480s to rollback (budget 900s, plan §2)</span></pre></div>
         <p>At the end it opens that run's console on ticket 0001, from the request to the rollback and its reason, like <a href="console/snapshot.html#ticket/0001">the frozen console of the latest run on main</a>.</p>
-        <p class="fine">480 s on a clean runner, cold, with 3000 and 8080 taken (before: 700–805 s). Its images take about 3.3 GB on disk.<a href="https://github.com/nicolaguglielmi/lights-out#2-the-whole-loop-on-your-laptop">Installing podman →</a></p>
+        <p class="fine">480 s on a clean runner, cold, with 3000 and 8080 taken (before: 700–805 s). Its images take about 3.3 GB on disk.<a href="https://github.com/nicolaguglielmi/lights-out#quick-start">Installing podman →</a></p>
+        <p><b>Nothing installed?</b> <a href="https://codespaces.new/nicolaguglielmi/lights-out?quickstart=1">Open it in GitHub Codespaces</a> and run the same <code>./go demo</code> in its terminal, with docker inside the codespace; then <code>./go console</code> and the forwarded port 8098. It needs a GitHub account and uses your account's Codespaces quota: a 4-core machine spends 4 of the 120 core hours a Free account gets each month for every hour it runs. The three commands above need neither.</p>
       </div>
-      <div class="panel reveal">
+      <div class="panel reveal" id="try-repo">
         <h3>Gates on your repository</h3>
         <p>On every pull request, from <a href="https://github.com/marketplace/actions/lights-out-gates">the Action on the Marketplace</a>. With no <code>.lights-out/</code> contract yet, its first check is NO-GO and carries one drafted from your base, with the two commands that commit it.</p>
         <div class="code"><button class="copy" type="button" data-copy="permissions:&#10;  contents: read&#10;  checks: write&#10;steps:&#10;  - uses: actions/checkout@v7&#10;    with:&#10;      fetch-depth: 0&#10;  - uses: nicolaguglielmi/lights-out@v0.8.0">copy</button>
@@ -663,7 +668,7 @@ steps:
 <span class="p">$ </span>cp -R ~/.local/state/lights-out/your-repo/.lights-out/. .lights-out/
 <span class="p">$ </span>git add .lights-out &amp;&amp; git commit -m "add lights-out contract"
 <span class="p">$ </span>lights-out gates     <span class="m"># judges the last commit</span></pre></div>
-        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out-gates:0.8.0</code>, amd64 and arm64, 508 MB unpacked, signed keyless with Sigstore: <a href="https://github.com/nicolaguglielmi/lights-out#1-gates-on-your-repository">verify it, or pin it by digest</a>. <code>test-proof</code> and <code>test-integrity</code> are also Actions of their own.</p>
+        <p class="fine">Image <code>ghcr.io/nicolaguglielmi/lights-out-gates:0.8.0</code>, amd64 and arm64, 508 MB unpacked, signed keyless with Sigstore: <a href="https://github.com/nicolaguglielmi/lights-out#gates-on-your-repository">verify it, or pin it by digest</a>. <code>test-proof</code> and <code>test-integrity</code> are also Actions of their own.</p>
         <p class="fine">No engine at hand? <code>uvx lights-out-gates --light</code> runs the gates that need only git and Python, in under a second, and names the ones it did not run.</p>
       </div>
     </div>

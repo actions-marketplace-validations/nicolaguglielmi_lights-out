@@ -152,6 +152,52 @@ jobs:
           cat "$TIMES" || true
           { echo '### stranger: demo (podman)'; echo '```'; cat "$RUNNER_TEMP/demo.log" || true; echo; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+  # The second door (docs/adr/0097 §2): the README's "Open in Codespaces",
+  # proved without anyone's Codespaces account. devcontainers/ci builds
+  # .devcontainer/ as Codespaces would (the devcontainer CLI, Docker-in-
+  # Docker) and runs ./go demo inside it, timed. The runner is not a
+  # codespace: same container, same 4 CPUs, a different VM.
+  codespace:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: The runner's disk, before
+        run: df -h / | tail -1
+      - name: ./go demo in the dev container
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3.1900000450
+        with:
+          push: never
+          runCmd: |
+            set -u
+            git config --global --add safe.directory "$PWD"
+            s=$(date +%s)
+            rc=0; ./go demo || rc=$?
+            t=$(( $(date +%s) - s ))
+            printf 'codespace: ./go demo %ss, exit %s\n' "$t" "$rc" | tee .crew/codespace-times.txt
+            docker system df || true
+            exit "$rc"
+      - if: always()
+        name: Digest, and the wall time
+        run: |
+          cat .crew/demo/steps.tsv || true
+          cat .crew/codespace-times.txt || true
+          grep -E '^(GO|NO-GO)' .crew/demo/run.log | cut -c1-240 || true
+          { echo '### stranger: codespace (the dev container, docker)'; echo '```'; cat .crew/codespace-times.txt || true; grep -E '^(GO|NO-GO): demo' .crew/demo/run.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: stranger-codespace-log
+          path: |
+            .crew/demo/run.log
+            .crew/demo/steps.tsv
+            .crew/codespace-times.txt
+          if-no-files-found: ignore
+
   # README "On your repository, without cloning lights-out", as far as it
   # works with no published image: ./go package from a clone, the wrapper
   # on workloads/minimal copied into a fresh repository, with podman.

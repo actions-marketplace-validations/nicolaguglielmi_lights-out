@@ -791,7 +791,7 @@ steps:
   and the job status still carries the verdict.
 - A private package needs `docker login ghcr.io` before the Action.
 - The images are signed keyless; tags are mutable. To pin, set the `image`
-  input to a digest. The check is in [the README](../README.md#1-gates-on-your-repository).
+  input to a digest. The check is in [the README](../README.md#gates-on-your-repository).
 - Up to v0.2.0 the path was `nicolaguglielmi/lights-out/action@<tag>`. Those
   tags keep it.
 - **Proven on one outside repository**,

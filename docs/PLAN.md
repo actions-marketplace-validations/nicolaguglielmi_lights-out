@@ -1240,6 +1240,18 @@ M24 ha lasciato due problemi sulla stessa cucitura: un solo `TOKEN_BUDGET` per t
   - `./go ci` GO da un clone pieno sotto `.crew/`, la demo verde, tutti i workflow verdi sul branch (`harness-conformance` su docker e `podman` girano la suite vera).
   - Le righe di shell prima e dopo, per directory, nel handoff.
 
+### M64 — Da zero a eroe, e un avvio senza installare niente (ADR 0097)
+
+*Aggiunto 2026-11-16, valutazione del coordinatore approvata dall'owner.* Dopo M60 restano tre gradini fra chi arriva e il "wow": installare podman (sul Mac la macchina si crea a mano, la prima build scarica circa 1 GB); i 6–8 minuti di `./go demo` prima di vedere il rollback, mentre la console congelata di un run vero (ADR 0089) sta nella quarta sezione del sito; e il salto al piano sulla propria app (`compose.yaml`, `/healthz`, `/metrics`, il kill switch e le fixture scritti a mano). E quattro documenti dicono come cominciare, ognuno in un ordine suo.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - Un percorso a sette livelli in apertura di `docs/tutorial.md` (0 la console congelata, 1 `./go demo`, 2 i gate sul tuo repository, 3 soglie, ticket e intake, 4 il tuo servizio nel piano, 5 agenti dal vivo a L1, 6 la tua CI/CD): per ognuno tempo, cosa serve, cosa vedrai, i link al resto, e una riga di verdetto copiata da un run vero, con la fonte. Il livello 5 è un percorso documentato, non eseguito: chiede una chiave e una spesa.
+  - Tolto quello che il percorso rende doppio: la tabella "Five ways in" e la sezione "0. Look" del README, l'elenco a cinque passi del tutorial, la numerazione delle sezioni del README e del tutorial.
+  - `.devcontainer/` con docker-in-docker esegue `./go demo` in GitHub Codespaces; provato senza l'account dell'owner dal job `codespace` del workflow `stranger` (`devcontainers/ci`), cronometrato. Bottone nel README e link nel sito, sempre con "serve un account GitHub e consuma la quota di Codespaces". La porta della regola d'oro resta `git clone && ./go demo`.
+  - Il primo schermo del sito: prima la console congelata ("See it in 10 seconds"), poi "Run it" (locale o Codespaces), poi "Try it on your repo"; WCAG AA in entrambi gli schemi di colore.
+  - `ci/zero-to-hero.sh` (logica in `ci/checks/zero_to_hero.py`, test in `ci/tests/`, ADR 0094) tiene insieme i sette livelli, i link del README, il dev container fissato e provato, le parole accanto a ogni link a Codespaces e la console per prima nel sito; ogni caso provato a fallire.
+  - Nessuna bozza del mezzo piano (`./go init` dal Dockerfile): quello che una bozza può scrivere senza leggere il codice è già in `workloads/minimal/.lights-out/`, e quello che rende giudicabile un canary (`/healthz`, `/metrics` con `target_info{service_version}`, il kill switch letto da flagd) sta nel codice dell'app; un compose indovinato accenderebbe un piano il cui canary non si giudica (ADR 0097 §4).
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

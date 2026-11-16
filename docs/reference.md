@@ -20,6 +20,7 @@ Milestones M19 (harnesses, ADR 0041), M20 (gates anywhere, ADR 0042), M21 (GitHu
 | ticket → PR | M5 | ✓ crew driver, six roles, one real run recorded, replay at L0 |
 | e2e | M6 | ✓ ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited |
 | console at the end | M60 | ✓ the run's logbook frozen into `.crew/demo/console.html`, opened on ticket 0001 (ADR 0093 §4, ADR 0089) |
+| dev container | M64 | ✓ `.devcontainer/` runs `./go demo` with docker-in-docker, in GitHub Codespaces or any dev-container host; proved by the `stranger` workflow's `codespace` job through `devcontainers/ci`, not on a codespace (ADR 0097 §2) |
 | closed decisions | M58 | ✓ the `Decide` port (ADR 0091): closed questions over a text, `gemini-decisions` (the Gemini Decisions API) or `structured` (the profile's model, any provider), replayed at L0; the screen before `product` reads a text, and the perimeter asked file by file (`PERIMETER_BY=decide`, opt-in) |
 | ADK agents | M7 | ✓ product, ops-triage, release on ADK 2.14.0; adk eval in ci; replay at L0 |
 | go-for-launch | M7 | ✓ held canary → brief → human GO → 100% (`./go promote`), proved by `./go demo-launch` |
@@ -98,6 +99,10 @@ Declared at L0 (ADR 0036, proposed): `CREW_HARNESS=network` makes the assign ste
 ## Commands
 
 On macOS, podman runs inside `podman machine`, a VM. The docker CLI is compatible but not the documented path; use `CONTAINER_ENGINE=docker` if needed.
+
+**The path from zero to hero** is the opening of [the tutorial](tutorial.md#from-zero-to-hero): seven levels, from the frozen console (level 0) to your own CI/CD (level 6), each with its time, what it needs, what you will see and the one line that proves it ([ADR 0097](adr/0097-from-zero-to-hero-and-a-start-with-nothing-installed.md)). `ci/zero-to-hero.sh` keeps it whole: the seven levels at the head of the tutorial, the README linking each, the dev container pinned and proved, the words "GitHub account" and "quota" beside every Codespaces link, and the frozen console first on the site.
+
+**With nothing installed**, `.devcontainer/devcontainer.json` runs the same `./go demo` in GitHub Codespaces: `mcr.microsoft.com/devcontainers/base` 3.0.13 (Ubuntu 24.04) pinned by digest, the docker-in-docker feature 4.1.3, `CONTAINER_ENGINE=docker`, and at least 4 CPUs, 8 GB and 32 GB of storage. It needs a GitHub account and uses that account's Codespaces quota (on GitHub Free, 120 core hours and 15 GB-month a month; a 4-core machine spends 4 core hours an hour). The console's 8098 and the plane's 8080, 3000 and 9090 are forwarded; in a codespace the demo's `file://` link does not open, so run `./go console` and open the forwarded 8098. Docker-in-docker because `./go` mounts the checkout into its toolchain container at its own path, which an engine outside the container would not see.
 
 `./go demo` and `./go up` start with a preflight on the host (ADR 0093 §1): a stopped podman machine is started, less than 3,800 MiB for the engine prints a warning, too little disk in the engine's store is a NO-GO with the prune command, and the plane's ports are checked. A busy port moves to the first free one after it, is written to `.crew/ports.env` and named in one line: the app (`APP_PORT`, 8080), Gitea (`CODE_HOST_PORT`, 3000), Prometheus (`METRICS_PORT`, 9090), Envoy's admin (`DELIVERY_ADMIN_PORT`, 9901) and flagd (`FLAGS_PORT`, 8016). The registry's 5050 cannot move, because it is part of every image's name; a busy 5050 is a NO-GO that names its holder. A value in `.env` wins over `.crew/ports.env` and is never moved: busy, it is a NO-GO. A lights-out plane started from another directory is a NO-GO that names it. `./go doctor` reads the same ports.
 

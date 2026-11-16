@@ -1,29 +1,310 @@
 # Tutorial: lights-out in one sitting
 
-This is a guided path through lights-out, in five steps:
-
-1. Run the demo and read what happened, stage by stage.
-2. Take the short looks: rework, triage, post mortem, go-for-launch.
-3. Put the gates on your own repository, without the plane.
-4. Write a ticket and hand it to an agent at L1, with a key.
-5. Run the ops commands on an incident and on your own metrics.
-
-Steps 1 to 3 need no account and no API key. Step 4 needs a model key.
-Step 5 needs a key only for `./go postmortem` on your own incident.
+This tutorial opens with the path from zero to hero: seven levels, each
+one asking for a little more than the one before. Every level says how
+long it takes, what you need, what you will see, and ends on the one line
+that proves you got there. The sections after the path are the long
+version, linked from each level.
 
 **About the outputs.** Every output block below is real. Each one is
 copied from a GitHub Actions run of this repository, or printed by a
-command run on a file this repository commits. The source is named under
-each block, and an HTML comment beside it gives the run id. Where lines
-were left out (container build noise, the signature's JSON), the source
-line says so. Your digests, commit ids and timings will differ. Where no
-real output exists, the tutorial says so and shows none.
+command run on a file this repository commits, or by a local run named
+with its commit and date. The source is named in an HTML comment right
+before each block. Where lines were left out (container build noise, the
+signature's JSON), the source line says so. Your digests, commit ids and
+timings will differ. Where no real output exists, the tutorial says so
+and shows none.
 
 The [README](../README.md) is the short version. [The
 reference](reference.md) has every command, and [the
 guide](use-on-your-repo.md) has every key of `.lights-out/`.
 
-## 0. Before you start
+## From zero to hero
+
+| Level | What you do | Time | You need |
+|---|---|---|---|
+| [0](#level-0-see-it) | See a real run's canary roll itself back | 1 min | a browser |
+| [1](#level-1-run-the-demo) | `./go demo`: the canary rolls back by itself, on your machine | about 10 min | podman and git, or a GitHub account |
+| [2](#level-2-the-gates-on-your-repository) | The eight gates on your repository | about 15 min | your repository |
+| [3](#level-3-your-thresholds-a-ticket-the-intake) | Your thresholds, a ticket, the intake | about 30 min | a clone of lights-out |
+| [4](#level-4-your-service-in-the-plane) | Your service in the plane: canary and rollback on your code | 1–2 h | a service that answers HTTP |
+| [5](#level-5-live-agents-at-l1) | Live agents at L1, with a budget and the provider you choose | about 30 min | a model key, and money |
+| [6](#level-6-your-cicd) | Your CI/CD: Flagger, GitLab CI, Jenkins | it depends | your delivery or your CI |
+
+Levels 0 to 4 need no API key and no cloud account. Level 5 needs a key.
+The times are the commands' measured times plus the reading and writing a
+level asks of you ([ADR 0097](adr/0097-from-zero-to-hero-and-a-start-with-nothing-installed.md) §1d).
+
+### Level 0: See it
+
+**Time:** 1 minute. Nothing to install.
+
+**You need:** a browser.
+
+**You will see:** [the frozen console](https://nicolaguglielmi.github.io/lights-out/console/snapshot.html#ticket/0001),
+a real `./go demo` run at L0 frozen into one read-only page (ADR 0089).
+Ticket 0001's timeline goes from the request to the spec gate, the pull
+request and its eight gates, the merge, the canary at 5% of the traffic,
+and its rollback, with the numbers that decided it. Nobody pressed
+anything.
+
+**Go deeper:** [how the demo reads, stage by stage](#the-demo-and-how-to-read-it),
+and the [console](reference.md) in the reference.
+
+<!-- source: the site's console/snapshot.html, ticket 0001's timeline, frozen from ci run 43501367427 (logbook of 5870da4), read on 2026-11-16 -->
+```
+GO: spec
+GO: gates — risk low, auto-merge, in compose:backend-test
+NO-GO: slo — error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010
+NO-GO: launchpad — 5%: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010 → rolled back
+```
+
+The last line is the point of the whole product: a change that passed
+every gate still failed in front of real traffic, and the canary rolled
+itself back. It is the only level that ends on a NO-GO.
+
+### Level 1: Run the demo
+
+**Time:** about 10 minutes: 427 s on a clean GitHub runner with podman,
+cold (the run below), 370–480 s across the runs ADR 0093 measured. The
+first build downloads about 1 GB.
+
+**You need:** podman (or docker) and git, as [the README](../README.md#quick-start)
+says for macOS and Linux; no account and no key. Or, with nothing
+installed, a GitHub account: [open it in Codespaces](https://codespaces.new/nicolaguglielmi/lights-out?quickstart=1).
+That needs a GitHub account and uses your account's Codespaces quota (a
+4-core machine, 4 core hours an hour, of the 120 a Free account gets each
+month), and runs the same `./go demo` with docker inside the codespace:
+669 s in the same dev container on a GitHub runner (stranger run
+43968199663, job 133653156720), plus about a minute to build the
+container.
+
+**You will see:** seven numbered steps, a canary at 5% judged and rolled
+back by itself, ticket 0001 taken from a request to a rollback, and at the
+end the run's own console opened on ticket 0001. In a codespace the
+`file://` link does not open in your browser: run `./go console` and open
+the forwarded port 8098.
+
+**Go deeper:** [the demo, stage by stage](#the-demo-and-how-to-read-it),
+[the gates saying no](#the-gates-saying-no), [the short looks](#the-short-looks).
+
+```sh
+git clone https://github.com/nicolaguglielmi/lights-out.git
+cd lights-out
+./go demo
+```
+
+<!-- source: GitHub Actions stranger run 43925636189, job demo (133504261420), podman, 2026-11-16; the workflow's seconds-since-start prefix removed, and the 3000/8080 lines of step 1 left out -->
+```
+lights-out demo: a ticket goes from a request to a canary that rolls itself back, at L0, with no key. About 6 min 10 s on this machine.
+[1/7] the engine, memory, disk and ports (about 1 s) ...
+[2/7] the toolchain image, built once per revision (about 30 s) ... 38 s
+[3/7] the plane: code host, delivery, metrics, flags, registry and the app (about 71 s) ... 79 s
+[4/7] a canary with a failing feature takes 5% of the traffic (about 63 s) ...
+      A canary at 5% was judged and rolled back by itself, nobody paged: error_rate canary(0.2.0-waitlist)=1.000 stable(0.1.0-m2)=0.000 delta=1.000 max=0.010
+      done, 63 s
+[5/7] ticket 0001: request, spec, pull request, eight gates, merge, canary (about 3 min 24 s) ...
+      Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%, rolled back by itself, audited
+      done, 3 min 26 s
+[6/7] the repository's own checks, run beside the plane (about 0 s) ... 38 s
+[7/7] this run's console, frozen into one page (about 1 s) ...
+      See why, step by step: file:///home/runner/work/lights-out/lights-out/lights-out/.crew/demo/console.html#ticket/0001
+      Next: ./go console serves the live console on localhost:8098; ./go try <path> runs the gates on a repository of yours
+      The plane is still up: the app at http://localhost:8081, Gitea at http://localhost:3001, Prometheus at http://localhost:9090; ./go down stops it
+      done, 1 s
+GO: demo, milestone M9, 427s to rollback (budget 900s, plan §2)
+```
+
+### Level 2: The gates on your repository
+
+**Time:** about 15 minutes, most of it reading the drafted contract.
+`./go try` took 14 s on a laptop with the toolchain image already built
+(40 s the first time); the Action posted its check on a pull request in
+37 s ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)).
+
+**You need:** your repository, Python or JavaScript, with its tests. From
+a clone of lights-out, nothing more. Without one: the GitHub Action on
+your pull requests, or the `lights-out` wrapper with podman or docker.
+
+**You will see:** a contract drafted for your repository (`.lights-out/`,
+with where every value comes from), the eight gates on your last commit,
+and the three commands that keep the draft. `./go try` writes nothing to
+your repository and leaves nothing attached.
+
+**Go deeper:** [your repository, without the plane](#your-repository-without-the-plane),
+[read the draft](#read-the-draft), [the GitHub Action](#the-github-action),
+[what init writes](use-on-your-repo.md#what-init-writes).
+
+```sh
+./go try ~/code/your-repo
+```
+
+<!-- source: local run on podman, commit f205507, 2026-11-16, a full clone under .crew/, on a copy of workloads/minimal-js with no contract (git init, one commit); stdout; the [try] lines on stderr name the draft's path and the commands that keep it -->
+```
+GO: try — javascript; the eight gates on your last commit: risk high, review, in workbench; the draft is in .crew/try/your-repo/.lights-out
+```
+
+`risk high, review` is the gates' honest answer on a commit that adds a
+whole repository at once: nothing to merge without a person. On a pull
+request, the Action posts the same eight lines as one check run; [the
+guide](use-on-your-repo.md#the-action) has its YAML.
+
+### Level 3: Your thresholds, a ticket, the intake
+
+**Time:** about 30 minutes, most of it writing: the intake and its two
+answers below took 7, 4 and 8 s on a laptop.
+
+**You need:** a clone of lights-out. No plane and no key: at L0 the
+interview replays the one recorded on the committed request.
+
+**You will see:** how lights-out decides, and where you change it. The
+thresholds are in `policy.env`, each with where it comes from: the
+bundled app's is [`policy/`](../policy/), yours goes in
+`.lights-out/policy.env` ([the guide, section 3](use-on-your-repo.md#3-your-thresholds-policyenv)).
+A ticket is one Markdown file with its criteria and its perimeter
+([write the ticket](#write-the-ticket)). And when a client has words, not
+a ticket, `./go intake` interviews them, one question at a time, proposes
+tickets with criteria and perimeters, and opens nothing until a person
+confirms.
+
+**Go deeper:** [`./go intake`](#go-intake-a-need-before-any-ticket),
+[the screen and the perimeter](#the-screen-and-the-perimeter-asked-file-by-file),
+[go-for-launch](#go-demo-launch-go-for-launch-the-one-human-gate).
+
+```sh
+./go intake TICKET=0030 INTAKE_FILE=fixtures/intake/request.md
+./go answer TICKET=0030 ANSWER="A button on the meetup page; then they are no longer registered and one more seat is free."
+./go answer TICKET=0030 ANSWER="The organiser sees the names and the free seats on the meetup page; other members see only the free seats."
+```
+
+<!-- source: local run on podman, commit f205507, 2026-11-16, a full clone of claude/m64-zero-to-hero-214bf3 under .crew/, L0; stdout of the three commands -->
+```
+GO: intake — 0030 at intake-questions
+GO: answer
+GO: answer
+```
+
+`./go intake-confirm TICKET=0030 DECISIONS='["confirm","drop"]'` keeps the
+first proposed ticket, opens it through the spec gate and assigns it.
+The assign pushes to the plane's Gitea, so confirm with the plane up
+(`./go up`, or the plane level 1 leaves running); [the section on the
+intake](#go-intake-a-need-before-any-ticket) shows that step and its
+lines.
+
+### Level 4: Your service in the plane
+
+**Time:** 1–2 hours, nearly all of it in your service's code. The six
+commands below took 212 s on a clean runner for `workloads/minimal`
+(the `seam` job in the run below).
+
+**You need:** a service that answers HTTP and builds from a Containerfile
+or a Dockerfile, the gates' contract from level 2, and podman or docker.
+
+**You will see:** your own service behind the plane's Envoy, a canary of
+your code at 5% judged on your metrics and rolled back by itself, and your
+fixtures judged by the eight gates.
+
+**Go deeper:** [the plane half](use-on-your-repo.md#2-the-plane-half),
+[attach it and prove the plane on it](use-on-your-repo.md#attach-it-and-prove-the-plane-on-it).
+
+Nothing in the plane half is drafted for you, on purpose: a guessed
+compose file would bring up a plane whose canary cannot be judged (ADR
+0097 §4). Start from the example instead, which works:
+
+1. Copy `workloads/minimal/.lights-out/compose.yaml`, `flags/flags.json`,
+   `smoke.sh` and `load.sh` into your `.lights-out/`, and change the
+   service's build context and port.
+2. Your service answers `GET /healthz` and `GET /metrics` on `:8000`
+   (`workloads/minimal/minimal/app.py` does both).
+3. Its metrics are the OTel HTTP server histogram with
+   `target_info{service_version}`: `./go verify` reads exactly that
+   (`verify/slo.promql`), and `GO: metric-shape` below checks it first.
+4. It reads one kill switch from flagd, on for `CANARY_VERSION`
+   (`WORKLOAD_KILL_SWITCH` in `workload.env`): that is how the demo makes
+   a canary fail. Add one fixture under `fixtures/gates/`, a `git
+   format-patch` and the verdict you expect.
+
+```sh
+./go attach ~/code/your-repo
+./go up
+./go smoke
+./go verify
+./go demo-rollback
+./go demo-gates
+```
+
+<!-- source: GitHub Actions ci run 43925636171, job seam (133504261637), docker, 2026-11-16: ./go demo-seam runs these six on workloads/minimal as a repository of its own; its verdict lines, the tools' output left out -->
+```
+GO: attached — /tmp/tmp.p3YTBirdEa at ed8b2a6, contract in .attached/.lights-out
+GO: metric-shape
+NO-GO: launchpad — 5%: error_rate canary(0.2.0-outage)=1.000 stable(0.1.0-minimal)=0.000 delta=1.000 max=0.010 → rolled back
+GO: demo-rollback
+GO: demo-gates
+```
+
+### Level 5: Live agents at L1
+
+**Time:** about 30 minutes to set up; then a run is minutes and money.
+This level is a documented path: it was not run for this tutorial,
+because it needs a key and spend.
+
+**You need:** one model key in `.env`, the provider you choose (Gemini,
+Claude, OpenAI or GLM by Z.ai), and a budget. `TOKEN_BUDGET` and
+`MAX_TURNS` per role stop a run that spends too much, per provider
+([what it costs](#what-it-costs)).
+
+**You will see:** a real agent working your ticket in a sandbox, inside
+its perimeter, its pull request judged by the same eight gates, and the
+spend per ticket, role and day in `./go spend`.
+
+**Go deeper:** [a ticket, assigned to an agent at L1](#a-ticket-assigned-to-an-agent-at-l1),
+[the coding harnesses](reference.md#coding-harnesses),
+[the provider scoreboard](#go-scoreboard-the-providers-side-by-side).
+
+```sh
+cp .env.example .env        # then put one key in it, for example ANTHROPIC_API_KEY
+./go attach ~/code/your-repo
+./go up
+PROFILE=l1 ./go request TICKET=<id> MODEL_PROVIDER=anthropic MODEL=claude-sonnet-5-5 AGENT_HARNESS=claude-code
+```
+
+<!-- source: M24, a live run on Anthropic (claude-code, claude-sonnet-5-5) of ticket tenacity-03 on a fork of tenacity, 2026-11-11: the gates' line as the run's diary records it (.claude/context/handoffs/claude-m24-phase-a-5dacb7.md §6, docs/scoreboard/m24-tenacity.json); merged as 7d66513 with no human touching the code -->
+```
+GO: gates — risk low, auto-merge
+```
+
+### Level 6: Your CI/CD
+
+**Time:** it depends on your delivery and your CI. Each recipe's proof
+below took 2.5 to 12 minutes on a clean runner: Flagger 726 s, GitLab CI
+309 s, Jenkins 154 s (the jobs of the run below).
+
+**You need:** your own delivery (Kubernetes with Flagger or Argo
+Rollouts) or your own CI (GitLab CI, Jenkins, CircleCI).
+
+**You will see:** the same gates and the same human gate where you
+already ship. With Flagger, Flagger's own analysis rolls a failing canary
+back, and its promotion waits at lights-out's gate for a person. On your
+CI, the gates' line posted as a commit status.
+
+**Go deeper:** [toward production in the README](../README.md#toward-production),
+[your CI as a surface](use-on-your-repo.md#your-ci-as-a-surface),
+[Toward production](production.md).
+
+```sh
+./go flagger-proof
+./go demo-gitlab-ci
+./go demo-jenkins
+```
+
+<!-- source: GitHub Actions ci run 43925636171, jobs flagger (133504261652), gitlab-ci (133504261728) and jenkins (133504261727), docker, 2026-11-16 -->
+```
+GO: flagger — Flagger rolled a failing canary back on its own analysis in 37s; the promotion held at its gate for 30s at 100% and completed on a person's answer; 236s
+GO: demo-gitlab-ci — GitLab CI (gitlab-runner, merge request !1's pipeline) posted [GO: gates — risk low, auto-merge, in workbench] as lights-out/gitlab-ci, 276s
+GO: demo-jenkins — Jenkinsfile Runner posted [GO: gates — risk low, auto-merge, in workbench] as lights-out/jenkins on PR #1, 113s
+```
+
+## Before you start
 
 Install podman (or use docker) as the README's "Try it" table says, then
 clone and check your machine:
@@ -49,7 +330,7 @@ sometimes followed by ` — <detail>`, or `NO-GO: <name> — <reason>`. The
 lines around the verdicts are progress, and the evidence behind each
 verdict.
 
-## 1. The demo, and how to read it
+## The demo, and how to read it
 
 ```sh
 ./go demo
@@ -451,7 +732,7 @@ its source and a footnote for each cost. Add your own runs with
 `SCOREBOARD_LOGBOOKS=.crew/logbook.json`. A logbook's replayed tickets
 are counted and not scored, so after `./go demo` alone it adds nothing.
 
-## 2. The short looks
+## The short looks
 
 Each of these is a separate command, not a stage of `./go demo`.
 
@@ -791,7 +1072,7 @@ What happened:
 - **The un-promote.** The demo checks 100% with ten health samples, then
   rolls back, so the plane is clean again.
 
-## 3. Your repository, without the plane
+## Your repository, without the plane
 
 The gates half of lights-out needs no plane, no key and, with the
 workbench as the toolchain, no engine socket.
@@ -874,7 +1155,7 @@ says where it came from:
   committed.
 
 No GitHub Actions job prints a draft, so no draft is shown here. [The
-guide](use-on-your-repo.md#the-eleven-keys) explains each key and what
+guide](use-on-your-repo.md#the-twelve-keys) explains each key and what
 init infers it from. Fix what is wrong (the scope, the test command, the
 toolchain), then copy the draft into your repository and commit it:
 
@@ -985,17 +1266,17 @@ verdict and check-run lines of the two cases.*
 Linux runners only. A fork PR's token cannot write checks: the post is
 skipped with a warning, and the job status still carries the verdict. Tags
 are mutable, so pin the image by digest with the `image` input. The images
-are signed keyless; [the README](../README.md#1-gates-on-your-repository)
+are signed keyless; [the README](../README.md#gates-on-your-repository)
 has the check. `gates: test-proof` and `gates: test-integrity` run one part
 each.
 
-## 4. A ticket, assigned to an agent at L1
+## A ticket, assigned to an agent at L1
 
 At L0 the agents replay recordings of lights-out's own tickets. Your
 repository has none, so on an attached repository the crew stops at L0
 and says so: `has no recordings to replay at L0; run the crew at L1`.
-From here on you need a model key, and nothing in this section has real
-output to show.
+From here on you need a model key. The one live output this tutorial
+shows is [level 5](#level-5-live-agents-at-l1)'s, from M24.
 
 ### What you need
 
@@ -1107,10 +1388,13 @@ With `CODE_HOST=github` on the command line and `GITHUB_REPO` and
 
 ### What is not proven yet
 
-- **No run at L1 on a repository other than lights-out's own app.** The
-  release of an attached repository's merge is implemented and has not
-  run on a repository of yours. So there is no output in this section.
-- **Claude Code and Codex** have never run against their real APIs. `./go
+- **One outside repository so far.** M24 ran ten tickets at L1 on a fork
+  of tenacity, a Python library: Claude Code on Anthropic merged 10 of 10
+  (2026-11-11), Gemini CLI 7 of 10, three stopped by `TOKEN_BUDGET`
+  (2026-11-14) ([`./go scoreboard`](#go-scoreboard-the-providers-side-by-side),
+  `docs/scoreboard/m24-tenacity.json`). A library has no image, so the
+  release of an attached repository's merge has not run on one yet.
+- **Codex** has never run against its real API: M24 had no OpenAI key. `./go
   harness-conformance` proves each harness's plumbing (guard, budgets,
   artefacts, served model) against a scripted model, not a model's
   ability: `GO: harness-conformance — claude-code codex gemini-cli,
@@ -1129,10 +1413,10 @@ With `CODE_HOST=github` on the command line and `GITHUB_REPO` and
   an interpreter could still send out what the container holds, the
   provider key included.
 - **The GitHub code host** is proven verb by verb, not end to end.
-- **A codebase not written for lights-out** has not been tried. That is
-  the next milestone, M24.
+- **A codebase not written for lights-out** has been tried once, M24's
+  tenacity, with small, low-risk tickets: no review and no human gate ran.
 
-## 5. Ops
+## Ops
 
 Three commands for after a release, two of them without the plane.
 
@@ -1206,7 +1490,7 @@ printed. Both versions must be set.
 
 The plane's own judge goes through the same `promql` adapter (ADR 0044),
 so the `slo:` lines and the `NO-GO: launchpad — 5%: error_rate …` verdict
-in section 1 are this code's output on the plane's Prometheus. No GitHub
+in the demo are this code's output on the plane's Prometheus. No GitHub
 Actions job runs `./go verify` against another endpoint, so none is shown.
 
 ## Where next

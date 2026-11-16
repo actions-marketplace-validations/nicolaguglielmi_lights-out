@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// The second door (docs/adr/0097 §2): `./go demo` in GitHub Codespaces, or
+// any dev-container host, with nothing installed on your machine. It needs a
+// GitHub account and spends your Codespaces quota. The golden rule's door
+// stays `git clone && ./go demo` with podman on your own machine.
+//
+// Docker-in-Docker, not docker-outside-of-docker: ./go mounts this checkout
+// into its toolchain container at its own path, so the engine must see the
+// same filesystem as this shell. The stranger workflow's `codespace` job
+// runs ./go demo in this container on every full push (devcontainers/ci).
+{
+  "name": "lights-out",
+  // mcr.microsoft.com/devcontainers/base 3.0.13, Ubuntu 24.04 (noble): git,
+  // curl and a POSIX shell, what ./go needs on a host. The digest is the
+  // multi-arch index's, read from mcr.microsoft.com on 2026-11-16.
+  "image": "mcr.microsoft.com/devcontainers/base:3.0.13-noble@sha256:48be4adec1c1ecbe030064700aef85382f5205786a8f82937fc44a7473717eae",
+  "features": {
+    // Docker (Moby) and Compose v2 inside the container; the feature runs it
+    // privileged, with /var/lib/docker on a volume (feature 4.1.3, read on
+    // ghcr.io 2026-11-16).
+    "ghcr.io/devcontainers/features/docker-in-docker:4.1.3": {}
+  },
+  "containerEnv": {
+    "CONTAINER_ENGINE": "docker"
+  },
+  // Provenance, decision (docs/adr/0097 §2): 4 cores, the CPU of the clean
+  // runner where ./go demo measured 370-480 s (ADR 0093); memory over the
+  // preflight's 3,800 MiB floor; storage the smallest Codespaces offers,
+  // which holds the 8,000 MB the preflight asks for.
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  // The live console (`./go console`) and the plane's app, Gitea and
+  // Prometheus, as ./go demo leaves them when no port was moved.
+  "forwardPorts": [8098, 8080, 3000, 9090],
+  "portsAttributes": {
+    "8098": { "label": "console (./go console)", "onAutoForward": "notify" },
+    "8080": { "label": "the app" },
+    "3000": { "label": "Gitea" },
+    "9090": { "label": "Prometheus" }
+  },
+  "postAttachCommand": "printf '\\nlights-out: run ./go demo (about 10 min). Then ./go console, and open the forwarded port 8098.\\n\\n'"
+}
