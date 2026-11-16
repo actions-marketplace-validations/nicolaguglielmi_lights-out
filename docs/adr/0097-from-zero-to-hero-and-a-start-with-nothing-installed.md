@@ -250,6 +250,21 @@ the `codespace` job green with its time.
   second scrolling page inside the first. A link opens it in one click.
 - **A drafted plane half** (§4).
 
+## After
+
+Measured on 2026-11-16, the first run of the `codespace` job (stranger run
+43968199663, job 133653156720, commit f205507): the dev container built
+and started in 57 s (22:15:14 to 22:16:11), then `GO: demo, milestone M9,
+669s to rollback (budget 900s, plan §2)`, exit 0. The steps: toolchain
+image 42 s, plane 91 s, the failing canary 65 s, ticket 0001 4 min 17 s,
+the repository's own checks beside the plane 212 s (podman's `demo` job on
+a plain runner: 38 s), the console 1 s. The engine inside the container
+held 4.59 GB of images, 3.49 GB of containers and 1.76 GB of build cache
+at the end, under the 32 GB `hostRequirements` asks for. It is slower than
+the plain runner's 427 s mostly in the repository's checks, which share 4
+CPUs with the plane under docker-in-docker; it stays under the plan's
+900 s, and the level's "about 10 minutes" holds within a minute.
+
 ## Consequences
 
 - A person can see the rollback in one click, run the demo with nothing

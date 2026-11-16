@@ -74,7 +74,10 @@ says for macOS and Linux; no account and no key. Or, with nothing
 installed, a GitHub account: [open it in Codespaces](https://codespaces.new/nicolaguglielmi/lights-out?quickstart=1).
 That needs a GitHub account and uses your account's Codespaces quota (a
 4-core machine, 4 core hours an hour, of the 120 a Free account gets each
-month), and runs the same `./go demo` with docker inside the codespace.
+month), and runs the same `./go demo` with docker inside the codespace:
+669 s in the same dev container on a GitHub runner (stranger run
+43968199663, job 133653156720), plus about a minute to build the
+container.
 
 **You will see:** seven numbered steps, a canary at 5% judged and rolled
 back by itself, ticket 0001 taken from a request to a rollback, and at the
@@ -1272,8 +1275,8 @@ each.
 At L0 the agents replay recordings of lights-out's own tickets. Your
 repository has none, so on an attached repository the crew stops at L0
 and says so: `has no recordings to replay at L0; run the crew at L1`.
-From here on you need a model key, and nothing in this section has real
-output to show.
+From here on you need a model key. The one live output this tutorial
+shows is [level 5](#level-5-live-agents-at-l1)'s, from M24.
 
 ### What you need
 
@@ -1385,10 +1388,13 @@ With `CODE_HOST=github` on the command line and `GITHUB_REPO` and
 
 ### What is not proven yet
 
-- **No run at L1 on a repository other than lights-out's own app.** The
-  release of an attached repository's merge is implemented and has not
-  run on a repository of yours. So there is no output in this section.
-- **Claude Code and Codex** have never run against their real APIs. `./go
+- **One outside repository so far.** M24 ran ten tickets at L1 on a fork
+  of tenacity, a Python library: Claude Code on Anthropic merged 10 of 10
+  (2026-11-11), Gemini CLI 7 of 10, three stopped by `TOKEN_BUDGET`
+  (2026-11-14) ([`./go scoreboard`](#go-scoreboard-the-providers-side-by-side),
+  `docs/scoreboard/m24-tenacity.json`). A library has no image, so the
+  release of an attached repository's merge has not run on one yet.
+- **Codex** has never run against its real API: M24 had no OpenAI key. `./go
   harness-conformance` proves each harness's plumbing (guard, budgets,
   artefacts, served model) against a scripted model, not a model's
   ability: `GO: harness-conformance — claude-code codex gemini-cli,
@@ -1407,8 +1413,8 @@ With `CODE_HOST=github` on the command line and `GITHUB_REPO` and
   an interpreter could still send out what the container holds, the
   provider key included.
 - **The GitHub code host** is proven verb by verb, not end to end.
-- **A codebase not written for lights-out** has not been tried. That is
-  the next milestone, M24.
+- **A codebase not written for lights-out** has been tried once, M24's
+  tenacity, with small, low-risk tickets: no review and no human gate ran.
 
 ## Ops
 
