@@ -314,6 +314,31 @@ jobs:
           docker exec lights-out-k8s-1 kubectl get rollout,pods,svc,endpointslices -A -o wide || true
           docker exec lights-out-k8s-1 kubectl -n argo-rollouts logs deploy/argo-rollouts --tail 80 || true
 
+  # The flagger Delivery adapter's proof (docs/adr/0095 §6): the same six-
+  # case suite on the same k3s node with Flagger as the controller, then
+  # Flagger's own rollback on bad metrics and its promotion held at the gate.
+  flagger:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    env:
+      CONTAINER_ENGINE: docker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: ./go up
+      # KEEP_CLUSTER=1 leaves the node up for flagger-proof, which takes it down.
+      - run: ./go flagger-conformance KEEP_CLUSTER=1
+      - run: ./go flagger-proof
+      # The node and the controller are the evidence when a case NO-GOes.
+      - if: always()
+        run: |
+          docker exec lights-out-k8s-1 kubectl get canaries,deploy,pods,svc,endpointslices -A -o wide || true
+          docker exec lights-out-k8s-1 kubectl -n lights-out get events --sort-by=.lastTimestamp || true
+          docker exec lights-out-k8s-1 kubectl -n flagger-system logs deploy/flagger --tail 120 || true
+          docker exec lights-out-k8s-1 kubectl -n lights-out logs deploy/flagger-loadtester --tail 40 || true
+
   # M30's acceptance (docs/adr/0056 §7): two disjoint tickets merge without
   # re-judging, a third goes back to rework after a person's merge on its
   # perimeter, a merge that breaks main is bisected and reverted through
@@ -421,3 +446,37 @@ jobs:
           fetch-depth: 0
       - run: ./go package-gates
       - run: ./go demo-jenkins
+
+  # docs/adr/0095 §7: GitLab CI as a surface. GitLab CE (the gitlab adapter's
+  # image) and a real gitlab-runner run the recipe on a merge request, which
+  # posts the line as lights-out/gitlab-ci. This commit's gates image and
+  # wrapper, never a published tag (§9).
+  gitlab-ci:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    env:
+      CONTAINER_ENGINE: docker
+      LIGHTS_OUT_IMAGE: localhost/lights-out-gates:dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: ./go package-gates
+      - run: ./go demo-gitlab-ci
+
+  # docs/adr/0095 §8: the CircleCI recipe, as far as it runs without an
+  # account: config validate, and its step against a Gitea PR.
+  circleci:
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.server_url == 'https://github.com' && needs.plan.outputs.run == 'true' && needs.plan.outputs.full == 'true'
+    env:
+      CONTAINER_ENGINE: docker
+      LIGHTS_OUT_IMAGE: localhost/lights-out-gates:dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - run: ./go package-gates
+      - run: ./go demo-circleci

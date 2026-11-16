@@ -236,13 +236,15 @@ help: ## List the targets
 	@printf 'lights-out  (profile: %s)\n\n' "$(PROFILE)"
 	@awk 'BEGIN{FS=":.*## "} /^[a-z][a-z0-9-]*:.*## /{printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@for c in $(CI_CHECKS); do printf '  %-16s %s\n' "ci-$$c" "one self-check, see ci/$$c.sh"; done
-	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
+	@printf '\n  Host side, via ./go only:\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n  %-16s %s\n' \
 		engine-compat "host-side engine gate: versions, then up and smoke (ci/engine-compat.sh)" \
 		doctor "engine, versions, ports, the key: one line each, then GO or NO-GO; --level <l0|l1|l2|l3>: what that level lacks (docs/adr/0045 §4, 0057 §8)" \
 		package "build the full lights-out image, localhost/lights-out:dev (docs/adr/0045 §1)" \
 		package-gates "build the gates image, localhost/lights-out-gates:dev, what the wrapper and the Action run (docs/adr/0057 §3)" \
 		demo-package "prove the wrapper from the gates image: init, gates, test-proof and test-integrity on workloads/minimal (docs/adr/0045 §8, 0057)" \
 		demo-jenkins "prove Jenkins as a surface: Jenkinsfile Runner posts the gates line on a local Gitea PR (docs/adr/0058 §7)" \
+		demo-gitlab-ci "prove GitLab CI as a surface: a gitlab-runner posts the gates line on a local GitLab merge request (docs/adr/0095 §7)" \
+		demo-circleci "prove the CircleCI recipe without an account: config validate, its step on a local Gitea PR (docs/adr/0095 §8)" \
 		attach "clone a repository and make it the workload; with a .lights-out/ contract it is checked: ./go attach <path> (docs/adr/0037, 0042)" \
 		detach "drop the attached clone; the workload is app/ again" \
 		shell "interactive shell inside workbench" clean "remove the workbench image"
@@ -1671,6 +1673,33 @@ argo-conformance: ## The Delivery conformance suite on adapters/argo-rollouts, a
 		|| { printf 'NO-GO: delivery-conformance — argo-rollouts: the local cluster did not come up\n'; exit 1; }; \
 	$(MAKE) --no-print-directory delivery-conformance DELIVERY=argo-rollouts \
 		APP_URL=http://$(PLANE_HOST):$(ARGO_APP_PORT) KUBECONFIG=$(CURDIR)/.crew/argo/kubeconfig
+
+# The flagger Delivery adapter's proof (docs/adr/0095 §6): the same six-
+# case suite, unchanged, on the same k3s node as argo-conformance, with
+# Flagger as the controller (CLUSTER_ADAPTER) and the workload's
+# k8s/flagger/ manifests. flagger-proof then shows, on the cluster that
+# `flagger-conformance KEEP_CLUSTER=1` left up, what the suite cannot:
+# Flagger rolling a failing canary back on its own analysis, and its
+# promotion held at the gate until a person answers; it takes the node
+# down after unless KEEP_CLUSTER is set. Under podman both need a rootful
+# engine (adapters/flagger/README.md). Not part of ./go demo.
+.PHONY: flagger-conformance flagger-proof
+flagger-conformance: ## The Delivery conformance suite on adapters/flagger, against a local k3s cluster beside the plane, plane up (docs/adr/0095)
+	@image=$$(sh "adapters/$(REGISTRY)/verify.sh" "$(APP_TAG)") \
+		|| { printf 'NO-GO: delivery-conformance — flagger: no verified stable image at %s; run ./go up\n' "$(APP_TAG)"; exit 1; }; \
+	[ -n "$(KEEP_CLUSTER)" ] || trap 'sh adapters/argo-rollouts/cluster.sh down' EXIT; \
+	CLUSTER_ADAPTER=adapters/flagger sh adapters/argo-rollouts/cluster.sh up "$(WORKLOAD_CONTRACT)/k8s/flagger" "$$image" >&2 \
+		|| { printf 'NO-GO: delivery-conformance — flagger: the local cluster did not come up\n'; exit 1; }; \
+	$(MAKE) --no-print-directory delivery-conformance DELIVERY=flagger \
+		APP_URL=http://$(PLANE_HOST):$(ARGO_APP_PORT) KUBECONFIG=$(CURDIR)/.crew/argo/kubeconfig
+flagger-proof: ## Flagger's own rollback on bad metrics and its promotion held at the gate, on the cluster flagger-conformance KEEP_CLUSTER=1 left up (docs/adr/0095 §6)
+	@[ -s .crew/argo/kubeconfig ] \
+		|| { printf 'NO-GO: flagger — no local cluster; run ./go flagger-conformance KEEP_CLUSTER=1 first\n'; exit 1; }; \
+	image=$$(sh "adapters/$(REGISTRY)/verify.sh" "$(APP_TAG)") \
+		|| { printf 'NO-GO: flagger — no verified stable image at %s; run ./go up\n' "$(APP_TAG)"; exit 1; }; \
+	[ -n "$(KEEP_CLUSTER)" ] || trap 'sh adapters/argo-rollouts/cluster.sh down' EXIT; \
+	FLAGGER_IMAGE="$$image" KUBECONFIG=$(CURDIR)/.crew/argo/kubeconfig APP_URL=http://$(PLANE_HOST):$(ARGO_APP_PORT) \
+		WORKLOAD_CONTRACT=$(WORKLOAD_CONTRACT) sh adapters/flagger/proof.sh
 
 # The gitlab CodeHost adapter's proof (docs/adr/0058 §8): the same ten-case
 # suite, unchanged, with CODE_HOST=gitlab, against GitLab CE in its own

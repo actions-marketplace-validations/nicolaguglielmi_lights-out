@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# lights-out gates on GitLab CI (docs/adr/0095 §7): a surface, never a judge.
+# On a merge request pipeline the job runs the lights-out wrapper on the
+# change, prints the one GO/NO-GO line, and posts it as a commit status named
+# lights-out/gitlab-ci: never `gates` or `review`, the contexts the tower
+# posts and awaits, so the tower never reads this verdict (docs/adr/0033).
+# Proven by `./go demo-gitlab-ci`: a real gitlab-runner, docker executor with
+# socket binding, on a local GitLab CE. Not proven: a docker:dind service.
+#
+# Copy this file to your repository's .gitlab-ci.yml (or `include:` it).
+# What the job needs:
+#   - a container engine for the wrapper. Either the runner binds the host's
+#     socket and shares /builds with the host (config.toml:
+#     volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/builds:/builds"]),
+#     or add to this job:
+#       services: [docker:29-dind]
+#       variables: {DOCKER_HOST: "tcp://docker:2375", DOCKER_TLS_CERTDIR: ""}
+#     GitLab shares the builds directory with the dind service.
+#   - LIGHTS_OUT_STATUS_TOKEN, a masked CI/CD variable: a project access
+#     token with the `api` scope. No token, no post: the job's own result
+#     still carries the verdict.
+#   - optional LIGHTS_OUT_IMAGE, the gates image (default: the wrapper's own
+#     published version).
+# The wrapper is installed at the pinned tag unless the job image already has
+# `lights-out` on its PATH.
+lights-out:
+  image: docker:29-cli
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    # The base must be in the clone.
+    GIT_DEPTH: "0"
+    LIGHTS_OUT_WRAPPER_URL: https://raw.githubusercontent.com/nicolaguglielmi/lights-out/v0.7.0/lights-out
+  script:
+    - |
+      set -u
+      command -v git >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 \
+        || apk add --no-cache git curl jq >/dev/null
+      if ! command -v lights-out >/dev/null 2>&1; then
+        curl -fsSLo /usr/local/bin/lights-out "$LIGHTS_OUT_WRAPPER_URL" && chmod +x /usr/local/bin/lights-out
+      fi
+      git config --global --add safe.directory "$CI_PROJECT_DIR"
+      head=$CI_COMMIT_SHA
+      set -- "HEAD=$head"
+      [ -z "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ] || set -- "BASE=$CI_MERGE_REQUEST_DIFF_BASE_SHA" "$@"
+      # What the wrapper writes goes under the builds directory, the one tree
+      # the runner shares with the engine (socket binding or dind).
+      export LIGHTS_OUT_OUT="${CI_BUILDS_DIR:-/builds}/lights-out-out/$CI_JOB_ID"
+      line=$(lights-out gates "$@") || :
+      [ -n "$line" ] || line="NO-GO: gates — lights-out gave no verdict; see the log above"
+      case "$line" in GO:*) state=success ;; *) state=failed ;; esac
+      printf 'lights-out line: %s\n' "$line"
+      context=lights-out/gitlab-ci
+      if [ -n "${LIGHTS_OUT_STATUS_TOKEN:-}" ]; then
+        # 140 characters, as the other surfaces cut (docs/adr/0043 §3); jq
+        # cuts by character, never inside one.
+        body=$(jq -cn --arg s "$state" --arg n "$context" --arg d "$line" --arg u "${CI_PIPELINE_URL:-}" \
+          '{state: $s, name: $n, description: $d[0:140], target_url: $u}')
+        printf 'PRIVATE-TOKEN: %s\n' "$LIGHTS_OUT_STATUS_TOKEN" \
+          | curl -fsS -o /dev/null -H @- -H 'Content-Type: application/json' -d "$body" \
+            "$CI_API_V4_URL/projects/$CI_PROJECT_ID/statuses/$head" \
+          || printf 'lights-out: the status was not posted on %s\n' "$head" >&2
+      fi
+      [ "$state" = success ]

@@ -1146,14 +1146,27 @@ by `ci/outside.sh` in `./go ci`. Not proven: an outside `CODE_HOST`,
 `FLAGS`, `REGISTRY`). The register guards against mistakes and drift, not
 against whoever owns the checkout.
 
-## Your CI as a surface: Jenkins
+## Your CI as a surface
 
 Another CI can show the gates' verdict. It never gives it (ADR 0033, ADR
-0058 §6). [`surfaces/jenkins/Jenkinsfile`](../surfaces/jenkins/Jenkinsfile)
-is the recipe. The agent runs `lights-out gates`, prints the line, and
-posts it as the commit status `lights-out/jenkins`. It never posts `gates`
-or `review`, the contexts the tower posts, and the tower reads no commit
-status at all (`ci/outside.sh` checks both), so it never reads this one.
+0058 §6, ADR 0095). Each recipe below runs `lights-out gates` on the
+change, prints the one line, and posts it as a commit status under a
+context of its own. None posts `gates` or `review`, the contexts the tower
+posts, and the tower reads no commit status at all (`ci/outside.sh` checks
+both for every recipe), so it never reads these. Each posts `success` on a
+GO line only, and cuts the description to 140 characters.
+
+| CI | Recipe | Context | Proven by |
+|---|---|---|---|
+| Jenkins | [`surfaces/jenkins/Jenkinsfile`](../surfaces/jenkins/Jenkinsfile) | `lights-out/jenkins` | `./go demo-jenkins`: Jenkinsfile Runner on a local Gitea PR |
+| GitLab CI | [`surfaces/gitlab-ci/.gitlab-ci.yml`](../surfaces/gitlab-ci/.gitlab-ci.yml) | `lights-out/gitlab-ci` | `./go demo-gitlab-ci`: a real gitlab-runner on a local GitLab merge request |
+| CircleCI | [`surfaces/circleci/config.yml`](../surfaces/circleci/config.yml) | `lights-out/circleci` | `./go demo-circleci`: `circleci config validate`, and the recipe's step on a local Gitea PR; not a CircleCI run |
+
+Every demo runs this checkout's wrapper and, with
+`LIGHTS_OUT_IMAGE=localhost/lights-out-gates:dev` after `./go package-gates`,
+this commit's gates image, never a published version tag.
+
+### Jenkins
 
 The agent needs:
 
@@ -1164,14 +1177,62 @@ The agent needs:
   `LIGHTS_OUT_STATUS_TOKEN`. Environment variables, not build parameters:
   Jenkins drops the parameters of a job's first run.
 
-The status description is cut to 140 characters.
+`./go demo-jenkins` starts a Gitea of its own, makes `workloads/minimal` a
+repository with a PR, and has Jenkinsfile Runner judge it. It prints GO when
+Gitea shows the status on the PR head. The only official Jenkinsfile Runner
+image is old (2022, amd64, Java 8), so on arm64 it runs under emulation.
+Not proven: a real Jenkins controller.
 
-`./go demo-jenkins` proves the recipe on your machine. It starts a Gitea of
-its own, makes `workloads/minimal` a repository with a PR, and has
-Jenkinsfile Runner judge it. It prints GO when Gitea shows the status on
-the PR head. The only official Jenkinsfile Runner image is old (2022, amd64,
-Java 8), so on arm64 it runs under emulation. Not proven: a real Jenkins
-controller. The recipes for GitLab CI and CircleCI are not written.
+### GitLab CI
+
+Copy the recipe to `.gitlab-ci.yml` (or `include:` it). One job, on merge
+request pipelines only. It posts to GitLab's own commit status API as
+`lights-out/gitlab-ci`, `failed` on anything but GO.
+
+- **A token.** `LIGHTS_OUT_STATUS_TOKEN`, a masked CI/CD variable: a
+  project access token with the `api` scope. Without it the job's own
+  result still carries the verdict.
+- **An engine for the wrapper.** The job image is `docker:29-cli`. The
+  wrapper binds the checkout into a gates container, so the engine must see
+  the job's builds directory at the same path. Either the runner binds the
+  host's socket and shares `/builds` with the host (`volumes =
+  ["/var/run/docker.sock:/var/run/docker.sock", "/builds:/builds"]` in its
+  `config.toml`), or the job gets `services: [docker:29-dind]` with
+  `DOCKER_HOST: tcp://docker:2375`, which shares the builds directory with
+  the service. The proof uses the first; the second is not proven.
+- **The base.** `CI_MERGE_REQUEST_DIFF_BASE_SHA`, with `GIT_DEPTH: "0"` so
+  it is in the clone.
+
+`./go demo-gitlab-ci` starts GitLab CE (the gitlab adapter's image and
+settings, about 2.4 GB and four minutes: run it alone on a small VM) and a
+gitlab-runner v19.5.3 with the docker executor and socket binding, pushes
+`workloads/minimal` with the recipe, and opens a merge request. GitLab runs
+the pipeline. GO when the job printed a GO line and GitLab shows
+`lights-out/gitlab-ci` on the head with that line. `gitlab-ci-local` was not
+enough: its service containers do not get the job's build volume, so the
+recipe's engine wiring could not run there.
+
+### CircleCI
+
+Copy the recipe to `.circleci/config.yml`. It uses the `machine` executor:
+the wrapper binds the checkout into a gates container, which a remote
+Docker (`setup_remote_docker`) cannot see. It posts to a GitHub-shaped
+statuses endpoint, as the Jenkinsfile does. Set, in a context or the
+project's environment variables, `LIGHTS_OUT_STATUSES`
+(`https://api.github.com/repos/<owner>/<repo>/statuses`) and
+`LIGHTS_OUT_STATUS_TOKEN`. CircleCI exposes no pull request base, so the
+base is `LIGHTS_OUT_BASE`, else the merge base with
+`origin/$LIGHTS_OUT_BASE_BRANCH` (default `main`).
+
+`./go demo-circleci` is not a CircleCI run: `circleci local execute` cannot
+run a machine job, and the proof needs no account. It validates the file
+with `circleci config validate` (CLI 1.15.0, in its own image; CircleCI's
+API sometimes asks for a token, `CIRCLE_TOKEN`, and without one the GO line
+says the config was not validated), then runs the
+recipe's step, cut from the file between its `# lights-out:begin` and
+`# lights-out:end` lines, in a shell with git, curl, jq and the engine's
+socket, against a local Gitea PR. GO when Gitea shows `lights-out/circleci`
+with the line. Not proven: CircleCI's scheduler, checkout and contexts.
 
 ## When something does not fit
 

@@ -22,7 +22,8 @@ scrape_configs:
   # connection on the pod it first reached and missed the canary. Two
   # jobs, because both targets are k8s:80 and target_info joins on job
   # and instance. Down, like backend-canary above, unless
-  # `./go argo-conformance` has the cluster up.
+  # `./go argo-conformance` or `./go flagger-conformance` has the cluster
+  # up; under Flagger the stable is the primary (docs/adr/0095 §4).
   - job_name: backend-k8s-stable
     metrics_path: /lights-out/stable/metrics
     static_configs:
