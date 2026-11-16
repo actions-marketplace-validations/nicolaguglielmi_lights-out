@@ -247,8 +247,9 @@ A5. **`ci/` stays out of the ratchet, and out of this slice.** It is 17,976
    branching lines (`if`, `case`, `&&`, `||`, `jq`, `awk`, `sed`): `logbook`
    2,152 and 620, `tower` 637 and 339, `plugin` 821 and 208, `attach` 357
    and 187, `postmortem` 733 and 181; `contract` (225) is the one whose
-   logic is a judge rather than glue around `make` and `git`. That ADR comes
-   after this sprint lands, with `ci/`'s debt listed.
+   logic is a judge rather than glue around `make` and `git`. ADR 0094 makes it: `ci/`'s Python in `ci/checks/`, its debt listed,
+   the ratchet over `ci/` after this sprint lands, and `ci/contract.sh` the
+   first `ci/` slice.
 
 ### Alternatives rejected (M61)
 
