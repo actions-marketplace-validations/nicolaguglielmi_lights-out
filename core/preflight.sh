@@ -105,8 +105,8 @@ ours() { printf '%s\n' "$plane" | grep -q "[:]$1->"; }
 taken=" 5050 "
 moved=""
 moves=""
-for spec in "APP_PORT 8080 the app" "GITEA_PORT 3000 Gitea" "PROMETHEUS_PORT 9090 Prometheus" \
-            "ENVOY_ADMIN_PORT 9901 Envoy's admin" "FLAGD_PORT 8016 flagd"; do
+for spec in "APP_PORT 8080 the app" "CODE_HOST_PORT 3000 the code host" "METRICS_PORT 9090 the metrics" \
+            "DELIVERY_ADMIN_PORT 9901 the delivery's admin" "FLAGS_PORT 8016 the flags"; do
   # shellcheck disable=SC2086 # one spec, split into its words
   set -- $spec
   var=$1; def=$2; shift 2; what=$*

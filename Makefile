@@ -132,11 +132,11 @@ APP_URL ?= http://$(PLANE_HOST):$(APP_PORT)
 # The other host ports that can move (docs/adr/0093 §1d): ./go's preflight
 # writes a busy default's replacement to .crew/ports.env. The registry's
 # 5050 cannot: it is in every image's name.
-GITEA_PORT ?= 3000
-PROMETHEUS_PORT ?= 9090
-ENVOY_ADMIN_PORT ?= 9901
-FLAGD_PORT ?= 8016
-export PLANE_HOST APP_PORT APP_URL GITEA_PORT PROMETHEUS_PORT ENVOY_ADMIN_PORT FLAGD_PORT
+CODE_HOST_PORT ?= 3000
+METRICS_PORT ?= 9090
+DELIVERY_ADMIN_PORT ?= 9901
+FLAGS_PORT ?= 8016
+export PLANE_HOST APP_PORT APP_URL CODE_HOST_PORT METRICS_PORT DELIVERY_ADMIN_PORT FLAGS_PORT
 
 # Seconds each adapters/<name>/ready.sh polls before giving up. 4x the 15 s a
 # cold plane took to answer at M2 close (docs/adr/0012 §6, HANDOFF) was 60;
@@ -164,7 +164,7 @@ export CREW_UID CREW_GID
 
 # M3 release controller (docs/adr/0013, 0014). Workbench reaches the Envoy
 # admin API the same way it reaches every other plane port (PLANE_HOST).
-ENVOY_ADMIN_URL ?= http://$(PLANE_HOST):$(ENVOY_ADMIN_PORT)
+ENVOY_ADMIN_URL ?= http://$(PLANE_HOST):$(DELIVERY_ADMIN_PORT)
 export ENVOY_ADMIN_URL
 
 # The image `up` builds, publishes and signs as stable (docs/adr/0025 §1,
@@ -331,7 +331,7 @@ demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7,
 		printf '[say] No console snapshot: %s\n' "$${out:-see $(DEMO_DIR)/logbook.err}" >&2; \
 	fi; \
 	printf '[say] Next: ./go console serves the live console on localhost:%s; ./go try <path> runs the gates on a repository of yours\n' "$${CONSOLE_PORT:-8098}" >&2; \
-	printf 'lights-out: the app at http://localhost:%s, Gitea at http://localhost:%s, Prometheus at http://localhost:%s\n' "$(APP_PORT)" "$(GITEA_PORT)" "$(PROMETHEUS_PORT)" >&2
+	printf 'lights-out: the app at http://localhost:%s, Gitea at http://localhost:%s, Prometheus at http://localhost:%s\n' "$(APP_PORT)" "$(CODE_HOST_PORT)" "$(METRICS_PORT)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
 	if [ "$$elapsed" -lt 0 ]; then \
 		printf 'GO: demo, milestone M9, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
@@ -357,7 +357,7 @@ up: ## Start the L0 plane, wait until every adapter is ready, then publish the s
 	@[ -f "$(WORKLOAD_CONTRACT)/compose.yaml" ] || { printf 'NO-GO: up — %s has no compose.yaml: this workload has the gates half of the contract only (docs/adr/0042 §7); ./go gates runs without the plane, docs/use-on-your-repo.md says what the plane half needs\n' "$(WORKLOAD_CONTRACT)"; exit 1; }
 	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
 	@$(COMPOSE) up -d --build >&2 || { \
-		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, %s, 5050, %s, %s and %s on the host (8085 and 8086 too with the emulators); ./go up and ./go demo move a busy one by themselves (docs/adr/0093), and APP_PORT, GITEA_PORT, PROMETHEUS_PORT, ENVOY_ADMIN_PORT or FLAGD_PORT in .env choose one.\n' "$(APP_PORT)" "$(GITEA_PORT)" "$(FLAGD_PORT)" "$(PROMETHEUS_PORT)" "$(ENVOY_ADMIN_PORT)" >&2; \
+		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, %s, 5050, %s, %s and %s on the host (8085 and 8086 too with the emulators); ./go up and ./go demo move a busy one by themselves (docs/adr/0093), and APP_PORT, CODE_HOST_PORT, METRICS_PORT, DELIVERY_ADMIN_PORT or FLAGS_PORT in .env choose one.\n' "$(APP_PORT)" "$(CODE_HOST_PORT)" "$(FLAGS_PORT)" "$(METRICS_PORT)" "$(DELIVERY_ADMIN_PORT)" >&2; \
 		exit 1; }
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \

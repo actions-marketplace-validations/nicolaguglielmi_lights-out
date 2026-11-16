@@ -100,13 +100,13 @@ listen 8080; listen 3000
 preflight || nogo "§1 busy 8080 and 3000: exit $?, want 0" "$(cat "$c/.out")" "$(cat "$c/.err")"
 want_go "busy 8080 and 3000"
 grep -qx 'APP_PORT=8081' "$c/.crew/ports.env" 2>/dev/null || nogo "§1 busy 8080: .crew/ports.env has no APP_PORT=8081" "$(cat "$c/.crew/ports.env" 2>/dev/null)"
-grep -qx 'GITEA_PORT=3001' "$c/.crew/ports.env" || nogo "§1 busy 3000: .crew/ports.env has no GITEA_PORT=3001" "$(cat "$c/.crew/ports.env")"
+grep -qx 'CODE_HOST_PORT=3001' "$c/.crew/ports.env" || nogo "§1 busy 3000: .crew/ports.env has no CODE_HOST_PORT=3001" "$(cat "$c/.crew/ports.env")"
 [ "$(grep -c '^[A-Z_]*=' "$c/.crew/ports.env")" = 2 ] || nogo "§1 busy 8080 and 3000: .crew/ports.env holds more than the two moved ports" "$(cat "$c/.crew/ports.env")"
 grep '8080' "$c/.err" | grep -q '8081' || nogo "§1 busy 8080: no stderr line names 8080 and 8081" "$(cat "$c/.err")"
 grep '3000' "$c/.err" | grep -q '3001' || nogo "§1 busy 3000: no stderr line names 3000 and 3001" "$(cat "$c/.err")"
 # A second run keeps them, while they stay free.
 preflight || nogo "§1 second run: exit $?" "$(cat "$c/.out")"
-{ grep -qx 'APP_PORT=8081' "$c/.crew/ports.env" && grep -qx 'GITEA_PORT=3001' "$c/.crew/ports.env"; } \
+{ grep -qx 'APP_PORT=8081' "$c/.crew/ports.env" && grep -qx 'CODE_HOST_PORT=3001' "$c/.crew/ports.env"; } \
   || nogo "§1 second run: the moved ports changed" "$(cat "$c/.crew/ports.env")"
 stop_listeners
 
@@ -181,7 +181,7 @@ printf 'podman-machine-default|true|true\n' > "$c/.fake/machines"
 
 # §1e: Gitea's ready check against something else on its port.
 listen 3999
-out=$(PLANE_HOST=127.0.0.1 GITEA_PORT=3999 READY_TIMEOUT=2 sh adapters/gitea/ready.sh 2>&1) \
+out=$(PLANE_HOST=127.0.0.1 CODE_HOST_PORT=3999 READY_TIMEOUT=2 sh adapters/gitea/ready.sh 2>&1) \
   && nogo "§1e gitea ready.sh: GO against a 404 server" "$out"
 printf '%s' "$out" | grep -q '3999' || nogo "§1e gitea ready.sh: the timeout line does not name port 3999" "$out"
 printf '%s' "$out" | grep -q '404' || nogo "§1e gitea ready.sh: the timeout line does not give the status 404" "$out"

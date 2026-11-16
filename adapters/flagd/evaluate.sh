@@ -21,7 +21,7 @@ fi
 
 value=$(curl -fsS --connect-timeout 1 --max-time 3 \
     -H 'Content-Type: application/json' -d "$ctx" \
-    "http://$PLANE_HOST:${FLAGD_PORT:-8016}/ofrep/v1/evaluate/flags/$flag" 2>/dev/null \
+    "http://$PLANE_HOST:${FLAGS_PORT:-8016}/ofrep/v1/evaluate/flags/$flag" 2>/dev/null \
   | jq -r 'if has("value") then .value else empty end')
-[ -n "$value" ] || { printf 'evaluate-flagd: no value for %s from http://%s:%s\n' "$flag" "$PLANE_HOST" "${FLAGD_PORT:-8016}" >&2; exit 1; }
+[ -n "$value" ] || { printf 'evaluate-flagd: no value for %s from http://%s:%s\n' "$flag" "$PLANE_HOST" "${FLAGS_PORT:-8016}" >&2; exit 1; }
 printf '%s\n' "$value"

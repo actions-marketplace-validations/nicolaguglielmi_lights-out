@@ -16,11 +16,11 @@ GITEA_REPO=workload
 GITEA_USER=lights-out
 GITEA_PASSWORD=lights-out-local-not-a-secret
 GITEA_EMAIL=lights-out@lights-out.invalid
-GITEA_URL="http://$PLANE_HOST:${GITEA_PORT:-3000}"
+GITEA_URL="http://$PLANE_HOST:${CODE_HOST_PORT:-3000}"
 GITEA_API="$GITEA_URL/api/v1"
 # Authenticated URL for a push or a fetch that needs write access; never
 # written to a .git/config, always passed as a command argument (docs/adr/
 # 0017 §4: the model never holds this credential).
-GITEA_PUSH_URL="http://$GITEA_USER:$GITEA_PASSWORD@$PLANE_HOST:${GITEA_PORT:-3000}/$GITEA_OWNER/$GITEA_REPO.git"
+GITEA_PUSH_URL="http://$GITEA_USER:$GITEA_PASSWORD@$PLANE_HOST:${CODE_HOST_PORT:-3000}/$GITEA_OWNER/$GITEA_REPO.git"
 # Anonymous clone URL: the worker clones with no credential.
 GITEA_CLONE_URL="$GITEA_URL/$GITEA_OWNER/$GITEA_REPO.git"

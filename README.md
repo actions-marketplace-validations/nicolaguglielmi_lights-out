@@ -208,7 +208,7 @@ Run `./go doctor` first. It prints one line per item: the engine and whether it 
 
 | You see | Do this |
 |---|---|
-| `preflight: ports  3000 is held by …: Gitea moves to 3001` | Nothing to do: `./go demo` and `./go up` moved it, and wrote it to `.crew/ports.env`. A port you set in `.env` (`APP_PORT`, `GITEA_PORT`, `PROMETHEUS_PORT`, `ENVOY_ADMIN_PORT`, `FLAGD_PORT`) is never moved. |
+| `preflight: ports  3000 is held by …: the code host moves to 3001` | Nothing to do: `./go demo` and `./go up` moved it, and wrote it to `.crew/ports.env`. A port you set in `.env` (`APP_PORT`, `CODE_HOST_PORT`, `METRICS_PORT`, `DELIVERY_ADMIN_PORT`, `FLAGS_PORT`) is never moved. |
 | `NO-GO: preflight — port 5050 … cannot move` | The registry's port is part of every image's name. Stop what holds it (the line names it), then run again. |
 | `NO-GO: preflight — a lights-out plane started from <dir> is running` | Run `./go down` in that directory first: one plane at a time. |
 | `Cannot allocate memory`, or everything crawls | `podman machine stop`, `podman machine set --memory 6144`, `podman machine start` |

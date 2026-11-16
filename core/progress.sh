@@ -27,7 +27,7 @@ label() {
   case "$1" in
     preflight) printf 'the engine, memory, disk and ports' ;;
     toolchain) printf 'the toolchain image, built once per revision' ;;
-    plane) printf 'the plane: Gitea, Envoy, Prometheus, flagd, Zot and the app' ;;
+    plane) printf 'the plane: code host, delivery, metrics, flags, registry and the app' ;;
     rollback) printf 'a canary with a failing feature takes 5%% of the traffic' ;;
     ticket) printf 'ticket 0001: request, spec, pull request, eight gates, merge, canary' ;;
     checks) printf "the repository's own checks, run beside the plane" ;;

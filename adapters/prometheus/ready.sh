@@ -10,7 +10,7 @@ set -eu
 
 i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
-  if curl -fsS --connect-timeout 1 --max-time 3 -G "http://$PLANE_HOST:${PROMETHEUS_PORT:-9090}/api/v1/query" \
+  if curl -fsS --connect-timeout 1 --max-time 3 -G "http://$PLANE_HOST:${METRICS_PORT:-9090}/api/v1/query" \
       --data-urlencode 'query=up{job="backend"}' 2>/dev/null | grep -q ',"1"]'
   then
     exit 0
@@ -18,5 +18,5 @@ while [ "$i" -lt "$READY_TIMEOUT" ]; do
   i=$((i + 1))
   sleep 1
 done
-printf 'ready: prometheus not ready after %ss: GET http://%s:%s/api/v1/query?query=up{job="backend"}\n' "$READY_TIMEOUT" "$PLANE_HOST" "${PROMETHEUS_PORT:-9090}" >&2
+printf 'ready: prometheus not ready after %ss: GET http://%s:%s/api/v1/query?query=up{job="backend"}\n' "$READY_TIMEOUT" "$PLANE_HOST" "${METRICS_PORT:-9090}" >&2
 exit 1

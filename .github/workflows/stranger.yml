@@ -105,9 +105,9 @@ jobs:
           echo "./go demo: ${t}s, exit $rc" >> "$TIMES"
           [ "$rc" -eq 0 ] || exit "$rc"
           # The preflight moved both, and named each (docs/adr/0093 §1d).
-          grep -E 'preflight: ports +3000 is held by .*: Gitea moves to 3001' .crew/demo/run.log
+          grep -E 'preflight: ports +3000 is held by .*: the code host moves to 3001' .crew/demo/run.log
           grep -E 'preflight: ports +8080 is held by .*: the app moves to 8081' .crew/demo/run.log
-          grep -qx 'GITEA_PORT=3001' .crew/ports.env && grep -qx 'APP_PORT=8081' .crew/ports.env
+          grep -qx 'CODE_HOST_PORT=3001' .crew/ports.env && grep -qx 'APP_PORT=8081' .crew/ports.env
           # The end: the run's own console, on ticket 0001 (§4).
           grep -F "See why, step by step: file://$PWD/.crew/demo/console.html#ticket/0001" "$RUNNER_TEMP/demo.log"
           test -s .crew/demo/console.html

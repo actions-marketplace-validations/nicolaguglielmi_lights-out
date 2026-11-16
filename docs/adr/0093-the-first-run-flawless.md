@@ -110,9 +110,12 @@ c. **Disk.** Free space in the engine's store (podman: `GraphRootAllocated
    When the engine does not say, the line says "not checked".
 
 d. **Ports.** The plane publishes six host ports. Five can move, each
-   with its variable: the app's `APP_PORT` (8080), `GITEA_PORT` (3000),
-   `PROMETHEUS_PORT` (9090), `ENVOY_ADMIN_PORT` (9901) and `FLAGD_PORT`
-   (8016). The registry's 5050 cannot: it is part of every image's name,
+   with its variable: the app's `APP_PORT` (8080), `CODE_HOST_PORT` (3000,
+   Gitea at L0), `METRICS_PORT` (9090, Prometheus), `DELIVERY_ADMIN_PORT`
+   (9901, Envoy's admin) and `FLAGS_PORT` (8016, flagd). The variables are
+   named for the port, not the adapter, because `core/preflight.sh` reads
+   them and `core/` names no vendor (ADR 0024 §1, `ci/vendor-free.sh`,
+   which caught the first draft's `GITEA_PORT`). The registry's 5050 cannot: it is part of every image's name,
    `localhost:5050/…`, and of the engine's insecure-registry entry (ADR
    0025). For each port, in this order:
    - held by this checkout's own plane (a container of compose project
@@ -242,8 +245,12 @@ NO-GO: try — init: <init's reason>
 ```
 
 then, on stderr, the commands that keep the draft (`cp -R`, `git add`,
-`git commit` in the user's repository, with its real path) and `./go
-detach`. Nothing new judges: it is `init` then `gates`, each unchanged.
+`git commit` in the user's repository, with its real path). The draft is
+copied to `.crew/try/<name>/.lights-out` and the clone is detached, so
+`./go demo` works right after; `./go try` refuses to start while another
+repository is attached. Like `init`, `try` may start without a contract
+(the Makefile's include). Nothing new judges: it is `init` then `gates`,
+each unchanged.
 
 ### 6. The budget a stranger is held to
 
@@ -277,7 +284,8 @@ real listening sockets, and proves each can fail:
   3,800 MiB: a warning line, still GO;
 - a stopped podman machine on macOS: `machine start` called once;
 - the filter: on a scripted input, only the header, the step lines, the
-  `[say]` lines and the last line reach the terminal, every input line
+  `[say]` lines and the demo's own verdict reach the terminal (a stage's
+  `GO: demo-rollback` or `NO-GO: demo-gates` does not), every input line
   reaches the log, `steps.tsv` is written on GO and not on NO-GO, and on
   a failure the log's last lines and its path are printed;
 - `adapters/gitea/ready.sh` against a listener that answers 404: the

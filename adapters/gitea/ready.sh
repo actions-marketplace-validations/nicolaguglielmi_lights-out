@@ -7,8 +7,8 @@
 set -eu
 : "${PLANE_HOST:=host.containers.internal}"
 : "${READY_TIMEOUT:=60}"
-: "${GITEA_PORT:=3000}"
-url="http://$PLANE_HOST:$GITEA_PORT/api/v1/version"
+: "${CODE_HOST_PORT:=3000}"
+url="http://$PLANE_HOST:$CODE_HOST_PORT/api/v1/version"
 
 i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
@@ -22,8 +22,8 @@ done
 # the port and what answered, so the person is not left with a timeout.
 code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 3 "$url" 2>/dev/null) || :
 case "$code" in
-  ''|000) why="nothing answers on port $GITEA_PORT" ;;
-  *) why="port $GITEA_PORT answers HTTP $code, not as Gitea: another server holds it on this host (./go doctor names it; GITEA_PORT in .env moves Gitea)" ;;
+  ''|000) why="nothing answers on port $CODE_HOST_PORT" ;;
+  *) why="port $CODE_HOST_PORT answers HTTP $code, not as Gitea: another server holds it on this host (./go doctor names it; CODE_HOST_PORT in .env moves Gitea)" ;;
 esac
 printf 'ready: gitea not ready after %ss: GET %s: %s\n' "$READY_TIMEOUT" "$url" "$why" >&2
 exit 1
