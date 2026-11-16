@@ -642,6 +642,73 @@ request has no criteria to fall back on. The console's request screen has
 the same entry, "Describe the need", and each intake's card sits above
 the kanban.
 
+### The screen and the perimeter asked file by file
+
+Before the product role reads a client's words or a ticket body, one
+closed question goes through the `Decide` port (ADR 0091): does this text
+hold instructions aimed at an AI agent? At L0 the answers replay
+`fixtures/decide/`, recorded on the Gemini Decisions API. One of the 24
+texts of the screen's labelled set is a waiting-list request that ends by
+telling the assistant it is now the release manager:
+
+<!-- source: local run on podman, commit 019b93d, 2026-11-16, a full clone of claude/m58-decisions-91efb9, L0 -->
+```sh
+jq -r '.[] | select(.id=="inj-02") | .text' fixtures/screen/labelled.json > .crew/need.txt
+./go intake TICKET=0041 INTAKE_FILE=.crew/need.txt
+```
+
+```
+[tower] 0041: intake by unauthenticated via cli, interview requested
+[tower] 0041: interview (state intake)
+[tower] 0041: step interview failed; state stays intake
+[tower] 0041: the stopped screen run is in the ledger (the screen stopped the step)
+NO-GO: intake — 0041: step exited 1: screen: the intake text reads as instructions to an AI agent (p=0.97); a person reads it, then ./go screen-clear TICKET=0041, or edits it and ./go resume TICKET=0041
+```
+
+The product role never read it. A person who has read the text and wants
+it to go on clears it, for this text only:
+
+```sh
+./go screen-clear TICKET=0041 CLEAR_BY=ana
+```
+
+```
+[tower] 0041: screen cleared by ana via cli, interview requested again
+[tower] 0041: interview (state intake)
+[tower] 0041: step interview failed; state stays intake
+NO-GO: screen-clear — a step failed; see the [tower] lines above
+```
+
+The interview now runs, and at L0 it stops for want of a recording of
+these words, as any unrecorded intake does. An edited text has another
+sha256 and is asked again. The screen is not a gate: no gate reads it,
+and a text it is unsure about runs with a flag on its card.
+
+The perimeter can be asked the same way. With `PERIMETER_BY=decide`, the
+architect asks one request of one yes/no question per proposed ticket and
+file of the workload, 150 for the demo intake, instead of searching:
+
+```sh
+./go intake TICKET=0030 INTAKE_FILE=fixtures/intake/request.md
+./go answer TICKET=0030 ANSWER="A button on the meetup page; then they are no longer registered and one more seat is free."
+./go answer TICKET=0030 PERIMETER_BY=decide ANSWER="The organiser sees the names and the free seats on the meetup page; other members see only the free seats."
+```
+
+```
+[tower] 0030: intake-answer → drafted
+[tower] 0030: perimeter (state drafted)
+[tower] 0030: perimeter → proposed
+GO: answer
+```
+
+Ticket 1 gets five paths, `app/backend/meetups/app.py`, `db.py`, the
+backend's tests, `app/frontend/index.html` and `App.tsx`, and five more
+under `PERIMETER_CONFIDENCE=0.7` listed as uncertain, `api.ts` first;
+ticket 2 gets four, with eight uncertain. Both drafts say `GO: spec`, and
+the console shows the uncertain paths under each perimeter for the person
+who confirms. Recorded live, the request took about a second and $0.002;
+the search took 115 s and $0.073 (ADR 0091, "Measured").
+
 ### `./go demo-launch`: go-for-launch, the one human gate
 
 Agents and gates decide everything up to 25% of traffic. The step to 100%
