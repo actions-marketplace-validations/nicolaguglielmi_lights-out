@@ -6,24 +6,40 @@ coordinator lands it (`--no-ff`).
 ## Acceptance
 
 - `./go ci` from a full clone under `.crew/m58-record`: **GO**, 55 checks,
-  848 s (the VM shared with other sessions), on 65072dc. Among them:
+  449 s, on 4ed34d0 (848 s on 65072dc, the VM shared). Among them:
   `GO: decide` (the port and both adapters' conformance on loopback stubs),
   `GO: screen` (`labelled set, injection: stop 12 flag 0 pass 0`,
   `labelled set, benign: stop 0 flag 0 pass 12`), `GO: intake` (`the demo
   intake perimeter replayed fixtures/decide`, and the M57 full conversation),
-  `GO: logbook` (1.8, the hand checks and their planted failures). The commits
-  after 65072dc are docs only (this file, the plan).
+  `GO: logbook` (1.8, the hand checks and their planted failures),
+  `GO: app-free`, `GO: model-free`, `GO: shell-boundary`. The commit after
+  4ed34d0 is this file only.
 - `./go demo`: **not run locally**. The one plane slot was held by another
   session (`lights-out-*` and a `lights-out-demo-ci-*` workbench on the
   rootful connection; rootless empty), so the demo is proven by the push
   workflows below.
-- GitHub Actions on 65072dc: RUNS_HERE.
+- GitHub Actions on 4ed34d0, all five push workflows **green**: ci
+  43853268214 (`GO: demo, milestone M9, 770s to rollback` in engine-compat,
+  `GO: console-ui` with section `ai`, `GO: demo-console`), stranger
+  43853268382 (`GO: demo … 684s`), self 43853268273 (`GO: gates — risk
+  high, review, in workbench`: the mutation gate passes with the unit
+  tests), package 43853268172, podman 43853268468. On 65072dc the demo took
+  846 s and 862 s on the same runners: worth watching against the 900 s
+  budget; the screen adds one replayed decision (under a second) to
+  `clarify`.
 - `site` on 66abf73 (43841430413): **green**. It renders the stills over
   golden-1.8; nothing in the site's paths changed after it.
 - `ci/console-ui.py` locally (`localhost/m17-pw:dev`): one run stopped at
   "the page drew no main h1 for #overview in 5000 ms" while `./go ci` and the
-  recording loaded the VM; the page's script parses (`node --check`). The CI
-  job above is the proof, section `ai` included.
+  recording loaded the VM. The CI job above is the proof, section `ai`
+  included.
+- The self gate first failed on 65072dc: mutation 31/1238 on the changed lines
+  (0.025 < 0.293), because the new core code had only shell suites. A
+  gate-writer then wrote unit tests from the ADR: `core/tests/test_decide.py`,
+  `test_screen.py`, `test_record_decisions.py` and additions to `test_intake.py`
+  and `test_tower.py`, 1676 tests in all. Measured locally, `decide.py` and
+  `screen.py` score 636/700. The tests found one real defect, now fixed: a
+  question key with a trailing newline passed the `$` regex, against ADR §1.
 
 ## The comparison (ADR 0091, "Measured")
 
