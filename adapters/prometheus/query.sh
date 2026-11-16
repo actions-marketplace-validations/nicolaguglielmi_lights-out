@@ -9,7 +9,7 @@
 set -eu
 query=${1:?usage: query.sh '<promql>'}
 : "${PLANE_HOST:=host.containers.internal}"
-: "${PROMETHEUS_URL:=http://$PLANE_HOST:9090}"
+: "${PROMETHEUS_URL:=http://$PLANE_HOST:${PROMETHEUS_PORT:-9090}}"
 # shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 

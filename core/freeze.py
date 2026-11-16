@@ -1,6 +1,6 @@
 """The console, frozen (docs/adr/0089): stdlib only.
 
-    python3 core/freeze.py --logbook <file> --out <file> [--page console/index.html] [--label <text>] [--prefix <text>]
+    python3 core/freeze.py --logbook <file> --out <file> [--page console/index.html] [--label <text>] [--prefix <text>] [--hash <h>]
 
 Writes the console's own page with the logbook inlined, a fetch of its own
 that answers the page's two reads from it and refuses every other request,
@@ -73,8 +73,9 @@ def default_label(book):
     return f"logbook of {commit}, last event {last_event(book) or '?'}"
 
 
-def freeze(page, logbook_text, label=None, prefix=None):
-    """The frozen page, from the console's page and the logbook's text."""
+def freeze(page, logbook_text, label=None, prefix=None, hash_=None):
+    """The frozen page, from the console's page and the logbook's text; with
+    hash_, a page opened with no hash goes to it (docs/adr/0093 §4)."""
     try:
         book = json.loads(logbook_text)
     except ValueError as e:
@@ -96,7 +97,10 @@ def freeze(page, logbook_text, label=None, prefix=None):
              f'<style id="frozen-style">{STYLE}</style>\n'
              f'<script type="application/json" id="frozen-logbook">{_json(book)}</script>\n'
              f'<script type="application/json" id="frozen-console">{_json(con)}</script>\n'
-             f'<script id="frozen-shim">{SHIM}</script>\n{END}')
+             f'<script id="frozen-shim">{SHIM}</script>\n'
+             + (f'<script id="frozen-hash">if (!location.hash) history.replaceState(null, "", {_json("#" + hash_)});</script>\n'
+                if hash_ else "")
+             + END)
     banner = (f'{BEGIN}<div id="frozen-banner" role="note"><b>Frozen snapshot</b> of {html.escape(label)}. '
               'Read-only: no console, tower or plane behind it, and nothing on this page can be sent.</div>\n'
               f'{END}')
@@ -116,6 +120,7 @@ def main(argv=None):
                                                    "console", "index.html"))
     ap.add_argument("--label")
     ap.add_argument("--prefix", help="put before the label, then a comma (docs/adr/0089 §5)")
+    ap.add_argument("--hash", help="the hash a page opened with none goes to (docs/adr/0093 §4)")
     a = ap.parse_args(argv)
     try:
         try:
@@ -125,7 +130,7 @@ def main(argv=None):
                 page = f.read()
         except OSError as e:
             raise Refused(f"{e.filename}: {e.strerror}") from e
-        out = freeze(page, text, a.label, a.prefix)
+        out = freeze(page, text, a.label, a.prefix, a.hash)
         os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
         with open(a.out, "w", encoding="utf-8") as f:
             f.write(out)

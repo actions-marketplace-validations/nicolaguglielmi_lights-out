@@ -57,9 +57,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # Every line as it comes, for this job's log (docs/adr/0093 §2); the
+      # stranger workflow shows what a person sees.
       - run: ./go demo
         env:
           CONTAINER_ENGINE: docker
+          LIGHTS_OUT_VERBOSE: 1
       # The logbook of the demo just run (docs/adr/0047 §4, provisional
       # decision 13): the source of console/snapshot/logbook.json, printed
       # here and uploaded below. Not part of ./go demo: the demo is unchanged.

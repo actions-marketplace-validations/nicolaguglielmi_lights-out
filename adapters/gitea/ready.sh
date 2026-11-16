@@ -7,14 +7,23 @@
 set -eu
 : "${PLANE_HOST:=host.containers.internal}"
 : "${READY_TIMEOUT:=60}"
+: "${GITEA_PORT:=3000}"
+url="http://$PLANE_HOST:$GITEA_PORT/api/v1/version"
 
 i=0
 while [ "$i" -lt "$READY_TIMEOUT" ]; do
-  if curl -fsS --connect-timeout 1 --max-time 3 "http://$PLANE_HOST:3000/api/v1/version" >/dev/null 2>&1; then
+  if curl -fsS --connect-timeout 1 --max-time 3 "$url" >/dev/null 2>&1; then
     exit 0
   fi
   i=$((i + 1))
   sleep 1
 done
-printf 'ready: gitea not ready after %ss: GET http://%s:3000/api/v1/version\n' "$READY_TIMEOUT" "$PLANE_HOST" >&2
+# A busy port answers, but not as Gitea (docs/adr/0093 §1e): say so, with
+# the port and what answered, so the person is not left with a timeout.
+code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 1 --max-time 3 "$url" 2>/dev/null) || :
+case "$code" in
+  ''|000) why="nothing answers on port $GITEA_PORT" ;;
+  *) why="port $GITEA_PORT answers HTTP $code, not as Gitea: another server holds it on this host (./go doctor names it; GITEA_PORT in .env moves Gitea)" ;;
+esac
+printf 'ready: gitea not ready after %ss: GET %s: %s\n' "$READY_TIMEOUT" "$url" "$why" >&2
 exit 1

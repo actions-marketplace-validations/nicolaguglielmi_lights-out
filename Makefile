@@ -8,6 +8,9 @@ SHELL := /bin/sh
 
 PROFILE ?= l0
 include profiles/$(PROFILE).env
+# The plane ports ./go's preflight moved off a busy default (docs/adr/0093
+# §1d), before .env so a value there wins.
+-include .crew/ports.env
 -include .env
 
 # The Workload port (docs/adr/0030 §1): a workload is a directory: not the
@@ -125,7 +128,14 @@ PLANE_HOST ?= host.containers.internal
 # on the machine — found closing M12, where another project held it.
 APP_PORT ?= 8080
 APP_URL ?= http://$(PLANE_HOST):$(APP_PORT)
-export PLANE_HOST APP_PORT APP_URL
+# The other host ports that can move (docs/adr/0093 §1d): ./go's preflight
+# writes a busy default's replacement to .crew/ports.env. The registry's
+# 5050 cannot: it is in every image's name.
+GITEA_PORT ?= 3000
+PROMETHEUS_PORT ?= 9090
+ENVOY_ADMIN_PORT ?= 9901
+FLAGD_PORT ?= 8016
+export PLANE_HOST APP_PORT APP_URL GITEA_PORT PROMETHEUS_PORT ENVOY_ADMIN_PORT FLAGD_PORT
 
 # Seconds each adapters/<name>/ready.sh polls before giving up. 4x the 15 s a
 # cold plane took to answer at M2 close (docs/adr/0012 §6, HANDOFF) was 60;
@@ -153,7 +163,7 @@ export CREW_UID CREW_GID
 
 # M3 release controller (docs/adr/0013, 0014). Workbench reaches the Envoy
 # admin API the same way it reaches every other plane port (PLANE_HOST).
-ENVOY_ADMIN_URL ?= http://$(PLANE_HOST):9901
+ENVOY_ADMIN_URL ?= http://$(PLANE_HOST):$(ENVOY_ADMIN_PORT)
 export ENVOY_ADMIN_URL
 
 # The image `up` builds, publishes and signs as stable (docs/adr/0025 §1,
@@ -237,7 +247,7 @@ help: ## List the targets
 		shell "interactive shell inside workbench" clean "remove the workbench image"
 
 # Self-checks run by `ci`, in order. engine-compat runs on the host (ADR 0004, ADR 0012 §5), never here.
-CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase intake assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
+CI_CHECKS := secrets secrets-history lint shell help docs-drift map profiles workloads attach first-run toolchain sast-diff init core-tests vendor-free app-free model-free codehost hooks harness harness-shape network tower mainline dev-phase intake assign perimeter review prompts evals promote board logbook roles postmortem metrics readiness package shell-boundary store-bus gates-light plugin agents plan range release wiki authors evidence outside contract
 
 # Each check runs once (docs/adr/0062): under `ci`, and only there, every
 # ci-<name> leaves its stdout and exit code in this run's own directory,
@@ -258,21 +268,69 @@ ci-%:
 	@. ci/lib.sh; record_check ci/$*.sh $*
 
 .PHONY: demo
-demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7)
-	@printf '[demo] engine-compat: done on the host by ./go before this run\n' >&2
-	@printf '[demo] ci (M2): running\n'
-	@$(MAKE) --no-print-directory ci
-	@$(MAKE) --no-print-directory up
-	@printf '[demo] up: L0 plane, %s\n' "$(PLANE_ADAPTERS)" >&2
-	@$(MAKE) --no-print-directory smoke
-	@printf '[demo] smoke: the happy path passed through Envoy at %s\n' "$(APP_URL)" >&2
-	@$(MAKE) --no-print-directory verify METRICS_URL=
-	@printf '[demo] verify: metric shape only; canary vs stable is evaluated inside demo-rollback below\n' >&2
-	@$(MAKE) --no-print-directory demo-rollback
-	@printf '[demo] deploy, verify (canary vs stable), rollback: proved by demo-rollback above (docs/adr/0013, 0014)\n' >&2
-	@$(MAKE) --no-print-directory e2e
-	@printf '[demo] e2e: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)\n' >&2
-	@printf 'lights-out: open the app at http://localhost:%s, Gitea at http://localhost:3000, Prometheus at http://localhost:9090\n' "$(APP_PORT)" >&2
+# The stages of ADR 0003 in the order of docs/adr/0093 §3: the repository's
+# checks run beside the plane (started by ./go in a container of their own,
+# else here, in the background), and their verdict is awaited before GO.
+# `[step]` and `[say]` lines on stderr are for core/progress.sh (§2); the
+# end freezes this run's console on ticket 0001 (§4). LIGHTS_OUT_PLANE_UP=1:
+# ./go brought the plane up and smoke-tested it on the host already.
+DEMO_DIR ?= .crew/demo
+# How long the checks may still run once the plane's stages are done: a
+# hang guard, twice the plan's 900 s budget (docs/adr/0093 §3, a decision).
+DEMO_CHECKS_WAIT ?= 1800
+demo: ## The demo, as far as the current milestone takes it (ADR 0003, 0013 §7, 0093)
+	@mkdir -p "$(DEMO_DIR)"; \
+	ci_dir="$${LIGHTS_OUT_CI_DIR:-}"; \
+	if [ -z "$$ci_dir" ]; then \
+		ci_dir="$(DEMO_DIR)"; rm -f "$$ci_dir/ci.out" "$$ci_dir/ci.err" "$$ci_dir/ci.rc"; \
+		printf '[demo] ci: the repository'"'"'s checks start beside the plane (docs/adr/0093 §3)\n' >&2; \
+		( rc=0; $(MAKE) --no-print-directory ci > "$$ci_dir/ci.out" 2> "$$ci_dir/ci.err" || rc=$$?; printf '%s\n' "$$rc" > "$$ci_dir/ci.rc" ) & \
+	else \
+		printf '[demo] ci: the repository'"'"'s checks run beside the plane, started by ./go (docs/adr/0093 §3)\n' >&2; \
+	fi; \
+	if [ "$${LIGHTS_OUT_PLANE_UP:-}" = 1 ]; then \
+		printf '[demo] engine-compat, up, smoke: done on the host by ./go before this run\n' >&2; \
+	else \
+		printf '[step] plane\n' >&2; \
+		$(MAKE) --no-print-directory up || exit 1; \
+		$(MAKE) --no-print-directory smoke || exit 1; \
+		printf '[demo] smoke: the happy path passed through Envoy at %s\n' "$(APP_URL)" >&2; \
+	fi; \
+	printf '[step] rollback\n' >&2; \
+	$(MAKE) --no-print-directory verify METRICS_URL= || exit 1; \
+	printf '[demo] verify: metric shape only; canary vs stable is evaluated inside demo-rollback below\n' >&2; \
+	$(MAKE) --no-print-directory demo-rollback || exit 1; \
+	why=$$(jq -r '.stages[-1].verdict // empty' "$(RELEASE_RECORD)" 2>/dev/null); \
+	printf '[say] A canary at 5%% was judged and rolled back by itself, nobody paged: %s\n' "$${why#NO-GO: slo — }" >&2; \
+	printf '[demo] deploy, verify (canary vs stable), rollback: proved by demo-rollback above (docs/adr/0013, 0014)\n' >&2; \
+	printf '[step] ticket\n' >&2; \
+	$(MAKE) --no-print-directory e2e || exit 1; \
+	printf '[say] Ticket 0001: requested, specified, a pull request the eight gates passed, merged, released at 5%%, rolled back by itself, audited\n' >&2; \
+	printf '[demo] e2e: ticket → PR → CI → merge → canary → verify NO-GO → rollback, audited (docs/adr/0019)\n' >&2; \
+	printf '[step] checks\n' >&2; \
+	i=0; while [ ! -s "$$ci_dir/ci.rc" ]; do \
+		i=$$((i + 1)); \
+		[ "$$i" -le "$(DEMO_CHECKS_WAIT)" ] || { printf 'NO-GO: demo — ci: the repository'"'"'s checks gave no verdict %ss after the plane'"'"'s stages ended (%s)\n' "$(DEMO_CHECKS_WAIT)" "$$ci_dir"; exit 1; }; \
+		sleep 1; \
+	done; \
+	cat "$$ci_dir/ci.out"; \
+	cat "$$ci_dir/ci.err" >&2; \
+	if [ "$$(cat "$$ci_dir/ci.rc")" != 0 ]; then \
+		printf 'NO-GO: demo — ci: %s\n' "$$(grep -m 1 '^NO-GO' "$$ci_dir/ci.out" || echo "exit $$(cat "$$ci_dir/ci.rc"), see $$ci_dir/ci.err")"; \
+		exit 1; \
+	fi; \
+	printf '[demo] ci (M2): GO, run beside the plane\n' >&2; \
+	printf '[step] console\n' >&2; \
+	book="$(DEMO_DIR)/logbook.json"; page="$(DEMO_DIR)/console.html"; rm -f "$$page"; \
+	if out=$$(LOGBOOK_FILE="$$book" sh core/logbook.sh 2>"$(DEMO_DIR)/logbook.err") \
+		&& out=$$(python3 core/freeze.py --logbook "$$book" --out "$$page" --hash ticket/0001 \
+			--label "your ./go demo at $$(git rev-parse --short HEAD 2>/dev/null || echo '?'), L0, no key"); then \
+		printf '[say] See why, step by step: file://%s/%s#ticket/0001\n' "$(CURDIR)" "$$page" >&2; \
+	else \
+		printf '[say] No console snapshot: %s\n' "$${out:-see $(DEMO_DIR)/logbook.err}" >&2; \
+	fi; \
+	printf '[say] Next: ./go console serves the live console on localhost:%s; ./go try <path> runs the gates on a repository of yours\n' "$${CONSOLE_PORT:-8098}" >&2; \
+	printf 'lights-out: the app at http://localhost:%s, Gitea at http://localhost:%s, Prometheus at http://localhost:%s\n' "$(APP_PORT)" "$(GITEA_PORT)" "$(PROMETHEUS_PORT)" >&2
 	@now=$$(date +%s); t0=$${LIGHTS_OUT_T0:-$$now}; elapsed=$$((now - t0)); \
 	if [ "$$elapsed" -lt 0 ]; then \
 		printf 'GO: demo, milestone M9, rollback reached but not timed: the engine clock is %ss behind the host, budget %ss unverified (plan §2)\n' "$$((0 - elapsed))" "$(DEMO_BUDGET_SECONDS)"; \
@@ -298,7 +356,7 @@ up: ## Start the L0 plane, wait until every adapter is ready, then publish the s
 	@[ -f "$(WORKLOAD_CONTRACT)/compose.yaml" ] || { printf 'NO-GO: up — %s has no compose.yaml: this workload has the gates half of the contract only (docs/adr/0042 §7); ./go gates runs without the plane, docs/use-on-your-repo.md says what the plane half needs\n' "$(WORKLOAD_CONTRACT)"; exit 1; }
 	@[ -f .crew/cosign.key ] || { mkdir -p .crew && COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix .crew/cosign </dev/null >&2; }
 	@$(COMPOSE) up -d --build >&2 || { \
-		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, 3000, 5050, 8016, 9090 and 9901 on the host (8085 and 8086 too with the emulators); only the app port (%s) moves, with APP_PORT=<port> in .env.\n' "$(APP_PORT)" "$(APP_PORT)" >&2; \
+		printf 'lights-out: compose up failed (see above). If a port is already taken: the plane publishes %s, %s, 5050, %s, %s and %s on the host (8085 and 8086 too with the emulators); ./go up and ./go demo move a busy one by themselves (docs/adr/0093), and APP_PORT, GITEA_PORT, PROMETHEUS_PORT, ENVOY_ADMIN_PORT or FLAGD_PORT in .env choose one.\n' "$(APP_PORT)" "$(GITEA_PORT)" "$(FLAGD_PORT)" "$(PROMETHEUS_PORT)" "$(ENVOY_ADMIN_PORT)" >&2; \
 		exit 1; }
 	@for a in $(PLANE_ADAPTERS); do \
 		[ -f "adapters/$$a/ready.sh" ] || { printf 'lights-out: adapters/%s/ready.sh is missing\n' "$$a" >&2; exit 1; }; \
@@ -1494,6 +1552,36 @@ demo-init: ## Prove attach, init and gates without the plane on workloads/minima
 .PHONY: init
 init: ## Draft the attached repository's .lights-out/ in the clone, baseline measured, never in your repository: ./go init <path> (docs/adr/0042 §6)
 	@sh core/init.sh
+
+# Your repository in one command (docs/adr/0093 §5): ./go attaches a clone
+# of its HEAD, then this drafts the contract in the clone (init, unchanged)
+# and judges the last commit by that draft (gates, unchanged). The draft is
+# copied to TRY_DIR/<name>/.lights-out and the clone detached, so nothing
+# stays attached. One contract line; the commands that keep the draft on
+# stderr. TRY_SOURCE is the repository's path on the host, from ./go.
+TRY_DIR ?= .crew/try
+.PHONY: try
+try: ## Your repository in one command: its contract drafted, then the eight gates on its last commit, then how to keep the draft: ./go try <path> (docs/adr/0093 §5)
+	@[ -d "$(ATTACHED)/.git" ] || { printf 'NO-GO: try — no repository is attached: run ./go try <path>\n'; exit 1; }; \
+	src="$${TRY_SOURCE:-$$(git -C "$(ATTACHED)" remote get-url origin)}"; \
+	draft="$(TRY_DIR)/$$(basename "$$src")"; \
+	printf '[try] %s: drafting its contract in a clone (init), then the eight gates on its last commit\n' "$$src" >&2; \
+	out=$$($(MAKE) --no-print-directory init WORKLOAD="$(ATTACHED)") || { \
+		printf 'NO-GO: try — init: %s\n' "$${out#NO-GO: init — }"; \
+		printf '[try] the clone stays attached for a look: %s; ./go detach drops it\n' "$(ATTACHED)" >&2; exit 1; }; \
+	printf '[try] %s\n' "$$out" >&2; \
+	stack=$$(printf '%s' "$${out#GO: init — }" | cut -d, -f1); \
+	rc=0; gates=$$($(MAKE) --no-print-directory gates WORKLOAD="$(ATTACHED)" GATES_OUT="$(TRY_DIR)/gates") || rc=$$?; \
+	rm -rf "$$draft"; mkdir -p "$$draft"; cp -R "$(ATTACHED)/.lights-out" "$$draft/"; \
+	rm -rf "$(ATTACHED)"; \
+	if [ "$$rc" -eq 0 ]; then \
+		printf 'GO: try — %s; the eight gates on your last commit: %s; the draft is in %s/.lights-out\n' "$$stack" "$${gates#GO: gates — }" "$$draft"; \
+	else \
+		printf 'NO-GO: try — %s; the gates on your last commit: %s; the draft is in %s/.lights-out\n' "$$stack" "$${gates#NO-GO: gates — }" "$$draft"; \
+	fi; \
+	printf '[try] keep the contract: cp -R %s/%s/.lights-out/. %s/.lights-out/ && git -C %s add .lights-out && git -C %s commit -m "add lights-out contract"\n' "$(CURDIR)" "$$draft" "$$src" "$$src" "$$src" >&2; \
+	printf '[try] then: the GitHub Action or the lights-out wrapper judges every change (README, "Gates on your repository"); ./go attach %s brings the plane to it\n' "$$src" >&2; \
+	exit "$$rc"
 
 # What the workload's contract gives the agents (docs/adr/0073 §10): the
 # reviewers' role files and the dev-worker's MCP servers, one line each on
