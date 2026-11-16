@@ -25,6 +25,10 @@ confirmation; core/tower.py and the step scripts are its entry points
         the Decide request of the perimeter asked file by file: one yes/no
         question per proposed ticket and per file of the map under <scope>
         (docs/adr/0091 §6); exit 1 when it would be over the port's limit
+    python3 core/intake.py decide-perimeter <doc.json> <map.sqlite> <scope> <run dir>
+        the perimeter step asked file by file: the request, the Decide port,
+        the result; exit 3 with one stderr line when the architect is to
+        search instead (over the port's limit, or no recording at L0)
     python3 core/intake.py perimeter-decided <doc.json> <request.json> <answer.json>
         the perimeter step's result from the answer: `proposed`, the paths at
         or over PERIMETER_CONFIDENCE in the perimeter, those under it
@@ -61,6 +65,10 @@ SUFFIX = ".intake.md"
 DECISIONS = ("ask_product_owner", "propose_ticket", "confirm_acceptance")
 EDITABLE = ("title", "problem", "criteria", "perimeter", "feature", "priority")
 _ID = re.compile(r"^\d{4}$")
+
+
+class SearchInstead(Exception):
+    """The perimeter cannot be asked file by file here: the step searches (docs/adr/0091 §6)."""
 
 
 class Refused(Exception):
@@ -365,6 +373,25 @@ def perimeter_decided(doc, req, ans, check=gate_line, threshold=None):
     return {"state": "proposed", "architect": architect, "proposal": out}
 
 
+def decide_perimeter(doc, map_path, scope, run_dir):
+    """The perimeter step's result asked file by file, or SearchInstead, or Refused."""
+    try:
+        req = perimeter_request(doc, candidates(map_path, scope))
+    except Refused as exc:
+        raise SearchInstead(f"perimeter: {exc}; the architect searches instead") from None
+    with open(os.path.join(run_dir, "request.json"), "w", encoding="utf-8") as fh:
+        json.dump(req, fh, ensure_ascii=False)
+    r = subprocess.run([sys.executable, "core/decide.py", "ask"], input=json.dumps(req), capture_output=True,  # nosec B603
+                       text=True, check=False)
+    lines = [x for x in r.stderr.splitlines() if x.strip()]
+    line = (lines[-1] if lines else f"core/decide.py exit {r.returncode}").removeprefix("decide: ")
+    if r.returncode == 3:
+        raise SearchInstead(f"perimeter: the decision is not recorded at L0 ({line}); the architect searches instead")
+    if r.returncode != 0:
+        raise Refused(f"the architect's decision failed: {line}")
+    return perimeter_decided(doc, req, json.loads(r.stdout))
+
+
 # --- §5 the confirmation ----------------------------------------------------
 
 
@@ -472,6 +499,8 @@ def main(argv, env=None):
             print(json.dumps(perimeter(load(args[0], {}), args[1], int(args[2]), env), ensure_ascii=False))
         elif cmd == "perimeter-request" and len(args) == 3:
             print(json.dumps(perimeter_request(load(args[0], {}), candidates(args[1], args[2])), ensure_ascii=False))
+        elif cmd == "decide-perimeter" and len(args) == 4:
+            print(json.dumps(decide_perimeter(load(args[0], {}), args[1], args[2], args[3]), ensure_ascii=False))
         elif cmd == "perimeter-decided" and len(args) == 3:
             print(json.dumps(perimeter_decided(load(args[0], {}), load(args[1], {}), load(args[2], {})),
                              ensure_ascii=False))
@@ -482,6 +511,9 @@ def main(argv, env=None):
                   " | interview <doc> <run dir> <rc> | proposal <doc> | perimeter <doc> <run dir> <rc>"
                   " | compose <ticket.json> <id> <intake id>", file=sys.stderr)
             return 2
+    except SearchInstead as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
     except (Refused, OSError, sqlite3.Error) as exc:
         line = f"intake: {exc}"
         print(line, file=sys.stderr)

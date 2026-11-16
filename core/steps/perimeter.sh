@@ -36,26 +36,14 @@ by=${PERIMETER_BY:-}
 . roles/architect/role.env
 PERIMETER_BY=${by:-${PERIMETER_BY:-search}}
 
-# Asked file by file (docs/adr/0091 §6): one Decide request, no turns. Over
-# the port's limit, or at L0 with no recording, the architect searches as
-# before and says so; any other failure fails the step.
+# Asked file by file (docs/adr/0091 §6): one Decide request, no turns.
+# Exit 3: over the port's limit or not recorded at L0, the architect
+# searches as before (core/intake.py said so); any other failure fails.
 if [ "$PERIMETER_BY" = decide ]; then
-  if python3 core/intake.py perimeter-request "$DOC_FILE" "$dir/map.sqlite" "$scope" > "$dir/request.json" 2>"$dir/decide.err"; then
-    drc=0
-    python3 core/decide.py ask < "$dir/request.json" > "$dir/answer.json" 2>"$dir/decide.err" || drc=$?
-    if [ "$drc" -eq 0 ]; then
-      exec python3 core/intake.py perimeter-decided "$DOC_FILE" "$dir/request.json" "$dir/answer.json"
-    fi
-    line=$(tail -n 1 "$dir/decide.err")
-    if [ "$drc" -ne 3 ]; then
-      printf 'perimeter: %s\n' "$line" >&2
-      printf "the architect's decision failed: %s\n" "${line#decide: }" > "${STEP_WHY:-/dev/null}"
-      exit 1
-    fi
-    printf 'perimeter: the decision is not recorded at L0 (%s); the architect searches instead\n' "${line#decide: }" >&2
-  else
-    printf 'perimeter: %s; the architect searches instead\n' "$(tail -n 1 "$dir/decide.err")" >&2
-  fi
+  drc=0
+  python3 core/intake.py decide-perimeter "$DOC_FILE" "$dir/map.sqlite" "$scope" "$dir" > "$dir/decided.json" || drc=$?
+  [ "$drc" -ne 0 ] || exec cat "$dir/decided.json"
+  [ "$drc" -eq 3 ] || exit 1
 fi
 rc=0
 ROLE=architect INPUT="$dir/input.json" OUT="$dir/out" INTAKE_MAP="$dir/map.sqlite" INTAKE_SCOPE="$scope" \
