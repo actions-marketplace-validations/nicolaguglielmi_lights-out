@@ -2,6 +2,7 @@
 
 - Status: accepted (amends ADR 0020 §2 [the model is the profile's, no longer derived from `AGENT_HARNESS`; its rejected "profile key for the model" now has its reason], ADR 0017 §3 and ADR 0018 §6 [the CLI's model id comes from `MODEL`; plan §5 is amended by §16]). §7's non-Gemini recording: implemented, not yet recorded.
 - Date: 2026-11-03
+- Amended by: ADR 0092 (a fourth provider, `zai`, with `ZAI_API_KEY` and its thinking map; `glm-` ids join `ci/model-free.sh`)
 - Milestone: M18
 - Numbered 0040: plan §16 gives M18 ADR 0039, which went to the Gitea-runner ADR the same day; the §16 numbers after it shift by one (M19 → 0041).
 

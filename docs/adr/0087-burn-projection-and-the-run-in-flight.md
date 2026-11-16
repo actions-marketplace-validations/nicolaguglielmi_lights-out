@@ -2,6 +2,7 @@
 
 - Status: proposed
 - Date: 2026-11-14
+- Amended by: ADR 0092 §7 (the budget, and the 80% warning, are the provider's `TOKEN_BUDGET_<PROVIDER>` when the role sets one)
 - Milestone: M54 (docs/PLAN.md, "Sprint 2026-11-14 — Il flusso a colpo
   d'occhio")
 - Amends: ADR 0083 §3 (a failed attempt's run enters the ledger), §5 and

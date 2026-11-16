@@ -35,7 +35,7 @@ Known limits today, before you start:
 
 - **No recordings of your repository.** Without a key, lights-out replays
   runs recorded on its own app. On an attached repository the crew stops
-  at L0 and says so; agents need L1 and a Gemini API key.
+  at L0 and says so; agents need L1 and a model key (`GEMINI_API_KEY`, or the key of the provider you choose).
 - **Release of a merged change is implemented, not run on your code.** For
   an attached repository the tower builds the merge commit from your own
   Containerfile, signs it and releases it (ADR 0043 §4); the bundled app
@@ -603,7 +603,7 @@ be inferred.
 | Your thresholds | `policy.env` | Nine keys (section 3) |
 | The hosts the worker may reach | `crew-egress.txt` | One `name:port` per line (section 2). A remote MCP server must be one of them |
 | The model and provider | the profile: `MODEL_PROVIDER`, `MODEL` | Per profile (`profiles/`), on the command line or in `.env` |
-| The harness | `AGENT_HARNESS` | `claude-code`, `codex`, `gemini-cli` (the default) or `antigravity-cli`; each takes one provider |
+| The harness | `AGENT_HARNESS` | `claude-code`, `codex`, `gemini-cli` (the default) or `antigravity-cli`; each takes one provider, except `claude-code`, which takes `anthropic` (`ANTHROPIC_API_KEY`) or `zai` (`ZAI_API_KEY`, GLM by Z.ai) |
 
 Every file under `.lights-out/` is high risk: a change to it goes to a
 human review whatever `RISK_AUTO_MERGE_LEVELS` says.

@@ -97,7 +97,7 @@ attempt=1
 [ -z "${DOC_FILE:-}" ] || attempt=$(jq -r '.attempt // 1' "$DOC_FILE")
 ROLE="$ROLE" TICKET="$TICKET" ATTEMPT="$attempt" WORKSPACE="$review_dir/workspace" BASE="$review_head" \
 OUT="$review_dir/out" TICKET_FILE="$review_dir/input.md" \
-THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
+THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$(python3 core/spend.py token-budget "roles/$ROLE/role.env")" \
   sh "adapters/$harness/run.sh" >&2 \
   || { printf 'step-review: %s run failed for ticket %s\n' "$harness" "$TICKET" >&2; exit 1; }
 

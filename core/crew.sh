@@ -127,7 +127,7 @@ printf '[crew] ticket %s: role %s, harness %s, attempt %s\n' "$TICKET" "$ROLE" "
 
 ROLE="$ROLE" TICKET="$TICKET" TICKET_FILE="$crew_dir/input.md" ATTEMPT="$ATTEMPT" \
 WORKSPACE="$crew_dir/workspace" BASE="$start" OUT="$crew_dir/out" \
-THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$TOKEN_BUDGET" \
+THINKING="$THINKING" MAX_TURNS="$MAX_TURNS" TIMEOUT_S="$TIMEOUT_S" TOKEN_BUDGET="$(python3 core/spend.py token-budget "roles/$ROLE/role.env")" \
   env ${CREW_MCP:+"CREW_MCP=$CREW_MCP"} sh "adapters/$harness/run.sh" >&2 \
   || nogo "$harness run failed for ticket $TICKET"
 

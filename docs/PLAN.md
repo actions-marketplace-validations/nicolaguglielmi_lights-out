@@ -1186,6 +1186,14 @@ M24 su Gemini ha perso tre ticket su dieci a `TOKEN_BUDGET` e nessuno poteva ved
 
 *Stato 2026-11-16 (branch `claude/m60-onboarding-39ac32`):* ADR 0093 con il registro degli attriti, poi `ci/first-run.sh` dall'ADR (provato a fallire su due rotture piantate), poi il codice. Sul runner pulito del workflow `stranger`, a freddo e con 3000 e 8080 occupati, `./go demo` è verde in 370, 480 e 394 s su tre run (prima 700–805 s), rollback a 166–209 s (prima 491–577 s), sotto un budget di regressione di 600 s; le due porte spostate e nominate, 17 righe sul terminale invece di circa 3.000, la console del run aperta sul ticket 0001. `./go try` su un repository JavaScript di prova: 27 s, `GO: try`, i comandi per tenere il contratto provati. **Scostamenti:** le variabili delle porte prendono il nome della porta (`CODE_HOST_PORT`, `METRICS_PORT`, `DELIVERY_ADMIN_PORT`, `FLAGS_PORT`) e non dell'adattatore, perché `core/` non nomina fornitori (`ci/vendor-free.sh` ha fermato la prima bozza); la soglia del disco è 8.000 MB dalla misura di `podman system df` (6,87 GB), non i 6.000 della prima stima; sul Mac, da un clone pulito e senza `.env`, `GO: demo` in 759 s (prima 1.106 s e NO-GO), con la VM condivisa con altre sessioni; con carico 6–10 la stessa demo ha passato ogni stadio ma ha atteso i controlli fino a 1.333 s, NO-GO oltre i 900 s: accanto al piano i controlli aiutano solo dove c'è CPU libera.
 
+#### M59 — GLM di Z.ai e un budget per provider (ADR 0092)
+
+M24 ha lasciato due problemi sulla stessa cucitura: un solo `TOKEN_BUDGET` per tutti i fornitori ha fermato tre ticket Gemini su dieci, e il registro prezza ogni token in ingresso come non in cache. L'owner vuole anche GLM, di Z.ai, accanto a Gemini, Claude e OpenAI.
+
+- **Cosa consegna:** `MODEL_PROVIDER=zai` (chiave `ZAI_API_KEY`, modello `glm-5.3`) su `claude-code`, tramite l'endpoint compatibile Anthropic di Z.ai, e sui ruoli ADK tramite LiteLLM con l'effort in `extra_body`; `TOKEN_BUDGET_<PROVIDER>` nel `role.env` (dev-worker su Gemini 3.900.000, dalla misura di M24); `tokens.cached` e il prezzo in cache nel registro, con `cost_basis` su ogni voce.
+- **Criteri di accettazione, scritti prima del codice:** `./go ci` GO da un clone completo; `./go demo` verde; `./go harness-conformance CONFORMANCE_HARNESS=claude-code` GO su anthropic e su zai; i test di ADR 0092 scritti dall'ADR.
+- **Resta fuori:** codex su Z.ai (aspetta un endpoint Responses documentato); il controllo dal vivo, un ticket su GLM, da fare solo con l'approvazione dell'owner e la sua chiave. Fino ad allora README e reference dicono che l'endpoint con una chiave Standard e l'effetto dell'effort non sono provati.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

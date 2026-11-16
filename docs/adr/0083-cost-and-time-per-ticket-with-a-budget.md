@@ -2,6 +2,7 @@
 
 - Status: proposed (M50)
 - Date: 2026-11-12
+- Amended by: ADR 0092 §5-§6 (a `cached_input` price; cached input priced at it when the run reports `tokens.cached`, and `cost_basis` on every ledger entry)
 - Amended by: ADR 0087 (a failed attempt's run enters the ledger; `./go spend`
   prints the burn and the day's projection before the budget line)
 

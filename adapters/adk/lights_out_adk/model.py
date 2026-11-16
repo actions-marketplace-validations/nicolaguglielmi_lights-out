@@ -1,10 +1,10 @@
 """Which model a role runs on (docs/adr/0040 §1, §3): the profile's
-MODEL_PROVIDER (gemini|anthropic|openai) and MODEL (the exact id), both
+MODEL_PROVIDER (gemini|anthropic|openai|zai) and MODEL (the exact id), both
 overridable from .env, never a role's. AGENT_HARNESS=replay means
 fixtures/adk/<role>/ and no provider at all; otherwise Gemini goes
-through ADK's own Gemini model with the thinking planner, Claude and
-OpenAI through ADK's LiteLlm wrapper with the mapped reasoning effort
-and no planner (LiteLlm ignores thinking_config, verified on google-adk
+through ADK's own Gemini model with the thinking planner, Claude,
+OpenAI and GLM by Z.ai through ADK's LiteLlm wrapper with the mapped
+reasoning effort and no planner (Z.ai's in extra_body, docs/adr/0092 §3) (LiteLlm ignores thinking_config, verified on google-adk
 2.9.1). RecordingLlm wraps either when ADK_RECORD=1. The thinking map is
 adapters/adk/thinking.env, one line per provider and level."""
 
@@ -22,8 +22,13 @@ from google.genai import types
 from .replay import RecordingLlm, ReplayLlm
 from .roles import read_env, repo_root
 
-PROVIDERS = ("gemini", "anthropic", "openai")
-KEY_VAR = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+PROVIDERS = ("gemini", "anthropic", "openai", "zai")
+KEY_VAR = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY",
+           "zai": "ZAI_API_KEY"}
+# Providers whose LiteLLM config refuses the reasoning_effort keyword: the
+# value travels as a top-level request field through extra_body instead
+# (litellm 1.106.6's zai, verified 2026-11-16, docs/adr/0092 §3).
+EFFORT_IN_BODY = ("zai",)
 THINKING_ENV = Path(__file__).resolve().parents[1] / "thinking.env"
 PLACEHOLDER = "replace-me"
 
@@ -109,11 +114,11 @@ def select_model(role: str, thinking: str, instruction_sha256: str | None = None
         # Imported here only: L0 never loads litellm (docs/adr/0040 §3).
         from google.adk.models.lite_llm import LiteLlm
 
-        real = LiteLlm(
-            model=f"{provider}/{model_id}",
-            reasoning_effort=thinking_map(provider, thinking),
-            api_key=key,
-        )
+        effort = thinking_map(provider, thinking)
+        if provider in EFFORT_IN_BODY:
+            real = LiteLlm(model=f"{provider}/{model_id}", extra_body={"reasoning_effort": effort}, api_key=key)
+        else:
+            real = LiteLlm(model=f"{provider}/{model_id}", reasoning_effort=effort, api_key=key)
     if os.environ.get("ADK_RECORD") in ("1", "extend"):
         # The wrapper carries the requested model id: ADK copies it into
         # every request; the recording says which provider answered.

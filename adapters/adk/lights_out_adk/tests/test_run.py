@@ -96,6 +96,14 @@ class Tokens(unittest.TestCase):
         self.assertEqual(adk_run._tokens(self.usage()), {"input": 0, "output": 0, "total": 0})
         self.assertEqual(adk_run._tokens(None), {"input": 0, "output": 0, "total": 0})
 
+    def test_the_cached_part_of_the_input_when_reported(self):
+        # docs/adr/0092 §6: cached_content_token_count, the part of the prompt
+        # the vendor served from its cache; absent when not reported, never 0.
+        got = adk_run._tokens(self.usage(prompt_token_count=100, candidates_token_count=5,
+                                         cached_content_token_count=80, total_token_count=105))
+        self.assertEqual(got, {"input": 100, "output": 5, "total": 105, "cached": 80})
+        self.assertNotIn("cached", adk_run._tokens(self.usage(prompt_token_count=100, total_token_count=100)))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -66,7 +66,7 @@ done
 role() {
   out=$(make --no-print-directory "$@") && { printf '%s\n' "$out"; exit 0; }
   if [ "${PROFILE:-l0}" = l0 ]; then
-    out="$out; at L0 only lights-out's own recordings replay: on yours, PROFILE=l1 with GEMINI_API_KEY in your environment (ANTHROPIC_API_KEY or OPENAI_API_KEY with MODEL_PROVIDER=anthropic or openai)"
+    out="$out; at L0 only lights-out's own recordings replay: on yours, PROFILE=l1 with GEMINI_API_KEY in your environment (ANTHROPIC_API_KEY, OPENAI_API_KEY or ZAI_API_KEY with MODEL_PROVIDER=anthropic, openai or zai)"
   fi
   printf '%s\n' "$out"
   exit 1

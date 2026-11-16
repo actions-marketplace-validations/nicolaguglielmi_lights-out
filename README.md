@@ -16,7 +16,7 @@ It runs complete on your laptop: no account, no API key, no cloud.
 | **Main stays green, without a queue** | a PR merges without a second judgment when nothing moved under its perimeter. Main is judged again after merging; a red main is bisected and the culprit reverted, and its ticket goes back to rework. |
 | **A canary that rolls itself back** | one signed image per merge, 5% then 25% of real traffic, compared with stable on errors and p95 latency. A bad number rolls it back with nobody paged. |
 | **One human gate** | the step to 100% waits for a person's GO. Silence never promotes. It has the semantics of Argo Rollouts' [indefinite pause](https://argo-rollouts.readthedocs.io/en/stable/features/canary/) and Flagger's [confirm-promotion webhook](https://docs.flagger.app/usage/webhooks), as the single human gate of a chain from ticket to production. |
-| **Your model, your coding CLI** | Gemini, Claude or OpenAI, through `gemini-cli`, `claude-code` or `codex`, all behind the same guard ([coding harnesses](docs/reference.md#coding-harnesses)). |
+| **Your model, your coding CLI** | Gemini, Claude, OpenAI or GLM by Z.ai, through `gemini-cli`, `claude-code` or `codex`, all behind the same guard ([coding harnesses](docs/reference.md#coding-harnesses)). |
 | **Ops, too** | an alert becomes ranked hypotheses; an incident becomes a post mortem anchored to the audit chain, with each action item a ticket. |
 
 What is proven and what is not yet is said plainly below, in [What is real and what is recorded](#what-is-real-and-what-is-recorded).
@@ -188,7 +188,7 @@ The plane comes next: attach, up, smoke, verify and rollback on your repository.
 
 - **Works:** the eight gates on the gates half alone. With the plane half, the canary and its rollback on your stable image, judged by the thresholds you set in `.lights-out/policy.env`. A change to `.lights-out/` never merges on its own.
 - **Time:** `./go demo-init` proves init and gates in under 300 s on two small example repositories. Init measures the whole scope, so a large suite takes longer.
-- **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `AGENT_HARNESS=claude-code` with `ANTHROPIC_API_KEY`, or `AGENT_HARNESS=codex` with `OPENAI_API_KEY` (with `MODEL_PROVIDER` and `MODEL`; the ADK roles take the same keys). The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
+- **Needs a model key.** There are no recordings of your code, so on your repository the agents run at L1 only, and say so at L0: `GEMINI_API_KEY` for the coding roles (the free tier), or `AGENT_HARNESS=claude-code` with `ANTHROPIC_API_KEY`, or `AGENT_HARNESS=codex` with `OPENAI_API_KEY`, or `AGENT_HARNESS=claude-code MODEL_PROVIDER=zai` with `ZAI_API_KEY` (with `MODEL_PROVIDER` and `MODEL`; the ADK roles take the same keys). The dev-worker may spend up to 2.6M tokens per run (`roles/dev-worker/role.env`).
 
 Two more optional files shape the agents (ADR 0073): `test-reviewer.md` and `architect.md` in its `roles/` add instructions to a reviewer, and `mcp.json` gives the dev-worker MCP servers, each tool named. Both are read from the base and checked by `./go agents`; see [Customize the agents](docs/use-on-your-repo.md#agents).
 

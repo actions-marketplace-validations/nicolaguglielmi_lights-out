@@ -1696,7 +1696,7 @@ gitlab-conformance: ## The CodeHost conformance suite on adapters/gitlab, agains
 # beside it; the worker image is built on the workbench, not the workload's
 # toolchain. CONFORMANCE_HARNESS=<name> runs one. The suite is proved first,
 # on a made-up harness and a stand-in for compose, to accept a good harness
-# and refuse fifty-four wrong ones (two good runs), its probe proved one way out at a time
+# and refuse fifty-nine wrong ones (three good runs), its probe proved one way out at a time
 # and its port picker under the proxy's load
 # (gates/harness-conformance/proof.sh): a
 # suite that cannot fail would say GO to everything.
@@ -1714,7 +1714,7 @@ harness-conformance: ## Every CLI harness against a scripted model, eleven cases
 # while the eval runs; a role whose eval fails has its new recordings
 # moved to .crew/adk/<role>/ for study, never committed. Refuses at L0
 # (recording a replay is circular, the `record` precedent) and refuses a
-# fixture that contains a key: each of the three provider keys that is
+# fixture that contains a key: each of the four provider keys that is
 # set and not the placeholder (docs/adr/0040 §7; an empty key would match
 # every file). MODEL_PROVIDER and MODEL come from the profile, .env or
 # the command line: `./go record-evals PROFILE=l1 MODEL_PROVIDER=anthropic
@@ -1731,7 +1731,7 @@ record-evals: ## Record the ADK roles' responses at L1 and keep them only if the
 		before=$$(mktemp); ls fixtures/adk/$$role 2>/dev/null | sort > "$$before"; \
 		out=$$(ADK_RECORD=1 ROLES="$$r" sh ci/evals.sh) || true; \
 		printf '[record-evals] %s: %s\n' "$$role" "$$out" >&2; \
-		for key in "$$GEMINI_API_KEY" "$$ANTHROPIC_API_KEY" "$$OPENAI_API_KEY"; do \
+		for key in "$$GEMINI_API_KEY" "$$ANTHROPIC_API_KEY" "$$OPENAI_API_KEY" "$$ZAI_API_KEY"; do \
 			[ -n "$$key" ] && [ "$$key" != replace-me ] || continue; \
 			if grep -rq -- "$$key" fixtures/adk/$$role 2>/dev/null; then \
 				rm -rf fixtures/adk/$$role; printf 'NO-GO: record-evals — a key appeared in a %s recording; deleted\n' "$$role"; exit 1; \

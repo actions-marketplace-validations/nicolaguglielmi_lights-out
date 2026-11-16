@@ -37,6 +37,7 @@ def _env(**values):
         "GEMINI_API_KEY": "",
         "ANTHROPIC_API_KEY": "",
         "OPENAI_API_KEY": "",
+        "ZAI_API_KEY": "",
         "ADK_RECORD": "",
     }
     base.update(values)
@@ -55,6 +56,10 @@ class ThinkingMapTest(unittest.TestCase):
             model.thinking_map("anthropic", "xhigh")
         self.assertIn("thinking.env", str(ctx.exception))
         self.assertIn("ANTHROPIC_XHIGH", str(ctx.exception))
+
+    def test_zai_maps_the_three_levels_onto_glms_three(self):
+        # docs/adr/0092 §4: GLM-5.3 accepts low|high|max; medium is never sent.
+        self.assertEqual([model.thinking_map("zai", level) for level in LEVELS], ["low", "high", "max"])
 
 
 class ProviderFromEnvTest(unittest.TestCase):
@@ -82,6 +87,15 @@ class ProviderFromEnvTest(unittest.TestCase):
         self.assertIn("ANTHROPIC_API_KEY", str(ctx.exception))
         with _env(MODEL_PROVIDER="anthropic", MODEL="claude-sonnet-5-5", ANTHROPIC_API_KEY="k"):
             self.assertEqual(model.provider_from_env(), ("anthropic", "claude-sonnet-5-5", "k"))
+
+    def test_zai_needs_its_own_key(self):
+        # docs/adr/0092 §1: ZAI_API_KEY, LiteLLM's name for it.
+        with _env(MODEL_PROVIDER="zai", MODEL="glm-5.3", ANTHROPIC_API_KEY="k"):
+            with self.assertRaises(model.NoKey) as ctx:
+                model.provider_from_env()
+        self.assertIn("ZAI_API_KEY", str(ctx.exception))
+        with _env(MODEL_PROVIDER="zai", MODEL="glm-5.3", ZAI_API_KEY="k"):
+            self.assertEqual(model.provider_from_env(), ("zai", "glm-5.3", "k"))
 
     def test_the_placeholder_key_is_refused(self):
         with _env(MODEL_PROVIDER="openai", MODEL="gpt-6.1-sol", OPENAI_API_KEY="replace-me"):
@@ -153,6 +167,25 @@ class SelectModelTest(unittest.TestCase):
                     self.assertIsInstance(got.inner, LiteLlm)
 
 
+    def test_zai_goes_through_litellm_with_the_effort_in_extra_body(self):
+        # docs/adr/0092 §3: litellm 1.106.6's zai provider refuses the
+        # reasoning_effort keyword, so it travels in extra_body; no planner.
+        try:
+            from google.adk.models.lite_llm import LiteLlm
+        except ImportError:
+            self.skipTest("litellm is not installed here; the workbench has it")
+        for level in LEVELS:
+            with _env(MODEL_PROVIDER="zai", MODEL="glm-5.3", ZAI_API_KEY="k"):
+                got = model.select_model("ops-triage", level)
+                self.assertIsInstance(got, LiteLlm)
+                self.assertEqual(got.model, "zai/glm-5.3")
+                args = getattr(got, "_additional_args")
+                self.assertNotIn("reasoning_effort", args)
+                self.assertEqual(args.get("extra_body"), {"reasoning_effort": model.thinking_map("zai", level)})
+                self.assertEqual(args.get("api_key"), "k")
+                self.assertIsNone(model.planner_for(level))
+
+
 class LiteLlmTransformationTest(unittest.TestCase):
     """docs/adr/0040 §2: the value each vendor receives for each level,
     built offline from litellm's own request transformation."""
@@ -189,6 +222,54 @@ class LiteLlmTransformationTest(unittest.TestCase):
                 optional_params={}, model="gpt-6.1-sol", drop_params=False,
             )
             self.assertEqual(got, {"reasoning_effort": level}, level)
+
+    def test_zai_receives_a_top_level_reasoning_effort(self):
+        # docs/adr/0092, Verified: the request litellm 1.106.6 sends for
+        # zai/glm-5.3 with extra_body, against a local listener; the keyword
+        # reasoning_effort is refused.
+        import http.server
+        import json
+        import threading
+
+        import litellm
+
+        got = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                got.append((self.path, json.loads(self.rfile.read(int(self.headers["content-length"])))))
+                body = json.dumps({"id": "x", "object": "chat.completion", "created": 1, "model": "glm-5.3",
+                                   "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"},
+                                                "finish_reason": "stop"}],
+                                   "usage": {"prompt_tokens": 100, "completion_tokens": 5, "total_tokens": 105,
+                                             "prompt_tokens_details": {"cached_tokens": 80}}}).encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        messages = [{"role": "user", "content": "hi"}]
+        try:
+            with self.assertRaises(litellm.UnsupportedParamsError):
+                litellm.completion(model="zai/glm-5.3", messages=messages, api_key="k", api_base=base,
+                                   reasoning_effort="high")
+            for level in LEVELS:
+                effort = model.thinking_map("zai", level)
+                litellm.completion(model="zai/glm-5.3", messages=messages, api_key="k", api_base=base,
+                                   extra_body={"reasoning_effort": effort})
+                path, body = got[-1]
+                self.assertTrue(path.endswith("/chat/completions"), path)
+                self.assertEqual((body["model"], body["reasoning_effort"]), ("glm-5.3", effort), level)
+                self.assertNotIn("thinking", body)
+        finally:
+            server.shutdown()
 
 
 if __name__ == "__main__":

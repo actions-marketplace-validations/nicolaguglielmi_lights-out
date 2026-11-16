@@ -27,36 +27,68 @@ set -eu
 : "${TIMEOUT_S:?TIMEOUT_S not set}"
 : "${TOKEN_BUDGET:?TOKEN_BUDGET not set}"
 
-# One provider per harness (docs/adr/0041 §2); the model is the profile's
-# (docs/adr/0040 §1, §4).
-case "${MODEL_PROVIDER:-}" in
-  anthropic) ;;
-  gemini|openai)
-    fits=gemini-cli; [ "$MODEL_PROVIDER" = openai ] && fits=codex
-    printf 'harness-claude-code: MODEL_PROVIDER=%s runs on AGENT_HARNESS=%s (docs/adr/0041 §2); this harness runs anthropic only\n' "$MODEL_PROVIDER" "$fits" >&2
-    exit 1
-    ;;
-  *)
-    printf 'harness-claude-code: MODEL_PROVIDER=%s is not anthropic; this harness runs anthropic only (docs/adr/0041 §2)\n' "${MODEL_PROVIDER:-}" >&2
-    exit 1
-    ;;
-esac
+# The providers this harness runs are its conformance files' (docs/adr/0041
+# §2, 0092 §2): conformance.env, anthropic, and conformance.<provider>.env
+# for each further one. The file naming MODEL_PROVIDER gives the key's
+# variable, the egress host and, for a vendor other than Anthropic, the
+# Anthropic-compatible base URL. Any other provider is refused, naming a
+# harness whose file names it (discovered, never listed).
+# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+conf_get() { grep "^$2=" "$1" 2>/dev/null | head -n1 | cut -d= -f2-; }
+pfile=""
+mine=""
+for f in "$here"/conformance.env "$here"/conformance.*.env; do
+  [ -f "$f" ] || continue
+  p=$(conf_get "$f" PROVIDER)
+  mine="$mine${mine:+, }$p"
+  [ -n "$pfile" ] || [ "$p" != "${MODEL_PROVIDER:-}" ] || pfile=$f
+done
+if [ -z "$pfile" ]; then
+  fits=""
+  if [ -n "${MODEL_PROVIDER:-}" ]; then
+    for f in adapters/*/conformance.env adapters/*/conformance.*.env; do
+      [ -f "$f" ] && [ "$(conf_get "$f" PROVIDER)" = "$MODEL_PROVIDER" ] || continue
+      fits=$(basename "$(dirname "$f")")
+      break
+    done
+  fi
+  if [ -n "$fits" ]; then
+    printf 'harness-claude-code: MODEL_PROVIDER=%s runs on AGENT_HARNESS=%s (docs/adr/0041 §2); this harness runs %s\n' "$MODEL_PROVIDER" "$fits" "$mine" >&2
+  else
+    printf 'harness-claude-code: MODEL_PROVIDER=%s is not a provider this harness runs (%s; docs/adr/0041 §2, 0092 §2)\n' "${MODEL_PROVIDER:-}" "$mine" >&2
+  fi
+  exit 1
+fi
 [ -n "${MODEL:-}" ] || { printf 'harness-claude-code: MODEL is empty; set the exact model id in the profile or .env (docs/adr/0040 §1)\n' >&2; exit 1; }
-case "${ANTHROPIC_API_KEY:-}" in
+key_var=$(conf_get "$pfile" KEY_VAR)
+key=""
+eval "key=\${$key_var:-}"
+case "$key" in
   ""|replace-me)
-    printf 'harness-claude-code: MODEL_PROVIDER=anthropic needs a real ANTHROPIC_API_KEY in .env (see .env.example)\n' >&2
+    printf 'harness-claude-code: MODEL_PROVIDER=%s needs a real %s in .env (see .env.example)\n' "$MODEL_PROVIDER" "$key_var" >&2
     exit 1
     ;;
 esac
 
-# The role's THINKING mapped to --effort by this adapter's own map
-# (docs/adr/0040 §2); a missing line refuses here.
-# shellcheck disable=SC1007 # CDPATH= is the portable way to neutralise CDPATH
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-thinking_key="ANTHROPIC_$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')"
+# The role's THINKING mapped to --effort by this adapter's own map, the
+# provider's lines (docs/adr/0040 §2, 0092 §4); a missing line refuses here.
+thinking_key="$(printf '%s' "$MODEL_PROVIDER" | tr '[:lower:]' '[:upper:]')_$(printf '%s' "$THINKING" | tr '[:lower:]' '[:upper:]')"
 ANTHROPIC_EFFORT=$(grep "^${thinking_key}=" "$here/thinking.env" | head -n1 | cut -d= -f2)
 [ -n "$ANTHROPIC_EFFORT" ] || { printf 'harness-claude-code: %s has no %s= line (docs/adr/0040 §2)\n' "$here/thinking.env" "$thinking_key" >&2; exit 1; }
 export ANTHROPIC_EFFORT
+
+# The key reaches Claude Code by name, never on a command line. Anthropic's
+# is ANTHROPIC_API_KEY, which compose hands the service; another vendor's
+# travels as ANTHROPIC_AUTH_TOKEN, the variable Z.ai documents for Claude
+# Code (docs/adr/0092 §3), and ANTHROPIC_API_KEY is emptied so an Anthropic
+# key in .env never reaches another vendor.
+set --
+if [ "$key_var" != ANTHROPIC_API_KEY ]; then
+  ANTHROPIC_AUTH_TOKEN=$key
+  export ANTHROPIC_AUTH_TOKEN
+  set -- -e ANTHROPIC_AUTH_TOKEN -e ANTHROPIC_API_KEY=
+fi
 
 # The service mounts only this run's directory, OUT's parent, at the same
 # suffix under /crew (docs/adr/0041 §4), never .crew/ itself.
@@ -75,7 +107,6 @@ mkdir -p "$crew_root/.uv-cache"
 # OUT (the one directory the container sees), translated there by mcp.sh,
 # and each token named in it must have a real value before the container
 # starts; it reaches the container by name (-e), never in a file.
-set --
 mcp_tokens=""
 if [ -n "${CREW_MCP:-}" ]; then
   [ -f "$CREW_MCP/decl.json" ] || { printf 'harness-claude-code: CREW_MCP=%s holds no decl.json (docs/adr/0073 §7)\n' "$CREW_MCP" >&2; exit 1; }
@@ -102,12 +133,13 @@ fi
 # The one seam gates/harness-conformance.sh sets (docs/adr/0041 §7):
 # Claude Code reads ANTHROPIC_BASE_URL. A workspace cannot set it: the
 # entrypoint loads user settings only.
-endpoint=${MODEL_BASE_URL:-}
+# Otherwise the provider file's BASE_URL, empty for Anthropic's own API.
+endpoint=${MODEL_BASE_URL:-$(conf_get "$pfile" BASE_URL)}
 
 # The one way out of the internal `crew` network (docs/adr/0046 §4): the
 # egress proxy opens this harness's provider (MODEL_BASE_URL's host when it
 # is set) and the hosts the workload's contract names, nothing else.
-sh core/egress.sh "$(grep '^EGRESS=' "$here/conformance.env" | head -n1 | cut -d= -f2-)" || exit 1
+sh core/egress.sh "$(conf_get "$pfile" EGRESS)" || exit 1
 
 mkdir -p "$OUT"
 rm -f "$OUT/stop"
@@ -140,6 +172,9 @@ result=$(jq -cs '[.[] | select(.type == "result")] | last // {}' "$transcript" 2
 turns=$(printf '%s' "$result" | jq '.num_turns // null')
 tok_in=$(printf '%s' "$result" | jq '.usage // null | if . == null then null else (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0) end')
 tok_out=$(printf '%s' "$result" | jq '.usage.output_tokens // null')
+# The part of input the vendor served from its cache (docs/adr/0092 §6):
+# cache reads; cache writes stay in input at the input price.
+tok_cached=$(printf '%s' "$result" | jq '.usage.cache_read_input_tokens // null')
 tok_total=$(jq -n --argjson a "$tok_in" --argjson b "$tok_out" 'if $a == null or $b == null then null else $a + $b end')
 model_served=$(jq -rs '[.[] | select(.type == "assistant") | .message.model // empty] | group_by(.) | max_by(length) | .[0] // "unknown"' "$transcript" 2>/dev/null) || model_served=unknown
 [ -n "$model_served" ] || model_served=unknown
@@ -162,11 +197,11 @@ fi
 jq -n \
   --arg harness claude-code --arg provider "$MODEL_PROVIDER" --arg model "$model_served" --arg thinking "$THINKING" \
   --argjson turns "$turns" --arg insha "$input_sha256" \
-  --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" \
+  --argjson tokIn "$tok_in" --argjson tokOut "$tok_out" --argjson tokTotal "$tok_total" --argjson tokCached "$tok_cached" \
   --argjson duration "$duration" --argjson exitCode "$container_rc" --arg endpoint "$endpoint" \
   --argjson mcp "$mcp" \
   '{harness: $harness, provider: $provider, model: $model, thinking: $thinking, turns: $turns,
-    tokens: {input: $tokIn, output: $tokOut, total: $tokTotal},
+    tokens: ({input: $tokIn, output: $tokOut, total: $tokTotal} + (if $tokCached == null then {} else {cached: $tokCached} end)),
     duration_s: $duration, exit_code: $exitCode, input_sha256: $insha}
     + (if $endpoint == "" then {} else {endpoint: $endpoint} end) + {mcp: $mcp}' > "$OUT/run.json"
 
@@ -246,8 +281,8 @@ fi
 git -C "$WORKSPACE" format-patch --stdout "$BASE"..HEAD > "$OUT/patch" 2>/dev/null || : > "$OUT/patch"
 
 # No credential in what gets recorded (docs/adr/0017 §3).
-if grep -rFl "$ANTHROPIC_API_KEY" "$OUT"/* >/dev/null 2>&1; then
-  printf 'harness-claude-code: ANTHROPIC_API_KEY appears in the run artefacts under %s; refusing to record\n' "$OUT" >&2
+if grep -rFl "$key" "$OUT"/* >/dev/null 2>&1; then
+  printf 'harness-claude-code: %s appears in the run artefacts under %s; refusing to record\n' "$key_var" "$OUT" >&2
   exit 1
 fi
 for v in $mcp_tokens; do
