@@ -15,5 +15,6 @@ python3 -m unittest discover -s core/tests -t . >&2 || nogo "unittest reported f
 # The python stack's runners, run for real (docs/adr/0074, amendment of
 # 2026-11-11; docs/adr/0076).
 python3 -m unittest discover -s stacks/python/tests -t stacks/python >&2 || nogo "stacks/python/tests reported failures"
+python3 -m unittest discover -s ci/tests -t . >&2 || nogo "ci/tests reported failures"
 
 go

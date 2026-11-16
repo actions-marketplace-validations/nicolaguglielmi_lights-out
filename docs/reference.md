@@ -477,7 +477,8 @@ lights-out/
     record_decisions.py     # M58: ./go record-decisions (ADR 0091 §5)
     logbook/1.0.schema.json # M11: the logbook's schema, one file per minor (1.0, 1.1, 1.2, 1.3)
     risk.py                 # risk classifier: rules-based PR scoring
-    gates/                  # M51: the gates' logic, one module per gate, run by the wrappers in gates/ through `verdict` (ADR 0084)
+    gates/                  # M51: the gates' logic, one module per gate, run by the wrappers in gates/ through `verdict` (ADR 0084); M61: the harness suite (harness.py, its cases and provider pairing as tables), its proof (harness_proof.py, its defects as a table) and the toolchain (toolchain.py) (ADR 0084, amendment 2026-11-16)
+    toolchain.sh            # sourced by the toolchain gates, init and mutation-baseline: toolchain_preflight and run_in_toolchain, two calls into core/gates/toolchain.py (ADR 0042 §2-§4)
     toolchain-run.sh        # M51: a workload's command where TOOLCHAIN_IMAGE says, for a gate's Python (ADR 0084 §4)
     tests/                  # unit tests, unittest, written from the ADRs: what ./go ci and the self gate run
 
@@ -486,6 +487,7 @@ lights-out/
 
   gates/                    # PR gates: risk, test-weakening, deps, sast, test, mutation, test-proof; the conformance suites
     *.sh                    # one wrapper per gate: guards, then the one line from core/gates/<x>.py (ADR 0084)
+    harness-conformance/    # the harness suite's scripted model (stub.py), its probe (probe.py), its ticket, proof.sh and fake/, the proof's made-up harness and stand-in compose (ADR 0084, amendment A2)
 
   profiles/
     l0.env                  # L0: podman, no key, no account

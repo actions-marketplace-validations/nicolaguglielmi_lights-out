@@ -1223,6 +1223,23 @@ M24 ha lasciato due problemi sulla stessa cucitura: un solo `TOKEN_BUDGET` per t
 
 *Stato 2026-11-16 (sessione M58, branch `claude/m58-decisions-91efb9`):* ADR 0091 e i criteri prima del codice; `ci/decide.sh`, `ci/screen.sh`, la sezione i di `ci/intake.sh` e l'insieme etichettato scritti da un subagente dall'ADR senza vedere l'implementazione. Verificato prima di scrivere: la Decisions API esiste come descritta (v1beta, nessuna etichetta preview, $0,10 per milione in ingresso, fascia gratuita), ma `client.decisions` vuole `google-genai` 3.2 e `google-adk` 2.14.x lo vieta (`<3`): l'adapter parla HTTP con la libreria standard. Registrazione approvata dall'owner (≤ $0,40), spesi circa $0,13: 27 decisioni registrate su `gemini-decision-1`; richieste identiche, numeri identici su quattro ripetizioni; insieme etichettato 12/12 iniezioni fermate e 12/12 testi innocui passati su entrambi gli adapter. Perimetro dell'intake di esempio: ricerca 115 s, 4 turni, $0,073, sei percorsi; Decisions API 1,0 s, $0,002, a 0,7 cinque dentro e cinque incerti (ticket 1), quattro e otto (ticket 2); `structured` 25 s, $0,024. **Scostamenti:** la soglia del perimetro è 0,7, misura e decisione dell'owner (l'ADR proponeva 0,8, che lasciava 18–19 incerti per ticket); `PERIMETER_BY` resta `search` per decisione dell'owner, `decide` è opt-in; il logbook passa a 1.8 (ADR 0047 §2: un campo opzionale è una minor); la frase del sito che cita `golden-1.7.json` resta vera (il file resta) ma le foto si rifanno su 1.8; la cifra "61/63" di Hive Commons non è stata trovata in una fonte pubblica.
 
+#### M61 — La seconda fetta in Python (ADR 0084, emendamento del 2026-11-16)
+
+*Aggiunto 2026-11-16, decisione dell'owner.* Il primo feedback esterno nomina "16,8k righe di shell". M51 ha portato in `core/gates/` la logica di dieci gate e lasciato nella lista del debito la coppia `harness-conformance` (693 e 738 righe di codice), `core/toolchain.sh` (126) e la logica di `ci/`. Il confine non si sposta: `core/` e `gates/` restano sotto la regola delle 30 righe, `ci/` resta fuori in questo sprint (quattro milestone parallele lo modificano). Per questo un emendamento di ADR 0084 e non una ADR nuova.
+
+- **La suite degli harness** è `core/gates/harness.py`, dietro `verdict`; il wrapper tiene solo le guardie. I casi sono una tabella (`CASES`), un fornitore è una riga di `PROVIDERS`, un harness si scopre dalla sua cartella: il `zai` di M59 (ADR 0092), atterrato prima, è entrato come una riga, non come una modifica in mezzo a 700 righe.
+- **La prova della suite** è `core/gates/harness_proof.py`, i difetti una tabella (`DEFECTS`); il finto harness e il finto compose, prima heredoc dentro `proof.sh`, sono file sotto `gates/harness-conformance/fake/` (fixture, fuori dallo scope del self gate come `stub.py` e `probe.py`).
+- **La toolchain** è `core/gates/toolchain.py`; `core/toolchain.sh` tiene le due funzioni che i chiamanti includono, `toolchain_preflight` e `run_in_toolchain`, ognuna una chiamata a Python con `-P` e il `PYTHONPATH` del checkout giusto.
+- **`ci/`, la prima fetta (ADR 0094):** la logica Python di una verifica di `ci/` sta in `ci/checks/`, i suoi test in `ci/tests/` (fuori da `core/`: sono test, il self gate non li muta); la prima è `ci/contract.sh`, il meta-gate (225 righe di codice a 4). `ci/` entra nel ratchet dopo che lo sprint M58–M63 è atterrato, con il debito misurato nell'ADR.
+- **Fuori scope:** il ratchet su `ci/` (dopo lo sprint), le altre suite di `ci/`, `adapters/`.
+
+- **Criteri di accettazione:**
+  - L'emendamento di ADR 0084 scritto prima del codice; test `unittest` scritti dall'ADR e dalle intestazioni, prima dei moduli.
+  - Le stesse risposte GO/NO-GO sui guasti piantati prima e dopo: i 57 verdetti della prova della suite riga per riga (62 dopo il merge di M59, che aggiunge il secondo fornitore), e `ci/toolchain.sh` con i suoi guasti piantati (ora nella copia del modulo Python).
+  - `ci/shell-boundary.sh` senza le tre voci di debito pagate; `ci/contract.sh` GO.
+  - `./go ci` GO da un clone pieno sotto `.crew/`, la demo verde, tutti i workflow verdi sul branch (`harness-conformance` su docker e `podman` girano la suite vera).
+  - Le righe di shell prima e dopo, per directory, nel handoff.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.

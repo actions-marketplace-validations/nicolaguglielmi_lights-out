@@ -23,15 +23,16 @@
 #       even when the socket is there.
 #   (e) go_with (§3): `GO: <name> — <detail>` on one line, exit 0, a
 #       multi-line detail flattened to one line.
-#   (f) the checks can fail: (b) and (c) run against copies of
-#       core/toolchain.sh with the socket test and the form test broken,
+#   (f) the checks can fail: (b) and (c) run against copies of the
+#       toolchain (core/toolchain.sh and core/gates/toolchain.py, docs/adr/
+#       0084 amendment A3) with the socket test and the form test broken,
 #       and must report them.
 # Written from the ADR, not from core/toolchain.sh; ci/attach.sh's shape.
 set -eu
 name=toolchain
 . ci/lib.sh
 
-for f in ci/lib.sh core/toolchain.sh; do
+for f in ci/lib.sh core/toolchain.sh core/gates/toolchain.py; do
   [ -f "$f" ] || nogo "$f not found"
 done
 
@@ -76,16 +77,17 @@ python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])'
 [ -S "$sock" ] || nogo "$sock is not a socket"
 : > "$t/not-a-socket"
 
-# probe TC VAR=value...: the throwaway gate against the toolchain file TC,
-# from $t/cwd, in an environment of its own; stdout in $t/out, stderr in
-# $t/err, exit code in $prc. Later assignments win.
+# probe ROOT VAR=value...: the throwaway gate against the toolchain of the
+# checkout ROOT (its core/toolchain.sh, which runs its core/gates/
+# toolchain.py), from $t/cwd, in an environment of its own; stdout in
+# $t/out, stderr in $t/err, exit code in $prc. Later assignments win.
 probe() {
-  tc=$1
+  root=$1
   shift
   (
     cd "$t/cwd" &&
-    env -i PATH="$PATH" LIB="$repo/ci/lib.sh" TC="$tc" WORKLOAD="$wl" WORKLOAD_CONTRACT="$wl/.lights-out" \
-      WORKBENCH_IMAGE=lo-workbench-test "$@" sh "$t/gate.sh"
+    env -i PATH="$PATH" LIB="$repo/ci/lib.sh" TC="$root/core/toolchain.sh" toolchain_root="$root" WORKLOAD="$wl" \
+      WORKLOAD_CONTRACT="$wl/.lights-out" WORKBENCH_IMAGE=lo-workbench-test "$@" sh "$t/gate.sh"
   ) >"$t/out" 2>"$t/err" && prc=0 || prc=$?
 }
 
@@ -103,7 +105,7 @@ nogo_flaw() {
   done
 }
 
-# socket_flaw TC: the (b) check against the toolchain file TC.
+# socket_flaw ROOT: the (b) check against the toolchain of ROOT.
 socket_flaw() {
   tc=$1
   rm -f "$t/ran"
@@ -120,7 +122,7 @@ socket_flaw() {
   done
 }
 
-# form_flaw TC: the (c) check against the toolchain file TC. A real socket
+# form_flaw ROOT: the (c) check against the toolchain of ROOT. A real socket
 # and the plane half are in place, so only the form can be at fault.
 form_flaw() {
   tc=$1
@@ -139,7 +141,7 @@ form_flaw() {
 want_dir=$(cd "$wl/sub" && pwd -P)
 # shellcheck disable=SC2016 # the $ are the throwaway gate's CMD's, expanded when it runs
 cmd_a='pwd -P; echo "ml=$MUTATION_LINES"; echo "uvdl=$UV_PYTHON_DOWNLOADS"; echo noise >&2; exit 7'
-probe "$repo/core/toolchain.sh" TOOLCHAIN_IMAGE=workbench WORKLOAD_TEST_ROOT=sub MUTATION_LINES=src/a.py:1-3 \
+probe "$repo" TOOLCHAIN_IMAGE=workbench WORKLOAD_TEST_ROOT=sub MUTATION_LINES=src/a.py:1-3 \
   GATES_OUT="$t/gout" PROBE_CMD="$cmd_a"
 printf 'where=workbench\n%s\nml=src/a.py:1-3\nuvdl=never\nrc=7\n' "$want_dir" > "$t/want"
 if ! cmp -s "$t/want" "$t/out"; then
@@ -153,42 +155,42 @@ grep -qx noise "$t/err" || fail_case a-stderr "CMD's stderr did not pass through
 [ "$(cat "$t/gout/toolchain.where" 2>/dev/null)" = workbench ] \
   || fail_case a-where "\$GATES_OUT/toolchain.where holds '$(cat "$t/gout/toolchain.where" 2>/dev/null)', want workbench"
 # CMD's own success, an empty test root (the workload's root) and no GATES_OUT.
-probe "$repo/core/toolchain.sh" TOOLCHAIN_IMAGE=workbench PROBE_CMD='pwd -P'
+probe "$repo" TOOLCHAIN_IMAGE=workbench PROBE_CMD='pwd -P'
 want_root=$(cd "$wl" && pwd -P)
 printf 'where=workbench\n%s\nrc=0\n' "$want_root" > "$t/want"
 cmp -s "$t/want" "$t/out" || fail_case a-root "with no WORKLOAD_TEST_ROOT and no GATES_OUT: want the workload root and rc=0, got: $(tr '\n' '|' <"$t/out")"
 # shellcheck disable=SC2016 # the $ is the throwaway gate's CMD's
-probe "$repo/core/toolchain.sh" TOOLCHAIN_IMAGE=workbench PROBE_CMD='echo "ml=[${MUTATION_LINES:-}]"'
+probe "$repo" TOOLCHAIN_IMAGE=workbench PROBE_CMD='echo "ml=[${MUTATION_LINES:-}]"'
 grep -qx 'ml=\[\]' "$t/out" || fail_case a-unset "with MUTATION_LINES unset CMD printed: $(tr '\n' '|' <"$t/out")"
 
 # (b) no socket, no engine form.
-flaw=$(socket_flaw "$repo/core/toolchain.sh")
+flaw=$(socket_flaw "$repo")
 [ -z "$flaw" ] || fail_case b-no-socket "$flaw"
 # The control: with a real socket the same forms pass the preflight and say where.
 for form in compose:backend-test "$digest" node:24; do
-  probe "$repo/core/toolchain.sh" WORKLOAD_CONTRACT="$wlc/.lights-out" DOCKER_HOST="unix://$sock" \
+  probe "$repo" WORKLOAD_CONTRACT="$wlc/.lights-out" DOCKER_HOST="unix://$sock" \
     PROBE_PREFLIGHT_ONLY=1 TOOLCHAIN_IMAGE="$form"
   { [ "$prc" -eq 0 ] && grep -qF "where=" "$t/out" && grep -qF "$form" "$t/out"; } \
     || fail_case b-control "TOOLCHAIN_IMAGE=$form with a real socket: exit $prc, stdout: $(tr '\n' '|' <"$t/out")"
 done
-probe "$repo/core/toolchain.sh" TOOLCHAIN_IMAGE=workbench TOOLCHAIN_ISOLATE=1 DOCKER_HOST="unix://$sock" PROBE_PREFLIGHT_ONLY=1
+probe "$repo" TOOLCHAIN_IMAGE=workbench TOOLCHAIN_ISOLATE=1 DOCKER_HOST="unix://$sock" PROBE_PREFLIGHT_ONLY=1
 { [ "$prc" -eq 0 ] && grep -qF isolated "$t/out"; } \
   || fail_case b-isolated "workbench under TOOLCHAIN_ISOLATE=1 with a socket: exit $prc, want 0 and 'isolated' on the where line: $(tr '\n' '|' <"$t/out")"
 
 # (c) the form.
-flaw=$(form_flaw "$repo/core/toolchain.sh")
+flaw=$(form_flaw "$repo")
 [ -z "$flaw" ] || fail_case c-form "$flaw"
 for ok in workbench compose:backend-test docker.io/library/node:24 "$digest" ghcr.io/astral-sh/uv:python3.12-trixie-slim; do
-  probe "$repo/core/toolchain.sh" WORKLOAD_CONTRACT="$wlc/.lights-out" DOCKER_HOST="unix://$sock" PROBE_PREFLIGHT_ONLY=1 TOOLCHAIN_IMAGE="$ok"
+  probe "$repo" WORKLOAD_CONTRACT="$wlc/.lights-out" DOCKER_HOST="unix://$sock" PROBE_PREFLIGHT_ONLY=1 TOOLCHAIN_IMAGE="$ok"
   [ "$prc" -eq 0 ] || fail_case c-accept "TOOLCHAIN_IMAGE=$ok was refused: $(cat "$t/out")"
 done
 # The digest form without a socket is refused for the socket, not the form.
-probe "$repo/core/toolchain.sh" TOOLCHAIN_IMAGE="$digest"
+probe "$repo" TOOLCHAIN_IMAGE="$digest"
 flaw=$(nogo_flaw socket)
 [ -z "$flaw" ] || fail_case c-digest "the digest form with no socket: $flaw"
 
 # (d) compose: needs compose.yaml, socket or not.
-probe "$repo/core/toolchain.sh" TOOLCHAIN_IMAGE=compose:x DOCKER_HOST="unix://$sock" PROBE_PREFLIGHT_ONLY=1
+probe "$repo" TOOLCHAIN_IMAGE=compose:x DOCKER_HOST="unix://$sock" PROBE_PREFLIGHT_ONLY=1
 flaw=$(nogo_flaw compose.yaml)
 [ -z "$flaw" ] || fail_case d-plane "compose:x, a contract with no compose.yaml and a socket: $flaw"
 
@@ -219,15 +221,27 @@ second"
 env -i PATH="$PATH" LIB="$repo/ci/lib.sh" sh "$t/go-plain.sh" >"$t/out" 2>/dev/null && prc=0 || prc=$?
 { [ "$prc" -eq 0 ] && [ "$(cat "$t/out")" = "GO: probe" ]; } || fail_case e-go "go: exit $prc, stdout: $(cat "$t/out")"
 
-# (f) the checks can fail. A function appended to a copy of the file
-# replaces the original: the socket test that always finds a socket, and the
-# form test that accepts anything as an image.
-cp core/toolchain.sh "$t/no-socket-test.sh"
-printf '\ntoolchain_socket() { printf /anything; }\n' >> "$t/no-socket-test.sh"
-cp core/toolchain.sh "$t/no-form-test.sh"
-printf '\ntoolchain_form() { toolchain_form=image; }\n' >> "$t/no-form-test.sh"
-[ -n "$(socket_flaw "$t/no-socket-test.sh")" ] || fail_case f-socket "check (b) accepted a toolchain with no socket test"
-[ -n "$(form_flaw "$t/no-form-test.sh")" ] || fail_case f-form "check (c) accepted a toolchain with no form test"
+# (f) the checks can fail. A definition added to a copy of the module, before
+# the line that runs it, replaces the original: the socket test that always
+# finds a socket, and the form test that accepts anything as an image.
+flawed() {  # NAME PYTHON: a copy of the toolchain under $t/NAME with PYTHON defined last
+  mkdir -p "$t/$1/core/gates"
+  cp core/__init__.py core/toolchain.sh "$t/$1/core/"
+  cp core/gates/__init__.py "$t/$1/core/gates/"
+  python3 - core/gates/toolchain.py "$t/$1/core/gates/toolchain.py" "$2" <<'PY'
+import sys
+src, dst, extra = sys.argv[1:]
+text = open(src).read()
+at = text.rindex('if __name__ == "__main__":')
+open(dst, "w").write(text[:at] + extra + "\n\n\n" + text[at:])
+PY
+}
+flawed no-socket-test 'def socket_path(env):
+    return "/anything"'
+flawed no-form-test 'def form(image):
+    return "image"'
+[ -n "$(socket_flaw "$t/no-socket-test")" ] || fail_case f-socket "check (b) accepted a toolchain with no socket test"
+[ -n "$(form_flaw "$t/no-form-test")" ] || fail_case f-form "check (c) accepted a toolchain with no form test"
 
 [ -z "$mismatch" ] || nogo "case $mismatch failed; see stderr"
 
