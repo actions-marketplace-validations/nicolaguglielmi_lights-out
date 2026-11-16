@@ -32,9 +32,10 @@ else
 WORKLOAD_CONTRACT := $(WORKLOAD)/.lights-out
 WORKLOAD_ATTACHED := 1
 endif
-# `init` is the one goal that may start without a contract: it drafts one
-# (docs/adr/0042 §6). Every other goal stops here, naming the file.
-ifeq ($(MAKECMDGOALS),init)
+# `init` and `try` are the goals that may start without a contract: they
+# draft one (docs/adr/0042 §6, docs/adr/0093 §5). Every other goal stops
+# here, naming the file.
+ifneq ($(filter $(MAKECMDGOALS),init try),)
 -include $(WORKLOAD_CONTRACT)/workload.env
 else
 include $(WORKLOAD_CONTRACT)/workload.env
