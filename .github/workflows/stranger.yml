@@ -115,6 +115,35 @@ jobs:
           budget=${STRANGER_BUDGET_SECONDS}
           [ "$t" -le "$budget" ] || { echo "::error::./go demo took ${t}s on a clean runner, over the ${budget}s regression budget (docs/adr/0093 §6)"; exit 1; }
           echo "./go demo: ${t}s, within the ${budget}s regression budget" >> "$TIMES"
+      # The demo's last line points at ./go try (docs/adr/0093 §5); the
+      # tutorial's level 2 runs it on a copy of workloads/minimal-js with no
+      # contract, fresh git, one commit. Here, after the demo, as a stranger
+      # would: the toolchain image is built, the plane is still up.
+      - name: 3. ./go try on a repository of your own (tutorial, level 2)
+        working-directory: lights-out
+        run: |
+          set -eu
+          repo="$HOME/code/your-repo"
+          mkdir -p "$repo"
+          cp -R workloads/minimal-js/. "$repo/"
+          rm -rf "$repo/.lights-out"
+          git -C "$repo" init -q -b main
+          git -C "$repo" -c user.name=stranger -c user.email=stranger@lights-out.invalid add -A
+          git -C "$repo" -c user.name=stranger -c user.email=stranger@lights-out.invalid commit -q -m "your code"
+          s=$(date +%s)
+          rc=0; ./go try "$repo" > "$RUNNER_TEMP/try.out" 2> "$RUNNER_TEMP/try.err" || rc=$?
+          echo "./go try: $(( $(date +%s) - s ))s, exit $rc" >> "$TIMES"
+          cat "$RUNNER_TEMP/try.out"
+          cat "$RUNNER_TEMP/try.err" >&2
+          [ "$rc" -eq 0 ] || exit "$rc"
+          # One line on stdout, the gates' own verdict; the draft kept, the
+          # repository untouched, nothing left attached (docs/adr/0093 §5).
+          [ "$(wc -l < "$RUNNER_TEMP/try.out")" -eq 1 ]
+          grep -E '^GO: try — javascript; the eight gates on your last commit: .*; the draft is in \.crew/try/your-repo/\.lights-out$' "$RUNNER_TEMP/try.out"
+          test -s .crew/try/your-repo/.lights-out/workload.env
+          [ ! -e "$repo/.lights-out" ] && [ -z "$(git -C "$repo" status --porcelain)" ]
+          [ ! -e .attached ]
+          grep -F '[try] keep the contract: cp -R' "$RUNNER_TEMP/try.err"
       - if: always()
         name: The plane, as the demo left it, and the disk it took (docs/adr/0093 §1c)
         run: |
@@ -140,6 +169,8 @@ jobs:
             lights-out/.crew/demo/steps.tsv
             lights-out/.crew/demo/console.html
             lights-out/.crew/ports.env
+            ${{ runner.temp }}/try.out
+            ${{ runner.temp }}/try.err
           if-no-files-found: ignore
       # Last, so the tail of the job log is the digest: every verdict and
       # stage line of ./go demo, with its second, and each step's wall time.
@@ -150,7 +181,8 @@ jobs:
           grep -E '^(GO|NO-GO)|^(go|preflight|engine-compat):|^\[(demo|tower|launchpad|ci)\]|^(deploy|slo:| +slo:)|building workbench|rolled back' lights-out/.crew/demo/run.log | cut -c1-240 || true
           cat lights-out/.crew/demo/steps.tsv || true
           cat "$TIMES" || true
-          { echo '### stranger: demo (podman)'; echo '```'; cat "$RUNNER_TEMP/demo.log" || true; echo; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/try.out" || true
+          { echo '### stranger: demo (podman)'; echo '```'; cat "$RUNNER_TEMP/demo.log" || true; echo; cat "$RUNNER_TEMP/try.out" || true; cat "$TIMES" || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # The second door (docs/adr/0097 §2): the README's "Open in Codespaces",
   # proved without anyone's Codespaces account. devcontainers/ci builds
