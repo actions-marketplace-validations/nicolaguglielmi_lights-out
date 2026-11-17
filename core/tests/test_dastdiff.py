@@ -322,7 +322,7 @@ ROOT_ONLY_STABLE = report(*[alert(pid, ("GET", "http://169.254.1.2:8080/"))
 
 def as_canary(r):
     """The same report as the canary's, at the canary's address."""
-    return json.loads(json.dumps(r).replace("http://169.254.1.2:8080", "http://envoy:8081"))
+    return json.loads(json.dumps(r).replace("http://169.254.1.2:8080", "http://canary.test:8081"))
 
 
 class LostPaths(Tmp):
@@ -342,8 +342,8 @@ class LostPaths(Tmp):
         # Its four 10037 tuples are on paths the stable reports.
         leaky = as_canary(FULL_STABLE)
         leaky["site"][0]["alerts"].append(alert(
-            "10037", ("GET", "http://envoy:8081/"), ("GET", "http://envoy:8081/assets/index-BIWyX5R3.js"),
-            ("GET", "http://envoy:8081/robots.txt"), ("GET", "http://envoy:8081/sitemap.xml")))
+            "10037", ("GET", "http://canary.test:8081/"), ("GET", "http://canary.test:8081/assets/index-BIWyX5R3.js"),
+            ("GET", "http://canary.test:8081/robots.txt"), ("GET", "http://canary.test:8081/sitemap.xml")))
         self.assertVerdict(self.diff(FULL_STABLE, leaky), 1, 4)
 
     def test_one_new_tuple_on_a_reported_path_makes_it_exit_1(self):
