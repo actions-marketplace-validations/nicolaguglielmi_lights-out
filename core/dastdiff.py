@@ -1,6 +1,6 @@
 """The dast gate's verdict, canary against stable (docs/adr/0072 §3): stdlib only, no process.
 
-    python3 core/dastdiff.py diff <stable-report> <canary-report>
+    python3 core/dastdiff.py diff <stable-report> <canary-report> [<stable-report-again>]
 
 Each report is ZAP's traditional JSON report (`zap-baseline.py -J`). An alert
 is the tuple (plugin id, method, path without query), one per instance, the
@@ -10,13 +10,18 @@ different addresses. Every risk level counts (no severity floor, ADR 0015
 exit 1 with the number it has and the stable does not (listed on stderr),
 or exit 2 with the reason a report cannot be read: a canary that cannot be
 judged (ADR 0066).
+
+Exit 3 instead of 1 when every new tuple is on a path where the stable's
+report has no tuple at all: what a passive scan that lost whole paths looks
+like (docs/adr/0072, amendment 2026-11-17). verify/dast.sh then scans the
+stable again and passes that report third; the stable is the union of both.
 """
 
 import json
 import sys
 from urllib.parse import urlsplit
 
-USAGE = "usage: dastdiff.py diff <stable-report> <canary-report>"
+USAGE = "usage: dastdiff.py diff <stable-report> <canary-report> [<stable-report-again>]"
 
 
 class Unreadable(Exception):
@@ -50,12 +55,14 @@ def alerts(path, side):
 
 
 def main(argv):
-    if len(argv) != 3 or argv[0] != "diff":
+    if len(argv) not in (3, 4) or argv[0] != "diff":
         print(USAGE, file=sys.stderr)
         return 2
     try:
         stable = alerts(argv[1], "stable")
         canary = alerts(argv[2], "canary")
+        if len(argv) == 4:
+            stable.update(alerts(argv[3], "stable"))
     except Unreadable as e:
         print(e)
         return 2
@@ -70,7 +77,8 @@ def main(argv):
         for k in new:
             print(f"  {k[0]} {k[1]} {k[2]} {canary[k]}", file=sys.stderr)
         print(len(new))
-        return 1
+        reported = {k[2] for k in stable}
+        return 3 if all(k[2] not in reported for k in new) else 1
     print(len(inherited))
     return 0
 

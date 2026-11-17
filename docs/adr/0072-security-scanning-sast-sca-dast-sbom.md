@@ -365,3 +365,48 @@ beta rules (10049, 10063, 90004 among the 13 inherited) and
 image. If it fails in one scan of a pair, the two sides may run
 different rules (not measured). `-z -silent` skips the download and
 drops the beta rules.
+
+### The stable scanned again when its report lost whole paths, 2026-11-17
+
+`./go demo-dast DAST_RUNS=5` NO-GOed once more on Actions (run
+44156393128, `dast-podman`, 2302cbc, attempt 1; the rerun was green),
+with `pscans.threads=1` set. In the stable against itself, run 3, the
+stable's report had alerts on `/` only: 7 tuples, against 13 in every
+other scan of the job. The six the canary had and the stable lacked were
+every tuple on `/assets/index-….js`, `/robots.txt` and `/sitemap.xml`.
+The spider found the same 5 URLs in all ten scans (`Total of 5 URLs`),
+and ZAP's own summary of that stable scan already counted one instance
+per rule (`x 1` where the others had `x 2` or `x 4`): the passive scan
+reported nothing for three of the five URLs. The exact cause in ZAP was
+not found (no debug log on that run).
+
+| Over | dast jobs | failed on the stable against itself | Provenance |
+|---|---|---|---|
+| The last 100 `ci` and 100 `podman` runs on Actions, to 2026-11-17 | 203 (some skipped on docs-only pushes, not counted apart) | 1 | measure |
+
+**Decision.** A paths check, then one more scan of the stable:
+
+1. `core/dastdiff.py diff` exits 3, not 1, when the canary has new
+   tuples and every one of them is on a path where the stable's report
+   has no tuple at all. A whole path missing from the stable's report is
+   what a lost passive scan looks like; a canary that changes a response
+   the stable also serves raises its new tuple on a path the stable
+   reports (the leaky canary's four `10037` tuples are on `/`, the
+   script, `/robots.txt` and `/sitemap.xml`, where the stable has 13).
+2. On exit 3, `verify/dast.sh` says so on stderr, scans the stable once
+   more, and compares the canary with the union of the two stable
+   reports. A stable scan cannot raise an alert the stable does not
+   have, so the union only restores what a scan lost.
+3. On that second comparison, exit 1 and exit 3 are both a NO-GO with
+   the same line as before: a canary that adds a new path with alerts is
+   still rolled back, one scan later. There is no third scan.
+
+It costs one scan, about 32 s (measure, the scans of run 44156393128),
+only when every new tuple is on a path the stable did not report. The
+rule does not change: NO-GO only for a tuple the canary has and the
+stable lacks.
+
+Rejected: comparing only the paths both reports have, which would let a
+canary that adds a leaking path through; a stable scanned twice on every
+staging (rejected above, and it costs a scan each time); retrying until
+GO, which is a verdict bought with reruns.
