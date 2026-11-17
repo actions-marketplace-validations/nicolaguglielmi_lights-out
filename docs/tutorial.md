@@ -118,8 +118,9 @@ GO: demo, milestone M9, 427s to rollback (budget 900s, plan §2)
 ### Level 2: The gates on your repository
 
 **Time:** about 15 minutes, most of it reading the drafted contract.
-`./go try` took 14 s on a laptop with the toolchain image already built
-(40 s the first time); the Action posted its check on a pull request in
+`./go try` took 16 s on a clean GitHub runner right after `./go demo`
+([stranger run 44138459631](https://github.com/nicolaguglielmi/lights-out/actions/runs/44138459631)),
+14 s on a laptop with the toolchain image already built (40 s the first time); the Action posted its check on a pull request in
 37 s ([the probe](https://github.com/nicolaguglielmi/lights-out-probe/pull/1)).
 
 **You need:** your repository, Python or JavaScript, with its tests. From
@@ -139,13 +140,16 @@ your repository and leaves nothing attached.
 ./go try ~/code/your-repo
 ```
 
-<!-- source: local run on podman, commit f205507, 2026-11-16, a full clone under .crew/, on a copy of workloads/minimal-js with no contract (git init, one commit); stdout; the [try] lines on stderr name the draft's path and the commands that keep it -->
+<!-- source: GitHub Actions stranger run 44138459631 (commit 045076d, 2026-11-17), job demo, step "3. ./go try on a repository of your own": a copy of workloads/minimal-js with its .lights-out/ removed, git init, one commit; stdout; the [try] lines on stderr name the draft's path and the commands that keep it -->
 ```
-GO: try — javascript; the eight gates on your last commit: risk high, review, in workbench; the draft is in .crew/try/your-repo/.lights-out
+GO: try — javascript; the eight gates on your last commit: risk low, auto-merge, in workbench; the draft is in .crew/try/your-repo/.lights-out
 ```
 
-`risk high, review` is the gates' honest answer on a commit that adds a
-whole repository at once: nothing to merge without a person. On a pull
+`risk low, auto-merge` because that copy is small: 111 lines with the
+lockfile left out, under `RISK_SIZE_MEDIUM_LINES=200`, and no path the
+policy calls high. Your own repository's first commit is the whole
+repository, usually past 200 lines, so expect `risk medium, review`; a
+commit that touches `.lights-out/` reads `risk high, review`. On a pull
 request, the Action posts the same eight lines as one check run; [the
 guide](use-on-your-repo.md#the-action) has its YAML.
 
