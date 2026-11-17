@@ -226,3 +226,16 @@ in Chromium, served alone, light and dark:
 - The site build reads one more source, the ci workflow's artifact, and
   fails when no recent run has it.
 - `./go demo` does not run the freeze, and its time does not change.
+
+## Amendment 2026-11-17: the run that judged main's commit, on any branch
+
+§6 asked for the newest successful `ci` run on `main` with the artifact.
+Since main is fast-forwarded to a commit already judged on its land
+branch, `ci` on `main` does not judge it again (ADR 0065), skips
+`engine-compat`, and uploads no logbook: the site kept freezing ci run
+43501367427 of 2026-11-13 while main moved on. `site/demo-logbook.py` now
+walks main's last 30 commits, newest first, and takes the successful `ci`
+push runs of each commit on any branch; the first with the artifact gives
+the logbook. The banner still names that run, and the page is still built
+only from a commit that is on main. Measured on 2026-11-17: it finds ci
+run 44141319131, the land branch's run of main's head, 48678aa.

@@ -6,9 +6,14 @@
 
 The ci workflow's engine-compat job runs ./go demo at L0 with no API key,
 writes its logbook (.crew/logbook-demo.json) and uploads it in the
-`console-snapshot` artifact. This finds the newest successful ci run on
-main that still has that artifact (a run that skipped engine-compat has
-none), writes the logbook to <out file> and prints `<run id>\t<head sha>`.
+`console-snapshot` artifact. This walks main's last commits, newest
+first, and for each takes the successful ci push runs of that commit on
+any branch: main is fast-forwarded to a commit already judged on its
+land branch, and ci on main does not judge it again (docs/adr/0065), so
+the run with the demo is the land branch's (docs/adr/0089, amendment
+2026-11-17). The first run that still has the artifact (a run that
+skipped engine-compat has none) gives the logbook, written to <out file>;
+it prints `<run id>\t<head sha>`.
 Exit 1 with one line when there is none: the site does not link a
 snapshot it could not build.
 
@@ -58,8 +63,10 @@ def main():
     if not token or not repo:
         print("GITHUB_TOKEN and GITHUB_REPOSITORY are not set")
         return 1
-    runs = get(f"{API}/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&status=success&event=push&per_page=30",
-               token)["workflow_runs"]
+    commits = get(f"{API}/repos/{repo}/commits?sha=main&per_page=30", token)
+    runs = [run for c in commits
+            for run in get(f"{API}/repos/{repo}/actions/workflows/ci.yml/runs?head_sha={c['sha']}"
+                           "&status=success&event=push&per_page=10", token)["workflow_runs"]]
     for run in runs:
         arts = get(f"{API}/repos/{repo}/actions/runs/{run['id']}/artifacts?name={ARTIFACT}", token)["artifacts"]
         arts = [a for a in arts if not a.get("expired")]
@@ -75,7 +82,7 @@ def main():
             f.write(data)
         print(f"{run['id']}\t{run['head_sha']}")
         return 0
-    print(f"no successful ci run on main among the last {len(runs)} has a {ARTIFACT} artifact with {MEMBER}")
+    print(f"no successful ci run of main's last {len(commits)} commits has a {ARTIFACT} artifact with {MEMBER}")
     return 1
 
 
