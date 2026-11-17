@@ -28,6 +28,12 @@
 # rule raised while another thread raised alerts on the same page, so the
 # same image scanned twice could differ by one tuple: a NO-GO for the
 # stable against itself (ADR 0072, "The stable against itself").
+#
+# When every new tuple is on a path the stable's report has nothing for,
+# core/dastdiff.py exits 3: the stable's passive scan may have lost those
+# paths. The stable is scanned once more and the canary compared with the
+# union of both stable reports; exit 1 or 3 then is the NO-GO (ADR 0072,
+# amendment 2026-11-17). No third scan.
 set -eu
 name=dast
 . ci/lib.sh
@@ -69,8 +75,13 @@ scan stable "$APP_URL"
 scan canary "$canary_url"
 
 verdict=$(python3 core/dastdiff.py diff "$tmp/stable.json" "$tmp/canary.json") && rc=0 || rc=$?
+if [ "$rc" = 3 ]; then
+  printf 'dast: every new alert is on a path the stable report has nothing for; scanning the stable again (docs/adr/0072, amendment 2026-11-17)\n' >&2
+  scan stable-again "$APP_URL"
+  verdict=$(python3 core/dastdiff.py diff "$tmp/stable.json" "$tmp/canary.json" "$tmp/stable-again.json") && rc=0 || rc=$?
+fi
 case "$rc" in
   0) go_with "canary $CANARY_VERSION: nothing new ($verdict inherited from $STABLE_VERSION)" ;;
-  1) nogo "canary $CANARY_VERSION raises $verdict alert(s) stable $STABLE_VERSION does not; list on stderr" ;;
+  1|3) nogo "canary $CANARY_VERSION raises $verdict alert(s) stable $STABLE_VERSION does not; list on stderr" ;;
   *) nogo "cannot judge: $verdict" ;;
 esac
