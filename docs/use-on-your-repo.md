@@ -29,7 +29,7 @@ The plane half (section 2) adds the services, the canary and the rollback.
 | The Codex plugin and the Gemini CLI extension (ADR 0069, amendment 2026-11-11) | **Verified** once on 2026-11-11, Codex 0.166.0 and Gemini CLI 0.61.0-preview.0 with the scripted model, each from a local copy of this repository: the gates line reached the model, and the hook stopped a commit that weakened a test. Not listed anywhere yet; the trust steps a person takes were not run |
 | An adapter outside the repository, admitted by the hash of its tree and a conformance GO (ADR 0058) | Proven for a StateStore, by `ci/outside.sh` in `./go ci`. Not proven for `CODE_HOST`, `DELIVERY` or `EVENT_BUS`; `AGENT_HARNESS` is refused |
 | Jenkins as a surface: the line posted as `lights-out/jenkins` | Proven with Jenkinsfile Runner by `./go demo-jenkins`. Not proven on a real Jenkins controller |
-| A codebase that was not written for lights-out | **Not yet proven.** It is the public legacy experiment (plan §14) |
+| A codebase that was not written for lights-out | **Tried once**, M24 on tenacity: ten small, low-risk tickets, one run per provider, merged 10 of 10 on Anthropic (`claude-code`) and 7 of 10 on Gemini (`gemini-cli`, three stopped at `TOKEN_BUDGET`). No review and no human gate ran; nothing was released ([the scoreboard](scoreboard/m24-tenacity.json)) |
 
 Known limits today, before you start:
 

@@ -879,8 +879,9 @@ A client rarely writes a ticket. `./go intake` starts from their words
 at most five, then proposes tickets with criteria, feature and priority;
 the architect role proposes each ticket's perimeter from the project map;
 the spec gate checks each one as a draft; and nothing opens until a person
-confirms, edits or drops each ticket with `./go intake-confirm`. No plane
-is needed. At L0 the interview replays the one recorded on the committed
+confirms, edits or drops each ticket with `./go intake-confirm`. The
+interview and the proposal need no plane; the confirm does, because it
+assigns the new ticket and the assign pushes to the plane's Gitea. At L0 the interview replays the one recorded on the committed
 request about the meetup app (recorded on Gemini 3.8 Flash on 2026-11-14):
 
 <!-- source: local run on podman, commit b413d39, 2026-11-14, a full clone of claude/m57-turn-cap, L0 -->
