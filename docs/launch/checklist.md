@@ -328,6 +328,23 @@ adds features.
   passkey, 2026-11-16): `lights-out`, `test-integrity` and `test-proof`
   each show 0.8.0 as Latest.
 
+### Release 0.8.1 (2026-11-19)
+
+M64's dev container and the seven levels (ADR 0097), the mutation
+runner's stop on a coverage-hook failure (ADR 0076 amendment), DAST's
+second scan of the stable (ADR 0072 amendment), `./go try` in `stranger`
+and the frozen console following main (ADR 0089 amendment). Named 0.8.1:
+the shipped artifacts gain fixes, no command or flag.
+
+- [x] **The release commit**: the wrapper, `pyproject.toml`, the three
+  plugin manifests and the landing page at 0.8.1, every usage pinned to
+  `@v0.8.1` (the Jenkins, GitLab CI and CircleCI recipes too), the prose
+  in `docs/releases/v0.8.1.md`.
+- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
+- [ ] **Tag `v0.8.1`** on main, every job green.
+- [ ] **The three drafts `v0.8.1` published to the Marketplace** (owner,
+  passkey).
+
 ### The Python package on PyPI (M35)
 
 The light tier, `lights-out-gates --light`, is a Python package built from

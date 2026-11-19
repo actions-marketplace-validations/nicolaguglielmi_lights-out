@@ -48,6 +48,18 @@ Security scanning (ADR 0072) landed as M43, not M42: main had given M42 to ADR 0
 
 The sprint of 2026-11-12 landed in three merges: streams B and C (a741bf0), stream A (8d36f9f) and the console's DORA and spend panels on logbook 1.5 (563ecbf), each with every workflow green on its landing branch. 0.5.0's three drafts were published to the Marketplace by the owner the same morning. The release commit bumps the same files as 0.5.0's; the tag waits for the owner's go.
 
+## Release 0.8.1, 2026-11-19
+
+Landed since 0.8.0, each with every workflow green on its landing branch:
+- the mutation runner's coverage-hook stop (6f57107, ADR 0076 amendment), the follow-up 0.8.0 left;
+- M64, from zero to hero and the dev container (c8566a4, ADR 0097);
+- M64's docs gaps (8e0b215) and its ROADMAP row (ebcbd00);
+- `./go try` in `stranger` (48678aa);
+- the site's frozen console from the ci run that judged main's commit (2302cbc, ADR 0089 amendment);
+- DAST's second scan of the stable (60e932d, ADR 0072 amendment); the rescan path has not run in CI yet.
+
+Named 0.8.1 by the owner: the wrapper, the image, the Action and the PyPI package gain fixes but no command or flag. The tag waits for the owner's go, after a dry run of package.yml.
+
 ## Release 0.8.0, 2026-11-16
 
 The sprint of 2026-11-16 landed in this order, each with every workflow green:
