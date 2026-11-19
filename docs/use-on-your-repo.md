@@ -1109,6 +1109,89 @@ Limits:
 - The Action is the real gate. The hook is a convenience, and the light tier
   is not the judge.
 
+### Plain git hooks
+
+No coding agent and no CI needed: git's own hooks run the same gates on any
+repository with a `.lights-out/` contract. There are two recipes:
+
+- `pre-commit` runs the light tier on what the commit stages. It takes
+  seconds and needs no engine.
+- `pre-push` runs the full gates from the image, with the wrapper, on what
+  the push sends. It takes minutes and needs podman or docker.
+
+Install the light tier and the wrapper as above.
+
+```sh
+#!/bin/sh
+# pre-commit: lights-out's light tier on what this commit stages.
+# Nothing staged (a reworded --amend): nothing to judge.
+git diff --cached --quiet && exit 0
+exec lights-out-gates --light STAGED=1
+```
+
+```sh
+#!/bin/sh
+# pre-push: lights-out's full gates on each branch this push sends.
+# git gives one line per ref on stdin: <local ref> <local sha> <remote ref> <remote sha>
+while read -r _ local _ remote; do
+  case $local in *[!0]*) ;; *) continue ;; esac   # a delete: nothing to judge
+  case $remote in
+    *[!0]*) base=$remote ;;                         # an update: what the remote lacks
+    *) base=$(git merge-base "$local" "refs/remotes/$1/HEAD" 2>/dev/null) || base= ;;  # a new branch
+  esac
+  # </dev/null: the engine would read the rest of git's lines
+  lights-out gates ${base:+BASE="$base"} HEAD="$local" </dev/null || exit 1
+done
+```
+
+Save each as `.git/hooks/pre-commit` and `.git/hooks/pre-push`, then make
+them executable with `chmod +x`. To share them with the team, commit them
+under `.githooks/` instead. Each clone then runs `git config core.hooksPath
+.githooks` once, because git never turns on a cloned repository's hooks by
+itself.
+
+`git commit -a` and `git commit <path>` are judged on what they stage,
+because git hands the hook the commit's own index. The agent recipes above
+do not get that. A new branch is judged from its merge-base with the
+remote's `HEAD`. If `refs/remotes/origin/HEAD` is missing, `git remote
+set-head origin --auto` sets it; without it, only the branch's last commit
+is judged.
+
+**Verified on 2026-11-19, on a Mac** (podman 6.1.4, podman machine with
+libkrun). Each recipe was copied from this page into `.git/hooks/`.
+
+- `pre-commit` ran with `lights-out-gates` 0.8.0 from PyPI on a scratch
+  repository with a contract:
+  - a staged change that removed an assertion was refused, also when it came
+    from `git commit -a`;
+  - a clean change landed;
+  - a reworded `--amend` was not judged.
+- `pre-push` ran with the wrapper and the 0.8.0 gates image on a copy of
+  `workloads/minimal` with the contract `lights-out init` drafted, pushing
+  to a local bare remote:
+  - a change with its test passed in 24 s;
+  - a change that removed an assertion was refused in 2 s, and the remote
+    stayed where it was;
+  - a new branch of two commits was judged from its merge-base, `GO` in 19 s.
+
+`core/tests/test_git_hooks.py` runs both recipes from this page on every
+`./go ci`. The pre-push one runs there with a stand-in for the wrapper.
+
+Limits:
+
+- `--no-verify` skips both. The Action is the real gate.
+- With staged changes, `git commit --amend` judges only what is newly
+  staged, not the whole amended commit.
+- The light tier runs no code of your repository. Add `TEST_ON_HOST=1` to
+  the pre-commit line to run your suite on your machine as well (section
+  above).
+- The full variant's every run is cold, once per branch pushed.
+- On podman machine, for about 5 s after `git switch` or `git checkout`,
+  the gates image does not see the new `.git/HEAD`. The pre-push hook then
+  refuses with `NO-GO: gates — the current directory is not a git
+  repository with a commit`. Push again. This was measured on 2026-11-19 on
+  the Mac above; Linux was not checked.
+
 ## Your own adapter, outside the repository
 
 A port is a plugin, and you can keep yours in a directory of your own
