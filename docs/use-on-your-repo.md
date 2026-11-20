@@ -1186,11 +1186,13 @@ Limits:
   the pre-commit line to run your suite on your machine as well (section
   above).
 - The full variant's every run is cold, once per branch pushed.
-- On podman machine, for about 5 s after `git switch` or `git checkout`,
-  the gates image does not see the new `.git/HEAD`. The pre-push hook then
-  refuses with `NO-GO: gates — the current directory is not a git
-  repository with a commit`. Push again. This was measured on 2026-11-19 on
-  the Mac above; Linux was not checked.
+- On podman machine, for 4 to 5 s after a commit or a `git switch`, the
+  container does not see the file git just replaced: `.git/HEAD`, the
+  branch's ref. An image that carries `core/await-head.sh` waits for it, up
+  to 15 s, with one line on stderr. An older one, 0.8.0 among them, refuses
+  with `NO-GO: gates — the current directory is not a git repository with a
+  commit`: push again. This was measured on 2026-11-19 and 2026-11-20 on the
+  Mac above; Linux was not checked.
 
 ## Your own adapter, outside the repository
 
