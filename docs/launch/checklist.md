@@ -333,7 +333,9 @@ adds features.
 M64's dev container and the seven levels (ADR 0097), the mutation
 runner's stop on a coverage-hook failure (ADR 0076 amendment), DAST's
 second scan of the stable (ADR 0072 amendment), `./go try` in `stranger`
-and the frozen console following main (ADR 0089 amendment). Named 0.8.1:
+the frozen console following main (ADR 0089 amendment), the plain git
+hooks, and the gates image waiting for a `.git` file a podman machine
+shows late (added by the owner 2026-11-20). Named 0.8.1:
 the shipped artifacts gain fixes, no command or flag.
 
 - [x] **The release commit**: the wrapper, `pyproject.toml`, the three

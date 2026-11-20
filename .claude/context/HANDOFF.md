@@ -56,7 +56,8 @@ Landed since 0.8.0, each with every workflow green on its landing branch:
 - M64's docs gaps (8e0b215) and its ROADMAP row (ebcbd00);
 - `./go try` in `stranger` (48678aa);
 - the site's frozen console from the ci run that judged main's commit (2302cbc, ADR 0089 amendment);
-- DAST's second scan of the stable (60e932d, ADR 0072 amendment); the rescan path has not run in CI yet.
+- DAST's second scan of the stable (60e932d, ADR 0072 amendment); the rescan path has not run in CI yet;
+- plain git hooks, a pre-commit and a pre-push (d5c7a2e), and the gates image waiting up to 15 s for a `.git` file a podman machine shows late (7ff7463), added to 0.8.1 by the owner on 2026-11-20.
 
 Named 0.8.1 by the owner: the wrapper, the image, the Action and the PyPI package gain fixes but no command or flag. The tag waits for the owner's go, after a dry run of package.yml.
 
