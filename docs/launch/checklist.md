@@ -332,7 +332,7 @@ adds features.
 
 M64's dev container and the seven levels (ADR 0097), the mutation
 runner's stop on a coverage-hook failure (ADR 0076 amendment), DAST's
-second scan of the stable (ADR 0072 amendment), `./go try` in `stranger`
+second scan of the stable (ADR 0072 amendment), `./go try` in `stranger`,
 the frozen console following main (ADR 0089 amendment), the plain git
 hooks, and the gates image waiting for a `.git` file a podman machine
 shows late (added by the owner 2026-11-20). Named 0.8.1:
@@ -342,8 +342,10 @@ the shipped artifacts gain fixes, no command or flag.
   plugin manifests and the landing page at 0.8.1, every usage pinned to
   `@v0.8.1` (the Jenkins, GitLab CI and CircleCI recipes too), the prose
   in `docs/releases/v0.8.1.md`.
-- [ ] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`).
-- [ ] **Tag `v0.8.1`** on main, every job green.
+- [x] **A dry run** of `package.yml` (`workflow_dispatch`, `dry_run`) on
+  2e2583d: run 44717167310, every job green.
+- [x] **Tag `v0.8.1`** on main (2e2583d), every job green: run
+  44721481964, PyPI 0.8.1, the wiki rendered, three drafts.
 - [ ] **The three drafts `v0.8.1` published to the Marketplace** (owner,
   passkey).
 
