@@ -82,7 +82,9 @@ esac
 
 # init and gates: the repository's HEAD, cloned where only this container
 # sees it (docs/adr/0037 §1: lights-out reads the repository, never writes it).
-git -C /repo rev-parse -q --verify HEAD >/dev/null 2>&1 \
+# On a podman machine /repo can lag the host for a few seconds after a
+# commit or a git switch: core/await-head.sh waits for HEAD, bounded.
+sh core/await-head.sh /repo 15 \
   || nogo "the current directory is not a git repository with a commit"
 attached=/tmp/lights-out/attached
 mkdir -p /tmp/lights-out
