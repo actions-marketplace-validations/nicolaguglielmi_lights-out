@@ -1192,7 +1192,9 @@ Limits:
   to 15 s, with one line on stderr. An older one, 0.8.0 among them, refuses
   with `NO-GO: gates — the current directory is not a git repository with a
   commit`: push again. This was measured on 2026-11-19 and 2026-11-20 on the
-  Mac above; Linux was not checked.
+  Mac above; Linux was not checked. With an image built from main on
+  2026-11-20, the new-branch push above waited for `.git/HEAD` and was GO
+  in 10 s.
 
 ## Your own adapter, outside the repository
 
