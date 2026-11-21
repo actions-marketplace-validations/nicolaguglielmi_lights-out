@@ -1252,6 +1252,41 @@ M24 ha lasciato due problemi sulla stessa cucitura: un solo `TOKEN_BUDGET` per t
   - `ci/zero-to-hero.sh` (logica in `ci/checks/zero_to_hero.py`, test in `ci/tests/`, ADR 0094) tiene insieme i sette livelli, i link del README, il dev container fissato e provato, le parole accanto a ogni link a Codespaces e la console per prima nel sito; ogni caso provato a fallire.
   - Nessuna bozza del mezzo piano (`./go init` dal Dockerfile): quello che una bozza può scrivere senza leggere il codice è già in `workloads/minimal/.lights-out/`, e quello che rende giudicabile un canary (`/healthz`, `/metrics` con `target_info{service_version}`, il kill switch letto da flagd) sta nel codice dell'app; un compose indovinato accenderebbe un piano il cui canary non si giudica (ADR 0097 §4).
 
+### Arco plug and play (M65–M71)
+
+*Aggiunto 2026-11-21, richiesta dell'owner: un framework plug and play da agganciare a qualsiasi repository.* La metà gates lo è già: l'Action, il wrapper, `lights-out-gates` su PyPI, i plugin e gli hook git non chiedono un clone. La metà plane no, per tre motivi:
+- `./go attach` gira dal checkout di lights-out;
+- compose, smoke e load si scrivono a mano;
+- verify legge le metriche dell'app: `/metrics` con `target_info{service_version}` (ADR 0030 §3), cioè quello che ADR 0097 §4 ha dato come ragione per non abbozzare il mezzo piano.
+
+L'ordine dell'arco: M65 verify dal proxy, M66 init abbozza la metà plane, M67 il plane dal wrapper, M68 il remote come code host, M69 un solo install, M70 un corpus notturno di repository sconosciuti, M71 e seguenti più stack. M65 e M69 partono insieme: non toccano gli stessi file, salvo HANDOFF, checklist e CI_CHECKS, che si allineano al merge.
+
+#### M65 — Verify dal proxy (ADR 0098)
+
+Il canary si giudica su quello che vede Envoy, non su quello che l'app dichiara di sé. Un'app che risponde in HTTP basta.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - **Verifica prima di scrivere.** Le statistiche per cluster di Envoy alla versione pinnata (5xx, latenza, volume per `stable` e `canary`) e il modo di farle leggere a Prometheus si controllano sulla documentazione e su un run. Se non bastano a dire le tre cose che verify dice oggi, ci si ferma e lo si segnala.
+  - **`verify/` legge Envoy.** Tasso di errori, p95 e volume per revisione vengono da Envoy. `/metrics` e `target_info` escono dal port (ADR 0030 §3, emendamento in ADR 0098). L'app bundled può tenerli, ma nessun gate li legge più.
+  - **La sonda di salute** diventa una chiave del contratto: HTTP su un path, o TCP. Il default resta `GET /healthz`, così i workload esistenti non cambiano. La versione del canary viene dal contratto e dall'immagine, non dal JSON di `/healthz`.
+  - **Il kill switch è opzionale.** Con `WORKLOAD_KILL_SWITCH` vuoto, il rollback è il ritorno del traffico allo stable, e `./go verify` lo dice. La demo tiene il suo kill switch.
+  - **Una prova senza strumentazione.** Un workload senza `/metrics`, senza OTel e senza kill switch (un server HTTP minimo, in `workloads/`) arriva al rollback automatico di un canary cattivo con `./go demo-seam` o con un target gemello.
+  - **La regola d'oro.** `./go demo` resta verde e sotto i 15 minuti. Il tempo del rollback si rimisura, e ogni soglia nuova o spostata nell'ADR dichiara da dove viene.
+  - **Argo Rollouts e Flagger.** Le loro analisi leggono oggi le metriche dell'app. ADR 0098 dice se passano a Envoy, o al mesh che usano, o se restano sull'app con il limite dichiarato. Nessun adapter cambia in silenzio.
+  - **I test vengono dall'ADR** (`ci/tests/`, `core/tests/`), e ogni caso è provato a fallire. La guida, il README, il reference e il sito dicono che l'app non deve più esporre metriche.
+
+#### M69 — Un solo install (ADR 0099)
+
+Oggi il wrapper si installa con un `curl` e il light tier con `uv tool install lights-out-gates`: sono due strade. Ne basta una.
+
+- **Criteri di accettazione, scritti prima del codice:**
+  - **Il nome su PyPI.** `lights-out` risultava libero il 2026-11-21 (`https://pypi.org/pypi/lights-out/json` rispondeva 404); si ricontrolla prima di scegliere. Se non è libero, ci si ferma e si chiede.
+  - **Un comando, due eseguibili.** `uv tool install lights-out` mette sul PATH `lights-out`, che esegue il wrapper POSIX della stessa versione e non una riscrittura, e `lights-out-gates`. `lights-out --version` coincide con `version=` del wrapper e con `pyproject.toml`, e `ci/package.sh` lo controlla.
+  - **Il curl resta** come alternativa documentata.
+  - **La prova.** Il workflow `stranger` installa dal wheel costruito nel job e lancia `lights-out doctor` e `lights-out gates` su una copia di `workloads/minimal/`.
+  - **Pubblicazione.** `package.yml` costruisce e pubblica il pacchetto nuovo insieme a `lights-out-gates`. La prima pubblicazione avviene solo alla prossima release, con il via dell'owner.
+  - **Documentazione.** README, guida, tutorial (livello 2), sito e reference mostrano un solo comando di install. Docs-drift è GO.
+
 ### Dopo
 
 M16 (la rete, decisa), M17 e M11 (board e console), i track cloud di M8 e M10: quando esiste un consumatore esterno, come in §14. La sequenza dopo M35 (attestazione, giuria, loop chiuso, toolbelt, stack) è nella roadmap di adozione, §7.
